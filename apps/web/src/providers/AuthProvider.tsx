@@ -1,0 +1,210 @@
+import type {
+  LoginInput,
+  LoginResponse,
+  Permission,
+  Role,
+  SessionInfo,
+} from '@odontocrm/contracts';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+
+import { authApi } from '../lib/endpoints';
+import { setAccessToken, setSessionLostHandler } from '../lib/api';
+import { isPermission, isRole } from '../lib/i18n';
+
+/**
+ * Sesión de la SPA.
+ *
+ * El token de acceso **no** se guarda en `localStorage`: vive en la memoria del
+ * cliente HTTP y, al cargar la página, se recupera con `POST /auth/refresh`
+ * usando la cookie `httpOnly`. Si esa renovación falla y había una sesión
+ * abierta, el cliente avisa aquí y se vuelve a `/login` (lo hace `RequireAuth`
+ * al quedarse sin usuario, sin navegación imperativa).
+ */
+
+export type AuthStatus = 'cargando' | 'autenticado' | 'anonimo';
+
+export type SessionUser = LoginResponse['user'];
+
+export interface AuthContextValue {
+  status: AuthStatus;
+  user: SessionUser | null;
+  roles: readonly Role[];
+  permissions: readonly Permission[];
+  mustChangePassword: boolean;
+  sessionInfo: SessionInfo | null;
+  /** La sesión se cayó estando dentro: se avisa en el login. */
+  sessionExpired: boolean;
+  login: (input: LoginInput) => Promise<void>;
+  logout: () => Promise<void>;
+  refresh: () => Promise<boolean>;
+  reloadSessionInfo: () => Promise<void>;
+  hasPermission: (permission: Permission) => boolean;
+  /** Aplica una respuesta de login/refresco/cambio de contraseña (token + usuario). */
+  applyLoginResponse: (response: LoginResponse) => void;
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export const useAuth = (): AuthContextValue => {
+  const contexto = useContext(AuthContext);
+  if (!contexto) throw new Error('useAuth debe usarse dentro de <AuthProvider>');
+  return contexto;
+};
+
+/**
+ * Una sola restauración de sesión por carga de página: en desarrollo React
+ * monta dos veces los efectos (StrictMode) y el token de refresco es rotativo,
+ * así que dos peticiones simultáneas podrían disparar la detección de reuso.
+ */
+let restauracionEnCurso: Promise<LoginResponse> | null = null;
+
+const restaurarSesion = (): Promise<LoginResponse> => {
+  restauracionEnCurso ??= authApi.refresh();
+  return restauracionEnCurso;
+};
+
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [status, setStatus] = useState<AuthStatus>('cargando');
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  const applyLoginResponse = useCallback((response: LoginResponse) => {
+    setAccessToken(response.accessToken);
+    setUser(response.user);
+    setSessionInfo(null);
+    setStatus('autenticado');
+    setSessionExpired(false);
+  }, []);
+
+  const clearSession = useCallback((expirada: boolean) => {
+    setAccessToken(null);
+    setUser(null);
+    setSessionInfo(null);
+    setStatus('anonimo');
+    setSessionExpired(expirada);
+  }, []);
+
+  // Si el cliente HTTP no logra renovar la sesión, se cierra aquí.
+  useEffect(() => {
+    setSessionLostHandler(() => clearSession(true));
+    return () => setSessionLostHandler(null);
+  }, [clearSession]);
+
+  useEffect(() => {
+    let activo = true;
+
+    const arrancar = async () => {
+      try {
+        const respuesta = await restaurarSesion();
+        if (!activo) return;
+        applyLoginResponse(respuesta);
+        // Los datos del panel inferior son complementarios: si fallan, no se cierra la sesión.
+        const info = await authApi.me().catch(() => null);
+        if (activo && info) setSessionInfo(info);
+      } catch {
+        // Sin cookie válida: es una visita nueva, no una sesión caída.
+        if (activo) clearSession(false);
+      }
+    };
+
+    void arrancar();
+    return () => {
+      activo = false;
+    };
+  }, [applyLoginResponse, clearSession]);
+
+  const login = useCallback(
+    async (input: LoginInput) => {
+      const respuesta = await authApi.login(input);
+      applyLoginResponse(respuesta);
+      const info = await authApi.me().catch(() => null);
+      if (info) setSessionInfo(info);
+    },
+    [applyLoginResponse],
+  );
+
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // Si el servidor no responde, la sesión local se cierra igual: el usuario
+      // pidió salir y no se le puede dejar dentro por un fallo de red.
+    } finally {
+      clearSession(false);
+    }
+  }, [clearSession]);
+
+  const refresh = useCallback(async (): Promise<boolean> => {
+    try {
+      applyLoginResponse(await authApi.refresh());
+      return true;
+    } catch {
+      clearSession(true);
+      return false;
+    }
+  }, [applyLoginResponse, clearSession]);
+
+  const reloadSessionInfo = useCallback(async () => {
+    const info = await authApi.me();
+    setSessionInfo(info);
+  }, []);
+
+  // Los permisos efectivos los manda el servidor; `admin` puede todo igual que
+  // en el backend (misma regla que `hasPermission` de los contratos).
+  const roles = useMemo<readonly Role[]>(() => (user?.roles ?? []).filter(isRole), [user]);
+  const permissions = useMemo<readonly Permission[]>(
+    () => (user?.permissions ?? []).filter(isPermission),
+    [user],
+  );
+
+  const hasPermission = useCallback(
+    (permission: Permission): boolean => {
+      if (!user) return false;
+      return user.roles.includes('admin') || user.permissions.includes(permission);
+    },
+    [user],
+  );
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      status,
+      user,
+      roles,
+      permissions,
+      mustChangePassword: user?.mustChangePassword ?? false,
+      sessionInfo,
+      sessionExpired,
+      login,
+      logout,
+      refresh,
+      reloadSessionInfo,
+      hasPermission,
+      applyLoginResponse,
+    }),
+    [
+      status,
+      user,
+      roles,
+      permissions,
+      sessionInfo,
+      sessionExpired,
+      login,
+      logout,
+      refresh,
+      reloadSessionInfo,
+      hasPermission,
+      applyLoginResponse,
+    ],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};

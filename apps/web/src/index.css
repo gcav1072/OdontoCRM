@@ -1,0 +1,54 @@
+/**
+ * Hoja de estilos raíz de la SPA.
+ *
+ * Carga Tailwind y los tokens del sistema de diseño (que viven en
+ * `packages/ui`, la fuente única de verdad del tema claro y oscuro). Los tokens
+ * se importan por ruta relativa porque `@odontocrm/ui` solo exporta su entrada
+ * de TypeScript y este bloque `@theme` lo tiene que ver el compilador de
+ * Tailwind, no el navegador.
+ */
+
+@import 'tailwindcss';
+@import '../../../packages/ui/src/styles/tokens.css';
+
+/* El tema oscuro se activa con la clase `dark` en <html> (ThemeProvider). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Tailwind detecta clases dentro de apps/web; los componentes del paquete ui
+   viven fuera, así que se declaran como fuente adicional. */
+@source '../../../packages/ui/src';
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-ink antialiased;
+  }
+
+  /* Foco visible en todo el sistema: requisito de accesibilidad de la Fase 1. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  /* Los diálogos nativos heredan el velo del tema. */
+  dialog::backdrop {
+    background-color: var(--color-overlay);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
