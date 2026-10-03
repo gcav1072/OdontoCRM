@@ -668,19 +668,23 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | Fase | Estado | Evidencia |
 | :-: | :--- | :--- |
 | **0** | ✅ **completada** (2026-10-02) | 24 commits atómicos · `npm run verify` en verde con **56 pruebas** (+4 de integración con `npm run test:integration`) · 8 bases y 8 roles creados, idempotencia comprobada y **migraciones verificadas desde cero en base limpia** (`npm run db:verify-migrations`) · outbox + `pg-boss` probados contra PostgreSQL real · `GET :8090/health`, `GET :8090/api/v1/auth/health` y `GET :4001/ready` (PostgreSQL 18.6) respondiendo 200 · `.gitignore` verificado · 25 ADRs · guía de Fedora con `bash -n` y `check` de las unidades |
-| 1 | ⏭ **siguiente** | Identidad completa (usuarios, roles, auth), gateway con verificación de tokens y shell de la interfaz |
+| **1** | ✅ **completada** (2026-10-02) | 10 commits · `npm run verify` en verde con **98 pruebas** (+11 de integración) · identidad completa (login, refresh rotativo con detección de reuso, bloqueo tras 5 intentos, usuarios, dispositivos y auditoría) · gateway verificando el JWT y publicando la identidad · interfaz con shell, login, panel inferior ocultable, temas y módulo de usuarios · **prueba de humo del acceso** (`npm run smoke:auth`) con 17 comprobaciones en verde |
+| 2 | ⏭ **siguiente** | Pacientes con cédula V/E/P/SC, edición auditada con motivo y módulo de registro |
 | 2–10 | ⏳ pendientes | Ver §13 |
 
 ### Lo que quedó funcionando
 
 ```powershell
 npm run db:bootstrap            # 8 bases + 8 roles + credenciales (idempotente, --rotate, --only)
-npm run build                   # tsc -b sobre todo el monorepo
+npm run build                   # tsc -b (servicios) + vite build (interfaz)
+npm run keys:generate           # claves EdDSA del JWT (una sola vez; .keys/ está ignorado)
 npm run db:migrate              # migraciones de todos los servicios
 npm run db:verify-migrations    # comprueba que migran desde cero en una base limpia
-npm run dev                     # compilación vigilada + gateway + identity
-npm test                        # 56 pruebas unitarias
-npm run test:integration        # pruebas contra PostgreSQL real (outbox + pg-boss)
+npm run seed:users              # admin, recepcion y egomez con contraseña temporal
+npm run dev                     # compilación vigilada + gateway + identity + interfaz (5173)
+npm test                        # 98 pruebas unitarias y de contrato
+npm run test:integration        # 11 pruebas contra PostgreSQL real (outbox, cola y autenticación)
+npm run smoke:auth              # recorre el ciclo de sesión por el gateway real
 npm run verify                  # secretos + lint + formato + compilación + pruebas
 pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.ps1
 ```
@@ -696,12 +700,29 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
 4. **El shell de la máquina es Windows PowerShell 5.1**: los scripts de operación usan solo
    cmdlets compatibles (nada de `utf8NoBOM` ni de operadores de PowerShell 7).
 
+### Hallazgos de la Fase 1 que cambian supuestos
+
+1. **Un `preHandler` síncrono cuelga la petición en Fastify.** Las guardias de permiso son
+   `async` a propósito: si una función de un solo parámetro devuelve `undefined` sin llamar a
+   `done()`, Fastify espera para siempre. Hay una prueba que lo vigila
+   (`packages/kernel/src/auth/identity.test.ts`).
+2. **drizzle-kit parametriza los `CHECK`** que se construyen con valores interpolados
+   (`in ($1, $2)`) y el migrador no sustituye parámetros en DDL. Los `CHECK` de roles y tipo de
+   pantalla se escriben como literales desde las constantes del contrato, y hay una prueba que
+   verifica que ninguna migración contenga `$n`.
+3. **Cada servicio es dueño de su prefijo público.** El gateway ya **no recorta** la ruta
+   (`/api/v1/users` llega igual a identity): con varios prefijos apuntando al mismo servicio,
+   recortarlos provocaba colisiones. La única excepción es el alias de salud.
+4. **El puerto 5173 lo ocupa el servidor de desarrollo de la interfaz.** Antes de arrancar otro
+   (`npm run dev`), comprobar que no haya un Vite vivo de una sesión anterior.
+
 ### Próximo paso
 
-Arrancar la **Fase 1** en una sesión nueva: usuarios y roles reales, login con refresh rotativo,
-auditoría de accesos, gateway verificando tokens y el shell de la interfaz con el panel inferior
-ocultable (tema claro/oscuro/sistema, info de login y botón de inicio). Todo con la misma regla:
-`npm run verify` en verde, commits atómicos y tag `fase-1`.
+Arrancar la **Fase 2** en una sesión nueva: servicio de pacientes con cédula V/E/P/SC
+(normalización, unicidad y duplicados), representante de menores, archivos adjuntos, edición de
+datos sensibles **con motivo obligatorio** que deja rastro en la auditoría, y el módulo de
+Registro de la interfaz con autocompletado por cédula y modo de solo lectura. Misma regla:
+`npm run verify` en verde, commits atómicos y tag `fase-2`.
 
 > Este documento es la referencia viva del proyecto: cualquier cambio de alcance se refleja aquí
 > **antes** de escribir código, y cada decisión relevante se registra como ADR en
