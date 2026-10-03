@@ -47,8 +47,8 @@ npm run dev
 Comprobación rápida:
 
 ```powershell
-curl http://127.0.0.1:8080/health          # el gateway responde
-curl http://127.0.0.1:8080/api/v1/auth/health   # el gateway reenvía a identity
+curl http://127.0.0.1:8090/health          # el gateway responde
+curl http://127.0.0.1:8090/api/v1/auth/health   # el gateway reenvía a identity
 curl http://127.0.0.1:4001/ready           # identity + PostgreSQL
 ```
 
@@ -100,7 +100,7 @@ docs                  Plan maestro, formato de historia clínica y ADRs
 
 | Servicio | Puerto | Estado |
 | :--- | :-: | :--- |
-| gateway | 8080 | ✅ Fase 0 |
+| gateway | 8090 | ✅ Fase 0 |
 | identity | 4001 | ✅ Fase 0 (salud) · Fase 1 (usuarios y auth) |
 | patients | 4002 | Fase 2 |
 | scheduling | 4003 | Fase 3 |

@@ -43,8 +43,8 @@ pm2 status
 Write-Host ''
 Write-Host 'Comprobaciones:'
 foreach ($url in @(
-    'http://127.0.0.1:8080/health',
-    'http://127.0.0.1:8080/api/v1/auth/health',
+    'http://127.0.0.1:8090/health',
+    'http://127.0.0.1:8090/api/v1/auth/health',
     'http://127.0.0.1:4001/ready'
   )) {
   try {

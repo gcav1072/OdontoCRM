@@ -58,8 +58,8 @@ También hay un atajo: `powershell -ExecutionPolicy Bypass -File infra/windows/s
 ## 4. Verificación
 
 ```powershell
-curl http://127.0.0.1:8080/health               # gateway vivo
-curl http://127.0.0.1:8080/api/v1/auth/health   # proxy hacia identity
+curl http://127.0.0.1:8090/health               # gateway vivo
+curl http://127.0.0.1:8090/api/v1/auth/health   # proxy hacia identity
 curl http://127.0.0.1:4001/ready                # identity + PostgreSQL
 ```
 
@@ -78,7 +78,7 @@ Salidas esperadas:
 | `/ready` responde 503 con `database` en error | PostgreSQL no está corriendo: `Get-Service postgresql-x64-18`. |
 | `error: password authentication failed` | Contraseña incorrecta o mal codificada en la URL. |
 | `Falta services/identity/dist/db/migrate.js` | Compila primero: `npm run build`. |
-| El puerto 8080 está ocupado | `Get-NetTCPConnection -LocalPort 8080` para ver el proceso. |
+| El gateway no arranca con `listen EACCES` | En esta máquina el **8080** lo ocupa el servicio de red del host (`hns`/Hyper-V). El proyecto usa **8090**; comprueba con `Get-NetTCPConnection -LocalPort 8090` y cambia `GATEWAY_PORT` en el `.env` si hiciera falta. |
 
 ## 6. Qué NO se instala
 
