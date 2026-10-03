@@ -34,7 +34,7 @@ Todas fueron confirmadas contigo en la sesión de planificación del 2026-10-02.
 | # | Tema | Decisión |
 | :-: | :--- | :--- |
 | 1 | Infraestructura | **Nativo, sin Docker.** Windows = desarrollo/pruebas. **Fedora = producción** (documentación + scripts de instalación incluidos en la Fase 10). |
-| 2 | Base de datos | **PostgreSQL 16**, **una base de datos por servicio** en la misma instancia, con usuario/rol propio por servicio. |
+| 2 | Base de datos | **PostgreSQL 18** (ya instalado y corriendo en la máquina de desarrollo), **una base de datos por servicio** en la misma instancia, con usuario/rol propio por servicio. |
 | 3 | Mensajería | **Transactional outbox + `pg-boss` sobre PostgreSQL**. Cero infraestructura extra; la interfaz `EventBus` permite migrar a RabbitMQ sin tocar dominios. |
 | 4 | Granularidad | **9 servicios** (ver §2.2). |
 | 5 | Autenticación | **JWT de acceso (15 min, EdDSA) + refresh rotativo en cookie `httpOnly`**; RBAC por módulo; **pantallas con token de dispositivo** (rol `pantalla`), no con usuario. |
@@ -88,7 +88,7 @@ Todas fueron confirmadas contigo en la sesión de planificación del 2026-10-02.
        │  │            │  REST interno (service JWT) + eventos de dominio
        ▼  ▼            │
  ┌────────────┐  ┌────────────┐  ┌───────────────────────────────────────────────────┐
- │  screens   │  │ reporting  │  │  PostgreSQL 16 — una BD por servicio              │
+ │  screens   │  │ reporting  │  │  PostgreSQL 18 — una BD por servicio              │
  │ SSE kiosko │  │ KPIs/CSV   │  │  + outbox + cola pg-boss                          │
  └────────────┘  └────────────┘  └───────────────────────────────────────────────────┘
         ▲
@@ -159,6 +159,7 @@ OdontoCRM/
    ├─ formato_historia.md
    ├─ implementation_plan_odontogram_microservice.md
    ├─ PLAN_MAESTRO_FASES.md      # este documento
+   ├─ SEGURIDAD_SECRETOS.md      # política de secretos y tokens (Fase 0)
    └─ adr/                       # una ADR por decisión de §1 (se crean en Fase 0)
 ```
 
@@ -412,6 +413,7 @@ END:VEVENT / END:VCALENDAR
 - **Red**: servicios escuchando en `127.0.0.1` y solo el gateway expuesto a la LAN; TLS interno con certificado propio (Caddy o `mkcert`) para que las cookies `Secure` funcionen; CORS restringido al origen de la web; rate limit por IP y por usuario.
 - **Datos clínicos**: confidencialidad de historia clínica, mínimo privilegio por rol, cifrado de la BD (Fedora), bitácora de accesos, **backups `pg_dump` diarios con retención de 30 días y restauración probada** (Fase 10). Los adjuntos se sirven por endpoint autorizado, nunca por ruta directa del sistema de archivos.
 - **Auditoría obligatoria** de: cambios de nombre/teléfono/dirección/fecha de nacimiento, ediciones de historia clínica firmada, actualizaciones de odontograma, emisión/reimpresión de récipes, usuarios y contraseñas, accesos fallidos, sobrecupos y «atendido» forzado.
+- **Secretos**: nunca en el repositorio ni en capturas o chats. En desarrollo viven en archivos `.env` ignorados por Git; en Fedora en `/etc/odontocrm/<servicio>.env` con permisos `0600` y propietario `root`, cargados con `EnvironmentFile=` de `systemd`. Las credenciales de cada servicio las **genera** el bootstrap y un escáner (`tools/check-secrets.mjs`) revisa lo que se va a commitear. Detalle completo en [`SEGURIDAD_SECRETOS.md`](SEGURIDAD_SECRETOS.md).
 
 ---
 
@@ -457,8 +459,10 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 3. `packages/kernel` (config Zod por servicio, logger con `requestId`, errores RFC 7807, `/health` y `/ready`), `packages/contracts` (enums + primer DTO), `packages/db` (conexión Drizzle, migrador, **tabla y publicador de outbox**, wrapper de `pg-boss`), `packages/events`, `packages/testing`.
 4. Servicio piloto mínimo (`services/identity` con `/health` real y conexión a Postgres verificada) + `apps/gateway` proxyando `/health`.
 5. `infra/db/bootstrap.sql` + script `npm run db:bootstrap`: crea las 8 BD, un rol por servicio con privilegios solo sobre su BD, y extensiones (`pgcrypto`, `pg_trgm`).
-6. `infra/windows/install.md` + scripts (instalación/arranque con PM2, `ecosystem.config.cjs`), y **`infra/fedora/INSTALL.md`** con el plan de instalación en Fedora (paquetes `dnf`, `postgresql16-setup`, usuario de sistema, `systemd`/`pm2 startup`, firewall, SELinux) — se completa y prueba en la Fase 10.
-7. `docs/adr/` con una ADR por decisión de §1 (21 ADRs cortas) y corrección del enlace roto a `odontograma.md` en `formato_historia.md`.
+6. `infra/windows/install.md` + scripts (arranque con PM2, `ecosystem.config.cjs`) — Windows ya tiene Node 26, Git, PM2 y PostgreSQL 18, así que solo se documenta y se automatiza.
+7. `infra/fedora/INSTALL.md` + scripts con el plan de instalación en Fedora (paquetes `dnf`, `postgresql18-setup`, usuario de sistema, `systemd`/`pm2 startup`, `firewalld`, SELinux, respaldos) — se completa y prueba en la Fase 10.
+8. `docs/SEGURIDAD_SECRETOS.md`: política de secretos (`.env` local nunca versionado, `/etc/odontocrm/*.env` con `0600` en Fedora vía `EnvironmentFile=`, generación de credenciales por servicio en el bootstrap, rotación del token del bot, y `tools/check-secrets.mjs` como escáner previo al commit).
+9. `docs/adr/` con una ADR por decisión de §1 (21 ADRs cortas) y corrección del enlace roto a `odontograma.md` en `formato_historia.md`.
 
 **Criterios de aceptación:** `npm run verify` verde · `npm run db:bootstrap` crea las 8 BD desde cero · `GET :8080/health` responde OK con estado de la BD del servicio piloto · `npm run build` genera artefactos · `.gitignore` impide que `node_modules` y `.env` entren a git (comprobado con `git status`).
 
@@ -580,7 +584,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 
 **Objetivo:** entregar el sistema listo para la clínica y reproducible en producción.
 
-**Entregables:** seed determinista completo + `seed:reset` + `seed:verify` + banner MODO TEST y bloqueo de envíos reales · `infra/fedora/` completa y **probada**: instalación de PostgreSQL 16, usuario de sistema, `systemd`/PM2, firewall (`firewalld`), SELinux, TLS interno, Tailscale, respaldo diario con `pg_dump` + rotación + **prueba de restauración documentada** · observabilidad (logs con rotación, `/health` y `/ready` de los 9 servicios, tablero de estado, alertas básicas de servicio caído y de cola de envíos atascada) · runbook (arranque, parada, respaldo, restauración, alta de usuarios, recuperación de contraseña, rotación del token del bot) · pruebas end-to-end del flujo completo (solicitud por bot → programación → notificación con `.ics` → secretaría → consultorio → historia/sesión/récipe → reportes → auditoría) · revisión de seguridad final · `README` de operación para la clínica.
+**Entregables:** seed determinista completo + `seed:reset` + `seed:verify` + banner MODO TEST y bloqueo de envíos reales · `infra/fedora/` completa y **probada**: instalación de PostgreSQL 18, usuario de sistema, `systemd`/PM2, firewall (`firewalld`), SELinux, TLS interno, Tailscale, respaldo diario con `pg_dump` + rotación + **prueba de restauración documentada** · observabilidad (logs con rotación, `/health` y `/ready` de los 9 servicios, tablero de estado, alertas básicas de servicio caído y de cola de envíos atascada) · runbook (arranque, parada, respaldo, restauración, alta de usuarios, recuperación de contraseña, rotación del token del bot) · pruebas end-to-end del flujo completo (solicitud por bot → programación → notificación con `.ics` → secretaría → consultorio → historia/sesión/récipe → reportes → auditoría) · revisión de seguridad final · `README` de operación para la clínica.
 
 **Criterios de aceptación:** instalación desde cero en Fedora siguiendo solo `infra/fedora/INSTALL.md`; tras reiniciar la máquina los 9 servicios vuelven solos; un respaldo se restaura en una BD limpia con datos íntegros; la prueba E2E completa pasa; apagar el servidor no corrompe datos; el modo test no puede activarse en producción.
 
@@ -602,16 +606,16 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 
 **Windows (desarrollo/pruebas — esta máquina)**
 
-| Qué | Cómo | Nota |
+| Qué | Estado | Nota |
 | :--- | :--- | :--- |
-| Node.js 26 | ✅ ya instalado (v26.7.0) | npm 11.19 incluido |
-| Git | ✅ ya instalado (2.55) | |
-| **PostgreSQL 16** | Instalador de EDB (requiere permisos de administrador) o binarios *portable* sin instalación | **Es lo único que falta para empezar.** Lo pido en la Fase 0 con instrucciones paso a paso; elige el puerto `5432` y guarda la contraseña del usuario `postgres`. |
-| PM2 (global) | `npm i -g pm2` | Para mantener los 9 servicios vivos y reiniciarlos si se caen |
-| Playwright + Chromium | `npx playwright install chromium` | Solo a partir de la **Fase 7** (PDF del récipe) |
-| Tailscale | Opcional, **Fase 10** | Para el acceso remoto sin exponer nada a internet |
+| Node.js 26 | ✅ instalado (v26.7.0) | npm 11.19 incluido |
+| Git | ✅ instalado (2.55) | |
+| **PostgreSQL 18** | ✅ instalado y corriendo (`postgresql-x64-18`, puerto 5432) | Binarios en `C:\Program Files\PostgreSQL\18\bin`. Falta solo definir el **password del superusuario** en el `.env` local para que el bootstrap cree las 8 bases y sus roles. |
+| PM2 | ✅ instalado global (`npm i -g pm2`) | Mantiene los 9 servicios vivos y los reinicia si se caen |
+| Playwright + Chromium | ⏳ pendiente | Solo a partir de la **Fase 7** (PDF del récipe): `npx playwright install chromium` |
+| Tailscale | ⏳ opcional, **Fase 10** | Para el acceso remoto sin exponer nada a internet |
 
-**Fedora (producción — se documenta y prueba en la Fase 10):** `nodejs`, `postgresql16-server`, `postgresql16-contrib`, `firewalld`, PM2 global (o unidades `systemd`), dependencias de Chromium para Playwright (`npx playwright install-deps chromium`), usuario de sistema `odontocrm`, `pg_dump` para respaldos y Tailscale.
+**Fedora (producción — se documenta y prueba en la Fase 10):** `nodejs`, `postgresql18-server`, `postgresql18-contrib`, `firewalld`, PM2 global (o unidades `systemd`), dependencias de Chromium para Playwright (`npx playwright install-deps chromium`), usuario de sistema `odontocrm`, `pg_dump` para respaldos y Tailscale. Se instala la **misma versión mayor de PostgreSQL que en desarrollo (18)** para que las migraciones sean idénticas.
 
 **Nada más:** al usar outbox + `pg-boss` sobre PostgreSQL **no** necesitas Docker, RabbitMQ, Redis ni MinIO. Las contraseñas usan `scrypt` de Node (sin compilador de C++), así que no hace falta Visual Studio Build Tools.
 
@@ -633,7 +637,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 **Supuestos (confírmame si alguno no aplica)**
 
 1. Horario por defecto **lunes a viernes 08:00–12:00 y 13:00–17:00**, citas de **30 minutos**, tolerancia de inasistencia **15 minutos**. Todo editable.
-2. Zona horaria fija **America/Caracas**; fechas en la UI `dd/mm/aaaa`, horas 24 h.
+2. Zona horaria fija **America/Caracas**; fechas en la UI `dd/mm/aaaa` y **horas en formato de 12 h con `a. m.` / `p. m.`** (ajuste tuyo del 2026-10-02). En base de datos, logs e `.ics` se guarda **24 h** (`14:30`, RFC 5545) y la conversión a 12 h ocurre solo al mostrar.
 3. Uso concurrente pequeño (**2–5 usuarios** + 2 pantallas): no requiere balanceo ni caché distribuida.
 4. UI en **español (es-VE)**; código, tablas y columnas en **inglés**.
 5. El sistema se llamará **OdontoCRM**; la dirección de la clínica es `Av. Luis del Valle García, C.E. Nueva Esparta, Planta Baja, Local 1-2` (configurable).
@@ -651,14 +655,14 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | Copia del récipe al paciente | Descarga/impresión desde el historial; envío por Telegram queda para fase posterior. |
 | Numeración de historia | `HC-000001` por paciente, secuencia global. |
 | Membrete | Genérico hasta que envíes logo, RIF, teléfonos y datos del odontólogo (MPPS, especialidad). |
-| Nombre de usuario del bot | `TELEGRAM_BOT_USERNAME` configurable; tú lo creas en BotFather y me pasas el token por `.env` (nunca al repo). |
+| Nombre del bot | Bot de BotFather con **nombre visible «Consultorio - Od. Erika Gómez»** por los momentos (el nombre visible se cambia cuando quieras). El `@usuario` es único y también se puede cambiar, pero **cambiar el `@usuario` rompe los enlaces `t.me/...` ya compartidos**; si eso pasa, se crea otro bot y se reemplaza el token. El token se entrega por archivo `.env` según `docs/SEGURIDAD_SECRETOS.md` — **nunca por chat ni en el repo**. |
 
 ---
 
 ## 17. Próximo paso
 
-1. **Apruebas este plan** (o me dices qué ajustar: fases, orden, alcance).
-2. Instalas **PostgreSQL 16** en esta máquina (te doy los pasos exactos en cuanto apruebes).
-3. Arranca la **Fase 0** en una sesión nueva: `.gitignore`, monorepo, kernel, outbox, bootstrap de las 8 BD y ADRs — con sus commits atómicos y tag `fase-0`.
+1. **Plan aprobado** (2026-10-02) con los ajustes del usuario: horas en 12 h, bot «Consultorio - Od. Erika Gómez» y PostgreSQL 18.
+2. ~~Instalar PostgreSQL~~ ✅ **Ya está instalado** (`postgresql-x64-18`, puerto 5432). Falta que crees el `.env` local con el password del superusuario para que el bootstrap cree las 8 bases y sus roles (ver `docs/SEGURIDAD_SECRETOS.md`).
+3. **Fase 0 en ejecución**: `.gitignore`, monorepo, kernel, outbox, bootstrap de las 8 BD, ADRs y tag `fase-0`.
 
 > Al aprobarlo, el trabajo pasa a `docs/adr/` como decisiones formales y este documento queda como referencia viva: cualquier cambio de alcance se refleja aquí **antes** de escribir código.
