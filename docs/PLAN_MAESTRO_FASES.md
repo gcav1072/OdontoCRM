@@ -849,23 +849,35 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    fuera. Lo destapó la prueba de humo, no las pruebas de integración (que aplicaban los
    eventos de uno en uno). Ahora el lote se **ordena por `occurredAt`** y la proyección
    **no retrocede** ni resucita a quien ya salió (lápida `left_at` en `room_state`).
-2. **La aprobación de un criterio depende de dos relojes.** «Llamar aparece en el lobby
-   en menos de 1 s» exigía bajar el publicador del outbox de agenda de 2 s a **500 ms** y
-   el sondeo del consumidor de `screens` a **500 ms**. Medido con el flujo SSE real: 882 ms.
-3. **La latencia hay que medirla como la vive el televisor.** El primer intento medía con
+2. **La latencia del llamado: un temporizador, no la base de datos.** Con el publicador
+   del outbox cada 2 s y el consumidor cada 1 s, el aviso tardaba hasta 3 s. Se midió el
+   reparto: **outbox 15-50 ms** (se adelanta con `kick()` en cuanto cambia un estado, en
+   vez de esperar al temporizador; sin él, hasta 500 ms), **cola 34-514 ms** (12 muestras,
+   media 288 ms; `pg-boss` no admite sondeo por debajo de 500 ms:
+   `MIN_POLLING_INTERVAL_MS`), **proyección + trama SSE 20-50 ms** y **proxy 1 ms**. Total
+   extremo a extremo: **303, 443 y 304 ms** en tres corridas limpias (~0,8 s peor caso), y
+   **ninguno de esos términos depende del volumen de datos**.
+3. **Una consulta del camino crítico sí crecía con los datos.** Contar los llamados de una
+   cita (para numerar el 2.º) y buscar el último llamado de cada cita eran **escaneos
+   secuenciales**: medido con 200.000 llamados sintéticos, 36 ms y 38 ms; con el índice
+   `idx_call_events_appointment` (migración `0001`), 0,08 ms y 0,03 ms. El resto del camino
+   iba por índice (O(log n)), incluidas las consultas sobre las lápidas de `room_state`,
+   que siguen planas con 200.000 filas (0,10 ms).
+4. **La latencia hay que medirla como la vive el televisor.** El primer intento medía con
    sondeos HTTP y daba 19 s: era el saludo TCP de cada sondeo en una máquina cargada (el
    servicio respondía en 2-4 ms). La medición buena se hace **por el flujo SSE**, que es
-   una única conexión abierta antes del llamado.
-4. **Una pantalla no puede tener sesión de usuario.** El token de dispositivo se canjea
+   una única conexión abierta antes del llamado; y para saber qué añade el gateway se
+   comparó el mismo flujo directo al servicio y a través del proxy (1 ms de diferencia).
+5. **Una pantalla no puede tener sesión de usuario.** El token de dispositivo se canjea
    por un JWT de rol `pantalla` (solo `screens:display`) que se renueva solo, y `screens`
    comprueba además que la pantalla siga activa: desactivarla corta el acceso al instante.
-5. **`EventSource` no manda cabeceras.** El kiosko abre el SSE con `fetch` y gestiona a
+6. **`EventSource` no manda cabeceras.** El kiosko abre el SSE con `fetch` y gestiona a
    mano la reconexión, el `Last-Event-ID` y un **refresco de respaldo** por HTTP cada 20 s
    (si el flujo muere en silencio, el estado se corrige igual).
-6. **Los ajustes de la pantalla no viven en identity.** El login del dispositivo no puede
+7. **Los ajustes de la pantalla no viven en identity.** El login del dispositivo no puede
    traerlos (son de `screens`), así que la pantalla pide su ficha con
    `GET /api/v1/screens/device` y de ahí salen voz, volumen y segundos de resalte.
-7. **El motivo de la consulta lo publica la agenda.** Para que la pantalla del consultorio
+8. **El motivo de la consulta lo publica la agenda.** Para que la pantalla del consultorio
    lo muestre sin leer la base de otro servicio, `scheduling` lo añade al evento de la
    cita; los datos clínicos (alergias, crónicos) llegan por la ruta interna que usará la
    Fase 6.

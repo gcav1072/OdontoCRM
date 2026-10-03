@@ -263,7 +263,11 @@ canjean por un JWT de rol `pantalla`, y se actualizan por **SSE**.
 | `POST /internal/v1/screens/room/critical-flags` | Datos críticos del paciente en curso (los enviará la historia clínica) | secreto interno |
 
 - **El llamado se empuja**: la secretaría llama por `/api/v1/appointments/:id/call` y el
-  displaylobby lo recibe por SSE (medido: **882 ms**).
+  displaylobby lo recibe por SSE. Reparto medido del tiempo: **outbox 15-50 ms** (el cambio de
+  estado adelanta la publicación), **cola 34-514 ms** (sondeo de `pg-boss`, que no admite menos
+  de 500 ms), **proyección + trama 20-50 ms** y **proxy 1 ms**; en total **~300-450 ms típico**
+  (~0,8 s peor caso), y **nada de eso crece con el volumen de datos** (todas las consultas del
+  camino van por índice).
 - **Una pantalla desactivada deja de ver la sala**, aunque su token siga vigente.
 - La **secretaría** usa las rutas de agenda ya existentes (`check-in`, `call`, `start`,
   `attend`, `no-show`); la llamada fuera de orden registra llegada y llamado para que las

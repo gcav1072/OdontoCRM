@@ -34,6 +34,11 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   late cada **500 ms** (antes 2 s): de ahí depende que un llamado llegue al lobby en menos de un
   segundo (medido: **882 ms** en la prueba de humo).
 - El gateway deja pasar `POST /api/v1/auth/device` sin token (la pantalla no tiene usuario ni cookie).
+- **El cambio de estado adelanta la publicación**: `outbox.kick()` saca el evento en el acto en vez
+  de esperar al temporizador del publicador (medido: el tramo del outbox pasa de 0-500 ms a
+  **15-50 ms**). La latencia extremo a extremo del llamado queda en **303, 443 y 304 ms** en tres
+  corridas limpias (~0,8 s peor caso), dominada por el sondeo de `pg-boss` (que no admite menos
+  de 500 ms).
 
 ### Corregido
 
@@ -41,6 +46,9 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   `checked_in` dejaba al paciente «esperando» en lugar de «llamado» (y `attended` antes que
   `in_consultation` volvía a ocupar el consultorio). El lote se ordena por `occurredAt` y la
   proyección no retrocede ni resucita a quien ya salió (lápida `left_at`).
+- **Una consulta del camino crítico crecía con los datos** (migración `0001` de `screens`): contar
+  los llamados de una cita y buscar el último de cada cita eran escaneos secuenciales —36 ms y
+  38 ms con 200.000 llamados— y ahora son 0,08 ms y 0,03 ms con `idx_call_events_appointment`.
 
 ## [Fase 4.1] — Núcleo conversacional y adaptadores de canal · 2026-10-03
 

@@ -59,13 +59,29 @@ secretaría llama desde `scheduling` y quien pinta el llamado es `screens`.
 
 - ✅ Añadir una pantalla es registrar y abrir un enlace: no hay que instalar nada ni
   dejar sesión abierta en el equipo.
-- ✅ El televisor no pregunta: el llamado llega empujado. Medido en la prueba de humo:
-  **882 ms** desde que la secretaría pulsa «Llamar» hasta que la trama llega al lobby.
+- ✅ El televisor no pregunta: el llamado llega empujado. Reparto medido del tiempo entre
+  pulsar «Llamar» y ver la trama en el lobby (base con 200.000 llamados sintéticos para
+  probar que el volumen no influye):
+  | Tramo | Medido | ¿Crece con los datos? |
+  | :--- | :--- | :--- |
+  | Transición + salida del outbox | **15-50 ms** con `kick()` (sin él, hasta 500 ms) | no |
+  | Cola (`pg-boss`, sondeo cada 500 ms) | **34-514 ms** (12 muestras, media 288 ms) | no |
+  | Proyección + trama SSE | **20-50 ms** | no: todo por índice, O(log n) |
+  | Proxy del gateway | **1 ms** | no |
+  | **Total extremo a extremo** | **~300-450 ms típico** (303, 443 y 304 ms en tres corridas) · **~0,8 s peor caso** | **no** |
+- ✅ **No crece con el volumen**: todas las consultas del camino van por índice (la de
+  contar los llamados de una cita y la del último llamado por cita eran escaneos
+  secuenciales —36 ms con 200.000 filas— hasta que se añadió
+  `idx_call_events_appointment`; ahora 0,03-0,08 ms).
 - ✅ La sala se puede reconstruir: `room_state` y `call_events` son datos propios del
   servicio, no una copia de la agenda.
-- ⚠️ La latencia depende de dos relojes: el publicador del outbox de agenda (500 ms) y
-  el sondeo del consumidor de `screens` (500 ms). Bajarlos más carga la base de datos
-  sin ganar nada perceptible.
+- ⚠️ El suelo de la cola son los **500 ms** de sondeo de `pg-boss`
+  (`MIN_POLLING_INTERVAL_MS`, no se puede bajar): es el término dominante y por eso el
+  peor caso ronda los 0,8 s. Adelantar el outbox con `kick()` quitó el otro temporizador.
+- ⚠️ Crecimiento de **almacenamiento**, no de latencia: `room_state` guarda lápidas
+  (`left_at`), `call_events` es histórico y `outbox_events` no se purga. Las consultas
+  siguen planas (0,10 ms con 200.000 lápidas), pero la limpieza por retención es tarea de
+  la Fase 10.
 - ⚠️ Sin la historia clínica (Fase 6) los **datos críticos** llegan por la ruta interna
   `/internal/v1/screens/room/critical-flags`; hasta entonces la pantalla del consultorio
   avisa de que aún no hay datos clínicos.
