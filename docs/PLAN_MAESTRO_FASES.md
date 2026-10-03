@@ -715,6 +715,14 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    recortarlos provocaba colisiones. La única excepción es el alias de salud.
 4. **El puerto 5173 lo ocupa el servidor de desarrollo de la interfaz.** Antes de arrancar otro
    (`npm run dev`), comprobar que no haya un Vite vivo de una sesión anterior.
+5. **La preferencia de tema se guarda por equipo, no por usuario** (`odontocrm:tema`), a
+   diferencia de lo que decía §10. En un consultorio con 2–3 equipos compartidos, el tema es una
+   preferencia del puesto de trabajo (y así la pantalla de login ya respeta lo elegido). Si se
+   prefiere por usuario, basta con prefijar la clave con el nombre de usuario.
+6. **Permisos de los módulos futuros** (los placeholders ya los respetan): recepción y
+   programación → `scheduling:write`; registro → `patients:write` (registra, no solo consulta);
+   secretaría → `scheduling:read`; consultorio → `clinical:read`; reportes → `reports:read`;
+   auditoría → `audit:read`; pantallas → `screens:manage`.
 
 ### Próximo paso
 
