@@ -5,6 +5,8 @@ export * from './domain/audit.js';
 export * from './domain/auth.js';
 export * from './domain/enums.js';
 export * from './domain/health.js';
+export * from './domain/ics.js';
+export * from './domain/notification.js';
 export * from './domain/patient.js';
 export * from './domain/scheduling.js';
 export * from './domain/state-machine.js';
