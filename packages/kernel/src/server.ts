@@ -36,8 +36,8 @@ const normalizeError = (error: FastifyError): AppError => {
   const status = typeof error.statusCode === 'number' ? error.statusCode : 500;
   return new AppError({
     status: status >= 400 && status <= 599 ? status : 500,
-    code: status === 404 ? 'not_found' : 'request_error',
-    message: error.message,
+    code: status === 404 ? 'not_found' : status === 413 ? 'file_too_large' : 'request_error',
+    message: status === 413 ? 'El archivo enviado supera el tamaño permitido' : error.message,
     expose: status < 500,
     cause: error,
   });

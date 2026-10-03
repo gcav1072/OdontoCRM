@@ -9,6 +9,8 @@ export class AppError extends Error {
   readonly status: number;
   readonly code: string;
   readonly errors: ProblemFieldError[];
+  /** Miembros extra que viajan en el cuerpo RFC 7807 (p. ej. `existingPatientId`). */
+  readonly extensions: Record<string, unknown>;
   /** `true` cuando el error se puede mostrar al usuario tal cual. */
   readonly expose: boolean;
 
@@ -17,6 +19,7 @@ export class AppError extends Error {
     code: string;
     message: string;
     errors?: ProblemFieldError[];
+    extensions?: Record<string, unknown>;
     expose?: boolean;
     cause?: unknown;
   }) {
@@ -25,6 +28,7 @@ export class AppError extends Error {
     this.status = options.status;
     this.code = options.code;
     this.errors = options.errors ?? [];
+    this.extensions = options.extensions ?? {};
     this.expose = options.expose ?? options.status < 500;
   }
 }
@@ -54,8 +58,16 @@ export class NotFoundError extends AppError {
 }
 
 export class ConflictError extends AppError {
-  constructor(message = 'La operación choca con el estado actual del recurso') {
-    super({ status: 409, code: 'conflict', message });
+  constructor(
+    message = 'La operación choca con el estado actual del recurso',
+    options: { extensions?: Record<string, unknown> } = {},
+  ) {
+    super({
+      status: 409,
+      code: 'conflict',
+      message,
+      ...(options.extensions === undefined ? {} : { extensions: options.extensions }),
+    });
   }
 }
 
@@ -104,6 +116,7 @@ export const toProblemDetails = (
     if (options.requestId !== undefined) problem.requestId = options.requestId;
     if (options.instance !== undefined) problem.instance = options.instance;
     if (error.errors.length > 0) problem.errors = error.errors;
+    Object.assign(problem, error.extensions);
     return problem;
   }
 
