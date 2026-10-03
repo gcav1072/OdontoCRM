@@ -21,6 +21,7 @@
   "dependencies": {
     "@odontocrm/contracts": "*",
     "fastify": "^5.12.5",
+    "jose": "^6.2.12",
     "pino": "^10.4.0",
     "zod": "^4.6.5"
   }
