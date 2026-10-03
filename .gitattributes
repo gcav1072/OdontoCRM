@@ -1,0 +1,29 @@
+# Normaliza a LF en el repositorio; el checkout de Windows sigue usando LF para
+# código (Node/TypeScript lo soporta sin problema) y CRLF solo donde Windows lo exige.
+* text=auto eol=lf
+
+# Scripts de Windows: CRLF para que cmd.exe y PowerShell no fallen.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Scripts de Linux: LF obligatorio.
+*.sh text eol=lf
+
+# Binarios (nunca normalizar)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.xlsx binary
+*.docx binary
+
+# Archivos generados: fuera de los diffs y de las estadísticas de lenguaje.
+package-lock.json -diff linguist-generated
+dist/** linguist-generated

@@ -1,0 +1,53 @@
+# ─── Dependencias ────────────────────────────────────────────────────────────
+node_modules/
+.npm/
+.pnpm-store/
+
+# ─── Compilados ──────────────────────────────────────────────────────────────
+dist/
+build/
+*.tsbuildinfo
+
+# ─── Entorno y secretos (ver docs/SEGURIDAD_SECRETOS.md) ─────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+.keys/
+secrets/
+
+# ─── Datos locales y adjuntos (radiografías, PDFs) ───────────────────────────
+storage/
+tmp/
+*.dump
+*.backup
+*.sql.gz
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# ─── Pruebas y cobertura ─────────────────────────────────────────────────────
+coverage/
+.vitest/
+playwright-report/
+test-results/
+blob-report/
+
+# ─── Editores y sistema operativo ────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── PM2 ─────────────────────────────────────────────────────────────────────
+.pm2/
+pm2-*.log
