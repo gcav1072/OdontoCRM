@@ -347,13 +347,15 @@ check(
 let salaVacia = false;
 for (let intento = 0; intento < 60; intento += 1) {
   const estado = await screenCall('/api/v1/screens/consultorio');
-  if (estado.body?.appointmentId === null) {
+  // Se comprueba **esta** cita, no que la sala esté entera vacía: puede haber
+  // otra pantalla o datos de una prueba anterior y eso no es asunto de este aviso.
+  if (estado.body?.appointmentId !== appointmentId) {
     salaVacia = true;
     break;
   }
   await new Promise((resolve) => setTimeout(resolve, 150));
 }
-check('al terminar, la sala queda vacía', salaVacia);
+check('al terminar, la cita sale de la sala', salaVacia);
 
 // 8) Desactivar la pantalla: deja de ver la sala.
 const desactivar = await call(`/api/v1/screens/devices/${screenId}`, { method: 'DELETE' });

@@ -36,6 +36,16 @@ export const registerAppointmentRoutes = (
   const read = requirePermission('scheduling:read');
   const write = requirePermission('scheduling:write');
 
+  /**
+   * Publica el evento del cambio ahora mismo, sin esperar al temporizador del
+   * outbox: el llamado tiene que aparecer en el displaylobby al instante y no
+   * medio segundo después. No se espera la publicación (la respuesta al usuario
+   * no depende de la cola) y un fallo se registra donde corresponde.
+   */
+  const publicarYa = (): void => {
+    services.kickOutbox?.();
+  };
+
   app.get('/api/v1/appointments', { preHandler: read }, async (request, reply) => {
     const filters = parseQuery(appointmentFiltersSchema, request.query);
     return reply.status(200).send(await listAppointments(db, filters));
@@ -63,6 +73,7 @@ export const registerAppointmentRoutes = (
     const actor = actorFrom(request);
     const { id } = parseOrThrow(idParamsSchema, request.params);
     const result = await transitionAppointment(db, id, 'en_sala_espera', actor, { config });
+    publicarYa();
     return reply.status(200).send(result);
   });
 
@@ -70,6 +81,7 @@ export const registerAppointmentRoutes = (
     const actor = actorFrom(request);
     const { id } = parseOrThrow(idParamsSchema, request.params);
     const result = await transitionAppointment(db, id, 'llamado', actor, { config });
+    publicarYa();
     return reply.status(200).send(result);
   });
 
@@ -77,6 +89,7 @@ export const registerAppointmentRoutes = (
     const actor = actorFrom(request);
     const { id } = parseOrThrow(idParamsSchema, request.params);
     const result = await transitionAppointment(db, id, 'en_consulta', actor, { config });
+    publicarYa();
     return reply.status(200).send(result);
   });
 
@@ -93,6 +106,7 @@ export const registerAppointmentRoutes = (
       forceReason: input.forceReason,
       clinicalSessionId: input.clinicalSessionId,
     });
+    publicarYa();
     return reply.status(200).send(result);
   });
 
@@ -105,6 +119,7 @@ export const registerAppointmentRoutes = (
       config,
       reason: input.reason,
     });
+    publicarYa();
     return reply.status(200).send(result);
   });
 
@@ -116,6 +131,7 @@ export const registerAppointmentRoutes = (
       config,
       reason: input.reason,
     });
+    publicarYa();
     return reply.status(200).send(result);
   });
 

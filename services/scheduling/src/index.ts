@@ -15,6 +15,13 @@ const main = async (): Promise<void> => {
   const config = loadSchedulingConfig();
   const database = createSchedulingDatabase(config);
 
+  /**
+   * El publicador del outbox se crea más abajo, pero las rutas necesitan poder
+   * adelantarlo desde ya (un llamado tiene que verse en el displaylobby al
+   * instante). Este hueco se rellena en cuanto existe.
+   */
+  const publicador: { kick: () => void } = { kick: () => undefined };
+
   // Publicador del outbox: cada cambio de agenda viaja a la cola compartida, donde
   // identity lo convierte en auditoría y (Fase 4) notificaciones lo envía al paciente.
   const boss = createBoss({
@@ -24,13 +31,19 @@ const main = async (): Promise<void> => {
   await startBoss(boss);
   await ensureDomainEventsQueue(boss);
 
-  const app = await createSchedulingServer({ config, database });
+  const app = await createSchedulingServer({
+    config,
+    database,
+    // El publicador se crea después del servidor, así que el gancho se resuelve
+    // por referencia: cuando llega una petición, ya está apuntando al runner.
+    kickOutbox: () => publicador.kick(),
+  });
 
   const outbox = createOutboxRunner({
     pool: database.pool,
     boss,
-    // 500 ms: de aquí depende que un llamado llegue al displaylobby en menos de
-    // un segundo (Fase 5). El publicador solo consulta su propio outbox.
+    // 500 ms como red de seguridad (con `kick()` el cambio sale al instante): el
+    // caso que lo necesita es el llamado, que se ve en el displaylobby.
     intervalMs: 500,
     onCycle: (result) => {
       app.log.debug(result, 'Eventos de agenda publicados desde el outbox');
@@ -40,6 +53,7 @@ const main = async (): Promise<void> => {
     },
   });
   outbox.start();
+  publicador.kick = () => outbox.kick();
 
   app.addHook('onClose', async () => {
     await outbox.stop();

@@ -19,6 +19,14 @@ export interface OutboxRunnerOptions {
 export interface OutboxRunner {
   /** Ejecuta un ciclo ahora mismo (útil en pruebas y al arrancar). */
   flush: () => Promise<DispatchOutboxResult>;
+  /**
+   * Adelanta un ciclo **sin esperarlo**: si ya hay uno en curso no hace nada.
+   *
+   * Lo usan los cambios que tienen que verse ya en otra pantalla (un llamado al
+   * displaylobby): sin esto, el aviso esperaría hasta `intervalMs` a que el
+   * temporizador mirara el outbox.
+   */
+  kick: () => void;
   start: () => void;
   stop: () => Promise<void>;
 }
@@ -67,6 +75,9 @@ export const createOutboxRunner = (options: OutboxRunnerOptions): OutboxRunner =
 
   return {
     flush,
+    kick: () => {
+      void cycle();
+    },
     start: () => {
       if (timer !== undefined) return;
       timer = setInterval(() => {

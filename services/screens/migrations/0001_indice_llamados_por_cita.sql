@@ -1,0 +1,1 @@
+CREATE INDEX "idx_call_events_appointment" ON "call_events" USING btree ("appointment_id","called_at" desc);

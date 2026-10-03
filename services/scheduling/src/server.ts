@@ -13,6 +13,8 @@ import type { SchedulingServices } from './services.js';
 export interface CreateSchedulingServerOptions {
   config: SchedulingConfig;
   database: SchedulingDatabaseHandle;
+  /** Gancho para adelantar los eventos (lo conecta `index.ts` con el publicador). */
+  kickOutbox?: (() => void) | undefined;
 }
 
 /**
@@ -46,6 +48,7 @@ export const createSchedulingServer = async (
     config,
     db: database.db,
     pool: database.pool,
+    ...(options.kickOutbox === undefined ? {} : { kickOutbox: options.kickOutbox }),
   };
 
   registerInternalRoutes(app, services);
