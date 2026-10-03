@@ -191,8 +191,23 @@ const leerCuerpo = async (response: Response): Promise<unknown> => {
 };
 
 const interpretar = async <T>(response: Response): Promise<T> => {
-  if (response.ok) return (await leerCuerpo(response)) as T;
-  throw aApiError(response.status, await leerCuerpo(response));
+  if (!response.ok) throw aApiError(response.status, await leerCuerpo(response));
+
+  const cuerpo = await leerCuerpo(response);
+
+  // Un 200 sin JSON válido casi siempre significa que el proxy devolvió el
+  // `index.html` en lugar de la respuesta de la API (típico en un despliegue
+  // mal configurado). Mejor un error claro que un `undefined` que rompa la
+  // pantalla al leer la primera propiedad.
+  if (cuerpo === undefined && response.status !== 204 && response.status !== 205) {
+    throw new ApiError({
+      status: response.status,
+      title: t('api.titulo.respuestaInvalida'),
+      detail: t('api.error.respuestaInvalida'),
+    });
+  }
+
+  return cuerpo as T;
 };
 
 // --- Transporte ------------------------------------------------------------

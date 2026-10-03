@@ -60,6 +60,9 @@ const DICCIONARIO = {
   'api.titulo.error': 'Error de la API',
   'api.titulo.sinConexion': 'Sin conexión con el servidor',
   'api.titulo.cancelado': 'Solicitud cancelada',
+  'api.titulo.respuestaInvalida': 'Respuesta inesperada del servidor',
+  'api.error.respuestaInvalida':
+    'El servidor devolvió una respuesta que no se pudo interpretar. Revisa que las rutas /api lleguen al servicio correcto.',
 
   // --- Sesión --------------------------------------------------------------
   'sesion.restaurando': 'Restaurando la sesión…',
