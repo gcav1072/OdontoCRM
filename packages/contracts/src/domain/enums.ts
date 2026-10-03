@@ -18,6 +18,8 @@ export const PERMISSIONS = [
   'scheduling:read',
   'scheduling:write',
   'scheduling:notify',
+  /** Autorizar sobrecupo en un día completo: solo `admin` (plan §13, Fase 3). */
+  'scheduling:overbook',
   'screens:manage',
   'screens:display',
   'clinical:read',
