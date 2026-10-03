@@ -6,7 +6,12 @@ import type {
   UpdateUserInput,
   UserSummary,
 } from '@odontocrm/contracts';
-import { diffSensitiveFields, paginate, permissionsForRoles, type SensitiveDiff } from '@odontocrm/contracts';
+import {
+  diffSensitiveFields,
+  paginate,
+  permissionsForRoles,
+  type SensitiveDiff,
+} from '@odontocrm/contracts';
 import {
   ConflictError,
   NotFoundError,
@@ -142,9 +147,7 @@ const replaceRoles = async (
 ): Promise<void> => {
   await db.delete(userRoles).where(eq(userRoles.userId, userId));
   if (roles.length === 0) return;
-  await db
-    .insert(userRoles)
-    .values(roles.map((role) => ({ userId, role, grantedBy })));
+  await db.insert(userRoles).values(roles.map((role) => ({ userId, role, grantedBy })));
 };
 
 export const createUser = async (

@@ -1,12 +1,6 @@
 import { z } from 'zod';
 
-import {
-  PERMISSIONS,
-  ROLE_PERMISSIONS,
-  ROLES,
-  type Permission,
-  type Role,
-} from './enums.js';
+import { PERMISSIONS, ROLE_PERMISSIONS, ROLES, type Permission, type Role } from './enums.js';
 
 /** Nombre de usuario: minúsculas, números, punto, guion y guion bajo. */
 export const USERNAME_REGEX = /^[a-z0-9][a-z0-9._-]{2,31}$/;

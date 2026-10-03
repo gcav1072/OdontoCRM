@@ -8,7 +8,14 @@ import {
   updateUserSchema,
   type Role,
 } from '@odontocrm/contracts';
-import { AppError, ConflictError, parseOrThrow, parseQuery, requireIdentity, requirePermission } from '@odontocrm/kernel';
+import {
+  AppError,
+  ConflictError,
+  parseOrThrow,
+  parseQuery,
+  requireIdentity,
+  requirePermission,
+} from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 

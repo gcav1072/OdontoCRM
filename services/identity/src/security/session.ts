@@ -9,7 +9,12 @@ import {
 } from '@odontocrm/contracts';
 import type { IdentityDb } from '../db/client.js';
 import { refreshTokens, userRoles, users, type RefreshTokenRow } from '../db/schema.js';
-import { generateOpaqueToken, hashOpaqueToken, signAccessToken, type PrivateKey } from '@odontocrm/kernel';
+import {
+  generateOpaqueToken,
+  hashOpaqueToken,
+  signAccessToken,
+  type PrivateKey,
+} from '@odontocrm/kernel';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 
 export { ACCESS_TOKEN_TTL_SECONDS, LOCK_MINUTES, MAX_FAILED_ATTEMPTS, REFRESH_TOKEN_TTL_SECONDS };

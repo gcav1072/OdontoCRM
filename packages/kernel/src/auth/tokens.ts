@@ -1,4 +1,8 @@
-import { ACCESS_TOKEN_TTL_SECONDS, accessTokenClaimsSchema, type AccessTokenClaims } from '@odontocrm/contracts';
+import {
+  ACCESS_TOKEN_TTL_SECONDS,
+  accessTokenClaimsSchema,
+  type AccessTokenClaims,
+} from '@odontocrm/contracts';
 import { SignJWT, jwtVerify } from 'jose';
 
 import { ALGORITHM, type PrivateKey, type PublicKey } from './keys.js';

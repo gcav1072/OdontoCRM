@@ -162,7 +162,9 @@ const main = async (): Promise<void> => {
   // eslint-disable-next-line no-console -- script de línea de comandos
   console.log(
     '\nTodas las contraseñas son temporales: el sistema pedirá cambiarlas en el primer acceso.' +
-      (production ? '' : `\nPara cambiarlas antes de sembrar: ${SEED_USERS.map((u) => u.passwordEnv).join(', ')}.`),
+      (production
+        ? ''
+        : `\nPara cambiarlas antes de sembrar: ${SEED_USERS.map((u) => u.passwordEnv).join(', ')}.`),
   );
 };
 

@@ -3,7 +3,12 @@ import {
   IDENTITY_HEADER_NAMES,
   type AccessTokenClaims,
 } from '@odontocrm/contracts';
-import { UnauthorizedError, readBearerToken, verifyAccessToken, type PublicKey } from '@odontocrm/kernel';
+import {
+  UnauthorizedError,
+  readBearerToken,
+  verifyAccessToken,
+  type PublicKey,
+} from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 
 /**

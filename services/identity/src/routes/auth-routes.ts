@@ -6,7 +6,13 @@ import {
   type Role,
   type SessionInfo,
 } from '@odontocrm/contracts';
-import { AppError, UnauthorizedError, parseOrThrow, requireIdentity, verifyPassword } from '@odontocrm/kernel';
+import {
+  AppError,
+  UnauthorizedError,
+  parseOrThrow,
+  requireIdentity,
+  verifyPassword,
+} from '@odontocrm/kernel';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { writeAuditEvent } from '../audit/audit-service.js';

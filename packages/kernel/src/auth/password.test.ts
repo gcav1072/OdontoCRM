@@ -48,9 +48,7 @@ describe('contraseñas con scrypt', () => {
   it('detecta cuándo hace falta re-hashear', async () => {
     const hash = await hashPassword('consultorio-2026');
     expect(needsRehash(hash)).toBe(false);
-    expect(
-      needsRehash(`scrypt$1024$8$1$c2FsdA$aGFzaA`),
-    ).toBe(true);
+    expect(needsRehash(`scrypt$1024$8$1$c2FsdA$aGFzaA`)).toBe(true);
     expect(needsRehash('basura')).toBe(true);
   });
 

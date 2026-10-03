@@ -88,12 +88,17 @@ export const verifyPassword = async (password: string, stored: string): Promise<
   if (parsed === null) return false;
 
   try {
-    const candidate = await scryptAsync(password.normalize('NFKC'), parsed.salt, parsed.hash.length, {
-      N: parsed.N,
-      r: parsed.r,
-      p: parsed.p,
-      maxmem: SCRYPT_PARAMS.maxmem,
-    });
+    const candidate = await scryptAsync(
+      password.normalize('NFKC'),
+      parsed.salt,
+      parsed.hash.length,
+      {
+        N: parsed.N,
+        r: parsed.r,
+        p: parsed.p,
+        maxmem: SCRYPT_PARAMS.maxmem,
+      },
+    );
     return timingSafeEqual(candidate, parsed.hash);
   } catch {
     return false;

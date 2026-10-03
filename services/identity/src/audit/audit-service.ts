@@ -56,10 +56,7 @@ export interface AuditPage {
 }
 
 /** Consulta paginada del módulo de auditoría (fecha, usuario, acción, entidad y campo). */
-export const queryAuditEvents = async (
-  db: IdentityDb,
-  query: AuditQuery,
-): Promise<AuditPage> => {
+export const queryAuditEvents = async (db: IdentityDb, query: AuditQuery): Promise<AuditPage> => {
   const conditions: SQL[] = [];
 
   if (query.from !== undefined && query.from !== '') {

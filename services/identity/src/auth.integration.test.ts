@@ -56,9 +56,10 @@ describeWithDatabase('autenticación (PostgreSQL real)', () => {
       payload: { username, password },
     });
 
-  const refreshCookieOf = (response: { cookies: Array<{ name: string; value: string }> }):
-    | string
-    | undefined => response.cookies.find((cookie) => cookie.name === REFRESH_COOKIE_NAME)?.value;
+  const refreshCookieOf = (response: {
+    cookies: Array<{ name: string; value: string }>;
+  }): string | undefined =>
+    response.cookies.find((cookie) => cookie.name === REFRESH_COOKIE_NAME)?.value;
 
   const refreshWith = async (token: string) =>
     app.inject({
@@ -85,14 +86,22 @@ describeWithDatabase('autenticación (PostgreSQL real)', () => {
     adminUsername = `prueba.admin.${suffix}`;
     const inserted = await database.db
       .insert(users)
-      .values({ username: adminUsername, fullName: 'Admin de prueba', passwordHash: await hashPassword(PASSWORD) })
+      .values({
+        username: adminUsername,
+        fullName: 'Admin de prueba',
+        passwordHash: await hashPassword(PASSWORD),
+      })
       .returning({ id: users.id });
     adminId = inserted[0]?.id ?? '';
     await database.db.insert(userRoles).values({ userId: adminId, role: 'admin' });
 
     const secretary = await database.db
       .insert(users)
-      .values({ username: SECRETARY, fullName: 'Secretaria de prueba', passwordHash: await hashPassword(PASSWORD) })
+      .values({
+        username: SECRETARY,
+        fullName: 'Secretaria de prueba',
+        passwordHash: await hashPassword(PASSWORD),
+      })
       .returning({ id: users.id });
     await database.db
       .insert(userRoles)
@@ -101,14 +110,12 @@ describeWithDatabase('autenticación (PostgreSQL real)', () => {
 
   afterAll(async () => {
     const usernames = [adminUsername, SECRETARY, LOCKED, `prueba.pass.${suffix}`];
-    await database.db
-      .delete(auditEvents)
-      .where(
-        sql`${auditEvents.actorUsername} in (${sql.join(
-          usernames.map((name) => sql`${name}`),
-          sql`, `,
-        )})`,
-      );
+    await database.db.delete(auditEvents).where(
+      sql`${auditEvents.actorUsername} in (${sql.join(
+        usernames.map((name) => sql`${name}`),
+        sql`, `,
+      )})`,
+    );
     // Los tokens de refresco se van en cascada con el usuario.
     await database.db.delete(users).where(inArray(users.username, usernames));
     await app.close();

@@ -12,7 +12,9 @@ import {
 } from './identity.js';
 
 const headers = (
-  overrides: Partial<Record<'id' | 'username' | 'roles' | 'permissions' | 'must' | 'sid', string>> = {},
+  overrides: Partial<
+    Record<'id' | 'username' | 'roles' | 'permissions' | 'must' | 'sid', string>
+  > = {},
 ): Record<string, string | undefined> => ({
   'x-user-id': overrides.id ?? globalThis.crypto.randomUUID(),
   'x-user-username': overrides.username ?? 'admin',
@@ -86,14 +88,20 @@ describe('guardias de permiso', () => {
   it('admin pasa cualquier permiso y requireAnyPermission acepta una de la lista', async () => {
     const request = fakeRequest(headers({ roles: 'admin', permissions: '' }));
     await expect(requirePermission('audit:read')(request)).resolves.toBeUndefined();
-    await expect(requireAnyPermission(['users:manage', 'audit:read'])(request)).resolves.toBeUndefined();
+    await expect(
+      requireAnyPermission(['users:manage', 'audit:read'])(request),
+    ).resolves.toBeUndefined();
 
     const secretario = fakeRequest(headers({ roles: 'secretario', permissions: 'patients:read' }));
-    await expect(requireAnyPermission(['users:manage', 'audit:read'])(secretario)).rejects.toThrow();
+    await expect(
+      requireAnyPermission(['users:manage', 'audit:read'])(secretario),
+    ).rejects.toThrow();
   });
 
   it('requireIdentity devuelve la identidad y hasPermission respeta el rol admin', () => {
-    const identity = requireIdentity(fakeRequest(headers({ roles: 'odontologo', permissions: '' })));
+    const identity = requireIdentity(
+      fakeRequest(headers({ roles: 'odontologo', permissions: '' })),
+    );
     expect(identity.roles).toEqual(['odontologo']);
     expect(hasPermission(identity, 'clinical:write')).toBe(false);
     expect(hasPermission({ ...identity, roles: ['admin'] }, 'clinical:write')).toBe(true);

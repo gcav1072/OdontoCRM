@@ -37,7 +37,12 @@ export const buildProxyRoutes = (config: GatewayConfig): ProxyRoute[] => {
     });
   };
 
-  add('/api/v1/auth/health', config.IDENTITY_URL, 'Salud de identity a través del gateway', '/health');
+  add(
+    '/api/v1/auth/health',
+    config.IDENTITY_URL,
+    'Salud de identity a través del gateway',
+    '/health',
+  );
   add('/api/v1/auth', config.IDENTITY_URL, 'Autenticación y sesión');
   add('/api/v1/users', config.IDENTITY_URL, 'Usuarios, roles y contraseñas');
   add('/api/v1/audit', config.IDENTITY_URL, 'Auditoría de cambios sensibles');
