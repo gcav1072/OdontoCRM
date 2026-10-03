@@ -62,16 +62,37 @@ export const enqueueDomainEvent = async (boss: PgBoss, event: DomainEvent): Prom
 
 export type DomainEventHandler = (events: DomainEvent[]) => Promise<void>;
 
+/** Opciones del trabajador de la cola: lotes grandes y sondeo frecuente. */
+export interface DomainEventWorkerOptions {
+  /** Cuántos eventos se llevan por ciclo (por defecto 50). */
+  batchSize?: number;
+  /** Cada cuántos segundos se sondea la cola (por defecto 1). */
+  pollingIntervalSeconds?: number;
+}
+
 /**
  * Registra el consumidor de la cola. El manejador recibe un lote y debe ser
  * idempotente: deduplica por `eventId` antes de aplicar efectos.
+ *
+ * El tamaño del lote importa: con el valor por defecto (un evento por ciclo y
+ * sondeo cada 2 s) un pico de 150 eventos tardaba minutos en vaciarse, y la
+ * auditoría aparecía con retraso. Con 50 por ciclo y sondeo cada segundo la cola
+ * se vacía en segundos.
  */
 export const registerDomainEventHandler = async (
   boss: PgBoss,
   handler: DomainEventHandler,
+  options: DomainEventWorkerOptions = {},
 ): Promise<string> => {
   await ensureDomainEventsQueue(boss);
-  return boss.work<DomainEvent, void>(DOMAIN_EVENTS_QUEUE, async (jobs) => {
-    await handler(jobs.map((job) => job.data));
-  });
+  return boss.work<DomainEvent, void>(
+    DOMAIN_EVENTS_QUEUE,
+    {
+      batchSize: options.batchSize ?? 50,
+      pollingIntervalSeconds: options.pollingIntervalSeconds ?? 1,
+    },
+    async (jobs) => {
+      await handler(jobs.map((job) => job.data));
+    },
+  );
 };
