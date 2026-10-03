@@ -72,6 +72,7 @@ Los secretos **nunca** se versionan ni se comparten por chat: ver
 | `npm run check-secrets` | Busca secretos antes de commitear (`-- --all` audita todo) |
 | `npm run db:bootstrap` | Crea bases, roles y credenciales (`-- --rotate`, `-- --only identity`) |
 | `npm run db:migrate` | Aplica las migraciones de todos los servicios |
+| `npm run db:verify-migrations` | Comprueba que las migraciones se aplican **desde cero** en una base limpia (crea y borra una base temporal) |
 | `npm run db:generate:identity` | Genera la migración de identity desde su esquema (desde la raíz) |
 | **`npm run verify`** | **Puerta de calidad: secretos + lint + formato + compilación + pruebas** |
 
