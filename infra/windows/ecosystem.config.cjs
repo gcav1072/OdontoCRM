@@ -42,7 +42,8 @@ module.exports = {
   apps: [
     service('gateway', 'apps/gateway/dist/index.js', 'apps/gateway/.env'),
     service('identity', 'services/identity/dist/index.js', 'services/identity/.env'),
-    // Fase 2: patients · Fase 3: scheduling · Fase 4: notifications
+    service('patients', 'services/patients/dist/index.js', 'services/patients/.env'),
+    // Fase 3: scheduling · Fase 4: notifications
     // Fase 5: screens · Fase 6: clinical y odontogram · Fase 9: reporting
   ],
 };

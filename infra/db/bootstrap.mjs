@@ -77,6 +77,8 @@ const SERVICES = [
   },
 ];
 
+const EVENTS_BROKER = { database: 'odonto_events', role: 'odonto_events' };
+
 const args = process.argv.slice(2);
 const rotate = args.includes('--rotate');
 const onlyIndex = args.indexOf('--only');
@@ -248,9 +250,77 @@ const run = async () => {
     });
   }
 
+  /* ── Cola de eventos compartida (pg-boss) ──────────────────────────────────
+   * pg-boss guarda sus tablas en UNA base de datos: si cada servicio tuviera su
+   * propia cola, un consumidor de otro servicio no podría leerla. Por eso existe
+   * `odonto_events`, que es infraestructura (el «broker») y no datos de nadie.
+   * Cada servicio conserva su propio `outbox_events` para la garantía
+   * transaccional y de allí publica en esta cola.
+   */
+  const existingBrokerUrl = readEnvValue(resolve(ROOT, SERVICES[0].envFile), 'EVENTS_DATABASE_URL');
+  let brokerPassword;
+  let brokerPasswordSource;
+  if (rotate || existingBrokerUrl === undefined) {
+    brokerPassword = randomBytes(32).toString('base64url');
+    brokerPasswordSource = rotate ? 'rotada' : 'nueva';
+  } else {
+    brokerPassword = decodeURIComponent(new URL(existingBrokerUrl).password);
+    brokerPasswordSource = 'conservada del .env';
+  }
+
+  const { rows: brokerRoleRows } = await admin.query('select 1 from pg_roles where rolname = $1', [
+    EVENTS_BROKER.role,
+  ]);
+  const brokerRoleExists = brokerRoleRows.length > 0;
+
+  if (!brokerRoleExists) {
+    await admin.query(
+      `create role ${ident(EVENTS_BROKER.role)} login password ${literal(brokerPassword)}`,
+    );
+  } else if (rotate || existingBrokerUrl === undefined) {
+    await admin.query(
+      `alter role ${ident(EVENTS_BROKER.role)} with password ${literal(brokerPassword)}`,
+    );
+  }
+
+  const { rows: brokerDbRows } = await admin.query('select 1 from pg_database where datname = $1', [
+    EVENTS_BROKER.database,
+  ]);
+  if (brokerDbRows.length === 0) {
+    await admin.query(
+      `create database ${ident(EVENTS_BROKER.database)} owner ${ident(EVENTS_BROKER.role)}`,
+    );
+  }
+  await admin.query(
+    `alter database ${ident(EVENTS_BROKER.database)} set timezone to '${TIMEZONE}'`,
+  );
+  await admin.query(`revoke all on database ${ident(EVENTS_BROKER.database)} from public`);
+  await admin.query(
+    `grant connect, create, temporary on database ${ident(EVENTS_BROKER.database)} to ${ident(EVENTS_BROKER.role)}`,
+  );
+
+  const brokerUrl = buildUrl(EVENTS_BROKER.role, brokerPassword, EVENTS_BROKER.database);
+
+  // La cola es compartida: todos los servicios reciben la misma URL.
+  for (const service of SERVICES) {
+    upsertEnvFile(resolve(ROOT, service.envFile), { EVENTS_DATABASE_URL: brokerUrl });
+  }
+
+  summary.push({
+    servicio: '(cola de eventos)',
+    base: EVENTS_BROKER.database,
+    rol: EVENTS_BROKER.role,
+    rolCreado: brokerRoleExists ? 'ya existía' : 'creado',
+    contrasena: brokerPasswordSource,
+    archivo: 'EVENTS_DATABASE_URL en los .env de los servicios',
+  });
+
   console.table(summary);
   console.log(
     '\nCredenciales escritas en los .env de cada servicio (ignorados por Git).\n' +
+      'La cola de eventos vive en ' +
+      EVENTS_BROKER.database +
+      ' y todos los servicios la reciben como EVENTS_DATABASE_URL.\n' +
       'Siguiente paso:  npm run build  &&  npm run db:migrate',
   );
 };
