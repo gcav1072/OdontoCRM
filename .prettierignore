@@ -1,0 +1,28 @@
+# Documentación: se mantiene escrita a mano (tablas anchas y diagramas ASCII).
+docs/
+README.md
+CHANGELOG.md
+
+# Artefactos y dependencias
+node_modules/
+dist/
+coverage/
+.vitest/
+*.tsbuildinfo
+package-lock.json
+
+# Migraciones generadas por drizzle-kit (SQL y metadatos): no se reformatean
+**/migrations/**
+
+# Datos locales y secretos
+storage/
+tmp/
+logs/
+.env
+.env.*
+*.pem
+*.key
+
+# Plantillas de terceros
+infra/fedora/**
+infra/windows/**

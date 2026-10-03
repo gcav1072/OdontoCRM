@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/contracts" },
+    { "path": "packages/events" },
+    { "path": "packages/db" },
+    { "path": "packages/kernel" },
+    { "path": "packages/testing" },
+    { "path": "services/identity" },
+    { "path": "apps/gateway" }
+  ]
+}

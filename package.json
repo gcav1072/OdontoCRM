@@ -1,0 +1,55 @@
+{
+  "name": "odontocrm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CRM para consultorio odontológico — microservicios Node.js + TypeScript",
+  "type": "module",
+  "engines": {
+    "node": ">=22.9.0",
+    "npm": ">=10.0.0"
+  },
+  "workspaces": [
+    "packages/contracts",
+    "packages/events",
+    "packages/db",
+    "packages/kernel",
+    "packages/testing",
+    "services/identity",
+    "apps/gateway"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "dev": "concurrently -k -n tsc,identity,gateway -c blue,green,magenta \"npm:dev:build\" \"npm:dev:identity\" \"npm:dev:gateway\"",
+    "dev:build": "tsc -b --watch --preserveWatchOutput",
+    "dev:identity": "node --watch --env-file-if-exists=.env --env-file-if-exists=services/identity/.env services/identity/dist/index.js",
+    "dev:gateway": "node --watch --env-file-if-exists=.env --env-file-if-exists=apps/gateway/.env apps/gateway/dist/index.js",
+    "start:identity": "node --env-file-if-exists=.env --env-file-if-exists=services/identity/.env services/identity/dist/index.js",
+    "start:gateway": "node --env-file-if-exists=.env --env-file-if-exists=apps/gateway/.env apps/gateway/dist/index.js",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check-secrets": "node tools/check-secrets.mjs",
+    "db:bootstrap": "node infra/db/bootstrap.mjs",
+    "db:migrate": "node tools/migrate-all.mjs",
+    "db:generate:identity": "drizzle-kit generate --config services/identity/drizzle.config.ts",
+    "verify": "npm run check-secrets && npm run lint && npm run format:check && npm run build && npm run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.4",
+    "@types/pg": "^8.23.1",
+    "concurrently": "^10.0.5",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.0",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
+  }
+}
