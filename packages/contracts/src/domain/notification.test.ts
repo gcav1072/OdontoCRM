@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  buildIcsEvent,
-  escapeIcsText,
-  foldIcsLine,
-  icsFilename,
-  icsSha256,
-  toIcsDate,
-} from './ics.js';
+import { buildIcsEvent, escapeIcsText, foldIcsLine, icsFilename, toIcsDate } from './ics.js';
 import {
   ANTI_FLOOD_MAX_MESSAGES,
   DEFAULT_MESSAGE_TEMPLATES,
@@ -195,10 +188,7 @@ describe('.ics de la cita', () => {
     expect(folded.replace(/\r\n /g, '')).toBe(line);
   });
 
-  it('la huella y el nombre del archivo son estables', () => {
-    const ics = buildIcsEvent(input);
-    expect(icsSha256(ics)).toHaveLength(64);
-    expect(icsSha256(buildIcsEvent(input))).toBe(icsSha256(ics));
+  it('el nombre del archivo adjunto es el esperado', () => {
     expect(icsFilename('#000123', input.uid)).toBe('cita-000123.ics');
     expect(icsFilename(null, input.uid)).toBe(`cita-${input.uid.slice(0, 8)}.ics`);
   });

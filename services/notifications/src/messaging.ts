@@ -3,7 +3,6 @@ import {
   NOTIFICATION_MAX_ATTEMPTS,
   buildIcsEvent,
   icsFilename,
-  icsSha256,
   renderMessage,
   type AppointmentSummary,
   type Channel,
@@ -40,6 +39,7 @@ import {
   type MessageTemplateRow,
   type NotificationRow,
 } from './db/schema.js';
+import { icsSha256 } from './ics-hash.js';
 import type { TelegramTransport } from './telegram.js';
 
 /* ── Plantillas ────────────────────────────────────────────────────────────── */

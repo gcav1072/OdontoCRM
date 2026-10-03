@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 /**
  * Generador de `.ics` (RFC 5545) para las citas.
  *
@@ -101,9 +99,10 @@ export const buildIcsEvent = (input: IcsEventInput): string => {
   return `${lines.map(foldIcsLine).join('\r\n')}\r\n`;
 };
 
-/** Huella del archivo: se guarda junto al `.ics` para poder auditarlo. */
-export const icsSha256 = (content: string): string =>
-  createHash('sha256').update(content, 'utf8').digest('hex');
+/**
+ * La huella (`sha256`) del archivo la calcula el servicio que lo guarda, no este
+ * paquete: los contratos los comparte el navegador y `node:crypto` no existe ahí.
+ */
 
 /** Nombre del archivo adjunto: `cita-000123.ics`. */
 export const icsFilename = (ticket: string | null, appointmentId: string): string => {
