@@ -16,7 +16,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableEmpty,
   TableHead,
   TableHeader,
   TableRow,
@@ -184,9 +183,6 @@ export const UsersPage = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pagina_?.items.length === 0 && (
-                  <TableEmpty colSpan={6}>{t('usuarios.vacio')}</TableEmpty>
-                )}
                 {pagina_?.items.map((usuario) => {
                   const esUnoMismo = usuario.id === usuarioActual?.id;
                   return (

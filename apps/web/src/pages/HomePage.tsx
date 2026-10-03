@@ -220,7 +220,7 @@ export const HomePage = () => {
 
             <div className="space-y-1">
               <p className="text-xs font-medium tracking-wide text-ink-subtle uppercase">
-                {t('comun.cerrarSesion')}
+                {t('sesion.caducidad')}
               </p>
               <p className="text-sm text-ink">
                 {sessionInfo

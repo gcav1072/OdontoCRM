@@ -71,6 +71,7 @@ const DICCIONARIO = {
   'sesion.desde': 'Desde {tiempo}',
   'sesion.duracion': 'Duración',
   'sesion.caduca': 'Caduca {tiempo}',
+  'sesion.caducidad': 'Caducidad del acceso',
   'sesion.caducaA': 'Caduca a las {hora}',
   'sesion.caducada': 'Tu sesión caducó. Vuelve a entrar para continuar.',
   'sesion.ip': 'IP',
@@ -131,6 +132,7 @@ const DICCIONARIO = {
     'Este módulo se construye en la Fase {fase} del plan. La navegación y los permisos ya están listos; la funcionalidad se conecta en esa fase.',
   'placeholder.fase': 'Fase {fase}',
   'placeholder.permiso': 'Permiso que lo habilita',
+  'placeholder.ruta': 'Ruta',
   'placeholder.disponible': 'Disponible',
 
   // --- Login ---------------------------------------------------------------

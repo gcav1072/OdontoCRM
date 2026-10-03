@@ -114,7 +114,7 @@ export const BottomPanel = ({ open, onToggle }: BottomPanelProps) => {
                 </dd>
               </div>
               <div className="flex flex-wrap gap-x-2">
-                <dt className="text-ink-muted">{t('comun.cerrarSesion')}:</dt>
+                <dt className="text-ink-muted">{t('sesion.caducidad')}:</dt>
                 <dd className="text-ink">
                   {sessionInfo
                     ? `${t('sesion.caducaA', { hora: formatTime(sessionInfo.expiresAt) })} (${formatRelative(sessionInfo.expiresAt)})`

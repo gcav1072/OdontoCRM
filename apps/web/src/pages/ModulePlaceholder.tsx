@@ -70,7 +70,9 @@ export const ModulePlaceholder = ({ module }: ModulePlaceholderProps) => {
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-medium tracking-wide text-ink-subtle uppercase">Ruta</dt>
+            <dt className="text-xs font-medium tracking-wide text-ink-subtle uppercase">
+              {t('placeholder.ruta')}
+            </dt>
             <dd className="font-mono text-xs text-ink-muted">{definicion.path}</dd>
           </div>
         </dl>

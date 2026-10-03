@@ -146,12 +146,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refresh = useCallback(async (): Promise<boolean> => {
     try {
       applyLoginResponse(await authApi.refresh());
+      // El token nuevo tiene otra caducidad: se vuelve a pedir el detalle para
+      // que el panel inferior no muestre una hora vieja.
+      const info = await authApi.me().catch(() => null);
+      if (info) setSessionInfo(info);
       return true;
     } catch {
       clearSession(true);
       return false;
     }
   }, [applyLoginResponse, clearSession]);
+
+  // Mientras haya sesión, el detalle se refresca solo: el cliente renueva el
+  // token en silencio y, sin esto, la caducidad que enseña el panel quedaría
+  // desfasada. Es una consulta cada cinco minutos.
+  useEffect(() => {
+    if (status !== 'autenticado') return;
+
+    const temporizador = window.setInterval(() => {
+      void authApi
+        .me()
+        .then((info) => setSessionInfo(info))
+        .catch(() => undefined);
+    }, 5 * 60_000);
+
+    return () => window.clearInterval(temporizador);
+  }, [status]);
 
   const reloadSessionInfo = useCallback(async () => {
     const info = await authApi.me();
