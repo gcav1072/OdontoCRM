@@ -64,30 +64,19 @@ Los secretos **nunca** se versionan ni se comparten por chat: ver
 
 ## Scripts
 
+La lista completa (con flags, requisitos, variables de entorno y problemas típicos)
+está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)**. Estos son los del día a día:
+
 | Comando | Qué hace |
 | :--- | :--- |
-| `npm run dev` | Compila en modo vigilancia y arranca gateway + identity + patients + interfaz |
-| `npm run build` | Compila todo el monorepo (`tsc -b` + `vite build`) |
-| `npm run typecheck` | Igual que `build`: el proyecto se valida compilando |
+| `npm run dev` | Compila en modo vigilancia y arranca gateway + servicios + interfaz (5173) |
 | `npm test` | Pruebas unitarias y de contrato (Vitest) |
-| `npm run test:watch` | Pruebas en modo vigilancia |
-| `npm run test:integration` | Suite completa contra PostgreSQL real (outbox, cola compartida, autenticación, pacientes y rendimiento); requiere `db:bootstrap`, `db:migrate` y `build` |
-| `npm run lint` | ESLint (incluye las reglas anti SQL-injection) |
-| `npm run format` / `format:check` | Prettier |
-| `npm run check-secrets` | Busca secretos antes de commitear (`-- --all` audita todo) |
-| `npm run db:bootstrap` | Crea bases, roles y credenciales (`-- --rotate`, `-- --only identity`) |
-| `npm run db:migrate` | Aplica las migraciones de todos los servicios |
-| `npm run db:verify-migrations` | Comprueba que las migraciones se aplican **desde cero** en una base limpia (crea y borra una base temporal) |
-| `npm run db:generate:identity` | Genera la migración de identity desde su esquema (desde la raíz) |
-| `npm run keys:generate` | Genera el par de claves EdDSA del JWT (no sobrescribe; `-- --force` regenera e invalida sesiones) |
-| `npm run seed:users` | Crea `admin`, `recepcion` y `egomez` con contraseña temporal (`-- --reset` las regenera) |
-| `npm run seed:demo` | Pacientes ficticios deterministas (`-- --count 5000`, `-- --reset` borra solo lo ficticio) |
-| `npm run seed:agenda` | Solicitudes y citas de ejemplo en el próximo día de consulta (`-- --reset` las borra) |
-| `npm run db:generate:patients` | Genera la migración del servicio de pacientes desde su esquema |
-| `npm run db:generate:scheduling` | Genera la migración del servicio de agenda desde su esquema |
-| **`npm run verify`** | **Puerta de calidad: secretos + lint + formato + compilación + pruebas** |
+| `npm run test:integration` | Suites contra PostgreSQL real (outbox, colas, sesión, pacientes, agenda, pantallas) |
+| `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens` |
+| **`npm run verify`** | **Puerta de calidad: secretos + lint + formato + compilación + pruebas unitarias** |
 
-Antes de cerrar cualquier fase, `npm run verify` debe pasar en verde.
+Antes de cerrar cualquier fase, `npm run verify` debe pasar en verde, además de
+`npm run db:verify-migrations` y el humo del módulo tocado.
 
 ---
 
