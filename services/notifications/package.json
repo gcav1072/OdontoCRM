@@ -1,0 +1,24 @@
+{
+  "name": "@odontocrm/notifications",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bot de Telegram, plantillas, cola de envíos con reintentos y archivos .ics",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/index.js",
+    "db:migrate": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/db/migrate.js"
+  },
+  "dependencies": {
+    "@odontocrm/contracts": "*",
+    "@odontocrm/db": "*",
+    "@odontocrm/events": "*",
+    "@odontocrm/kernel": "*",
+    "fastify": "^5.12.5",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.5"
+  }
+}

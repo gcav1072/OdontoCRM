@@ -179,6 +179,26 @@ export const listRequests = async (
   };
 };
 
+/** Busca una solicitud por su ticket tal como lo escribe la gente (`#000123`). */
+export const findRequestByTicket = async (
+  db: SchedulingDb,
+  ticket: string,
+): Promise<RequestSummary | null> => {
+  const parsed = parseTicket(ticket);
+  if (parsed === null) return null;
+
+  const rows = await db
+    .select()
+    .from(appointmentRequests)
+    .where(eq(appointmentRequests.ticketNumber, parsed.number))
+    .limit(1);
+  const row = rows[0];
+  if (row === undefined) return null;
+
+  const [summary] = await toSummaries(db, [row]);
+  return summary ?? null;
+};
+
 /** Cola «en espera de cita» completa, ordenada por ticket. */
 export const waitingQueue = async (db: SchedulingDb): Promise<RequestSummary[]> => {
   const rows = await db

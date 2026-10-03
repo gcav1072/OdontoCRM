@@ -1,10 +1,11 @@
 import { createRequestSchema } from '@odontocrm/contracts';
-import { ForbiddenError, parseOrThrow } from '@odontocrm/kernel';
+import { ForbiddenError, NotFoundError, parseOrThrow } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
-import { createRequest } from '../requests/request-service.js';
+import { getAppointment } from '../appointments/appointment-service.js';
+import { cancelRequest, createRequest, findRequestByTicket } from '../requests/request-service.js';
 import type { SchedulingServices } from '../services.js';
 import { systemActor } from '../shared/context.js';
 
@@ -12,6 +13,10 @@ const internalRequestSchema = createRequestSchema.extend({
   /** Quién lo pide cuando no hay usuario: el bot de Telegram o un canal externo. */
   source: z.string().trim().max(60).optional(),
 });
+
+const idParamsSchema = z.object({ id: z.uuid() });
+const ticketParamsSchema = z.object({ ticket: z.string().trim().min(1).max(20) });
+const reasonSchema = z.object({ reason: z.string().trim().max(300).optional() });
 
 const safeEquals = (left: string, right: string): boolean => {
   const a = Buffer.from(left);
@@ -52,5 +57,35 @@ export const registerInternalRoutes = (
       systemActor(`servicio:${input.source ?? 'interno'}`),
     );
     return reply.status(201).send(summary);
+  });
+
+  /**
+   * Consulta por ticket para el bot (`/estado`, `/cancelar`). Responde 404 si no
+   * existe: el asistente lo traduce a «no encuentro tu solicitud».
+   */
+  app.get('/internal/v1/requests/by-ticket/:ticket', async (request, reply) => {
+    const { ticket } = parseOrThrow(ticketParamsSchema, request.params);
+    const request_ = await findRequestByTicket(db, ticket);
+    if (request_ === null) throw new NotFoundError('No hay ninguna solicitud con ese ticket');
+    return reply.status(200).send(request_);
+  });
+
+  /** El bot anula la solicitud del paciente cuando él mismo lo pide. */
+  app.post('/internal/v1/requests/:id/cancel', async (request, reply) => {
+    const { id } = parseOrThrow(idParamsSchema, request.params);
+    const input = parseOrThrow(reasonSchema, request.body ?? {});
+    const summary = await cancelRequest(
+      db,
+      id,
+      input.reason ?? 'anulada por el paciente por Telegram',
+      systemActor('servicio:telegram'),
+    );
+    return reply.status(200).send(summary);
+  });
+
+  /** Datos de la cita para armar el `.ics` y los mensajes de aviso. */
+  app.get('/internal/v1/appointments/:id', async (request, reply) => {
+    const { id } = parseOrThrow(idParamsSchema, request.params);
+    return reply.status(200).send(await getAppointment(db, id));
   });
 };

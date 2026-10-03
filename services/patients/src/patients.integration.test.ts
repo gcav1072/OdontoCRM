@@ -154,11 +154,17 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
 
     // El mismo trabajador que corre en identity: convierte los eventos de la cola
     // compartida en registros de auditoría.
-    await registerDomainEventHandler(boss, async (events) => {
-      for (const event of events) {
-        await handleDomainEvent(identityHandle.db, event);
-      }
-    });
+    await registerDomainEventHandler(
+      boss,
+      async (events) => {
+        for (const event of events) {
+          await handleDomainEvent(identityHandle.db, event);
+        }
+      },
+      // Cola propia de la prueba: los servicios reales tienen la suya, así que
+      // todos reciben los eventos (reparto por consumidor) sin pisarse.
+      { queue: 'domain-events.prueba' },
+    );
   }, 30_000);
 
   afterAll(async () => {

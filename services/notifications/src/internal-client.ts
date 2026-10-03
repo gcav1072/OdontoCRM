@@ -1,0 +1,181 @@
+import type { AppointmentSummary, Channel, RequestSummary } from '@odontocrm/contracts';
+
+import type { NotificationsConfig } from './config.js';
+
+/**
+ * Llamadas internas a otros servicios (pacientes y agenda). No pasan por el
+ * gateway: van directas por `127.0.0.1` con el secreto compartido, y solo las usa
+ * el bot para dar de alta al paciente y crear su solicitud.
+ */
+export interface InternalClients {
+  upsertPatient: (input: {
+    docType: string;
+    docNumber: string;
+    fullName: string;
+    birthDate: string;
+    sex: string;
+    phone: string;
+    guardian?: { fullName: string; relationship: string; phone?: string | null } | undefined;
+    channel: Channel;
+    reason: string;
+  }) => Promise<{ created: boolean; patient: { id: string; fullName: string; document: string } }>;
+
+  /** Busca un paciente por documento: el asistente confirma antes de dar de alta. */
+  findPatientByDocument: (
+    docType: string,
+    docNumber: string,
+  ) => Promise<{
+    id: string;
+    fullName: string;
+    docType: string;
+    docNumber: string;
+    document: string;
+    phone: string;
+    birthDate: string;
+    sex: string;
+  } | null>;
+
+  createRequest: (input: {
+    patientId: string;
+    patientName: string;
+    patientDocument?: string | null;
+    patientPhone?: string | null;
+    channel: Channel;
+    reason: string;
+    notes?: string | null;
+  }) => Promise<RequestSummary>;
+
+  findRequestByTicket: (ticket: string) => Promise<RequestSummary | null>;
+  cancelRequest: (id: string, reason: string) => Promise<RequestSummary>;
+  getAppointment: (id: string) => Promise<AppointmentSummary | null>;
+}
+
+export class InternalRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+const request = async <T>(
+  config: NotificationsConfig,
+  base: string,
+  path: string,
+  init: { method: 'GET' | 'POST'; body?: unknown },
+): Promise<T> => {
+  const response = await fetch(`${base}${path}`, {
+    method: init.method,
+    headers: {
+      // El secreto compartido sustituye al JWT de servicio (que llega en la Fase 10).
+      'x-internal-token': config.INTERNAL_SERVICE_SECRET ?? '',
+      ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
+    },
+    ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  const text = await response.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = text.slice(0, 200);
+  }
+
+  if (!response.ok) {
+    const detail =
+      typeof parsed === 'object' && parsed !== null && 'detail' in parsed
+        ? String((parsed as { detail: unknown }).detail)
+        : String(response.status);
+    throw new InternalRequestError(detail, response.status);
+  }
+  return parsed as T;
+};
+
+export const createInternalClients = (config: NotificationsConfig): InternalClients => ({
+  upsertPatient: async (input) => {
+    const result = await request<{
+      created: boolean;
+      patient: { id: string; fullName: string; document: string };
+    }>(config, config.PATIENTS_URL, '/internal/v1/patients/upsert-by-cedula', {
+      method: 'POST',
+      body: {
+        docType: input.docType,
+        docNumber: input.docNumber,
+        fullName: input.fullName,
+        birthDate: input.birthDate,
+        sex: input.sex,
+        phone: input.phone,
+        ...(input.guardian === undefined ? {} : { guardian: input.guardian }),
+        channel: input.channel,
+        reason: input.reason,
+      },
+    });
+    return { created: result.created, patient: result.patient };
+  },
+
+  createRequest: async (input) =>
+    request<RequestSummary>(config, config.SCHEDULING_URL, '/internal/v1/requests', {
+      method: 'POST',
+      body: { ...input, source: 'telegram' },
+    }),
+
+  findPatientByDocument: async (docType, docNumber) => {
+    try {
+      return await request<{
+        id: string;
+        fullName: string;
+        docType: string;
+        docNumber: string;
+        document: string;
+        phone: string;
+        birthDate: string;
+        sex: string;
+      }>(
+        config,
+        config.PATIENTS_URL,
+        `/internal/v1/patients/by-document/${encodeURIComponent(docType)}/${encodeURIComponent(docNumber)}`,
+        { method: 'GET' },
+      );
+    } catch (error) {
+      if (error instanceof InternalRequestError && error.status === 404) return null;
+      throw error;
+    }
+  },
+
+  findRequestByTicket: async (ticket) => {
+    try {
+      return await request<RequestSummary>(
+        config,
+        config.SCHEDULING_URL,
+        `/internal/v1/requests/by-ticket/${encodeURIComponent(ticket)}`,
+        { method: 'GET' },
+      );
+    } catch (error) {
+      if (error instanceof InternalRequestError && error.status === 404) return null;
+      throw error;
+    }
+  },
+
+  cancelRequest: async (id, reason) =>
+    request<RequestSummary>(config, config.SCHEDULING_URL, `/internal/v1/requests/${id}/cancel`, {
+      method: 'POST',
+      body: { reason },
+    }),
+
+  getAppointment: async (id) => {
+    try {
+      return await request<AppointmentSummary>(
+        config,
+        config.SCHEDULING_URL,
+        `/internal/v1/appointments/${id}`,
+        { method: 'GET' },
+      );
+    } catch (error) {
+      if (error instanceof InternalRequestError && error.status === 404) return null;
+      throw error;
+    }
+  },
+});

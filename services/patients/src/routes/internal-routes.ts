@@ -1,15 +1,20 @@
 import { upsertPatientSchema } from '@odontocrm/contracts';
-import { ForbiddenError, parseOrThrow } from '@odontocrm/kernel';
+import { ForbiddenError, NotFoundError, parseOrThrow } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
-import { upsertPatientByDocument } from '../patients/patient-service.js';
+import { lookupByDocumentText, upsertPatientByDocument } from '../patients/patient-service.js';
 import type { PatientsServices } from '../services.js';
 
 const channelSchema = z.object({
   channel: z.enum(['telegram', 'registro', 'telefono', 'presencial']).default('registro'),
   reason: z.string().trim().max(200).optional(),
+});
+
+const documentParamsSchema = z.object({
+  docType: z.enum(['V', 'E', 'P', 'SC']),
+  docNumber: z.string().trim().min(1).max(20),
 });
 
 const safeEquals = (left: string, right: string): boolean => {
@@ -37,6 +42,20 @@ export const registerInternalRoutes = (app: FastifyInstance, services: PatientsS
     if (typeof provided !== 'string' || !safeEquals(provided, expected)) {
       throw new ForbiddenError('Token interno inválido');
     }
+  });
+
+  /**
+   * Búsqueda por documento para otros servicios (el bot confirma los datos antes
+   * de dar de alta). Responde 404 cuando no existe, que es información útil: el
+   * asistente sabe así que tiene que pedir los datos completos.
+   */
+  app.get('/internal/v1/patients/by-document/:docType/:docNumber', async (request, reply) => {
+    const params = parseOrThrow(documentParamsSchema, request.params);
+    const patient = await lookupByDocumentText(db, `${params.docType}-${params.docNumber}`);
+    if (patient === null) {
+      throw new NotFoundError('No hay ningún paciente con ese documento');
+    }
+    return reply.status(200).send(patient);
   });
 
   /**

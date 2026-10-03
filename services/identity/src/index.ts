@@ -1,4 +1,10 @@
-import { createBoss, registerDomainEventHandler, startBoss, stopBoss } from '@odontocrm/db';
+import {
+  consumerQueueName,
+  createBoss,
+  registerDomainEventHandler,
+  startBoss,
+  stopBoss,
+} from '@odontocrm/db';
 import { loadPrivateKey, startServer } from '@odontocrm/kernel';
 import { existsSync } from 'node:fs';
 
@@ -35,26 +41,33 @@ const main = async (): Promise<void> => {
   });
   await startBoss(boss);
 
-  const workerId = await registerDomainEventHandler(boss, async (events) => {
-    for (const event of events) {
-      try {
-        const summary = await handleDomainEvent(database.db, event);
-        if (summary.processed) {
-          app.log.info(
-            { eventType: event.eventType, eventId: event.eventId },
-            'Evento convertido en registro de auditoría',
-          );
-        } else {
-          app.log.debug({ eventType: event.eventType, reason: summary.reason }, 'Evento ignorado');
+  const workerId = await registerDomainEventHandler(
+    boss,
+    async (events) => {
+      for (const event of events) {
+        try {
+          const summary = await handleDomainEvent(database.db, event);
+          if (summary.processed) {
+            app.log.info(
+              { eventType: event.eventType, eventId: event.eventId },
+              'Evento convertido en registro de auditoría',
+            );
+          } else {
+            app.log.debug(
+              { eventType: event.eventType, reason: summary.reason },
+              'Evento ignorado',
+            );
+          }
+        } catch (error) {
+          // Se relanza para que la cola reintente: el marcador de idempotencia solo
+          // se escribe después de validar la carga.
+          app.log.error({ err: error, eventType: event.eventType }, 'No se pudo auditar el evento');
+          throw error;
         }
-      } catch (error) {
-        // Se relanza para que la cola reintente: el marcador de idempotencia solo
-        // se escribe después de validar la carga.
-        app.log.error({ err: error, eventType: event.eventType }, 'No se pudo auditar el evento');
-        throw error;
       }
-    }
-  });
+    },
+    { queue: consumerQueueName('identity') },
+  );
 
   // El pool se cierra cuando Fastify termina (apagado ordenado).
   app.addHook('onClose', async () => {
