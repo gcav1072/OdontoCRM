@@ -24,6 +24,10 @@ export const AUDIT_ACTIONS = [
   // Pantallas kiosko
   'device_token_created',
   'device_token_revoked',
+  // Pacientes (llegan por el outbox desde el servicio de pacientes)
+  'patient_created',
+  'patient_updated',
+  'patient_status_changed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
