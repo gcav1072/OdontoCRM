@@ -4,6 +4,37 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 4] — Bot de Telegram, avisos y `.ics` · 2026-10-03
+
+### Añadido
+
+- **`packages/contracts`**: dominio de notificaciones — pasos del asistente (`BOT_STEPS`),
+  borrador de la conversación, validaciones del guion (nombre con título y sin números, fecha
+  `dd/mm/aaaa`, datos enmascarados), **19 plantillas editables** con sus marcadores, estado del bot,
+  canales y enlaces de vinculación, y **generador de `.ics` (RFC 5545)** con plegado a 75 octetos,
+  escape, `SEQUENCE` y recordatorio 30 min antes. 20 pruebas nuevas (117 en el paquete).
+- **`services/notifications`** (nuevo, puerto 4004, base `odonto_notifications`): **bot de Telegram
+  con long polling único** (ADR 0008), asistente de **7 pasos** que valida y crea paciente + solicitud
+  con ticket, `/start`, `/ayuda`, `/estado`, `/cancelar`, `/mi_ticket`, vinculación por **deep link
+  y QR**, idempotencia por `update_id`, anti-flood, conversaciones reanudables, plantillas
+  editables, **cola de envíos con reintentos y retroceso exponencial**, «aviso manual pendiente»
+  cuando no hay Telegram y `ics_artifacts` con huella SHA-256 — más el **aviso inmediato al
+  formalizarse la cita** con fecha, hora, lugar y el `.ics` adjunto.
+- **Interfaz**: bandeja **`/notificaciones`** con estado del bot (real/simulado), contadores,
+  conversaciones, envíos con filtros y detalle del mensaje, reintento manual, aviso de contacto
+  telefónico, plantillas con vista previa y marcadores, y vinculación de pacientes con QR.
+
+### Cambiado
+
+- **Reparto de eventos por servicio**: cada consumidor declara `domain-events.<servicio>` y el
+  publicador entrega una copia en **todas** las colas, así que todos los servicios ven todos los
+  eventos (antes, con una sola cola, se los repartían).
+- El `.ics` se descarga desde `/api/v1/notifications/ics/:appointmentId`.
+
+### Corregido
+
+- Los avisos se daban por fallidos al primer intento (`maxAttempts` en 1) en lugar de reintentar.
+
 ## [Fase 3] — Agenda: tickets, cupos y programación de la jornada · 2026-10-03
 
 ### Añadido

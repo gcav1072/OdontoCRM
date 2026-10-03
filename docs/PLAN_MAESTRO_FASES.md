@@ -681,7 +681,8 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | **1** | ✅ **completada** (2026-10-02) | 10 commits · `npm run verify` en verde con **98 pruebas** (+11 de integración) · identidad completa (login, refresh rotativo con detección de reuso, bloqueo tras 5 intentos, usuarios, dispositivos y auditoría) · gateway verificando el JWT y publicando la identidad · interfaz con shell, login, panel inferior ocultable, temas y módulo de usuarios · **prueba de humo del acceso** (`npm run smoke:auth`) con 17 comprobaciones en verde |
 | **2** | ✅ **completada** (2026-10-03, decisiones cerradas el mismo día) | 13 commits · `npm run verify` en verde con **122 pruebas** (+20 de integración: **142 en total**) · servicio de pacientes con cédula V/E/P/SC normalizada y única, representante de menores, adjuntos en disco, búsqueda con trigramas (**< 300 ms con 5.000 pacientes**: 46 ms la peor) y **borrado lógico solo para `admin`** (ADR 0027) · edición **con motivo obligatorio** que deja `before`/`after` en la auditoría de identity pasando por el outbox y la **cola compartida** · el odontólogo registra y edita pacientes (decisión del 2026-10-03) · módulo de registro (autocompletado por cédula, solo lectura y confirmación de cambios) y lista/ficha de pacientes · **prueba de humo** (`npm run smoke:patients`) con 26 comprobaciones en verde · 27 ADRs |
 | **3** | ✅ **completada** (2026-10-03) | 11 commits · `npm run verify` en verde con **145 pruebas** (+36 de integración: **181 en total**) · `scheduling` con **secuencia atómica de tickets** (20 solicitudes simultáneas, 20 tickets distintos), cola «en espera de cita» ordenada por ticket/antigüedad/prioridad, cupo diario editable (bajarlo por debajo de lo asignado **avisa y no borra**), plantillas de franjas sembradas (L-V 8:00–12:00 y 13:00–17:00 → 16 franjas), hora manual, **sobrecupo solo con `scheduling:overbook` y motivo**, índice único parcial que impide dos citas a la misma hora (incluso en paralelo), reprogramación que conserva el ticket y enlaza la cita nueva, inasistencia con tolerancia de 15 min, `status_history` con actor y hora, aviso en lote con **vista previa exacta**, y auditoría de todos los eventos con resumen legible · módulo **Programación** con cola, jornada, franjas, arrastrar y soltar, cupo y aviso en lote · **prueba de humo** (`npm run smoke:agenda`) con **41 comprobaciones** en verde · 28 ADRs |
-| 4 | ⏭ **siguiente** | Bot de Telegram: asistente de solicitud, aviso al formalizar la cita con `.ics`, plantillas y cola de envíos |
+| **4** | ✅ **completada** (2026-10-03) | 9 commits · `npm run verify` en verde con **165 pruebas** (+46 de integración: **211 en total**) · `notifications` con bot de Telegram **conectado** (@odegcrmbot, long polling único), asistente de **7 pasos** que valida y crea paciente + solicitud con ticket, `/estado`, `/cancelar`, `/mi_ticket`, vinculación por deep link y **QR**, anti-flood (10 mensajes/min) e **idempotencia por `update_id`**, 19 plantillas editables, cola con reintentos y retroceso exponencial, **aviso inmediato al formalizar la cita con el `.ics` adjunto**, «aviso manual pendiente» cuando el paciente no tiene Telegram, y `ics_artifacts` · **reparto de eventos por servicio** (cada consumidor tiene su cola: los eventos llegan a todos) · bandeja `/notificaciones` con estado del bot, envíos, reintento manual, plantillas y vinculación · **prueba de humo** (`npm run smoke:notifications`) en verde · 29 ADRs |
+| 5 | ⏭ **siguiente** | Secretaría y pantallas (lobby y consultorio) con SSE |
 | 4–10 | ⏳ pendientes | Ver §13 |
 
 ### Lo que quedó funcionando
@@ -790,16 +791,37 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    `fetch` de las pruebas de humo lleva tiempo límite y corta al instante si el login falla, para que
    un fallo de sesión no convierta la prueba en una espera de minutos.
 
+### Hallazgos de la Fase 4 que cambian supuestos
+
+1. **Una cola compartida reparte los eventos, no los difunde.** pg-boss entrega cada trabajo a **un
+   solo** trabajador: con una única cola, identity auditaba unos eventos y notifications no se
+   enteraba de otros (lo destapó la prueba de humo del aviso de cita). Ahora **cada servicio declara
+   su cola** (`domain-events.<servicio>`) y el publicador entrega una copia en cada una
+   (`enqueueDomainEvent` descubre las colas existentes). Añadir un consumidor nuevo no toca a los
+   demás, y las pruebas de integración usan su propia cola sin competir con los servicios reales.
+2. **El asistente se guioniza en la base, no en el código.** El estado de cada conversación vive en
+   `bot_conversations`, así que un paciente puede desaparecer y volver: el bot retoma el paso donde
+   estaba. Los pasos se validan uno a uno y un mensaje inválido **no avanza** y explica el error.
+3. **El aviso se arma una sola vez.** El evento `scheduling.appointment.scheduled` viaja con el
+   mensaje ya redactado (fecha, hora en 12 h, lugar y ticket) y la clave de deduplicación
+   `cita + plantilla + secuencia` garantiza que un reintento o un evento repetido no vuelva a
+   escribirle al paciente.
+4. **Los intentos se agotaban al primero.** `maxAttempts` nació en 1 y un fallo de red daba el
+   aviso por perdido: ahora usa la cadena del plan (1 m, 5 m, 15 m, 1 h, 6 h) y el reintento manual
+   la reinicia.
+5. **El `.ics` se genera con horas UTC** (`DTSTART:20261202T123000Z`), con `SEQUENCE` que sube al
+   reprogramar y un recordatorio 30 minutos antes: los calendarios actualizan el evento en vez de
+   duplicarlo, y la web lo descarga desde `/api/v1/notifications/ics/:appointmentId` (el prefijo
+   `/appointments` pertenece a la agenda en el gateway).
+
 ### Próximo paso
 
-Arrancar la **Fase 4** en una sesión nueva: servicio de **notificaciones** con el bot de Telegram
-(long polling, asistente de 7 pasos con validación, `/estado` y `/cancelar`, vinculación chat↔paciente
-por deep link), plantillas editables, cola de envíos con reintentos e idempotencia por `update_id`,
-generación del **`.ics`** y la bandeja `/notificaciones` de la interfaz. Recuerda la decisión del
-2026-10-03: **al formalizarse una cita, el bot avisa de inmediato** con fecha, hora, lugar y el
-`.ics` adjunto — el evento `scheduling.appointment.scheduled` ya viaja con todo lo necesario
-(`notification`: paciente, teléfono, fecha, hora, lugar, ticket, asunto y cuerpo ya redactado).
-Misma regla: `npm run verify` en verde, commits atómicos y tag `fase-4`.
+Arrancar la **Fase 5** en una sesión nueva: módulo de **secretaría** (llamar al paciente, pasar a
+consulta, marcar inasistencia y marcar atendido con advertencia si no hay historia clínica) y las
+**pantallas** de sala y consultorio con **SSE** para que se actualicen en vivo. Los eventos de agenda
+ya viajan con todo lo necesario (`appointment.checked_in`, `appointment.called`,
+`appointment.in_consultation`, `appointment.attended`, `appointment.no_show`) y las pantallas solo
+tienen que escucharlos. Misma regla: `npm run verify` en verde, commits atómicos y tag `fase-5`.
 
 > Este documento es la referencia viva del proyecto: cualquier cambio de alcance se refleja aquí
 > **antes** de escribir código, y cada decisión relevante se registra como ADR en
