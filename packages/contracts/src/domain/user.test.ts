@@ -1,0 +1,155 @@
+import { describe, expect, it } from 'vitest';
+
+import { diffSensitiveFields } from './audit.js';
+import { PERMISSIONS } from './enums.js';
+import {
+  changePasswordSchema,
+  createUserSchema,
+  hasAllPermissions,
+  hasAnyPermission,
+  hasPermission,
+  permissionsForRoles,
+  updateUserSchema,
+  usernameSchema,
+} from './user.js';
+
+describe('permisos por rol', () => {
+  it('admin puede todo lo declarado', () => {
+    for (const permission of PERMISSIONS) {
+      expect(hasPermission(['admin'], permission)).toBe(true);
+    }
+  });
+
+  it('secretario gestiona pacientes y agenda, pero no usuarios ni auditoría', () => {
+    expect(hasPermission(['secretario'], 'patients:write')).toBe(true);
+    expect(hasPermission(['secretario'], 'scheduling:notify')).toBe(true);
+    expect(hasPermission(['secretario'], 'users:manage')).toBe(false);
+    expect(hasPermission(['secretario'], 'audit:read')).toBe(false);
+  });
+
+  it('odontologo escribe lo clínico y no toca la agenda', () => {
+    expect(hasPermission(['odontologo'], 'clinical:write')).toBe(true);
+    expect(hasPermission(['odontologo'], 'odontogram:write')).toBe(true);
+    expect(hasPermission(['odontologo'], 'scheduling:write')).toBe(false);
+    expect(hasPermission(['odontologo'], 'users:manage')).toBe(false);
+  });
+
+  it('pantalla solo puede mostrar las pantallas kiosko', () => {
+    expect(permissionsForRoles(['pantalla'])).toEqual(['screens:display']);
+  });
+
+  it('acumula permisos cuando hay varios roles y no repite', () => {
+    const combined = permissionsForRoles(['secretario', 'odontologo']);
+    expect(new Set(combined).size).toBe(combined.length);
+    expect(combined).toContain('scheduling:write');
+    expect(combined).toContain('clinical:write');
+  });
+
+  it('trabaja con listas de permisos', () => {
+    expect(hasAnyPermission(['secretario'], ['users:manage', 'patients:read'])).toBe(true);
+    expect(hasAllPermissions(['secretario'], ['patients:read', 'users:manage'])).toBe(false);
+  });
+});
+
+describe('validación de usuarios', () => {
+  it('normaliza el nombre de usuario a minúsculas', () => {
+    expect(usernameSchema.parse('  Recepcion  ')).toBe('recepcion');
+    expect(usernameSchema.safeParse('ab').success).toBe(false);
+    expect(usernameSchema.safeParse('con espacios').success).toBe(false);
+  });
+
+  it('exige al menos un rol y contraseña de 10 caracteres', () => {
+    const valid = createUserSchema.safeParse({
+      username: 'recepcion',
+      fullName: 'María Pérez',
+      password: 'consultorio-2026',
+      roles: ['secretario'],
+    });
+    expect(valid.success).toBe(true);
+
+    expect(
+      createUserSchema.safeParse({
+        username: 'recepcion',
+        fullName: 'María Pérez',
+        password: 'corta',
+        roles: ['secretario'],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createUserSchema.safeParse({
+        username: 'recepcion',
+        fullName: 'María Pérez',
+        password: 'consultorio-2026',
+        roles: [],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('exige motivo al modificar un usuario', () => {
+    expect(updateUserSchema.safeParse({ fullName: 'Otro Nombre' }).success).toBe(false);
+    expect(
+      updateUserSchema.safeParse({ fullName: 'Otro Nombre', reason: 'corrección de nombre' })
+        .success,
+    ).toBe(true);
+  });
+
+  it('el cambio de contraseña exige coincidencia y que sea distinta', () => {
+    expect(
+      changePasswordSchema.safeParse({
+        currentPassword: 'consultorio-2026',
+        newPassword: 'nueva-clave-2026',
+        repeatPassword: 'nueva-clave-2026',
+      }).success,
+    ).toBe(true);
+
+    expect(
+      changePasswordSchema.safeParse({
+        currentPassword: 'consultorio-2026',
+        newPassword: 'nueva-clave-2026',
+        repeatPassword: 'otra-clave-2026',
+      }).success,
+    ).toBe(false);
+
+    expect(
+      changePasswordSchema.safeParse({
+        currentPassword: 'consultorio-2026',
+        newPassword: 'consultorio-2026',
+        repeatPassword: 'consultorio-2026',
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('diferencia de campos sensibles', () => {
+  it('detecta solo lo que cambió y guarda antes y después', () => {
+    const before = { fullName: 'María Pérez', isActive: true, email: null };
+    const after = { fullName: 'María Pérez Gómez', isActive: true, email: null };
+
+    const diff = diffSensitiveFields(before, after, ['fullName', 'isActive', 'email']);
+
+    expect(diff.changedFields).toEqual(['fullName']);
+    expect(diff.before).toEqual({ fullName: 'María Pérez' });
+    expect(diff.after).toEqual({ fullName: 'María Pérez Gómez' });
+  });
+
+  it('no genera registro cuando no hay cambios', () => {
+    const value = { fullName: 'María Pérez', isActive: true };
+    const diff = diffSensitiveFields(value, { ...value }, ['fullName', 'isActive']);
+
+    expect(diff.changedFields).toEqual([]);
+    expect(diff.before).toBeNull();
+    expect(diff.after).toBeNull();
+  });
+
+  it('trata la ausencia de valor como nulo', () => {
+    const diff = diffSensitiveFields<Record<string, unknown>>(
+      { email: null },
+      { email: 'correo@ejemplo.com' },
+      ['email'],
+    );
+
+    expect(diff.changedFields).toEqual(['email']);
+    expect(diff.before).toEqual({ email: null });
+  });
+});
