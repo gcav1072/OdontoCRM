@@ -37,6 +37,24 @@ if (databaseUrl === undefined) {
   process.exit(1);
 }
 
+/**
+ * Bases que necesitan las pruebas de integración de varios servicios: la de
+ * pacientes, la de identity y la cola de eventos compartida. Se leen de los
+ * `.env` y se exponen como variables `TEST_*` para las pruebas.
+ */
+const extraEnv = {
+  TEST_DATABASE_URL: databaseUrl,
+  TEST_IDENTITY_DATABASE_URL:
+    process.env.TEST_IDENTITY_DATABASE_URL ??
+    readEnvValue('services/identity/.env', 'DATABASE_URL'),
+  TEST_PATIENTS_DATABASE_URL:
+    process.env.TEST_PATIENTS_DATABASE_URL ??
+    readEnvValue('services/patients/.env', 'DATABASE_URL'),
+  TEST_EVENTS_DATABASE_URL:
+    process.env.TEST_EVENTS_DATABASE_URL ??
+    readEnvValue('services/identity/.env', 'EVENTS_DATABASE_URL'),
+};
+
 const url = new URL(databaseUrl);
 console.log(
   `Pruebas de integración contra ${url.hostname}:${url.port}${url.pathname} (usuario ${url.username})`,
@@ -53,7 +71,7 @@ const result = spawnSync(
   {
     cwd: ROOT,
     stdio: 'inherit',
-    env: { ...process.env, TEST_DATABASE_URL: databaseUrl },
+    env: { ...process.env, ...extraEnv },
   },
 );
 
