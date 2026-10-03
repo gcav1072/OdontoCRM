@@ -31,5 +31,12 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
     emptyOutDir: true,
+    /**
+     * La aplicación es interna (red local) y el paquete incluye React, el router,
+     * TanStack Query, formularios y Zod: ~550 kB sin minificar por partes. Se deja
+     * el aviso por encima de 700 kB para no ensuciar cada compilación; separar el
+     * *vendor* es una optimización para la Fase 10.
+     */
+    chunkSizeWarningLimit: 700,
   },
 });

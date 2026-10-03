@@ -5,7 +5,8 @@
   "description": "Sistema de diseño compartido: tokens de tema y componentes base (se consume como código fuente desde el bundler)",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/styles/tokens.css"
   },
   "dependencies": {
     "clsx": "^2.1.1",

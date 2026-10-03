@@ -1,15 +1,13 @@
 /**
  * Hoja de estilos raíz de la SPA.
  *
- * Carga Tailwind y los tokens del sistema de diseño (que viven en
- * `packages/ui`, la fuente única de verdad del tema claro y oscuro). Los tokens
- * se importan por ruta relativa porque `@odontocrm/ui` solo exporta su entrada
- * de TypeScript y este bloque `@theme` lo tiene que ver el compilador de
- * Tailwind, no el navegador.
+ * Carga Tailwind y los tokens del sistema de diseño, que viven en
+ * `packages/ui` (fuente única de verdad del tema claro y oscuro) y se exponen
+ * como `@odontocrm/ui/tokens.css`.
  */
 
 @import 'tailwindcss';
-@import '../../../packages/ui/src/styles/tokens.css';
+@import '@odontocrm/ui/tokens.css';
 
 /* El tema oscuro se activa con la clase `dark` en <html> (ThemeProvider). */
 @custom-variant dark (&:where(.dark, .dark *));

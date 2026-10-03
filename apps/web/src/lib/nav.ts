@@ -70,7 +70,8 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     labelKey: 'modulo.registro.titulo',
     descriptionKey: 'modulo.registro.descripcion',
     icon: IdCard,
-    permission: 'patients:read',
+    // El módulo registra pacientes además de consultarlos (Fase 2).
+    permission: 'patients:write',
     phase: 2,
   },
   programacion: {
