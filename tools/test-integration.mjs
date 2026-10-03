@@ -16,11 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const CANDIDATES = [
-  'services/identity/.env',
-  'services/patients/.env',
-  'services/scheduling/.env',
-];
+const CANDIDATES = ['services/identity/.env', 'services/patients/.env', 'services/scheduling/.env'];
 
 const readEnvValue = (relativePath, key) => {
   const path = resolve(ROOT, relativePath);

@@ -114,50 +114,46 @@ describeWithDatabase('outbox transaccional (PostgreSQL real)', () => {
 });
 
 describeWithDatabase('cola pg-boss sobre PostgreSQL (real)', () => {
-  it(
-    'declara la cola, publica un evento y lo consume un trabajador',
-    async () => {
-      if (connectionString === undefined) throw new Error('sin TEST_DATABASE_URL');
+  it('declara la cola, publica un evento y lo consume un trabajador', async () => {
+    if (connectionString === undefined) throw new Error('sin TEST_DATABASE_URL');
 
-      const boss = createBoss({
-        connectionString,
-        applicationName: 'odontocrm-test-queue',
-        maxConnections: 2,
+    const boss = createBoss({
+      connectionString,
+      applicationName: 'odontocrm-test-queue',
+      maxConnections: 2,
+    });
+
+    const received: DomainEvent[] = [];
+    let workerId: string | undefined;
+
+    try {
+      await startBoss(boss);
+      await ensureDomainEventsQueue(boss);
+
+      workerId = await boss.work<DomainEvent, void>(DOMAIN_EVENTS_QUEUE, async (jobs) => {
+        for (const job of jobs) received.push(job.data);
       });
 
-      const received: DomainEvent[] = [];
-      let workerId: string | undefined;
+      const event = createDomainEvent({
+        topic: EVENT_TOPICS.appointmentScheduled,
+        aggregateId: globalThis.crypto.randomUUID(),
+        producer: marker,
+        payload: { ticket: '#000123' },
+      });
 
-      try {
-        await startBoss(boss);
-        await ensureDomainEventsQueue(boss);
+      await enqueueDomainEvent(boss, event);
 
-        workerId = await boss.work<DomainEvent, void>(DOMAIN_EVENTS_QUEUE, async (jobs) => {
-          for (const job of jobs) received.push(job.data);
-        });
-
-        const event = createDomainEvent({
-          topic: EVENT_TOPICS.appointmentScheduled,
-          aggregateId: globalThis.crypto.randomUUID(),
-          producer: marker,
-          payload: { ticket: '#000123' },
-        });
-
-        await enqueueDomainEvent(boss, event);
-
-        const deadline = Date.now() + 20_000;
-        while (received.length === 0 && Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 250));
-        }
-
-        expect(received.map((item) => item.eventId)).toContain(event.eventId);
-      } finally {
-        if (workerId !== undefined) {
-          await boss.offWork(DOMAIN_EVENTS_QUEUE).catch(() => undefined);
-        }
-        await stopBoss(boss).catch(() => undefined);
+      const deadline = Date.now() + 20_000;
+      while (received.length === 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
-    },
-    40_000,
-  );
+
+      expect(received.map((item) => item.eventId)).toContain(event.eventId);
+    } finally {
+      if (workerId !== undefined) {
+        await boss.offWork(DOMAIN_EVENTS_QUEUE).catch(() => undefined);
+      }
+      await stopBoss(boss).catch(() => undefined);
+    }
+  }, 40_000);
 });
