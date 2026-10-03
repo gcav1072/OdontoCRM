@@ -5,6 +5,7 @@ import {
   changePatientStatusSchema,
   cleanText,
   createPatientSchema,
+  deletePatientSchema,
   documentKey,
   formatDocument,
   isMinor,
@@ -188,6 +189,15 @@ describe('edición de paciente', () => {
       changePatientStatusSchema.safeParse({ status: 'inactivo', reason: 'se mudó de ciudad' })
         .success,
     ).toBe(true);
+  });
+
+  it('el borrado lógico exige motivo y lo conserva', () => {
+    expect(deletePatientSchema.safeParse({}).success).toBe(false);
+    expect(deletePatientSchema.safeParse({ reason: 'no' }).success).toBe(false);
+    expect(deletePatientSchema.safeParse({ reason: '   ' }).success).toBe(false);
+    expect(deletePatientSchema.parse({ reason: 'registro duplicado por error' }).reason).toBe(
+      'registro duplicado por error',
+    );
   });
 });
 

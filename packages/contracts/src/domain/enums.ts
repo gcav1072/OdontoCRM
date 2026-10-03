@@ -13,6 +13,8 @@ export const PERMISSIONS = [
   'patients:read',
   'patients:write',
   'patients:edit_sensitive',
+  /** Borrado lógico de un paciente: solo `admin`, siempre con motivo (ADR 0027). */
+  'patients:delete',
   'scheduling:read',
   'scheduling:write',
   'scheduling:notify',
@@ -40,8 +42,16 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     'screens:display',
     'reports:read',
   ],
+  /**
+   * El odontólogo registra y edita pacientes (decisión del 2026-10-03): en un
+   * consultorio de una sola odontóloga es ella quien a veces da el alta, y toda
+   * edición queda auditada con motivo igual que la de la secretaría. No puede
+   * borrar: eso queda reservado al `admin`.
+   */
   odontologo: [
     'patients:read',
+    'patients:write',
+    'patients:edit_sensitive',
     'scheduling:read',
     'screens:display',
     'clinical:read',

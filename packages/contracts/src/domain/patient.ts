@@ -308,6 +308,19 @@ export const changePatientStatusSchema = z.object({
 
 export type ChangePatientStatusInput = z.infer<typeof changePatientStatusSchema>;
 
+/**
+ * Borrado lógico: exige motivo y está reservado al `admin` (permiso
+ * `patients:delete`, ADR 0027). Nada se destruye: el paciente y sus archivos
+ * quedan marcados y desaparecen de listas, búsquedas y fichas, pero el rastro
+ * (documentos, historial y auditoría) se conserva y el documento vuelve a quedar
+ * libre por si hubo un error de tecleo.
+ */
+export const deletePatientSchema = z.object({
+  reason: z.string().trim().min(3, 'Indica el motivo del borrado').max(300),
+});
+
+export type DeletePatientInput = z.infer<typeof deletePatientSchema>;
+
 /** Alta o actualización desde otro servicio o desde el bot (endpoint interno). */
 export const upsertPatientSchema = createPatientSchema;
 
@@ -423,7 +436,7 @@ export const patientAuditPayloadSchema = z.object({
   patientId: z.uuid(),
   document: z.string(),
   fullName: z.string(),
-  action: z.enum(['created', 'updated', 'status_changed']),
+  action: z.enum(['created', 'updated', 'status_changed', 'deleted']),
   changedFields: z.array(z.string()),
   before: z.record(z.string(), z.unknown()).nullable(),
   after: z.record(z.string(), z.unknown()).nullable(),

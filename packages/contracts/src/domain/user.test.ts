@@ -34,6 +34,19 @@ describe('permisos por rol', () => {
     expect(hasPermission(['odontologo'], 'users:manage')).toBe(false);
   });
 
+  it('odontologo registra y edita pacientes, pero no los borra (2026-10-03)', () => {
+    expect(hasPermission(['odontologo'], 'patients:read')).toBe(true);
+    expect(hasPermission(['odontologo'], 'patients:write')).toBe(true);
+    expect(hasPermission(['odontologo'], 'patients:edit_sensitive')).toBe(true);
+    expect(hasPermission(['odontologo'], 'patients:delete')).toBe(false);
+  });
+
+  it('borrar un paciente es exclusivo del admin', () => {
+    expect(hasPermission(['admin'], 'patients:delete')).toBe(true);
+    expect(hasPermission(['secretario'], 'patients:delete')).toBe(false);
+    expect(hasPermission(['pantalla'], 'patients:delete')).toBe(false);
+  });
+
   it('pantalla solo puede mostrar las pantallas kiosko', () => {
     expect(permissionsForRoles(['pantalla'])).toEqual(['screens:display']);
   });
