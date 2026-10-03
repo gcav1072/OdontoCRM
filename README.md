@@ -82,7 +82,9 @@ Los secretos **nunca** se versionan ni se comparten por chat: ver
 | `npm run keys:generate` | Genera el par de claves EdDSA del JWT (no sobrescribe; `-- --force` regenera e invalida sesiones) |
 | `npm run seed:users` | Crea `admin`, `recepcion` y `egomez` con contraseña temporal (`-- --reset` las regenera) |
 | `npm run seed:demo` | Pacientes ficticios deterministas (`-- --count 5000`, `-- --reset` borra solo lo ficticio) |
+| `npm run seed:agenda` | Solicitudes y citas de ejemplo en el próximo día de consulta (`-- --reset` las borra) |
 | `npm run db:generate:patients` | Genera la migración del servicio de pacientes desde su esquema |
+| `npm run db:generate:scheduling` | Genera la migración del servicio de agenda desde su esquema |
 | **`npm run verify`** | **Puerta de calidad: secretos + lint + formato + compilación + pruebas** |
 
 Antes de cerrar cualquier fase, `npm run verify` debe pasar en verde.
@@ -114,7 +116,7 @@ docs                  Plan maestro, formato de historia clínica y ADRs
 | gateway | 8090 | ✅ Fase 0 |
 | identity | 4001 | ✅ Fase 0 (salud) · Fase 1 (usuarios y auth) |
 | patients | 4002 | ✅ Fase 2 |
-| scheduling | 4003 | Fase 3 |
+| scheduling | 4003 | ✅ Fase 3 |
 | notifications | 4004 | Fase 4 |
 | clinical | 4005 | Fase 6 |
 | odontogram | 4006 | Fase 6 |
@@ -176,6 +178,35 @@ Reglas que aplica el servidor (no solo la interfaz):
   e IP. Los consumidores son idempotentes (`processed_events`).
 - Los adjuntos se guardan en disco (`STORAGE_DIR`, ignorado por Git) con los metadatos en la base;
   el binario solo se sirve por un endpoint autorizado, nunca por ruta directa del sistema.
+
+---
+
+## API de la Fase 3 (agenda)
+
+| Método y ruta | Qué hace | Permiso |
+| :--- | :--- | :--- |
+| `GET /api/v1/requests` | Cola de solicitudes con filtros (estado, canal, búsqueda por ticket/nombre/documento) y orden por ticket o antigüedad | `scheduling:read` |
+| `POST /api/v1/requests` | Nueva solicitud: el **ticket** lo entrega la secuencia (`#000123`, luego `A-000001`) | `scheduling:write` |
+| `POST /api/v1/requests/:id/cancel` | Cancela una solicitud que aún espera | `scheduling:write` |
+| `GET /api/v1/agenda/days/:date` | Jornada del día: cupo con su procedencia, franjas (con pausas), citas, cola y contadores | `scheduling:read` |
+| `PUT /api/v1/agenda/capacity` | Cupo del día, editable a cualquier hora; **bajarlo por debajo de lo asignado avisa y no borra citas** | `scheduling:write` |
+| `GET/POST/PATCH/DELETE /api/v1/agenda/templates` | Plantillas de franjas por día de la semana (jornada y pausas) | `scheduling:read` / `scheduling:write` |
+| `POST /api/v1/agenda/notify/preview` | **Vista previa exacta** del lote: los mensajes que se enviarán y por qué no los demás | `scheduling:read` |
+| `POST /api/v1/agenda/notify` | Marca el lote como notificado y publica el evento que enviará la Fase 4 | `scheduling:notify` |
+| `POST /api/v1/appointments` | Asigna una solicitud a una franja (o cita directa con hora manual) | `scheduling:write` |
+| `GET /api/v1/appointments[/:id[/history]]` | Citas por fecha, estado o paciente, y su historial de estados | `scheduling:read` |
+| `POST /api/v1/appointments/:id/(check-in\|call\|start\|attend\|no-show\|cancel)` | Ciclo de vida según la máquina de estados; «atendido» pide motivo mientras no exista historia clínica | `scheduling:write` |
+| `POST /api/v1/appointments/:id/reschedule` | Reprograma: la cita anterior queda trazada y la nueva se enlaza con ella | `scheduling:write` |
+| `POST /internal/v1/requests` | Alta de solicitud desde el bot, con secreto interno | secreto interno |
+
+- **El ticket es atómico**: lo entrega una secuencia de PostgreSQL, así que dos solicitudes
+  simultáneas nunca reciben el mismo número.
+- **Una sola silla**: un índice único parcial impide dos citas activas a la misma hora; repetir la
+  franja responde **409** con la cita que la ocupa.
+- **Sobrecupo**: solo con `scheduling:overbook` (admin) y un motivo, y queda en la auditoría.
+- **Reprogramar no borra**: la cita original queda como `reprogramada`, la nueva apunta a ella y la
+  secuencia `.ics` se incrementa para que los calendarios se actualicen.
+- **Cancelar una cita devuelve el ticket a la cola** ([ADR 0028](docs/adr/0028-cancelar-devuelve-el-ticket.md)).
 
 ---
 

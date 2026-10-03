@@ -4,6 +4,43 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 3] — Agenda: tickets, cupos y programación de la jornada · 2026-10-03
+
+### Añadido
+
+- **`packages/contracts`**: contratos de agenda — solicitud con ticket, cita, cupo del día, plantilla
+  de franjas, vista de la jornada, historial de estados, vista previa del aviso, y utilidades puras
+  de hora (`addMinutes`, `minutesBetween`, `formatTime12h`, `expandTemplateSlots`, `weekdayOf`) con
+  24 pruebas nuevas (145 en el paquete). Se añade el permiso `scheduling:overbook` (solo `admin`) y
+  la **carga genérica de auditoría** que publican los servicios nuevos.
+- **`services/scheduling`** (nuevo, puerto 4003, base `odonto_scheduling`): **secuencia atómica de
+  tickets** (`nextval`, con salto a `A-000001`), cola «en espera de cita» ordenada por prioridad,
+  ticket o antigüedad, **cupo diario editable** (bajarlo avisa y no borra citas), plantillas de
+  franjas por día con pausas, asignación por franja u **hora manual**, **sobrecupo solo con permiso
+  del admin y motivo**, **índice único parcial** que impide dos citas a la misma hora, reprogramación
+  que conserva el ticket y enlaza la cita nueva, cancelación, **inasistencia con tolerancia de 15
+  minutos**, `status_history` con actor y hora, y aviso en lote con vista previa y evento para la
+  Fase 4.
+- **`services/identity`**: el consumidor de eventos admite la carga genérica de auditoría, guarda un
+  **resumen legible** por evento (migración `0003`) y consume en **lotes de 50 cada segundo**.
+- **Interfaz**: página **Programación** (`/programacion`) con la cola de solicitudes (filtros,
+  búsqueda diferida, nueva solicitud con búsqueda de paciente), la jornada del día (selector de
+  fecha, cupo con contador `asignados/cupo` y aviso, franjas con arrastrar-y-soltar y teclado, hora
+  manual, sobrecupo, contadores de ocupación), la tabla de citas con las acciones de la máquina de
+  estados, el historial y el diálogo de **aviso en lote** con la vista previa exacta.
+
+### Cambiado
+
+- **Cancelar una cita devuelve el ticket a la cola** ([ADR 0028](docs/adr/0028-cancelar-devuelve-el-ticket.md)).
+- El outbox publica en la cola compartida y el consumidor trabaja por lotes: un pico de 150 eventos
+  pasa de tardar minutos a segundos.
+- `seed:agenda` siembra solicitudes y citas de ejemplo en el próximo día de consulta real.
+
+### Corregido
+
+- El trabajador de la cola dejaba eventos en estado `created` durante minutos (auditoría con retraso)
+  por usar el tamaño de lote y el sondeo por defecto de pg-boss.
+
 ## [Fase 2] — Pacientes, registro y auditoría de datos sensibles · 2026-10-03
 
 ### Añadido

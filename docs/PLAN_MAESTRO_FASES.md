@@ -186,7 +186,8 @@ Convenciones: `id uuid default gen_random_uuid()`, `created_at`/`updated_at` con
 - `ticket_counters` no va aquí: el consecutivo de ticket pertenece a `scheduling`.
 
 ### 4.3 `scheduling`
-- `appointment_requests` (**ticket**): `ticket_number bigint` ← `SEQUENCE`, `ticket_display` (`#000123` / `A-000001`), `channel` (`telegram|registro|telefono|presencial`), `patient_id`, `reason` (motivo de consulta), `status`, `priority`, `requested_at`, `notes`, `created_by`.
+- `appointment_requests` (**ticket**): `ticket_number bigint` ← `SEQUENCE`, `channel` (`telegram|registro|telefono|presencial`), `patient_id`, `patient_name`/`patient_document`/`patient_phone` (copia para la cola: la ficha viva está en `patients`), `reason` (motivo de consulta), `status`, `priority`, `requested_at`, `notes`, `created_by`.
+  > **Sin `ticket_display`:** el texto `#000123` / `A-000001` se formatea al vuelo desde `ticket_number` (`formatTicket`), así que hay una sola fuente de verdad; la búsqueda por ticket lo interpreta con `parseTicket` y consulta por el número.
 - `appointments`: `patient_id`, `request_id`, `appointment_date`, `start_time`, `end_time`, `dentist_id`, `chair_id`, `status`, `call_count`, `checked_in_at`, `started_at`, `finished_at`, `no_show_reason?`, `force_attended_reason?`, `rescheduled_from_id?`, `ics_sequence` (se incrementa al reprogramar).
 - `day_capacities`: `date` (PK), `capacity` (**editable en cualquier momento, incluso después de asignar**), `notes`, `updated_by`.
 - `slot_templates`: `weekday`, `start_time`, `end_time`, `slot_minutes`, `breaks jsonb`, `is_active`.
@@ -282,6 +283,7 @@ Reglas duras:
 | Registro/edición de pacientes (con motivo) | ✅ | ✅ | ✅ | ❌ |
 | Eliminar un paciente del registro (borrado lógico, con motivo) | ✅ | ❌ | ❌ | ❌ |
 | Programar jornada, cupos, notificar | ✅ | ✅ | lectura | ❌ |
+| Autorizar sobrecupo en un día completo (con motivo) | ✅ | ❌ | ❌ | ❌ |
 | Llamar / pasar a consulta / no asistió | ✅ | ✅ | ✅ | ❌ |
 | Marcar atendido | ✅ | ✅ (con advertencia) | ✅ | ❌ |
 | Historia clínica, sesiones, récipes, odontograma | ✅ | ❌ | ✅ | ❌ |
@@ -678,8 +680,9 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | **0** | ✅ **completada** (2026-10-02) | 24 commits atómicos · `npm run verify` en verde con **56 pruebas** (+4 de integración con `npm run test:integration`) · 8 bases y 8 roles creados, idempotencia comprobada y **migraciones verificadas desde cero en base limpia** (`npm run db:verify-migrations`) · outbox + `pg-boss` probados contra PostgreSQL real · `GET :8090/health`, `GET :8090/api/v1/auth/health` y `GET :4001/ready` (PostgreSQL 18.6) respondiendo 200 · `.gitignore` verificado · 25 ADRs · guía de Fedora con `bash -n` y `check` de las unidades |
 | **1** | ✅ **completada** (2026-10-02) | 10 commits · `npm run verify` en verde con **98 pruebas** (+11 de integración) · identidad completa (login, refresh rotativo con detección de reuso, bloqueo tras 5 intentos, usuarios, dispositivos y auditoría) · gateway verificando el JWT y publicando la identidad · interfaz con shell, login, panel inferior ocultable, temas y módulo de usuarios · **prueba de humo del acceso** (`npm run smoke:auth`) con 17 comprobaciones en verde |
 | **2** | ✅ **completada** (2026-10-03, decisiones cerradas el mismo día) | 13 commits · `npm run verify` en verde con **122 pruebas** (+20 de integración: **142 en total**) · servicio de pacientes con cédula V/E/P/SC normalizada y única, representante de menores, adjuntos en disco, búsqueda con trigramas (**< 300 ms con 5.000 pacientes**: 46 ms la peor) y **borrado lógico solo para `admin`** (ADR 0027) · edición **con motivo obligatorio** que deja `before`/`after` en la auditoría de identity pasando por el outbox y la **cola compartida** · el odontólogo registra y edita pacientes (decisión del 2026-10-03) · módulo de registro (autocompletado por cédula, solo lectura y confirmación de cambios) y lista/ficha de pacientes · **prueba de humo** (`npm run smoke:patients`) con 26 comprobaciones en verde · 27 ADRs |
-| 3 | ⏭ **siguiente** | Solicitudes con ticket, cola «en espera de cita», cupo diario y plantilla de franjas |
-| 3–10 | ⏳ pendientes | Ver §13 |
+| **3** | ✅ **completada** (2026-10-03) | 11 commits · `npm run verify` en verde con **145 pruebas** (+36 de integración: **181 en total**) · `scheduling` con **secuencia atómica de tickets** (20 solicitudes simultáneas, 20 tickets distintos), cola «en espera de cita» ordenada por ticket/antigüedad/prioridad, cupo diario editable (bajarlo por debajo de lo asignado **avisa y no borra**), plantillas de franjas sembradas (L-V 8:00–12:00 y 13:00–17:00 → 16 franjas), hora manual, **sobrecupo solo con `scheduling:overbook` y motivo**, índice único parcial que impide dos citas a la misma hora (incluso en paralelo), reprogramación que conserva el ticket y enlaza la cita nueva, inasistencia con tolerancia de 15 min, `status_history` con actor y hora, aviso en lote con **vista previa exacta**, y auditoría de todos los eventos con resumen legible · módulo **Programación** con cola, jornada, franjas, arrastrar y soltar, cupo y aviso en lote · **prueba de humo** (`npm run smoke:agenda`) con **41 comprobaciones** en verde · 28 ADRs |
+| 4 | ⏭ **siguiente** | Bot de Telegram: asistente de solicitud, aviso al formalizar la cita con `.ics`, plantillas y cola de envíos |
+| 4–10 | ⏳ pendientes | Ver §13 |
 
 ### Lo que quedó funcionando
 
@@ -691,11 +694,13 @@ npm run db:migrate              # migraciones de todos los servicios
 npm run db:verify-migrations    # comprueba que migran desde cero en una base limpia
 npm run seed:users              # admin, recepcion y egomez con contraseña temporal
 npm run seed:demo -- --count 5000   # pacientes ficticios deterministas (--reset los borra)
-npm run dev                     # compilación vigilada + gateway + identity + patients + interfaz (5173)
-npm test                        # 122 pruebas unitarias y de contrato
-npm run test:integration        # 142 pruebas contra PostgreSQL real (outbox, cola, sesión, pacientes y rendimiento)
+npm run seed:agenda             # solicitudes y citas de ejemplo para la jornada (--reset las borra)
+npm run dev                     # compilación vigilada + gateway + identity + patients + scheduling + interfaz (5173)
+npm test                        # 145 pruebas unitarias y de contrato
+npm run test:integration        # 181 pruebas contra PostgreSQL real (outbox, cola, sesión, pacientes, agenda y rendimiento)
 npm run smoke:auth              # recorre el ciclo de sesión por el gateway real
 npm run smoke:patients          # registro, duplicado, edición y borrado con motivo y auditoría por el gateway real
+npm run smoke:agenda            # ticket, cupo, franja, sobrecupo, reprogramación y aviso en lote por el gateway real
 npm run verify                  # secretos + lint + formato + compilación + pruebas
 pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.ps1
 ```
@@ -760,13 +765,41 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    usuario e IP. El servicio de pacientes conserva además un historial local de datos de contacto
    para consultarlo sin salir de él.
 
+### Hallazgos de la Fase 3 que cambian supuestos
+
+1. **El trabajador de la cola necesitaba lotes.** Con los valores por defecto de pg-boss (un evento
+   por ciclo y sondeo cada 2 s) un pico de 150 eventos tardaba **minutos** en auditarse: la cola
+   quedaba con trabajos en estado `created` y la auditoría aparecía con retraso. El consumidor ahora
+   toma **50 eventos por ciclo cada segundo** y la cola se vacía en segundos. Lo destapó la prueba de
+   integración de auditoría, que esperaba el registro y no llegaba.
+2. **Una sola silla exige una garantía en la base.** Además de comprobar el solapamiento, hay un
+   **índice único parcial** en `(appointment_date, start_time)` para las citas activas: dos personas
+   asignando la misma hora a la vez no pueden crear dos citas (la segunda recibe 409). El índice es
+   parcial a propósito: cancelar o reprogramar libera el hueco.
+3. **`cancelar` una cita devuelve el ticket a la cola** ([ADR 0028](adr/0028-cancelar-devuelve-el-ticket.md)):
+   el paciente sigue esperando, así que la solicitud vuelve a `en_espera_cita` con su historial.
+4. **Zod 4 no deja derivar `.partial()` de un esquema con refinamientos.** La edición parcial de las
+   plantillas de franjas se declara como objeto propio (el esquema completo valida jornada y pausas).
+5. **El ticket no se guarda formateado.** `#000123` se calcula desde `ticket_number` al responder, así
+   que hay una sola fuente de verdad; la búsqueda por ticket lo interpreta y consulta por el número
+   (ver §4.3).
+6. **La auditoría ganó un `summary` legible** (migración `0003` de identity): la carga genérica de
+   auditoría que publican los servicios nuevos trae la frase ya redactada («Cita para María Pérez el
+   06/10/2026 a las 08:00») y la lista de auditoría no tiene que reconstruirla.
+7. **`Expect: 100-continue`, lotes y demás**: el gateway ya toleraba esa cabecera desde la Fase 2; el
+   `fetch` de las pruebas de humo lleva tiempo límite y corta al instante si el login falla, para que
+   un fallo de sesión no convierta la prueba en una espera de minutos.
+
 ### Próximo paso
 
-Arrancar la **Fase 3** en una sesión nueva: servicio de **scheduling** con solicitudes y ticket
-`#000000`–`#999999`, la cola «en espera de cita», el cupo diario editable, la plantilla de franjas,
-la asignación/reprogramación/cancelación de citas y el registro de inasistencias. Es la fase en la
-que el módulo de Registro gana la acción «crear solicitud» (en la Fase 2 solo registra y edita
-pacientes). Misma regla: `npm run verify` en verde, commits atómicos y tag `fase-3`.
+Arrancar la **Fase 4** en una sesión nueva: servicio de **notificaciones** con el bot de Telegram
+(long polling, asistente de 7 pasos con validación, `/estado` y `/cancelar`, vinculación chat↔paciente
+por deep link), plantillas editables, cola de envíos con reintentos e idempotencia por `update_id`,
+generación del **`.ics`** y la bandeja `/notificaciones` de la interfaz. Recuerda la decisión del
+2026-10-03: **al formalizarse una cita, el bot avisa de inmediato** con fecha, hora, lugar y el
+`.ics` adjunto — el evento `scheduling.appointment.scheduled` ya viaja con todo lo necesario
+(`notification`: paciente, teléfono, fecha, hora, lugar, ticket, asunto y cuerpo ya redactado).
+Misma regla: `npm run verify` en verde, commits atómicos y tag `fase-4`.
 
 > Este documento es la referencia viva del proyecto: cualquier cambio de alcance se refleja aquí
 > **antes** de escribir código, y cada decisión relevante se registra como ADR en
