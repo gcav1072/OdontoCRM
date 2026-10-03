@@ -1,6 +1,12 @@
-import type { NotificationsConfig } from './config.js';
+import type { NotificationsConfig } from '../config.js';
 
-/** Actualización de Telegram (solo lo que usa el bot). */
+/**
+ * Cliente de la API de Telegram (llamadas HTTP sueltas) y su doble simulado.
+ *
+ * Es un detalle del **adaptador** de Telegram (ADR 0029): el núcleo conversacional
+ * no importa nada de este archivo. Con `fetch` basta para sondeo y tres llamadas,
+ * así que no hace falta grammY ni Telegraf.
+ */
 export interface TelegramChat {
   id: number | string;
   username?: string;

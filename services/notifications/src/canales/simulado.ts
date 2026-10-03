@@ -1,6 +1,7 @@
 import type {
   ChannelAdapter,
   ChannelCapabilities,
+  ChannelId,
   InboundMessage,
   OutboundMessage,
   SendResult,
@@ -20,7 +21,12 @@ export interface SimulatedAdapter extends ChannelAdapter {
   readonly sent: SentMessage[];
   /** Entrega un mensaje como si lo hubiera mandado el paciente. */
   deliver: (
-    entrante: Omit<InboundMessage, 'canal' | 'recibidoEn'> & { canal?: 'telegram' | 'whatsapp' },
+    entrante: Omit<InboundMessage, 'canal' | 'recibidoEn' | 'usuario' | 'texto' | 'accion'> & {
+      canal?: ChannelId;
+      usuario?: string | null;
+      texto?: string | null;
+      accion?: string | null;
+    },
   ) => Promise<void>;
 }
 

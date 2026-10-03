@@ -6,6 +6,7 @@ import {
   renderMessage,
   type AppointmentSummary,
   type Channel,
+  type ChannelId,
   type MessageTemplate,
   type NotificationFilters,
   type NotificationRecord,
@@ -27,6 +28,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 
+import type { AdapterRegistry } from './canales/adaptador.js';
 import type { NotificationsConfig } from './config.js';
 import { retryDelays } from './config.js';
 import type { NotificationsDb } from './db/client.js';
@@ -40,7 +42,6 @@ import {
   type NotificationRow,
 } from './db/schema.js';
 import { icsSha256 } from './ics-hash.js';
-import type { TelegramTransport } from './telegram.js';
 
 /* ── Plantillas ────────────────────────────────────────────────────────────── */
 
@@ -151,81 +152,107 @@ export const ensureDefaultTemplates = async (db: NotificationsDb): Promise<numbe
 
 /* ── Canales del paciente ──────────────────────────────────────────────────── */
 
-export const maskChatId = (chatId: string): string =>
-  chatId.length <= 4 ? '••••' : `${chatId.slice(0, 2)}••••${chatId.slice(-2)}`;
+/** Canales que el asistente puede atender hoy (el resto son canales «de oficina»). */
+const ATTENDED_CHANNELS: readonly ChannelId[] = ['telegram', 'whatsapp'];
 
+const isAttended = (canal: string): canal is ChannelId =>
+  (ATTENDED_CHANNELS as readonly string[]).includes(canal);
+
+export const maskDireccion = (direccion: string): string =>
+  direccion.length <= 4 ? '••••' : `${direccion.slice(0, 2)}••••${direccion.slice(-2)}`;
+
+export interface LinkedChannel {
+  canal: ChannelId;
+  direccion: string;
+}
+
+/**
+ * Canal por el que se le escribe a un paciente. Si se pide un canal concreto se
+ * respeta; si no (o si no está vinculado por ese), se prefiere Telegram —donde el
+ * paciente ya conversa— y después WhatsApp.
+ */
 export const findChannel = async (
   db: NotificationsDb,
   patientId: string,
-): Promise<{ chatId: string; telegramUsername: string | null } | null> => {
+  canal?: Channel,
+): Promise<LinkedChannel | null> => {
   const rows = await db
     .select()
     .from(patientChannels)
     .where(
       and(
         eq(patientChannels.patientId, patientId),
-        eq(patientChannels.channel, 'telegram'),
         eq(patientChannels.isBlocked, false),
-        isNotNull(patientChannels.chatId),
+        isNotNull(patientChannels.direccion),
+        ...(canal === undefined ? [] : [eq(patientChannels.channel, canal)]),
       ),
     )
-    .limit(1);
+    .orderBy(desc(patientChannels.linkedAt));
 
-  const row = rows[0];
-  if (row === undefined || row.chatId === null) return null;
-  return { chatId: row.chatId, telegramUsername: row.telegramUsername };
+  const usable = rows.filter(
+    (row): row is typeof row & { direccion: string } =>
+      row.direccion !== null && isAttended(row.channel),
+  );
+  const preferred =
+    usable.find((row) => row.channel === (canal ?? 'telegram')) ?? usable[0] ?? null;
+  if (preferred === null) return null;
+
+  return { canal: preferred.channel as ChannelId, direccion: preferred.direccion };
 };
 
-export const channelByChatId = async (
+/** Canal vinculado a una dirección concreta (para avisos y pruebas). */
+export const channelByDireccion = async (
   db: NotificationsDb,
-  chatId: string,
+  canal: ChannelId,
+  direccion: string,
 ): Promise<{ patientId: string; isBlocked: boolean } | null> => {
   const rows = await db
     .select()
     .from(patientChannels)
-    .where(and(eq(patientChannels.chatId, chatId), eq(patientChannels.channel, 'telegram')))
+    .where(and(eq(patientChannels.channel, canal), eq(patientChannels.direccion, direccion)))
     .limit(1);
   const row = rows[0];
   return row === undefined ? null : { patientId: row.patientId, isBlocked: row.isBlocked };
 };
 
 /**
- * Genera un enlace de vinculación para un paciente que aún no tiene Telegram: la
- * fila queda **pendiente** (sin chat) con su código y su caducidad, y al abrir el
- * enlace el chat se asocia al paciente.
+ * Genera un enlace de vinculación para un paciente que aún no tiene canal: la
+ * fila queda **pendiente** (sin dirección) con su código y su caducidad, y al
+ * abrir el enlace la dirección se asocia al paciente.
  */
 export const createLinkCode = async (
   db: NotificationsDb,
-  input: { patientId: string; code: string; expiresAt: Date },
+  input: { patientId: string; code: string; expiresAt: Date; canal?: Channel },
 ): Promise<void> => {
   // Un solo enlace pendiente por paciente: el anterior deja de servir.
   await db
     .delete(patientChannels)
-    .where(and(eq(patientChannels.patientId, input.patientId), isNull(patientChannels.chatId)));
+    .where(and(eq(patientChannels.patientId, input.patientId), isNull(patientChannels.direccion)));
 
   await db.insert(patientChannels).values({
     patientId: input.patientId,
-    channel: 'telegram',
-    chatId: null,
+    channel: input.canal ?? 'telegram',
+    direccion: null,
     linkCode: input.code,
     linkCodeExpiresAt: input.expiresAt,
   });
 };
 
-/** Canales vinculados (con chat) de un paciente o de todos, para la bandeja. */
+/** Canales vinculados (con dirección) de un paciente o de todos, para la bandeja. */
 export const listChannels = async (
   db: NotificationsDb,
   patientId?: string,
 ): Promise<
   {
     patientId: string;
-    chatId: string;
-    telegramUsername: string | null;
+    canal: ChannelId;
+    direccion: string;
+    usuario: string | null;
     linkedAt: Date;
     isBlocked: boolean;
   }[]
 > => {
-  const conditions = [isNotNull(patientChannels.chatId)];
+  const conditions = [isNotNull(patientChannels.direccion)];
   if (patientId !== undefined) conditions.push(eq(patientChannels.patientId, patientId));
 
   const rows = await db
@@ -236,13 +263,14 @@ export const listChannels = async (
     .limit(100);
 
   return rows.flatMap((row) =>
-    row.chatId === null
+    row.direccion === null || !isAttended(row.channel)
       ? []
       : [
           {
             patientId: row.patientId,
-            chatId: row.chatId,
-            telegramUsername: row.telegramUsername,
+            canal: row.channel as ChannelId,
+            direccion: row.direccion,
+            usuario: row.usuario,
             linkedAt: row.linkedAt,
             isBlocked: row.isBlocked,
           },
@@ -250,12 +278,19 @@ export const listChannels = async (
   );
 };
 
+/** Vincula una dirección (chat de Telegram o número de WhatsApp) con el paciente. */
 export const linkChat = async (
   db: NotificationsDb,
-  input: { patientId: string; chatId: string; telegramUsername: string | null; viaCode?: string },
+  input: {
+    patientId: string;
+    canal: ChannelId;
+    direccion: string;
+    usuario?: string | null;
+    viaCode?: string;
+  },
 ): Promise<void> => {
   if (input.viaCode !== undefined) {
-    // La fila pendiente del código desaparece: el chat real ocupa su lugar.
+    // La fila pendiente del código desaparece: la dirección real ocupa su lugar.
     await db.delete(patientChannels).where(eq(patientChannels.linkCode, input.viaCode));
   }
 
@@ -263,16 +298,16 @@ export const linkChat = async (
     .insert(patientChannels)
     .values({
       patientId: input.patientId,
-      channel: 'telegram',
-      chatId: input.chatId,
-      telegramUsername: input.telegramUsername,
+      channel: input.canal,
+      direccion: input.direccion,
+      usuario: input.usuario ?? null,
       linkedAt: new Date(),
     })
     .onConflictDoUpdate({
-      target: [patientChannels.channel, patientChannels.chatId],
+      target: [patientChannels.channel, patientChannels.direccion],
       set: {
         patientId: input.patientId,
-        telegramUsername: input.telegramUsername,
+        usuario: input.usuario ?? null,
         isBlocked: false,
         linkedAt: new Date(),
         updatedAt: new Date(),
@@ -316,6 +351,7 @@ export interface EnqueueInput {
   patientName: string | null;
   appointmentId?: string | null;
   templateKey: string;
+  /** Canal pedido; si el paciente está vinculado por otro, se usa el que tenga. */
   channel?: Channel;
   payload: Record<string, unknown>;
   /** Clave de idempotencia: la misma cita no genera dos avisos del mismo tipo. */
@@ -332,13 +368,20 @@ export interface EnqueueInput {
  * Encola un aviso. Si ya existe uno con la misma clave de deduplicación, devuelve
  * `null` en vez de duplicarlo: es la idempotencia por cita y canal que pide el plan
  * (un evento repetido no vuelve a escribir al paciente).
+ *
+ * El destino se resuelve por **canal y dirección**: se respeta el canal pedido y,
+ * si el paciente no está vinculado por ese pero sí por otro, se usa el que tenga.
  */
 export const enqueue = async (
   db: NotificationsDb,
   input: EnqueueInput,
 ): Promise<NotificationRecord | null> => {
-  const channel = input.channel ?? 'telegram';
-  const linked = channel === 'telegram' ? await findChannel(db, input.patientId) : null;
+  const linked =
+    (input.channel === undefined
+      ? await findChannel(db, input.patientId)
+      : ((await findChannel(db, input.patientId, input.channel)) ??
+        (await findChannel(db, input.patientId)))) ?? null;
+  const channel = linked?.canal ?? input.channel ?? 'telegram';
   const text =
     input.text ??
     renderMessage(
@@ -354,8 +397,8 @@ export const enqueue = async (
       appointmentId: input.appointmentId ?? null,
       templateKey: input.templateKey,
       channel,
-      recipient: linked?.chatId ?? null,
-      // Sin Telegram vinculado no hay a quién escribir: queda como aviso manual.
+      recipient: linked?.direccion ?? null,
+      // Sin canal vinculado no hay a quién escribir: queda como aviso manual.
       status: linked === null ? 'skipped_no_channel' : 'queued',
       maxAttempts: input.maxAttempts ?? NOTIFICATION_MAX_ATTEMPTS,
       nextAttemptAt: new Date(),
@@ -435,7 +478,11 @@ export const retryNotification = async (
   const row = current[0];
   if (row === undefined) throw new NotFoundError('El aviso no existe');
 
-  const linked = row.recipient === null ? await findChannel(db, row.patientId) : null;
+  const linked =
+    row.recipient === null
+      ? ((await findChannel(db, row.patientId, row.channel as Channel)) ??
+        (await findChannel(db, row.patientId)))
+      : null;
   const rows = await db
     .update(notifications)
     .set({
@@ -445,7 +492,8 @@ export const retryNotification = async (
       maxAttempts: NOTIFICATION_MAX_ATTEMPTS,
       lastError: null,
       nextAttemptAt: new Date(),
-      recipient: row.recipient ?? linked?.chatId ?? null,
+      recipient: row.recipient ?? linked?.direccion ?? null,
+      ...(linked === null ? {} : { channel: linked.canal }),
       updatedAt: new Date(),
       payload: { ...row.payload, retryReason: reason ?? 'reintento manual' },
     })
@@ -590,7 +638,8 @@ const textOf = (row: NotificationRow): string =>
   typeof row.payload['text'] === 'string' ? row.payload['text'] : '';
 
 /**
- * Toma los avisos que toca enviar y los manda por Telegram.
+ * Toma los avisos que toca enviar y los manda **por el adaptador de su canal**
+ * (ADR 0029): el mismo aviso sale por Telegram o por WhatsApp sin cambiar la cola.
  *
  * Los fallos no se pierden: cada intento cuenta y el siguiente se programa con
  * retroceso exponencial (1 m, 5 m, 15 m, 1 h, 6 h). Los avisos de cita llevan el
@@ -598,7 +647,7 @@ const textOf = (row: NotificationRow): string =>
  */
 export const processQueue = async (
   db: NotificationsDb,
-  transport: TelegramTransport,
+  canales: AdapterRegistry,
   config: NotificationsConfig,
   options: {
     limit?: number;
@@ -610,6 +659,7 @@ export const processQueue = async (
       patientId: string;
       appointmentId: string | null;
       templateKey: string;
+      channel: string;
       ok: boolean;
       error?: string;
       providerMessageId?: string;
@@ -639,8 +689,14 @@ export const processQueue = async (
     // Otro proceso se lo llevó entre la lectura y el update: se salta.
     if (claimed.length === 0) continue;
 
-    const recipient = row.recipient ?? (await findChannel(db, row.patientId))?.chatId ?? null;
-    if (recipient === null) {
+    const adapter = canales.get(row.channel);
+    const recipient =
+      row.recipient ??
+      (await findChannel(db, row.patientId, row.channel as Channel))?.direccion ??
+      null;
+
+    // Sin adaptador (canal de oficina) o sin dirección no hay a quién escribir.
+    if (recipient === null || adapter === null) {
       await db
         .update(notifications)
         .set({ status: 'skipped_no_channel', recipient: null, updatedAt: new Date() })
@@ -653,27 +709,26 @@ export const processQueue = async (
       let messageId: string;
 
       const attachIcs = row.payload['attachIcs'] === true && row.appointmentId !== null;
-      if (attachIcs && row.appointmentId !== null) {
-        const appointment = await options.appointmentLoader?.(row.appointmentId);
-        if (appointment !== null && appointment !== undefined) {
-          const ics = await ensureIcsArtifact(db, config, appointment);
-          const attachment = await transport.sendDocument(
-            recipient,
-            {
-              filename: ics.filename,
-              content: Buffer.from(ics.content, 'utf8'),
-              mime: 'text/calendar; charset=utf-8; method=PUBLISH',
-            },
-            text,
-          );
-          messageId = attachment.messageId;
-        } else {
-          const message = await transport.sendMessage(recipient, text);
-          messageId = message.messageId;
-        }
+      const appointment =
+        attachIcs && row.appointmentId !== null
+          ? ((await options.appointmentLoader?.(row.appointmentId)) ?? null)
+          : null;
+
+      if (attachIcs && appointment !== null) {
+        const ics = await ensureIcsArtifact(db, config, appointment);
+        const attachment = await adapter.enviar({
+          direccion: recipient,
+          texto: text,
+          documento: {
+            nombre: ics.filename,
+            contenido: Buffer.from(ics.content, 'utf8'),
+            mime: 'text/calendar; charset=utf-8; method=PUBLISH',
+          },
+        });
+        messageId = attachment.idMensaje;
       } else {
-        const message = await transport.sendMessage(recipient, text);
-        messageId = message.messageId;
+        const message = await adapter.enviar({ direccion: recipient, texto: text });
+        messageId = message.idMensaje;
       }
 
       await db
@@ -695,6 +750,7 @@ export const processQueue = async (
         patientId: row.patientId,
         appointmentId: row.appointmentId,
         templateKey: row.templateKey,
+        channel: row.channel,
         ok: true,
         providerMessageId: messageId,
       });
@@ -723,6 +779,7 @@ export const processQueue = async (
         patientId: row.patientId,
         appointmentId: row.appointmentId,
         templateKey: row.templateKey,
+        channel: row.channel,
         ok: false,
         error: message,
       });

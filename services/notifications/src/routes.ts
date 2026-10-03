@@ -1,8 +1,10 @@
 import {
+  CHANNEL_IDS,
   markContactedSchema,
   messageTemplateInputSchema,
   notificationFiltersSchema,
   retryNotificationSchema,
+  type ChannelStatus,
 } from '@odontocrm/contracts';
 import {
   ForbiddenError,
@@ -11,7 +13,7 @@ import {
   parseQuery,
   requirePermission,
 } from '@odontocrm/kernel';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
 import { z } from 'zod';
@@ -25,7 +27,7 @@ import {
   listNotifications,
   listTemplates,
   markContacted,
-  maskChatId,
+  maskDireccion,
   notificationCounts,
   processQueue,
   queueSnapshot,
@@ -42,6 +44,7 @@ const patientParamsSchema = z.object({ patientId: z.uuid() });
 const linkCodeSchema = z.object({ patientId: z.uuid() });
 const channelsQuerySchema = z.object({ patientId: z.uuid().optional() });
 const icsParamsSchema = z.object({ appointmentId: z.uuid() });
+const webhookParamsSchema = z.object({ canal: z.enum(CHANNEL_IDS) });
 
 /** Código del deep link: corto de dictar y sin caracteres que se confundan. */
 const newLinkCode = (): string => {
@@ -50,11 +53,39 @@ const newLinkCode = (): string => {
   return [...bytes].map((byte) => alphabet[byte % alphabet.length] ?? 'A').join('');
 };
 
+/**
+ * Cuerpo **crudo** de la petición: la firma de Meta se calcula sobre los bytes
+ * exactos que envió, así que re-serializar el JSON la invalidaría. Lo guarda el
+ * analizador de contenido registrado en `server.ts`.
+ */
+const rawBodyOf = (request: FastifyRequest): string => {
+  const raw = (request as FastifyRequest & { rawBody?: string }).rawBody;
+  if (typeof raw === 'string') return raw;
+  return request.body === undefined ? '' : JSON.stringify(request.body);
+};
+
+const jsonBodyOf = (request: FastifyRequest): unknown => {
+  if (typeof request.body !== 'string') return request.body ?? null;
+  try {
+    return JSON.parse(request.body) as unknown;
+  } catch {
+    return null;
+  }
+};
+
+const headersOf = (request: FastifyRequest): Readonly<Record<string, string | undefined>> => {
+  const headers: Record<string, string | undefined> = {};
+  for (const [clave, valor] of Object.entries(request.headers)) {
+    headers[clave] = Array.isArray(valor) ? valor.join(', ') : valor;
+  }
+  return headers;
+};
+
 export const registerNotificationRoutes = (
   app: FastifyInstance,
   services: NotificationsServices,
 ): void => {
-  const { db, config, transport } = services;
+  const { db, config, canales } = services;
   const read = requirePermission('scheduling:read');
   const notify = requirePermission('scheduling:notify');
 
@@ -63,35 +94,54 @@ export const registerNotificationRoutes = (
     return reply.status(200).send(await listNotifications(db, filters));
   });
 
-  /** Estado del bot y de la cola: lo que pinta la cabecera de la bandeja. */
+  /** Estado de los canales y de la cola: lo que pinta la cabecera de la bandeja. */
   app.get('/api/v1/notifications/status', { preHandler: read }, async (_request, reply) => {
-    const [identity, counts, queue, conversations] = await Promise.all([
-      transport.getMe().catch(() => ({ id: '', username: null, name: null })),
+    const [estados, counts, queue, conversations] = await Promise.all([
+      Promise.all(
+        canales.registry.all.map(async (adapter): Promise<ChannelStatus> => {
+          const identidad = await adapter.identidad().catch(() => ({
+            nombre: null,
+            usuario: null,
+            conectado: false,
+          }));
+          return {
+            canal: adapter.id,
+            nombre: identidad.nombre,
+            usuario: identidad.usuario,
+            conectado: identidad.conectado,
+            capacidades: adapter.capacidades,
+          };
+        }),
+      ),
       notificationCounts(db),
       queueSnapshot(db),
       db.select().from(botConversations).orderBy(desc(botConversations.updatedAt)).limit(20),
     ]);
 
-    const mode = transport.mode;
+    const telegram = estados.find((estado) => estado.canal === 'telegram');
+    const mode = canales.modoTelegram;
+
     return reply.status(200).send({
       mode,
-      botUsername: identity.username,
-      botName: identity.name,
-      connected: mode === 'real' && identity.username !== null,
+      botUsername: telegram?.usuario ?? null,
+      botName: telegram?.nombre ?? null,
+      connected: mode === 'real' && (telegram?.conectado ?? false),
       lastUpdateAt: conversations[0]?.updatedAt.toISOString() ?? null,
       lastError: services.lastError,
       // Conversaciones a medio camino: lo que el plan llama «actualizaciones pendientes».
       pendingUpdates: conversations.filter((row) => row.state !== 'inicio').length,
       conversations: conversations.map((row) => ({
-        chatId: maskChatId(row.chatId),
+        canal: row.canal,
+        direccionMasked: maskDireccion(row.direccion),
         state: row.state,
         draft: row.draft,
         patientId: row.patientId,
-        telegramUsername: row.telegramUsername,
+        usuario: row.usuario,
         messageCount: row.messageCount,
         windowStartedAt: row.windowStartedAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
       })),
+      canales: estados,
       counts: { ...counts, queued: queue.pending },
     });
   });
@@ -149,9 +199,9 @@ export const registerNotificationRoutes = (
       items: items.map((channel) => ({
         patientId: channel.patientId,
         patientName: null,
-        channel: 'telegram' as const,
-        chatIdMasked: maskChatId(channel.chatId),
-        telegramUsername: channel.telegramUsername,
+        channel: channel.canal,
+        direccionMasked: maskDireccion(channel.direccion),
+        usuario: channel.usuario,
         linkedAt: channel.linkedAt.toISOString(),
         isBlocked: channel.isBlocked,
       })),
@@ -224,6 +274,38 @@ export const registerNotificationRoutes = (
     },
   );
 
+  /**
+   * Webhook de un canal que **empuja** (WhatsApp Cloud API). Es la **única** ruta
+   * pública del servicio además de la salud: Meta no manda JWT, así que la
+   * seguridad la da la firma (`x-hub-signature-256` con el `app_secret`), que el
+   * adaptador verifica antes de procesar nada. El gateway la deja pasar sin token
+   * por el mismo motivo.
+   */
+  const atenderWebhook = async (
+    request: FastifyRequest<{ Params: { canal: string } }>,
+    reply: Parameters<Parameters<FastifyInstance['route']>[0]['handler']>[1],
+  ): Promise<unknown> => {
+    const { canal } = parseOrThrow(webhookParamsSchema, request.params);
+    const adapter = canales.registry.get(canal);
+    if (adapter?.webhook === undefined) {
+      throw new NotFoundError(`El canal «${canal}» no recibe webhooks`);
+    }
+
+    const respuesta = await adapter.webhook({
+      metodo: request.method === 'GET' ? 'GET' : 'POST',
+      query: request.query as Readonly<Record<string, string | undefined>>,
+      headers: headersOf(request),
+      rawBody: rawBodyOf(request),
+      json: jsonBodyOf(request),
+    });
+
+    if (respuesta.contentType !== undefined) reply.type(respuesta.contentType);
+    return reply.status(respuesta.estado).send(respuesta.cuerpo ?? '');
+  };
+
+  app.get('/api/v1/notifications/webhook/:canal', atenderWebhook);
+  app.post('/api/v1/notifications/webhook/:canal', atenderWebhook);
+
   // ── Rutas internas (solo entre servicios, con el secreto compartido) ──
   app.addHook('onRequest', async (request) => {
     if (!request.url.startsWith('/internal/')) return;
@@ -242,7 +324,7 @@ export const registerNotificationRoutes = (
 
   /** Fuerza un ciclo de la cola de envíos (pruebas y operación). */
   app.post('/internal/v1/notifications/process', async (_request, reply) => {
-    const result = await processQueue(db, transport, config, {
+    const result = await processQueue(db, canales.registry, config, {
       appointmentLoader: (id) => services.clients.getAppointment(id),
     });
     return reply.status(200).send(result);

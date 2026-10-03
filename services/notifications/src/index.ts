@@ -10,36 +10,53 @@ import {
 import { EVENT_TOPICS } from '@odontocrm/events';
 import { startServer } from '@odontocrm/kernel';
 
+import { createChannelAdapters } from './canales/index.js';
+import { loadNotificationsConfig } from './config.js';
 import { handleDomainEvent, publishMessageEvent } from './consumer.js';
-import { loadNotificationsConfig, telegramMode } from './config.js';
+import { handleInbound } from './core/asistente.js';
 import { createNotificationsDatabase } from './db/client.js';
 import { createInternalClients } from './internal-client.js';
 import { ensureDefaultTemplates, processQueue } from './messaging.js';
-import { createPoller } from './poller.js';
 import { createNotificationsServer } from './server.js';
-import { createTransport } from './telegram.js';
 
 const main = async (): Promise<void> => {
   const config = loadNotificationsConfig();
   const database = createNotificationsDatabase(config);
-  const mode = telegramMode(config);
-  const transport = createTransport(config, mode);
   const clients = createInternalClients(config);
+
+  // El logger todavía no existe cuando se construyen los adaptadores: el error de
+  // entrega se guarda y se registra en cuanto el servidor está en pie.
+  let logError: (error: unknown) => void = () => undefined;
+  const canales = createChannelAdapters(config, {
+    onError: (error) => {
+      logError(error);
+    },
+  });
 
   const services = {
     config,
     db: database.db,
     pool: database.pool,
-    transport,
+    canales,
     clients,
     lastError: null as string | null,
   };
 
   const app = await createNotificationsServer({ config, database, services });
+  logError = (error) => {
+    services.lastError = error instanceof Error ? error.message : String(error);
+    app.log.error({ err: error }, 'Falló la entrega de un mensaje del canal');
+  };
 
   // Plantillas del catálogo: si falta alguna (o se borró), se vuelve a sembrar.
   const seeded = await ensureDefaultTemplates(database.db);
-  app.log.info({ plantillasCreadas: seeded, modo: mode }, 'Plantillas de mensajes listas');
+  app.log.info(
+    {
+      plantillasCreadas: seeded,
+      canales: canales.registry.all.map((adapter) => adapter.id),
+    },
+    'Plantillas de mensajes listas',
+  );
 
   // Cola de eventos: los avisos de cita llegan desde la agenda (`appointment.scheduled`
   // y compañía) y aquí se convierten en mensajes encolados.
@@ -86,7 +103,7 @@ const main = async (): Promise<void> => {
   /** Cycle de la cola de envíos: manda lo que toca y programa los reintentos. */
   const runQueue = async (): Promise<void> => {
     try {
-      const result = await processQueue(database.db, transport, config, {
+      const result = await processQueue(database.db, canales.registry, config, {
         appointmentLoader: (id) => clients.getAppointment(id),
         onResult: async (info) => {
           await publishMessageEvent(database.db, {
@@ -97,7 +114,7 @@ const main = async (): Promise<void> => {
               patientId: info.patientId,
               appointmentId: info.appointmentId,
               templateKey: info.templateKey,
-              channel: 'telegram',
+              channel: info.channel,
               providerMessageId: info.providerMessageId ?? null,
               error: info.error ?? null,
               summary: info.ok
@@ -122,34 +139,55 @@ const main = async (): Promise<void> => {
   }, config.QUEUE_INTERVAL_MS);
   queueTimer.unref?.();
 
-  // Poller del bot: solo en modo real (sin token, el transporte simulado no tiene
-  // actualizaciones que pedir). El ciclo de envíos corre en ambos modos.
-  const poller = createPoller(services, {
-    onError: (error) => {
+  /**
+   * Los adaptadores empujan los mensajes al **mismo núcleo**: Telegram sondea por
+   * dentro y WhatsApp los recibe por webhook, así que aquí no hay bucle propio.
+   * La idempotencia por `(canal, eventoId)` la garantiza el asistente.
+   */
+  const asistente = {
+    db: database.db,
+    config,
+    canales: canales.registry,
+    clients,
+  };
+
+  await canales.registry.start(async (entrante) => {
+    try {
+      const result = await handleInbound(asistente, entrante);
+      if (result.handled) {
+        app.log.info(
+          { canal: result.canal, accion: result.action },
+          'Mensaje del asistente procesado',
+        );
+      }
+    } catch (error) {
       services.lastError = error instanceof Error ? error.message : String(error);
-      app.log.error({ err: error }, 'Fallo del poller de Telegram');
-    },
-    onCycle: (result) => {
-      app.log.info(result, 'Actualizaciones de Telegram procesadas');
-    },
+      app.log.error({ err: error, canal: entrante.canal }, 'Fallo al procesar un mensaje');
+    }
   });
 
-  if (mode === 'real') {
-    const identity = await transport.getMe().catch(() => null);
+  const telegram = canales.registry.get('telegram');
+  const telegramIdentidad = telegram === null ? null : await telegram.identidad().catch(() => null);
+  if (canales.modoTelegram === 'real') {
     app.log.info(
-      { bot: identity?.username ?? 'desconocido' },
-      'Bot de Telegram conectado; el poller es único (ADR 0008)',
+      { bot: telegramIdentidad?.usuario ?? 'desconocido' },
+      'Bot de Telegram conectado; el sondeo es único (ADR 0008)',
     );
-    poller.start();
   } else {
     app.log.warn(
       'Sin TELEGRAM_BOT_TOKEN: el servicio arranca en modo simulado (los envíos se registran, no salen a Telegram)',
     );
   }
+  for (const adapter of canales.webhooks) {
+    app.log.info(
+      { canal: adapter.id },
+      'Canal con webhook activo: la ruta pública valida la firma del proveedor',
+    );
+  }
 
   app.addHook('onClose', async () => {
     clearInterval(queueTimer);
-    await poller.stop();
+    await canales.registry.stop();
     await outbox.stop();
     await stopBoss(boss);
     await database.close();
@@ -160,8 +198,9 @@ const main = async (): Promise<void> => {
     {
       port: config.NOTIFICATIONS_PORT,
       host: config.NOTIFICATIONS_HOST,
-      modo: mode,
+      modo: canales.modoTelegram,
       bot: config.TELEGRAM_BOT_USERNAME ?? null,
+      canales: canales.registry.all.map((adapter) => adapter.id),
     },
     'Servicio notifications escuchando',
   );

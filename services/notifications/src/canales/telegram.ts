@@ -7,12 +7,13 @@ import type {
 } from '@odontocrm/contracts';
 
 import type { NotificationsConfig } from '../config.js';
-import type { TelegramUpdate } from '../telegram.js';
+import { telegramMode } from '../config.js';
+import type { TelegramUpdate } from './telegram-api.js';
 import {
   createHttpTransport,
   createSimulatedTransport,
   type TelegramTransport,
-} from '../telegram.js';
+} from './telegram-api.js';
 
 /**
  * Adaptador de Telegram (ADR 0029).
@@ -76,6 +77,10 @@ export const createTelegramAdapter = (options: TelegramAdapterOptions): ChannelA
       offset = update.update_id + 1;
       const inbound = toInbound(update);
       if (inbound === null) continue;
+      // El botón se acusa en el canal: es un detalle de Telegram, no del núcleo.
+      if (update.callback_query !== undefined) {
+        await transport.answerCallbackQuery(update.callback_query.id).catch(() => undefined);
+      }
       // El núcleo decide si es duplicado (idempotencia por eventoId).
       if (entregar !== null) await entregar(inbound);
     }
@@ -87,6 +92,9 @@ export const createTelegramAdapter = (options: TelegramAdapterOptions): ChannelA
 
     iniciar: async (handler) => {
       entregar = handler;
+      // Sin token no hay nada que sondear: el transporte simulado no tiene
+      // actualizaciones y un bucle haría girar el proceso en vacío.
+      if (telegramMode(config) === 'simulado') return;
       if (running || stopping) return;
       running = true;
 

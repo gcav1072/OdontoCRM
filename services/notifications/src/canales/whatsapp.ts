@@ -110,7 +110,14 @@ export const toInboundMessages = (payload: unknown): InboundMessage[] => {
           canal: 'whatsapp',
           direccion: message.from,
           usuario: nombre,
-          texto: message.text?.body ?? message.button?.text ?? null,
+          // El texto del botón («Sí, soy yo») se conserva como texto del mensaje:
+          // la acción es lo que decide el núcleo, el título es contexto legible.
+          texto:
+            message.text?.body ??
+            message.button?.text ??
+            message.interactive?.button_reply?.title ??
+            message.interactive?.list_reply?.title ??
+            null,
           accion,
           eventoId: message.id,
           recibidoEn: new Date(
@@ -128,6 +135,8 @@ export const createWhatsAppAdapter = (options: {
   config: NotificationsConfig;
   /** Para pruebas: entrega los mensajes sin red (el webhook sigue siendo el real). */
   onInbound?: (entrante: InboundMessage) => Promise<void>;
+  /** Un mensaje que falle no puede tumbar el lote: aquí se deja constancia. */
+  onError?: (error: unknown, entrante: InboundMessage) => void;
 }): ChannelAdapter => {
   const { credentials, config } = options;
   let entregar: ((entrante: InboundMessage) => Promise<void>) | null = options.onInbound ?? null;
@@ -252,11 +261,21 @@ export const createWhatsAppAdapter = (options: {
       }
 
       const entrantes = toInboundMessages(peticion.json);
+      let fallidos = 0;
       if (entregar !== null) {
-        for (const entrante of entrantes) await entregar(entrante);
+        for (const entrante of entrantes) {
+          try {
+            await entregar(entrante);
+          } catch (error) {
+            // Meta exige un 200 rápido y reintentar no ayuda (el núcleo ya marcó
+            // el evento como procesado): se cuenta y se sigue con el resto.
+            fallidos += 1;
+            options.onError?.(error, entrante);
+          }
+        }
       }
       // Meta exige un 200 rápido: el núcleo ya procesó y contestó por su cuenta.
-      return { estado: 200, cuerpo: { recibidos: entrantes.length } };
+      return { estado: 200, cuerpo: { recibidos: entrantes.length, fallidos } };
     },
 
     identidad: async () => {

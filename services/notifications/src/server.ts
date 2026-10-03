@@ -15,10 +15,12 @@ export interface CreateNotificationsServerOptions {
 
 /**
  * Servidor del servicio de notificaciones: bandeja de envíos, plantillas
- * editables, vinculación de chats y descarga del `.ics`.
+ * editables, vinculación de canales, webhook de los canales que empujan y
+ * descarga del `.ics`.
  *
- * El bot (poller de Telegram) y la cola de envíos corren en el mismo proceso, en
- * segundo plano: el poller es **uno solo** por diseño (Telegram no admite dos).
+ * El asistente (los adaptadores de Telegram y WhatsApp) y la cola de envíos
+ * corren en el mismo proceso, en segundo plano: el sondeo de Telegram es **uno
+ * solo** por diseño (Telegram no admite dos).
  */
 export const createNotificationsServer = async (
   options: CreateNotificationsServerOptions,
@@ -37,6 +39,25 @@ export const createNotificationsServer = async (
         run: () => checkConnection(database.pool),
       },
     ],
+  });
+
+  /**
+   * El webhook de WhatsApp se firma sobre los **bytes exactos** del cuerpo: si se
+   * re-serializara el JSON, la firma no cuadraría. Se conserva el texto crudo en
+   * la petición y se parsea igual que antes (el resto de rutas no cambia).
+   */
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (request, body, done) => {
+    const raw = typeof body === 'string' ? body : String(body);
+    (request as { rawBody?: string }).rawBody = raw;
+    if (raw.trim() === '') {
+      done(null, undefined);
+      return;
+    }
+    try {
+      done(null, JSON.parse(raw));
+    } catch (error) {
+      done(error as Error, undefined);
+    }
   });
 
   registerNotificationRoutes(app, {
