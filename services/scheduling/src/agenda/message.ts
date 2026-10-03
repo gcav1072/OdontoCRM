@@ -37,6 +37,12 @@ export interface AppointmentMessagePayload {
   channel: 'telegram';
   templateKey: string;
   icsSequence: number;
+  /**
+   * Motivo de la consulta tal como lo escribió el paciente. No se usa en el
+   * mensaje, pero viaja con el evento para que la pantalla del consultorio (Fase
+   * 5) lo muestre sin tener que leer la base de la agenda.
+   */
+  reason: string | null;
 }
 
 export const buildAppointmentMessage = (
@@ -70,5 +76,6 @@ export const buildAppointmentMessage = (
     channel: 'telegram',
     templateKey: APPOINTMENT_CONFIRMATION_TEMPLATE_KEY,
     icsSequence: appointment.icsSequence,
+    reason: request?.reason ?? null,
   };
 };

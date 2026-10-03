@@ -14,7 +14,8 @@ import type { FastifyInstance } from 'fastify';
 /**
  * Rutas que no exigen token: salud y el ciclo de autenticación. `logout` es
  * público a propósito: un usuario con el token de acceso caducado debe poder
- * cerrar sesión con su cookie.
+ * cerrar sesión con su cookie. El **login de pantalla kiosko** también lo es: la
+ * pantalla no tiene usuario ni cookie, cambia su token de dispositivo por un JWT.
  */
 export const PUBLIC_PATHS: readonly string[] = [
   '/health',
@@ -23,6 +24,7 @@ export const PUBLIC_PATHS: readonly string[] = [
   '/api/v1/auth/refresh',
   '/api/v1/auth/logout',
   '/api/v1/auth/health',
+  '/api/v1/auth/device',
 ];
 
 /**

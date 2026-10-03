@@ -29,7 +29,9 @@ const main = async (): Promise<void> => {
   const outbox = createOutboxRunner({
     pool: database.pool,
     boss,
-    intervalMs: 2_000,
+    // 500 ms: de aquí depende que un llamado llegue al displaylobby en menos de
+    // un segundo (Fase 5). El publicador solo consulta su propio outbox.
+    intervalMs: 500,
     onCycle: (result) => {
       app.log.debug(result, 'Eventos de agenda publicados desde el outbox');
     },

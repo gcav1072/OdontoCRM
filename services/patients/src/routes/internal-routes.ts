@@ -4,7 +4,11 @@ import type { FastifyInstance } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
-import { lookupByDocumentText, upsertPatientByDocument } from '../patients/patient-service.js';
+import {
+  getPatientDetail,
+  lookupByDocumentText,
+  upsertPatientByDocument,
+} from '../patients/patient-service.js';
 import type { PatientsServices } from '../services.js';
 
 const channelSchema = z.object({
@@ -16,6 +20,8 @@ const documentParamsSchema = z.object({
   docType: z.enum(['V', 'E', 'P', 'SC']),
   docNumber: z.string().trim().min(1).max(20),
 });
+
+const idParamsSchema = z.object({ id: z.uuid() });
 
 const safeEquals = (left: string, right: string): boolean => {
   const a = Buffer.from(left);
@@ -56,6 +62,16 @@ export const registerInternalRoutes = (app: FastifyInstance, services: PatientsS
       throw new NotFoundError('No hay ningún paciente con ese documento');
     }
     return reply.status(200).send(patient);
+  });
+
+  /**
+   * Ficha del paciente por id, para los servicios que solo tienen el
+   * identificador (la pantalla del consultorio necesita la fecha de nacimiento
+   * para calcular la edad). Responde 404 si no existe.
+   */
+  app.get('/internal/v1/patients/:id', async (request, reply) => {
+    const { id } = parseOrThrow(idParamsSchema, request.params);
+    return reply.status(200).send(await getPatientDetail(db, id));
   });
 
   /**

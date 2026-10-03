@@ -1,7 +1,10 @@
 import {
+  ACCESS_TOKEN_TTL_SECONDS,
   changePasswordSchema,
+  deviceLoginSchema,
   loginSchema,
   permissionsForRoles,
+  type DeviceLoginResponse,
   type LoginResponse,
   type Role,
   type SessionInfo,
@@ -9,13 +12,17 @@ import {
 import {
   AppError,
   UnauthorizedError,
+  hashOpaqueToken,
   parseOrThrow,
   requireIdentity,
+  signAccessToken,
   verifyPassword,
 } from '@odontocrm/kernel';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { writeAuditEvent } from '../audit/audit-service.js';
+import { deviceTokens } from '../db/schema.js';
 import type { IdentityServices } from '../services.js';
 import {
   clearRefreshCookie,
@@ -164,6 +171,69 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
     });
 
     return reply.status(200).send(toLoginResponse(session, user, roles));
+  });
+
+  /**
+   * **Login de pantalla kiosko** (Fase 5): cambia el token de dispositivo (largo,
+   * guardado hasheado) por un JWT de acceso de rol `pantalla`, que solo lleva
+   * `screens:display`. Es público porque la pantalla no tiene usuario ni cookie;
+   * lo que se pide es el token que el administrador generó una sola vez.
+   */
+  app.post('/api/v1/auth/device', async (request: FastifyRequest, reply: FastifyReply) => {
+    const input = parseOrThrow(deviceLoginSchema, request.body ?? {});
+    const context = requestContext(request);
+
+    const rows = await db
+      .select()
+      .from(deviceTokens)
+      .where(
+        and(
+          eq(deviceTokens.tokenHash, hashOpaqueToken(input.token)),
+          eq(deviceTokens.isActive, true),
+          isNull(deviceTokens.revokedAt),
+        ),
+      )
+      .limit(1);
+
+    const device = rows[0];
+    if (device === undefined) {
+      await writeAuditEvent(db, {
+        action: 'device_login_failed',
+        entityType: 'device_token',
+        ip: context.ip,
+        userAgent: context.userAgent,
+        requestId: context.requestId,
+        reason: 'token desconocido, revocado o desactivado',
+      });
+      throw new UnauthorizedError('El token de la pantalla no es válido');
+    }
+
+    // El latido de la pantalla es su `last_seen_at`: sirve para saber si está viva.
+    await db
+      .update(deviceTokens)
+      .set({ lastSeenAt: new Date() })
+      .where(eq(deviceTokens.id, device.id));
+
+    const roles: Role[] = ['pantalla'];
+    const accessToken = await signAccessToken(
+      {
+        sub: device.id,
+        username: device.label,
+        fullName: device.label,
+        roles,
+        permissions: permissionsForRoles(roles),
+        mustChangePassword: false,
+        sid: device.id,
+      },
+      { privateKey },
+    );
+
+    const respuesta: DeviceLoginResponse = {
+      accessToken,
+      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+      device: { id: device.id, label: device.label, kind: device.kind as 'lobby' | 'consultorio' },
+    };
+    return reply.status(200).send(respuesta);
   });
 
   /**
