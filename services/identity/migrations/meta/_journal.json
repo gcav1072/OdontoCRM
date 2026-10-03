@@ -15,6 +15,13 @@
       "when": 1790996732158,
       "tag": "0001_usuarios_sesiones_auditoria",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791028282158,
+      "tag": "0002_eventos_procesados",
+      "breakpoints": true
     }
   ]
 }

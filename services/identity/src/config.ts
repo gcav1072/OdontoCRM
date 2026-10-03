@@ -21,6 +21,12 @@ export const identityEnvSchema = baseEnvSchema.extend({
   IDENTITY_PORT: z.coerce.number().int().min(1).max(65_535).default(4001),
   /** Cadena de conexión de ESTE servicio; la escribe `npm run db:bootstrap`. */
   DATABASE_URL: z.string().min(1),
+  /**
+   * Base donde vive la cola de eventos compartida (pg-boss). La escribe el
+   * bootstrap como `EVENTS_DATABASE_URL`; si falta, se usa la propia base (solo
+   * válido para pruebas de un único servicio).
+   */
+  EVENTS_DATABASE_URL: z.string().min(1).optional(),
   /** Máximo de conexiones del pool (consultorio pequeño). */
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
 

@@ -166,6 +166,24 @@ export const auditEvents = pgTable(
   ],
 );
 
+/**
+ * Registro de eventos ya procesados. Los consumidores de la cola deben ser
+ * idempotentes: si el mismo evento llega dos veces (reintento de pg-boss, doble
+ * entrega), se ignora. La clave es el `eventId` del sobre.
+ */
+export const processedEvents = pgTable(
+  'processed_events',
+  {
+    eventId: uuid('event_id').primaryKey(),
+    eventType: text('event_type').notNull(),
+    producer: text('producer').notNull(),
+    processedAt: timestamp('processed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('idx_processed_events_type').on(table.eventType, table.processedAt)],
+);
+
+export type ProcessedEventRow = typeof processedEvents.$inferSelect;
+
 export type UserRow = typeof users.$inferSelect;
 export type NewUserRow = typeof users.$inferInsert;
 export type UserRoleRow = typeof userRoles.$inferSelect;
