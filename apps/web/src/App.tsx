@@ -10,10 +10,13 @@ import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { ModulePlaceholder } from './pages/ModulePlaceholder';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { PatientDetailPage } from './pages/PatientDetailPage';
+import { PatientRegistryPage } from './pages/PatientRegistryPage';
+import { PatientsPage } from './pages/PatientsPage';
 import { UsersPage } from './pages/UsersPage';
 
 /**
- * Rutas de la Fase 1.
+ * Rutas de la SPA.
  *
  * - `/login` vive fuera del shell.
  * - `/cambiar-contrasena` también, y por eso el gate puede empujar ahí sin
@@ -25,7 +28,7 @@ import { UsersPage } from './pages/UsersPage';
  */
 export const App = () => {
   const modulosFuturos = Object.values(MODULES).filter(
-    (modulo) => modulo.id !== 'inicio' && modulo.id !== 'usuarios',
+    (modulo) => !['inicio', 'usuarios', 'registro', 'pacientes'].includes(modulo.id),
   );
 
   return (
@@ -58,6 +61,36 @@ export const App = () => {
           element={
             <RequirePermission permission="users:manage">
               <UsersPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* Fase 2: el registro se abre a quien puede consultar pacientes (el
+            odontólogo entra a ver la ficha en solo lectura); las acciones de
+            escritura se comprueban dentro de cada pantalla. */}
+        <Route
+          path="registro"
+          element={
+            <RequirePermission permission="patients:read">
+              <PatientRegistryPage />
+            </RequirePermission>
+          }
+        />
+
+        <Route
+          path="pacientes"
+          element={
+            <RequirePermission permission="patients:read">
+              <PatientsPage />
+            </RequirePermission>
+          }
+        />
+
+        <Route
+          path="pacientes/:id"
+          element={
+            <RequirePermission permission="patients:read">
+              <PatientDetailPage />
             </RequirePermission>
           }
         />

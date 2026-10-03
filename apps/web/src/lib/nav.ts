@@ -4,6 +4,7 @@ import {
   ChartColumn,
   ClipboardList,
   ClipboardPlus,
+  ContactRound,
   House,
   IdCard,
   MonitorPlay,
@@ -25,6 +26,7 @@ export type ModuleId =
   | 'inicio'
   | 'recepcion'
   | 'registro'
+  | 'pacientes'
   | 'programacion'
   | 'secretaria'
   | 'consultorio'
@@ -72,6 +74,16 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     icon: IdCard,
     // El módulo registra pacientes además de consultarlos (Fase 2).
     permission: 'patients:write',
+    phase: 2,
+  },
+  pacientes: {
+    id: 'pacientes',
+    path: '/pacientes',
+    labelKey: 'modulo.pacientes.titulo',
+    descriptionKey: 'modulo.pacientes.descripcion',
+    icon: ContactRound,
+    // Consultar la ficha no exige poder registrarla: el odontólogo entra aquí.
+    permission: 'patients:read',
     phase: 2,
   },
   programacion: {
@@ -148,7 +160,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   { titleKey: 'menu.seccion.principal', modules: ['inicio'] },
   {
     titleKey: 'menu.seccion.operacion',
-    modules: ['recepcion', 'registro', 'programacion', 'secretaria', 'consultorio'],
+    modules: ['recepcion', 'registro', 'pacientes', 'programacion', 'secretaria', 'consultorio'],
   },
   { titleKey: 'menu.seccion.analisis', modules: ['reportes', 'auditoria'] },
   { titleKey: 'menu.seccion.admin', modules: ['usuarios', 'pantallas'] },

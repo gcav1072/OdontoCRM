@@ -2,8 +2,12 @@ import {
   AUDIT_ACTIONS,
   PERMISSIONS,
   ROLES,
+  type DocType,
+  type PatientFileKind,
+  type PatientStatus,
   type Permission,
   type Role,
+  type Sex,
 } from '@odontocrm/contracts';
 
 /**
@@ -126,6 +130,8 @@ const DICCIONARIO = {
   'modulo.auditoria.descripcion': 'Bitácora de accesos y de cambios sensibles.',
   'modulo.usuarios.titulo': 'Usuarios',
   'modulo.usuarios.descripcion': 'Cuentas, roles, contraseñas y bloqueos.',
+  'modulo.pacientes.titulo': 'Pacientes',
+  'modulo.pacientes.descripcion': 'Listado, filtros y ficha completa de cada paciente.',
   'modulo.pantallas.titulo': 'Pantallas',
   'modulo.pantallas.descripcion': 'Dispositivos y tokens de las pantallas de sala y consultorio.',
 
@@ -284,6 +290,240 @@ const DICCIONARIO = {
   'usuarios.reset.sinTemporal':
     'La contraseña se restableció, pero el servidor no devolvió ninguna temporal.',
 
+  // --- Pacientes (Fase 2) --------------------------------------------------
+  'pacientes.doc.tipo': 'Tipo',
+  'pacientes.doc.numero': 'Número de documento',
+  'pacientes.doc.numeroPlaceholder': '12.345.678',
+  'pacientes.doc.placeholder': 'V-12.345.678, pasaporte o código del menor',
+  'pacientes.doc.ayuda':
+    'Puedes escribir o pegar el documento en cualquier forma: V-12345678, v 12.345.678 o 12345678.',
+  'pacientes.doc.tipoV': 'V · Venezolano',
+  'pacientes.doc.tipoE': 'E · Extranjero',
+  'pacientes.doc.tipoP': 'P · Pasaporte',
+  'pacientes.doc.tipoSC': 'SC · Menor sin cédula',
+  'pacientes.doc.invalido': 'Revisa el documento',
+  'pacientes.doc.avisoSC':
+    'Menor sin cédula: se guarda con un código temporal SC. Cuando obtenga su cédula se promueve el mismo registro y la historia clínica se conserva.',
+
+  'pacientes.estado.en_espera_cita': 'En espera de cita',
+  'pacientes.estado.activo': 'Activo',
+  'pacientes.estado.inactivo': 'Inactivo',
+  'pacientes.sexo.M': 'Masculino',
+  'pacientes.sexo.F': 'Femenino',
+  'pacientes.sexo.O': 'Otro',
+  'pacientes.sensible': 'Dato sensible',
+  'pacientes.ficticio': 'Dato de prueba',
+  'pacientes.ficticioTexto':
+    'Este paciente es un dato ficticio del modo test: no corresponde a una persona real.',
+  'pacientes.menor': 'Menor de edad',
+
+  'pacientes.campo.fullName': 'Nombre completo',
+  'pacientes.campo.docNumber': 'Documento',
+  'pacientes.campo.birthDate': 'Fecha de nacimiento',
+  'pacientes.campo.phone': 'Teléfono',
+  'pacientes.campo.phoneAlt': 'Teléfono alternativo',
+  'pacientes.campo.email': 'Correo electrónico',
+  'pacientes.campo.address': 'Dirección',
+  'pacientes.campo.occupation': 'Ocupación',
+  'pacientes.campo.notes': 'Notas',
+  'pacientes.campo.sex': 'Sexo',
+  'pacientes.campo.status': 'Estado',
+  'pacientes.campo.docType': 'Tipo de documento',
+  'pacientes.campo.guardian': 'Representante',
+
+  // Formulario de paciente
+  'pacientes.form.seccion': 'Datos del paciente',
+  'pacientes.form.seccionContacto': 'Contacto',
+  'pacientes.form.seccionNotas': 'Notas',
+  'pacientes.form.edad': '{edad} años',
+  'pacientes.form.edadCalculada': 'Edad calculada: {edad} años',
+  'pacientes.form.edadAviso': 'Revisa la fecha de nacimiento: la edad calculada es {edad} años.',
+  'pacientes.form.telefonoAyuda': 'Por ejemplo 0412-1234567.',
+  'pacientes.form.correoAyuda': 'Opcional; se usa para avisos de cita.',
+  'pacientes.form.notasAyuda': 'Motivo de consulta, alergias referidas u otra observación breve.',
+  'pacientes.form.guardianTitulo': 'Representante del menor',
+  'pacientes.form.guardianMotivo':
+    'El paciente es menor de edad ({edad} años): la historia clínica necesita un adulto responsable. Los cuatro datos del representante son obligatorios.',
+  'pacientes.form.guardianNombre': 'Nombre y apellido',
+  'pacientes.form.guardianDocumento': 'Documento del representante',
+  'pacientes.form.guardianParentesco': 'Parentesco',
+  'pacientes.form.guardianParentescoPlaceholder': 'Madre, padre, abuela…',
+  'pacientes.form.guardianTelefono': 'Teléfono del representante',
+  'pacientes.form.guardianOpcional': 'Opcional',
+
+  // Registro (autocompletado por cédula)
+  'registro.titulo': 'Registro de pacientes',
+  'registro.descripcion':
+    'Escribe la cédula y el sistema busca el paciente: si ya existe se abre su ficha en solo lectura.',
+  'registro.buscar': 'Buscar',
+  'registro.buscando': 'Buscando…',
+  'registro.noEncontrado': 'No hay registro con ese documento',
+  'registro.noEncontradoTexto':
+    'No existe ningún paciente con {documento}. Puedes registrarlo ahora: el documento queda cargado en el formulario.',
+  'registro.registrar': 'Registrar paciente',
+  'registro.otroDocumento': 'Buscar otro documento',
+  'registro.creado': 'Paciente registrado con el documento {documento}.',
+  'registro.duplicado': 'Ya existe un paciente con ese documento',
+  'registro.duplicadoTexto':
+    'El documento {documento} ya está registrado. Abre esa ficha en lugar de crear un duplicado.',
+  'registro.abrirExistente': 'Abrir el paciente existente',
+  'registro.errorBusqueda': 'No se pudo completar la búsqueda.',
+  'registro.volverBusqueda': 'Volver a la búsqueda por documento',
+  'registro.acciones': 'Acciones',
+
+  // Alta
+  'pacientes.alta.titulo': 'Nuevo paciente',
+  'pacientes.alta.descripcion':
+    'Los campos marcados con * son obligatorios. Los textos se guardan limpios y el documento no se puede repetir.',
+  'pacientes.alta.enviar': 'Registrar paciente',
+  'pacientes.alta.revisar': 'Revisa los campos marcados antes de continuar.',
+
+  // Ficha en solo lectura
+  'pacientes.lectura.rotulo': 'Modo lectura',
+  'pacientes.lectura.texto':
+    'Estás viendo la ficha sin permiso para modificarla. Para cambiarla pulsa «Editar» y escribe el motivo.',
+  'pacientes.lectura.sinPermiso':
+    'Tu rol solo puede consultar: la edición de datos sensibles la hace secretaría o administración.',
+
+  // Edición con motivo y confirmación
+  'pacientes.editar.titulo': 'Editar la ficha',
+  'pacientes.editar.boton': 'Editar',
+  'pacientes.editar.habilitado': 'Editando',
+  'pacientes.editar.motivoTitulo': 'Motivo del cambio',
+  'pacientes.editar.motivoTexto':
+    'Todo cambio de paciente queda en la auditoría con su justificación. Escribe el motivo (mínimo 3 caracteres) para habilitar los campos.',
+  'pacientes.editar.motivo': 'Motivo',
+  'pacientes.editar.motivoPlaceholder': 'p. ej. Corrige el teléfono que dio el paciente',
+  'pacientes.editar.habilitar': 'Habilitar los campos',
+  'pacientes.editar.salir': 'Salir de la edición',
+  'pacientes.editar.revisar': 'Revisar y guardar',
+  'pacientes.editar.sinCambios': 'No cambiaste ningún dato: no hay nada que guardar.',
+  'pacientes.editar.ok': 'Paciente actualizado. El cambio quedó en la auditoría.',
+  'pacientes.editar.error': 'No se pudo guardar el cambio.',
+  'pacientes.editar.sinPermiso': 'No tienes permiso para editar datos sensibles del paciente.',
+
+  // Confirmación de los cambios
+  'pacientes.confirmar.titulo': 'Confirmar los cambios',
+  'pacientes.confirmar.texto':
+    'Revisa qué cambia antes de guardar. Los cambios de datos sensibles quedan en la auditoría con tu motivo.',
+  'pacientes.confirmar.columna': 'Campo',
+  'pacientes.confirmar.antes': 'Valor anterior',
+  'pacientes.confirmar.despues': 'Valor nuevo',
+  'pacientes.confirmar.sensibles':
+    'Los campos marcados como sensibles quedan en la auditoría con tu motivo.',
+  'pacientes.confirmar.motivo': 'Motivo',
+  'pacientes.confirmar.total': '{total} cambio(s)',
+  'pacientes.confirmar.enviar': 'Confirmar y guardar',
+
+  // Cambio de estado
+  'pacientes.estado.titulo': 'Cambiar el estado de {paciente}',
+  'pacientes.estado.boton': 'Cambiar estado',
+  'pacientes.estado.nuevo': 'Estado nuevo',
+  'pacientes.estado.motivo': 'Motivo del cambio',
+  'pacientes.estado.texto':
+    'El estado se cambia con motivo y queda registrado en la auditoría del paciente.',
+  'pacientes.estado.ok': 'Estado actualizado.',
+  'pacientes.estado.activoTexto':
+    'El paciente vuelve a la lista de activos: podrá agendarse y atenderse con normalidad.',
+  'pacientes.estado.inactivoTexto':
+    'El paciente queda inactivo: no se agendarán citas nuevas, pero su historia y sus adjuntos se conservan.',
+  'pacientes.estado.esperaTexto':
+    'El paciente queda «en espera de cita»: está registrado y pendiente de programar.',
+
+  // Adjuntos
+  'pacientes.adjuntos.titulo': 'Adjuntos',
+  'pacientes.adjuntos.texto':
+    'Radiografías, fotos y PDF autorizados. Se guardan en el almacén del consultorio y solo se ven desde la ficha.',
+  'pacientes.adjuntos.vacio': 'Este paciente todavía no tiene adjuntos.',
+  'pacientes.adjuntos.subir': 'Subir adjunto',
+  'pacientes.adjuntos.subiendo': 'Subiendo…',
+  'pacientes.adjuntos.archivo': 'Archivo',
+  'pacientes.adjuntos.archivoAyuda': 'JPEG, PNG, WebP o PDF. Tamaño máximo {max} por archivo.',
+  'pacientes.adjuntos.sinArchivo': 'Elige un archivo.',
+  'pacientes.adjuntos.mimeNoPermitido': 'Solo se aceptan imágenes JPEG, PNG, WebP o PDF.',
+  'pacientes.adjuntos.demasiadoGrande': 'El archivo supera el máximo de {max}.',
+  'pacientes.adjuntos.tipo': 'Tipo de documento',
+  'pacientes.adjuntos.leyenda': 'Leyenda',
+  'pacientes.adjuntos.leyendaPlaceholder': 'p. ej. Radiografía periapical del 36',
+  'pacientes.adjuntos.ok': 'Adjunto subido.',
+  'pacientes.adjuntos.error': 'No se pudo subir el adjunto.',
+  'pacientes.adjuntos.columna.archivo': 'Archivo',
+  'pacientes.adjuntos.columna.tipo': 'Tipo',
+  'pacientes.adjuntos.columna.tamano': 'Tamaño',
+  'pacientes.adjuntos.columna.fecha': 'Subido',
+  'pacientes.adjuntos.columna.acciones': 'Acciones',
+  'pacientes.adjuntos.descargar': 'Descargar',
+  'pacientes.adjuntos.descargaError': 'No se pudo descargar el adjunto.',
+  'pacientes.adjuntos.borrar': 'Borrar',
+  'pacientes.adjuntos.borrarTitulo': 'Borrar «{archivo}»',
+  'pacientes.adjuntos.borrarTexto':
+    'El archivo se elimina del almacén y no se puede recuperar. La operación queda registrada.',
+  'pacientes.adjuntos.borrado': 'Adjunto borrado.',
+  'pacientes.adjuntos.borradoError': 'No se pudo borrar el adjunto.',
+  'pacientes.adjuntos.cargando': 'Cargando adjuntos…',
+  'pacientes.adjuntos.errorLista': 'No se pudieron cargar los adjuntos.',
+  'pacientes.adjuntos.total': '{total} archivo(s)',
+  'pacientes.adjuntos.tipo.radiografia': 'Radiografía',
+  'pacientes.adjuntos.tipo.foto': 'Foto',
+  'pacientes.adjuntos.tipo.pdf': 'PDF',
+  'pacientes.adjuntos.tipo.consentimiento': 'Consentimiento',
+  'pacientes.adjuntos.tipo.laboratorio': 'Laboratorio',
+  'pacientes.adjuntos.tipo.otro': 'Otro',
+
+  // Historial clínico y otros módulos que llegan después
+  'pacientes.historia.proximamente':
+    'La historia clínica, las sesiones y los récipes llegan en las fases 6 y 7. Aquí ya quedan los datos del paciente y sus adjuntos.',
+
+  // Lista y filtros
+  'pacientes.lista.titulo': 'Pacientes',
+  'pacientes.lista.descripcion':
+    'Búsqueda por nombre, documento o teléfono, con filtros por estado, tipo de documento, sexo y edad.',
+  'pacientes.lista.nuevo': 'Nuevo paciente',
+  'pacientes.lista.buscar': 'Buscar',
+  'pacientes.lista.buscarPlaceholder': 'Nombre, documento o teléfono',
+  'pacientes.lista.limpiar': 'Limpiar filtros',
+  'pacientes.lista.columna.documento': 'Documento',
+  'pacientes.lista.columna.nombre': 'Paciente',
+  'pacientes.lista.columna.sexo': 'Sexo',
+  'pacientes.lista.columna.telefono': 'Teléfono',
+  'pacientes.lista.columna.estado': 'Estado',
+  'pacientes.lista.columna.acciones': 'Acciones',
+  'pacientes.lista.ver': 'Ver la ficha',
+  'pacientes.lista.vacio': 'No hay pacientes que coincidan con la búsqueda o los filtros.',
+  'pacientes.lista.vacioTitulo': 'Sin resultados',
+  'pacientes.lista.cargando': 'Cargando pacientes…',
+  'pacientes.lista.error': 'No se pudieron cargar los pacientes.',
+  'pacientes.lista.indicador': 'Mostrando {desde}–{hasta} de {total}',
+  'pacientes.lista.paginacion': 'Página {pagina} de {paginas} · {total} pacientes',
+  'pacientes.lista.anterior': 'Anterior',
+  'pacientes.lista.siguiente': 'Siguiente',
+  'pacientes.lista.porPagina': 'Por página',
+
+  // Filtros
+  'pacientes.filtro.estado': 'Estado',
+  'pacientes.filtro.docType': 'Tipo de documento',
+  'pacientes.filtro.sexo': 'Sexo',
+  'pacientes.filtro.todos': 'Todos',
+  'pacientes.filtro.edadMin': 'Edad mínima',
+  'pacientes.filtro.edadMax': 'Edad máxima',
+  'pacientes.filtro.edad': 'Edad',
+  'pacientes.filtro.rangoInvalido': 'La edad mínima no puede superar la máxima',
+
+  // Ficha
+  'pacientes.ficha.titulo': 'Ficha del paciente',
+  'pacientes.ficha.cargando': 'Cargando la ficha…',
+  'pacientes.ficha.error': 'No se pudo cargar la ficha del paciente.',
+  'pacientes.ficha.noEncontrado': 'No existe un paciente con ese identificador.',
+  'pacientes.ficha.datos': 'Datos del paciente',
+  'pacientes.ficha.contacto': 'Contacto',
+  'pacientes.ficha.representante': 'Representante',
+  'pacientes.ficha.sinRepresentante': 'Sin representante registrado.',
+  'pacientes.ficha.actualizado': 'Última actualización',
+  'pacientes.ficha.creado': 'Registrado {fecha}',
+  'pacientes.ficha.verEnRegistro': 'Ver en el registro',
+  'pacientes.ficha.volverLista': 'Volver al listado',
+  'pacientes.ficha.adjuntos': '{total} adjunto(s)',
+
   // --- 403 / 404 -----------------------------------------------------------
   'prohibido.titulo': 'Sin permiso',
   'prohibido.texto':
@@ -441,3 +681,49 @@ export const isPermission = (value: string): value is Permission =>
 
 /** Acciones de auditoría declaradas en los contratos (para filtros de la Fase 9). */
 export const AUDIT_ACTION_CODES = AUDIT_ACTIONS;
+
+/** Etiquetas de los catálogos del paciente (Fase 2). */
+export const DOC_TYPE_LABELS: Readonly<Record<DocType, string>> = {
+  V: t('pacientes.doc.tipoV'),
+  E: t('pacientes.doc.tipoE'),
+  P: t('pacientes.doc.tipoP'),
+  SC: t('pacientes.doc.tipoSC'),
+};
+
+export const SEX_LABELS: Readonly<Record<Sex, string>> = {
+  M: t('pacientes.sexo.M'),
+  F: t('pacientes.sexo.F'),
+  O: t('pacientes.sexo.O'),
+};
+
+export const PATIENT_STATUS_LABELS: Readonly<Record<PatientStatus, string>> = {
+  en_espera_cita: t('pacientes.estado.en_espera_cita'),
+  activo: t('pacientes.estado.activo'),
+  inactivo: t('pacientes.estado.inactivo'),
+};
+
+export const PATIENT_FILE_KIND_LABELS: Readonly<Record<PatientFileKind, string>> = {
+  radiografia: t('pacientes.adjuntos.tipo.radiografia'),
+  foto: t('pacientes.adjuntos.tipo.foto'),
+  pdf: t('pacientes.adjuntos.tipo.pdf'),
+  consentimiento: t('pacientes.adjuntos.tipo.consentimiento'),
+  laboratorio: t('pacientes.adjuntos.tipo.laboratorio'),
+  otro: t('pacientes.adjuntos.tipo.otro'),
+};
+
+/** Etiqueta de un campo del paciente; el índice incluye los que no son sensibles. */
+export const PATIENT_FIELD_LABELS: Readonly<Record<string, string>> = {
+  docNumber: t('pacientes.campo.docNumber'),
+  docType: t('pacientes.campo.docType'),
+  fullName: t('pacientes.campo.fullName'),
+  birthDate: t('pacientes.campo.birthDate'),
+  sex: t('pacientes.campo.sex'),
+  phone: t('pacientes.campo.phone'),
+  phoneAlt: t('pacientes.campo.phoneAlt'),
+  email: t('pacientes.campo.email'),
+  address: t('pacientes.campo.address'),
+  occupation: t('pacientes.campo.occupation'),
+  notes: t('pacientes.campo.notes'),
+  status: t('pacientes.campo.status'),
+  guardian: t('pacientes.campo.guardian'),
+};

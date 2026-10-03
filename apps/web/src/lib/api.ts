@@ -30,6 +30,12 @@ export interface RequestOptions {
   anonymous?: boolean;
   /** No intenta renovar la sesión ante un 401 (evita bucles en las rutas de auth). */
   skipRefresh?: boolean;
+  /**
+   * Cuerpo ya construido (`FormData` para los adjuntos). Cuando viene, se envía
+   * tal cual y **no** se pone `Content-Type`: lo escribe el navegador con el
+   * `boundary` del multipart, que es imposible de adivinar a mano.
+   */
+  rawBody?: BodyInit;
 }
 
 export interface ApiErrorInit {
@@ -39,6 +45,8 @@ export interface ApiErrorInit {
   fieldErrorList?: readonly ProblemFieldError[];
   fieldErrors?: Readonly<Record<string, string>>;
   requestId?: string | null;
+  /** Cuerpo RFC 7807 completo, para extensiones propias (por ejemplo `existingPatientId` del 409). */
+  payload?: Record<string, unknown> | null;
   cause?: unknown;
 }
 
@@ -52,6 +60,7 @@ export class ApiError extends Error {
   readonly fieldErrors: Readonly<Record<string, string>>;
   readonly fieldErrorList: readonly ProblemFieldError[];
   readonly requestId: string | null;
+  readonly payload: Record<string, unknown> | null;
 
   constructor(init: ApiErrorInit) {
     super(init.detail, init.cause === undefined ? undefined : { cause: init.cause });
@@ -62,6 +71,7 @@ export class ApiError extends Error {
     this.fieldErrors = init.fieldErrors ?? {};
     this.fieldErrorList = init.fieldErrorList ?? [];
     this.requestId = init.requestId ?? null;
+    this.payload = init.payload ?? null;
   }
 
   get sinConexion(): boolean {
@@ -176,6 +186,7 @@ const aApiError = (status: number, cuerpo: unknown): ApiError => {
     fieldErrorList,
     fieldErrors,
     requestId: problema ? (leerTexto(problema, 'requestId') ?? null) : null,
+    payload: problema,
   });
 };
 
@@ -240,7 +251,8 @@ const enviar = async (method: string, path: string, options: RequestOptions): Pr
       headers,
       // Sin `include` la cookie de refresco (httpOnly) no viaja.
       credentials: 'include',
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body:
+        options.rawBody ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
       signal: options.signal,
     });
   } catch (causa) {
@@ -319,4 +331,58 @@ export const api = {
     solicitar<T>('POST', path, { ...options, body }),
   patch: <T>(path: string, body?: unknown, options?: Omit<RequestOptions, 'body'>): Promise<T> =>
     solicitar<T>('PATCH', path, { ...options, body }),
+  delete: <T>(path: string, options?: Omit<RequestOptions, 'body'>): Promise<T> =>
+    solicitar<T>('DELETE', path, options),
+  /** Petición con el cuerpo crudo (multipart); mantiene 401 → refresco → reintento. */
+  request: <T>(method: string, path: string, options?: RequestOptions): Promise<T> =>
+    solicitar<T>(method, path, options),
+};
+
+/** Respuesta binaria autenticada (descarga de adjuntos). */
+export const apiBinary = async (
+  method: string,
+  path: string,
+  options: Omit<RequestOptions, 'body' | 'rawBody'> = {},
+): Promise<Blob> => {
+  const pedir = async (): Promise<Response> => {
+    const headers = new Headers({ Accept: '*/*' });
+    const token = getAccessToken();
+    if (token !== null && options.anonymous !== true) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    try {
+      return await fetch(construirUrl(path, options.query), {
+        method,
+        headers,
+        credentials: 'include',
+        signal: options.signal,
+      });
+    } catch (causa) {
+      if (options.signal?.aborted === true) {
+        throw new ApiError({
+          status: 0,
+          title: t('api.titulo.cancelado'),
+          detail: t('api.error.cancelado'),
+          cause: causa,
+        });
+      }
+      throw new ApiError({
+        status: 0,
+        title: t('api.titulo.sinConexion'),
+        detail: t('api.error.sinConexion'),
+        cause: causa,
+      });
+    }
+  };
+
+  let response = await pedir();
+
+  if (response.status === 401 && options.skipRefresh !== true) {
+    const renovada = await intentarRenovarSesion();
+    if (renovada) response = await pedir();
+    else notificarSesionPerdida();
+  }
+
+  if (!response.ok) throw aApiError(response.status, await leerCuerpo(response));
+  return response.blob();
 };
