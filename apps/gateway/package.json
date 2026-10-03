@@ -1,0 +1,20 @@
+{
+  "name": "@odontocrm/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API Gateway: punto único de entrada, proxy por recurso, verificación de tokens y límite de peticiones",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/index.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@fastify/http-proxy": "^11.6.3",
+    "@fastify/rate-limit": "^11.2.0",
+    "@odontocrm/contracts": "*",
+    "@odontocrm/kernel": "*",
+    "fastify": "^5.12.5"
+  }
+}
