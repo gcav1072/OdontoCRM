@@ -1,5 +1,14 @@
 import { baseEnvSchema, loadConfig } from '@odontocrm/kernel';
+import { isAbsolute, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
 import { z } from 'zod';
+
+/** Raíz del repositorio desde la ubicación de este archivo (src/ o dist/). */
+export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+
+export const resolveFromRepoRoot = (path: string): string =>
+  isAbsolute(path) ? path : resolve(REPO_ROOT, path);
 
 /** Una URL vacía en el `.env` equivale a «ese servicio todavía no existe». */
 const optionalUrl = z.preprocess(
@@ -19,6 +28,9 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
   /** Origen permitido para la SPA (CORS). */
   WEB_ORIGIN: z.string().min(1).default('http://127.0.0.1:5173'),
 
+  /** Clave pública EdDSA con la que se verifica el JWT de acceso. */
+  JWT_PUBLIC_KEY_PATH: z.string().min(1).default('./services/identity/.keys/jwt-public.pem'),
+
   IDENTITY_URL: z.string().url(),
   PATIENTS_URL: optionalUrl,
   SCHEDULING_URL: optionalUrl,
@@ -33,3 +45,6 @@ export type GatewayConfig = z.infer<typeof gatewayEnvSchema>;
 
 export const loadGatewayConfig = (env: Record<string, string | undefined> = process.env) =>
   loadConfig({ service: 'gateway', schema: gatewayEnvSchema, env });
+
+export const jwtPublicKeyPath = (config: GatewayConfig): string =>
+  resolveFromRepoRoot(config.JWT_PUBLIC_KEY_PATH);

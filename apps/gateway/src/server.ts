@@ -1,22 +1,26 @@
 import cors from '@fastify/cors';
 import httpProxy from '@fastify/http-proxy';
 import rateLimit from '@fastify/rate-limit';
-import { buildServer, isProduction } from '@odontocrm/kernel';
+import { buildServer, isProduction, loadPublicKey } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 
-import type { GatewayConfig } from './config.js';
+import { registerAuthGuard } from './auth-guard.js';
+import { jwtPublicKeyPath, type GatewayConfig } from './config.js';
 import { buildProxyRoutes } from './routes.js';
 
 export interface CreateGatewayServerOptions {
   config: GatewayConfig;
+  /** Clave pública opcional (en las pruebas se inyecta una generada al vuelo). */
+  publicKey?: Awaited<ReturnType<typeof loadPublicKey>>;
 }
 
 /**
- * Gateway: punto único de entrada. Verifica tokens (Fase 1), limita peticiones
- * y reenvía al servicio que corresponde según el recurso.
+ * Gateway: punto único de entrada. Verifica el JWT de acceso, publica la
+ * identidad en cabeceras internas, limita peticiones y reenvía al servicio que
+ * corresponde según el recurso.
  *
  * El gateway **no tiene base de datos**: es solo borde (proxy, CORS, límites y
- * validación de tokens). Cualquier estado que necesite vivirá en identity.
+ * validación de tokens). Cualquier estado vive en identity.
  */
 export const createGatewayServer = async (
   options: CreateGatewayServerOptions,
@@ -31,6 +35,9 @@ export const createGatewayServer = async (
     production: isProduction(config),
     checks: [],
   });
+
+  const publicKey = options.publicKey ?? (await loadPublicKey(jwtPublicKeyPath(config)));
+  registerAuthGuard(app, publicKey);
 
   await app.register(cors, {
     origin: [config.WEB_ORIGIN],
@@ -50,7 +57,9 @@ export const createGatewayServer = async (
       await scope.register(httpProxy, {
         upstream: route.upstream,
         prefix: route.prefix,
-        rewritePrefix: '',
+        // `@fastify/http-proxy` usa '' como reemplazo por defecto (recortaría la
+        // ruta); aquí se conserva salvo que la ruta indique otra cosa.
+        rewritePrefix: route.rewritePrefix ?? route.prefix,
       });
     });
     app.log.info({ prefix: route.prefix, upstream: route.upstream }, route.description);
