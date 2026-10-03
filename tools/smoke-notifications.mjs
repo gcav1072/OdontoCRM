@@ -99,6 +99,24 @@ check(
     typeof status.body?.counts?.manualPending === 'number',
   `en cola ${status.body?.counts?.queued}, manuales ${status.body?.counts?.manualPending}`,
 );
+check(
+  'el estado lista los canales activos con sus capacidades',
+  Array.isArray(status.body?.canales) &&
+    status.body.canales.some(
+      (canal) => canal.canal === 'telegram' && typeof canal.capacidades?.botones === 'boolean',
+    ),
+  (status.body?.canales ?? []).map((canal) => canal.canal).join(', ') || '—',
+);
+
+// El webhook de un canal que empuja es **público**: Meta no manda JWT y la
+// seguridad la da la firma. Que responda 404/403 y no 401 demuestra la excepción
+// del gateway y que la ruta está enrutada al servicio.
+const webhook = await call('/api/v1/notifications/webhook/whatsapp');
+check(
+  'el webhook del canal es público (no exige JWT)',
+  webhook.status !== 401,
+  `status ${webhook.status}`,
+);
 
 // 3) Plantillas editables.
 const templates = await call('/api/v1/notifications/templates');
