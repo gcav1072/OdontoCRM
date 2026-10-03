@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791069705891,
+      "tag": "0000_pantallas_sala_consultorio",
+      "breakpoints": true
+    }
+  ]
+}
