@@ -1,0 +1,99 @@
+/**
+ * Tokens del sistema de diseño: tema claro y oscuro en un solo lugar.
+ *
+ * Se declaran dentro de `@theme` para que Tailwind genere las utilidades
+ * (`bg-canvas`, `text-ink-muted`, `border-border`, `rounded-card`, …) y, a la
+ * vez, deje los mismos nombres como variables CSS en `:root`. El tema oscuro
+ * solo reasigna esos nombres bajo la clase `.dark`, que pone `ThemeProvider` en
+ * `<html>`; como las utilidades consumen `var(--color-*)`, el cambio de tema es
+ * inmediato y sin duplicar componentes.
+ *
+ * Este archivo lo importa `apps/web/src/index.css` (el paquete @odontocrm/ui no
+ * lo importa desde TypeScript a propósito: un bloque `@theme` solo lo entiende
+ * el compilador de Tailwind, no el navegador).
+ */
+
+@theme {
+  /* Superficies */
+  --color-canvas: #f4f7fa;
+  --color-surface: #ffffff;
+  --color-surface-muted: #eef2f7;
+
+  /* Bordes y separadores */
+  --color-border: #d8e0ea;
+  --color-border-strong: #b8c4d4;
+
+  /* Texto: los tres niveles cumplen contraste AA sobre canvas y surface */
+  --color-ink: #101c2e;
+  --color-ink-muted: #4a5a70;
+  --color-ink-subtle: #64748b;
+
+  /* Marca (azul clínico sobrio) */
+  --color-primary: #0e7490;
+  --color-primary-hover: #155e75;
+  --color-primary-ink: #ffffff;
+  --color-accent: #0d9488;
+
+  /* Semánticos: pensados como color de texto, icono o borde sobre superficies claras */
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-danger: #b91c1c;
+  --color-info: #1d4ed8;
+
+  /* Relleno sólido de acciones destructivas (el texto va encima) */
+  --color-danger-strong: #b91c1c;
+  --color-danger-strong-hover: #991b1b;
+  --color-danger-strong-ink: #ffffff;
+
+  /* Foco visible y velo de los diálogos */
+  --color-focus: #0891b2;
+  --color-overlay: rgb(15 23 42 / 0.55);
+
+  /* Tipografía, radios y sombras */
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.08);
+  --shadow-panel: 0 -10px 30px rgb(15 23 42 / 0.14);
+}
+
+/**
+ * Tema oscuro. Solo se reasignan los tokens que cambian; el resto se hereda.
+ * Se ajustan los semánticos hacia tonos claros porque ahora son texto sobre
+ * fondo oscuro (y los rellenos sólidos hacia tonos medios para que el texto
+ * blanco siga siendo legible).
+ */
+.dark {
+  --color-canvas: #0a1020;
+  --color-surface: #121b2c;
+  --color-surface-muted: #1a2438;
+
+  --color-border: #26324a;
+  --color-border-strong: #3a4a66;
+
+  --color-ink: #e9eff8;
+  --color-ink-muted: #a8b6ca;
+  --color-ink-subtle: #8b9cb3;
+
+  --color-primary: #2aa7c9;
+  --color-primary-hover: #46bcd9;
+  --color-primary-ink: #04222c;
+  --color-accent: #2dd4bf;
+
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-info: #60a5fa;
+
+  --color-danger-strong: #dc2626;
+  --color-danger-strong-hover: #ef4444;
+  --color-danger-strong-ink: #ffffff;
+
+  --color-focus: #38bdf8;
+  --color-overlay: rgb(2 6 23 / 0.7);
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.3);
+  --shadow-panel: 0 -10px 30px rgb(0 0 0 / 0.5);
+}
