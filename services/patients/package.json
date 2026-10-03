@@ -1,0 +1,23 @@
+{
+  "name": "@odontocrm/patients",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pacientes: identificación, datos de contacto, representante, archivos y búsqueda",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/index.js",
+    "db:migrate": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/db/migrate.js",
+    "seed:demo": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/seed.js"
+  },
+  "dependencies": {
+    "@fastify/multipart": "^9.2.1",
+    "@odontocrm/contracts": "*",
+    "@odontocrm/db": "*",
+    "@odontocrm/events": "*",
+    "@odontocrm/kernel": "*",
+    "@odontocrm/testing": "*",
+    "fastify": "^5.12.5"
+  }
+}
