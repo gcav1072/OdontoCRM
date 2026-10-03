@@ -66,6 +66,7 @@ Los secretos **nunca** se versionan ni se comparten por chat: ver
 | `npm run typecheck` | Igual que `build`: el proyecto se valida compilando |
 | `npm test` | Pruebas unitarias y de integración (Vitest) |
 | `npm run test:watch` | Pruebas en modo vigilancia |
+| `npm run test:integration` | Pruebas contra PostgreSQL real (outbox y cola `pg-boss`); requiere `db:bootstrap` y `db:migrate` |
 | `npm run lint` | ESLint (incluye las reglas anti SQL-injection) |
 | `npm run format` / `format:check` | Prettier |
 | `npm run check-secrets` | Busca secretos antes de commitear (`-- --all` audita todo) |

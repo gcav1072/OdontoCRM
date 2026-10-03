@@ -62,6 +62,10 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 ### Verificado
 
 - `npm run verify` en verde: escáner de secretos, ESLint, Prettier, compilación y **56 pruebas**.
+- **Pruebas de integración contra PostgreSQL real** (`npm run test:integration`, 4 pruebas): el
+  outbox guarda, reclama y marca como publicado; rechaza un `eventId` duplicado; reprograma el
+  reintento cuando la entrega falla; y la cola **pg-boss** declara la cola, recibe el evento y lo
+  consume un trabajador.
 - `npm run db:bootstrap` crea las **8 bases** con su rol propietario y es **idempotente** (segunda
   ejecución: «ya existía» / «conservada del .env», sin rotar contraseñas).
 - `npm run db:migrate` aplica la migración inicial (`users` + `outbox_events`) en PostgreSQL 18.6.
