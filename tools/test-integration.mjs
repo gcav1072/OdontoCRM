@@ -53,6 +53,9 @@ const extraEnv = {
   TEST_EVENTS_DATABASE_URL:
     process.env.TEST_EVENTS_DATABASE_URL ??
     readEnvValue('services/identity/.env', 'EVENTS_DATABASE_URL'),
+  TEST_SCHEDULING_DATABASE_URL:
+    process.env.TEST_SCHEDULING_DATABASE_URL ??
+    readEnvValue('services/scheduling/.env', 'DATABASE_URL'),
 };
 
 const url = new URL(databaseUrl);
