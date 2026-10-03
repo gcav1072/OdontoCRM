@@ -57,6 +57,13 @@ export const formatTicket = (sequenceValue: number): TicketDisplay => {
 };
 
 /**
+ * Valor de la secuencia a partir de un ticket ya interpretado. Sirve para volver
+ * del texto (`#000123`) al número con el que se ordena la cola.
+ */
+export const ticketSequence = (ticket: TicketDisplay): number =>
+  ticket.cycle * TICKET_SEQUENCE_MAX + ticket.number;
+
+/**
  * Traduce lo que el paciente escribe en el bot (`#000123`, `A-000001`,
  * `000123`) a un valor comparable. Devuelve `null` si no es un ticket válido.
  */

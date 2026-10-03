@@ -77,6 +77,24 @@ export interface DeviceTokenCreated {
   token: string;
 }
 
+/**
+ * La pantalla kiosko canjea su token de dispositivo por un **JWT de acceso**
+ * (rol `pantalla`, solo `screens:display`): así entra por el gateway como
+ * cualquier cliente y el token de larga vida nunca viaja en cada petición.
+ */
+export const deviceLoginSchema = z.object({
+  token: z.string().trim().min(10, 'El token del dispositivo no es válido'),
+});
+
+export type DeviceLoginInput = z.infer<typeof deviceLoginSchema>;
+
+export interface DeviceLoginResponse {
+  accessToken: string;
+  /** Segundos de vida del token de acceso (se vuelve a canjear antes de caducar). */
+  expiresIn: number;
+  device: { id: string; label: string; kind: 'lobby' | 'consultorio' };
+}
+
 /** Cabeceras que el gateway añade tras validar el token. */
 export const IDENTITY_HEADERS = {
   userId: 'x-user-id',
