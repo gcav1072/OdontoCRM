@@ -24,6 +24,11 @@ const SERVICES = [
     script: 'services/patients/dist/db/migrate.js',
     envFile: 'services/patients/.env',
   },
+  {
+    name: 'scheduling',
+    script: 'services/scheduling/dist/db/migrate.js',
+    envFile: 'services/scheduling/.env',
+  },
 ];
 
 const args = process.argv.slice(2);

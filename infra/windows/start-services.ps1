@@ -46,7 +46,8 @@ foreach ($url in @(
     'http://127.0.0.1:8090/health',
     'http://127.0.0.1:8090/api/v1/auth/health',
     'http://127.0.0.1:4001/ready',
-    'http://127.0.0.1:4002/ready'
+    'http://127.0.0.1:4002/ready',
+    'http://127.0.0.1:4003/ready'
   )) {
   try {
     $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5
