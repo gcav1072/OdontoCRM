@@ -15,6 +15,10 @@ import { PatientDetailPage } from './pages/PatientDetailPage';
 import { PatientRegistryPage } from './pages/PatientRegistryPage';
 import { PatientsPage } from './pages/PatientsPage';
 import { SchedulingPage } from './pages/SchedulingPage';
+import { ScreensPage } from './pages/ScreensPage';
+import { ScreenConsultorioPage } from './pages/ScreenConsultorioPage';
+import { ScreenLobbyPage } from './pages/ScreenLobbyPage';
+import { SecretariaPage } from './pages/SecretariaPage';
 import { UsersPage } from './pages/UsersPage';
 
 /**
@@ -23,6 +27,8 @@ import { UsersPage } from './pages/UsersPage';
  * - `/login` vive fuera del shell.
  * - `/cambiar-contrasena` también, y por eso el gate puede empujar ahí sin
  *   ofrecer navegación mientras la contraseña siga siendo temporal.
+ * - `/pantalla/lobby` y `/pantalla/consultorio` son **kiosko**: sin shell, sin
+ *   sesión de usuario, con el token de dispositivo de la pantalla.
  * - Todo lo demás pasa por `RequireAuth` → `MustChangePasswordGate` → `AppShell`
  *   y, cuando corresponde, por `RequirePermission`.
  * - Los módulos de fases siguientes ya tienen ruta y permiso: se ven como
@@ -31,14 +37,26 @@ import { UsersPage } from './pages/UsersPage';
 export const App = () => {
   const modulosFuturos = Object.values(MODULES).filter(
     (modulo) =>
-      !['inicio', 'usuarios', 'registro', 'pacientes', 'programacion', 'notificaciones'].includes(
-        modulo.id,
-      ),
+      ![
+        'inicio',
+        'usuarios',
+        'registro',
+        'pacientes',
+        'programacion',
+        'notificaciones',
+        'secretaria',
+        'pantallas',
+      ].includes(modulo.id),
   );
 
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+
+      {/* Kiosko: la pantalla se configura con su token y no usa la sesión del
+          personal. Se monta fuera del shell para que no haya navegación. */}
+      <Route path="/pantalla/lobby" element={<ScreenLobbyPage />} />
+      <Route path="/pantalla/consultorio" element={<ScreenConsultorioPage />} />
 
       <Route
         path="/cambiar-contrasena"
@@ -119,6 +137,27 @@ export const App = () => {
           element={
             <RequirePermission permission="scheduling:read">
               <NotificationsPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* Fase 5: la secretaría se abre a quien puede consultar la agenda; las
+            acciones del flujo exigen `scheduling:write` y se comprueban dentro. */}
+        <Route
+          path="secretaria"
+          element={
+            <RequirePermission permission="scheduling:read">
+              <SecretariaPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* Fase 5: administración de las pantallas kiosko. */}
+        <Route
+          path="pantallas"
+          element={
+            <RequirePermission permission="screens:manage">
+              <ScreensPage />
             </RequirePermission>
           }
         />

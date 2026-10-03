@@ -10,13 +10,18 @@ import {
   type ChangePasswordInput,
   type ChangePatientStatusInput,
   type Channel,
+  type ConsultationState,
   type CreatePatientInput,
   type CreateRequestInput,
   type CreateUserInput,
   type DayCapacity,
   type DayView,
   type DeletePatientInput,
+  type DeviceLoginResponse,
+  type DeviceTokenCreated,
+  type DeviceTokenInput,
   type LinkCode,
+  type LobbyState,
   type LoginInput,
   type LoginResponse,
   type MarkContactedInput,
@@ -43,6 +48,10 @@ import {
   type RescheduleAppointmentInput,
   type RetryNotificationInput,
   type Role,
+  type ScreenDevice,
+  type ScreenDeviceInput,
+  type ScreenDeviceList,
+  type ScreenDeviceUpdate,
   type SessionInfo,
   type SetCapacityInput,
   type SlotTemplate,
@@ -113,6 +122,73 @@ export const authApi = {
 
   changePassword: (input: ChangePasswordInput): Promise<LoginResponse> =>
     api.post<LoginResponse>('/auth/password/change', input, { skipRefresh: true }),
+
+  /**
+   * Canjea el token de una pantalla kiosko por un JWT de rol `pantalla`. Es
+   * anónimo a propósito: la pantalla no tiene usuario ni cookie, solo el token
+   * que el administrador generó una vez.
+   */
+  deviceLogin: (token: string): Promise<DeviceLoginResponse> =>
+    api.post<DeviceLoginResponse>(
+      '/auth/device',
+      { token },
+      { anonymous: true, skipRefresh: true },
+    ),
+};
+
+/** Tokens de dispositivo de las pantallas (los gestiona identity). */
+export const devicesApi = {
+  list: (signal?: AbortSignal): Promise<{ items: DeviceTokenListEntry[]; total: number }> =>
+    api.get<{ items: DeviceTokenListEntry[]; total: number }>('/devices', { signal }),
+
+  create: (input: DeviceTokenInput): Promise<DeviceTokenCreated> =>
+    api.post<DeviceTokenCreated>('/devices', input),
+
+  revoke: (id: string): Promise<void> => api.delete<void>(`/devices/${id}`),
+};
+
+/** Entrada del catálogo de tokens de dispositivo (`GET /devices`). */
+export interface DeviceTokenListEntry {
+  id: string;
+  label: string;
+  kind: 'lobby' | 'consultorio';
+  createdAt: string;
+  lastSeenAt: string | null;
+  isActive: boolean;
+  revokedAt: string | null;
+}
+
+/* ── Pantallas de sala y consultorio (Fase 5) ──────────────────────────────── */
+
+/**
+ * Pantallas kiosko: administración (registrar, ajustar la voz, desactivar) y el
+ * estado que pintan. El **flujo en vivo** no está aquí: se abre con `fetch` para
+ * poder mandar el JWT del dispositivo en la cabecera (`lib/kiosko.ts`).
+ */
+export const screensApi = {
+  devices: (signal?: AbortSignal): Promise<ScreenDeviceList> =>
+    api.get<ScreenDeviceList>('/screens/devices', { signal }),
+
+  createDevice: (input: ScreenDeviceInput): Promise<ScreenDevice> =>
+    api.post<ScreenDevice>('/screens/devices', input),
+
+  updateDevice: (id: string, input: ScreenDeviceUpdate): Promise<ScreenDevice> =>
+    api.patch<ScreenDevice>(`/screens/devices/${id}`, input),
+
+  deleteDevice: (id: string): Promise<void> => api.delete<void>(`/screens/devices/${id}`),
+
+  conectadas: (signal?: AbortSignal): Promise<{ lobby: number; consultorio: number }> =>
+    api.get<{ lobby: number; consultorio: number }>('/screens/conectadas', { signal }),
+
+  /** Ficha de la pantalla que llama, con sus ajustes (voz, volumen, resalte). */
+  actual: (signal?: AbortSignal): Promise<ScreenDevice> =>
+    api.get<ScreenDevice>('/screens/device', { signal }),
+
+  lobby: (signal?: AbortSignal): Promise<LobbyState> =>
+    api.get<LobbyState>('/screens/lobby', { signal }),
+
+  consultorio: (signal?: AbortSignal): Promise<ConsultationState> =>
+    api.get<ConsultationState>('/screens/consultorio', { signal }),
 };
 
 export const usersApi = {
