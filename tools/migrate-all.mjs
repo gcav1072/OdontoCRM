@@ -34,6 +34,11 @@ const SERVICES = [
     script: 'services/notifications/dist/db/migrate.js',
     envFile: 'services/notifications/.env',
   },
+  {
+    name: 'screens',
+    script: 'services/screens/dist/db/migrate.js',
+    envFile: 'services/screens/.env',
+  },
 ];
 
 const args = process.argv.slice(2);
