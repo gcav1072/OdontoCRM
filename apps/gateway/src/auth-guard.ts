@@ -25,7 +25,16 @@ export const PUBLIC_PATHS: readonly string[] = [
   '/api/v1/auth/health',
 ];
 
-export const isPublicPath = (path: string): boolean => PUBLIC_PATHS.includes(path);
+/**
+ * Prefijos públicos. El **webhook de los canales** que empujan (WhatsApp Cloud
+ * API) es público porque Meta no manda JWT: la seguridad la da la firma
+ * (`x-hub-signature-256` con el `app_secret`), que el adaptador verifica antes de
+ * procesar nada. El canal va en la ruta (`/webhook/whatsapp`).
+ */
+export const PUBLIC_PREFIXES: readonly string[] = ['/api/v1/notifications/webhook/'];
+
+export const isPublicPath = (path: string): boolean =>
+  PUBLIC_PATHS.includes(path) || PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix));
 
 /** Ruta sin la cadena de consulta. */
 export const pathOf = (url: string): string => {
