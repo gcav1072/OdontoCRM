@@ -147,6 +147,8 @@ export const auditEvents = pgTable(
     action: text('action').notNull(),
     entityType: text('entity_type').notNull(),
     entityId: text('entity_id'),
+    /** Línea legible del hecho, para la consulta de auditoría. */
+    summary: text('summary'),
     before: jsonb('before').$type<Record<string, unknown> | null>(),
     after: jsonb('after').$type<Record<string, unknown> | null>(),
     changedFields: text('changed_fields')

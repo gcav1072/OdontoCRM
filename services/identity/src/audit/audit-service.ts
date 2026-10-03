@@ -9,6 +9,8 @@ export interface WriteAuditInput {
   action: AuditAction;
   entityType: string;
   entityId?: string | null;
+  /** Línea legible del hecho, para la lista de auditoría. */
+  summary?: string | null;
   actorId?: string | null;
   actorUsername?: string | null;
   before?: Record<string, unknown> | null;
@@ -35,6 +37,7 @@ export const writeAuditEvent = async (
       action: input.action,
       entityType: input.entityType,
       entityId: input.entityId ?? null,
+      summary: input.summary ?? null,
       actorId: input.actorId ?? null,
       actorUsername: input.actorUsername ?? null,
       before: input.before ?? null,
@@ -105,6 +108,7 @@ export const queryAuditEvents = async (db: IdentityDb, query: AuditQuery): Promi
       action: row.action,
       entityType: row.entityType,
       entityId: row.entityId,
+      summary: row.summary,
       before: row.before ?? null,
       after: row.after ?? null,
       changedFields: row.changedFields,
