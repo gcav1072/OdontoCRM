@@ -92,7 +92,9 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     labelKey: 'modulo.programacion.titulo',
     descriptionKey: 'modulo.programacion.descripcion',
     icon: CalendarRange,
-    permission: 'scheduling:write',
+    // Consultar la jornada basta para entrar (el odontólogo la lee); las
+    // acciones de escritura se comprueban dentro de la pantalla.
+    permission: 'scheduling:read',
     phase: 3,
   },
   secretaria: {

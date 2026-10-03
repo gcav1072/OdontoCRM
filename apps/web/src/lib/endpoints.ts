@@ -1,12 +1,27 @@
 import {
+  type AppointmentStatus,
+  type AppointmentSummary,
+  type AssignAppointmentInput,
+  type AttendAppointmentInput,
   type AuditEventRecord,
+  type CancelAppointmentInput,
+  type CancelRequestInput,
   type ChangePasswordInput,
   type ChangePatientStatusInput,
+  type Channel,
   type CreatePatientInput,
+  type CreateRequestInput,
   type CreateUserInput,
+  type DayCapacity,
+  type DayView,
   type DeletePatientInput,
   type LoginInput,
   type LoginResponse,
+  type NoShowAppointmentInput,
+  type NotifyBatch,
+  type NotifyBatchInput,
+  type NotifyBatchResult,
+  type NotifyPreviewInput,
   type Paginated,
   type PatientDetail,
   type PatientFile,
@@ -15,9 +30,15 @@ import {
   type PatientLookupResult,
   type PatientSummary,
   type Permission,
+  type RequestSummary,
   type ResetPasswordInput,
+  type RescheduleAppointmentInput,
   type Role,
   type SessionInfo,
+  type SetCapacityInput,
+  type SlotTemplate,
+  type SlotTemplateInput,
+  type StatusHistoryEntry,
   type UpdatePatientInput,
   type UpdateUserInput,
   type UserSummary,
@@ -205,4 +226,146 @@ export const patientsApi = {
 
   deleteFile: (id: string, fileId: string): Promise<void> =>
     api.delete<void>(`/patients/${id}/files/${fileId}`),
+};
+
+/* ── Agenda (Fase 3) ───────────────────────────────────────────────────────── */
+
+/** Filtros de la cola de solicitudes: `order` alterna ticket y antigüedad. */
+export interface RequestsListParams {
+  status?: AppointmentStatus;
+  onlyWaiting?: boolean;
+  channel?: Channel;
+  search?: string;
+  order?: 'ticket' | 'antiguedad';
+  page?: number;
+  pageSize?: number;
+}
+
+export interface AppointmentsListParams {
+  date?: string;
+  from?: string;
+  to?: string;
+  status?: AppointmentStatus;
+  patientId?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+/** Lista de plantillas de franjas: el contrato devuelve `{ items }`, sin paginar. */
+export interface SlotTemplateList {
+  items: SlotTemplate[];
+}
+
+/** Lista de cupos por rango de fechas: `{ items }`, sin paginar. */
+export interface DayCapacityList {
+  items: DayCapacity[];
+}
+
+/** Historial de estados de una cita o solicitud. */
+export interface StatusHistoryList {
+  items: StatusHistoryEntry[];
+  total: number;
+}
+
+/**
+ * Solicitudes con ticket (Fase 3). El ticket (`#000123`, `A-000001`) llega ya
+ * formateado desde la API: la interfaz nunca lo compone.
+ */
+export const requestsApi = {
+  list: (params: RequestsListParams, signal?: AbortSignal): Promise<Paginated<RequestSummary>> =>
+    api.get<Paginated<RequestSummary>>('/requests', {
+      query: { ...params } as QueryParams,
+      signal,
+    }),
+
+  create: (input: CreateRequestInput): Promise<RequestSummary> =>
+    api.post<RequestSummary>('/requests', input),
+
+  get: (id: string, signal?: AbortSignal): Promise<RequestSummary> =>
+    api.get<RequestSummary>(`/requests/${id}`, { signal }),
+
+  cancel: (id: string, input: CancelRequestInput): Promise<RequestSummary> =>
+    api.post<RequestSummary>(`/requests/${id}/cancel`, input),
+};
+
+/**
+ * Jornada: cupo del día, franjas, plantillas y aviso en lote. `PUT /capacity`
+ * responde 200 con `warning` cuando el cupo queda por debajo de lo asignado (no
+ * borra nada), así que la respuesta se muestra tal cual.
+ */
+export const agendaApi = {
+  day: (date: string, signal?: AbortSignal): Promise<DayView> =>
+    api.get<DayView>(`/agenda/days/${date}`, { signal }),
+
+  capacities: (from: string, to: string, signal?: AbortSignal): Promise<DayCapacityList> =>
+    api.get<DayCapacityList>('/agenda/capacity', { query: { from, to }, signal }),
+
+  setCapacity: (input: SetCapacityInput): Promise<DayCapacity> =>
+    api.request<DayCapacity>('PUT', '/agenda/capacity', { body: input }),
+
+  templates: (signal?: AbortSignal): Promise<SlotTemplateList> =>
+    api.get<SlotTemplateList>('/agenda/templates', { signal }),
+
+  createTemplate: (input: SlotTemplateInput): Promise<SlotTemplate> =>
+    api.post<SlotTemplate>('/agenda/templates', input),
+
+  updateTemplate: (id: string, input: Partial<SlotTemplateInput>): Promise<SlotTemplate> =>
+    api.patch<SlotTemplate>(`/agenda/templates/${id}`, input),
+
+  deleteTemplate: (id: string): Promise<void> => api.delete<void>(`/agenda/templates/${id}`),
+
+  /** Vista previa exacta del lote: los mensajes que se prepararán, uno por cita. */
+  notifyPreview: (input: NotifyPreviewInput, signal?: AbortSignal): Promise<NotifyBatch> =>
+    api.post<NotifyBatch>('/agenda/notify/preview', input, { signal }),
+
+  notify: (input: NotifyBatchInput): Promise<NotifyBatchResult> =>
+    api.post<NotifyBatchResult>('/agenda/notify', input),
+};
+
+/**
+ * Citas del día. Cada transición de estado la decide la máquina de estados de
+ * los contratos; aquí solo está el transporte, con los errores RFC 7807 que
+ * traen datos útiles en `error.payload` (día completo, franja ocupada,
+ * transición no permitida, tolerancia de inasistencia).
+ */
+export const appointmentsApi = {
+  assign: (input: AssignAppointmentInput): Promise<AppointmentSummary> =>
+    api.post<AppointmentSummary>('/appointments', input),
+
+  list: (
+    params: AppointmentsListParams,
+    signal?: AbortSignal,
+  ): Promise<Paginated<AppointmentSummary>> =>
+    api.get<Paginated<AppointmentSummary>>('/appointments', {
+      query: { ...params } as QueryParams,
+      signal,
+    }),
+
+  get: (id: string, signal?: AbortSignal): Promise<AppointmentSummary> =>
+    api.get<AppointmentSummary>(`/appointments/${id}`, { signal }),
+
+  history: (id: string, signal?: AbortSignal): Promise<StatusHistoryList> =>
+    api.get<StatusHistoryList>(`/appointments/${id}/history`, { signal }),
+
+  checkIn: (id: string): Promise<AppointmentSummary> =>
+    api.post<AppointmentSummary>(`/appointments/${id}/check-in`),
+
+  call: (id: string): Promise<AppointmentSummary> =>
+    api.post<AppointmentSummary>(`/appointments/${id}/call`),
+
+  start: (id: string): Promise<AppointmentSummary> =>
+    api.post<AppointmentSummary>(`/appointments/${id}/start`),
+
+  attend: (id: string, input: AttendAppointmentInput): Promise<AppointmentSummary> =>
+    api.post<AppointmentSummary>(`/appointments/${id}/attend`, input),
+
+  noShow: (id: string, input: NoShowAppointmentInput): Promise<AppointmentSummary> =>
+    api.post<AppointmentSummary>(`/appointments/${id}/no-show`, input),
+
+  cancel: (id: string, input: CancelAppointmentInput): Promise<AppointmentSummary> =>
+    api.post<AppointmentSummary>(`/appointments/${id}/cancel`, input),
+
+  reschedule: (id: string, input: RescheduleAppointmentInput): Promise<AppointmentSummary> =>
+    api.post<AppointmentSummary>(`/appointments/${id}/reschedule`, input),
 };

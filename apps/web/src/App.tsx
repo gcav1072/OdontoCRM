@@ -13,6 +13,7 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { PatientDetailPage } from './pages/PatientDetailPage';
 import { PatientRegistryPage } from './pages/PatientRegistryPage';
 import { PatientsPage } from './pages/PatientsPage';
+import { SchedulingPage } from './pages/SchedulingPage';
 import { UsersPage } from './pages/UsersPage';
 
 /**
@@ -28,7 +29,8 @@ import { UsersPage } from './pages/UsersPage';
  */
 export const App = () => {
   const modulosFuturos = Object.values(MODULES).filter(
-    (modulo) => !['inicio', 'usuarios', 'registro', 'pacientes'].includes(modulo.id),
+    (modulo) =>
+      !['inicio', 'usuarios', 'registro', 'pacientes', 'programacion'].includes(modulo.id),
   );
 
   return (
@@ -91,6 +93,17 @@ export const App = () => {
           element={
             <RequirePermission permission="patients:read">
               <PatientDetailPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* Fase 3: la jornada se abre a quien puede consultar la agenda; las
+            acciones (asignar, cupos, notificar, sobrecupo) se comprueban dentro. */}
+        <Route
+          path="programacion"
+          element={
+            <RequirePermission permission="scheduling:read">
+              <SchedulingPage />
             </RequirePermission>
           }
         />

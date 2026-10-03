@@ -1,13 +1,20 @@
 import {
+  APPOINTMENT_STATUSES,
   AUDIT_ACTIONS,
+  CHANNELS,
   PERMISSIONS,
   ROLES,
+  type AppointmentStatus,
+  type CapacitySource,
+  type Channel,
   type DocType,
   type PatientFileKind,
   type PatientStatus,
   type Permission,
   type Role,
   type Sex,
+  type SlotKind,
+  type SlotState,
 } from '@odontocrm/contracts';
 
 /**
@@ -588,6 +595,7 @@ const DICCIONARIO = {
   'permiso.scheduling:read': 'Consultar la agenda',
   'permiso.scheduling:write': 'Programar la jornada y asignar cupos',
   'permiso.scheduling:notify': 'Enviar notificaciones de citas',
+  'permiso.scheduling:overbook': 'Autorizar sobrecupo en un día completo',
   'permiso.screens:manage': 'Administrar pantallas y dispositivos',
   'permiso.screens:display': 'Ver las pantallas de sala y consultorio',
   'permiso.clinical:read': 'Consultar la historia clínica',
@@ -613,6 +621,342 @@ const DICCIONARIO = {
   'auditoria.password_reset': 'Contraseña restablecida',
   'auditoria.device_token_created': 'Token de pantalla creado',
   'auditoria.device_token_revoked': 'Token de pantalla revocado',
+
+  // --- Programación de la jornada (Fase 3) --------------------------------
+  'programacion.titulo': 'Programación de la jornada',
+  'programacion.descripcion':
+    'Cola de solicitudes con ticket, cupo del día, franjas, citas y aviso al paciente.',
+
+  // Estados de la cita (máquina de estados, plan §5.1)
+  'programacion.estado.en_espera_cita': 'En espera de cita',
+  'programacion.estado.programada': 'Programada',
+  'programacion.estado.notificada': 'Notificada',
+  'programacion.estado.en_sala_espera': 'En sala de espera',
+  'programacion.estado.llamado': 'Llamado',
+  'programacion.estado.en_consulta': 'En consulta',
+  'programacion.estado.atendido': 'Atendido',
+  'programacion.estado.no_asistio': 'No asistió',
+  'programacion.estado.cancelada': 'Cancelada',
+  'programacion.estado.reprogramada': 'Reprogramada',
+
+  // Canales de la solicitud
+  'programacion.canal.telegram': 'Telegram',
+  'programacion.canal.registro': 'Registro',
+  'programacion.canal.telefono': 'Teléfono',
+  'programacion.canal.presencial': 'Presencial',
+
+  // Jornada: fecha y carga
+  'programacion.fecha.anterior': 'Día anterior',
+  'programacion.fecha.siguiente': 'Día siguiente',
+  'programacion.fecha.hoy': 'Hoy',
+  'programacion.fecha.campo': 'Fecha de la jornada',
+  'programacion.fecha.recargar': 'Recargar la jornada',
+  'programacion.fecha.cargando': 'Cargando la jornada…',
+  'programacion.fecha.error': 'No se pudo cargar la jornada.',
+  'programacion.fecha.noLaborable': 'Día no laborable',
+  'programacion.fecha.noLaborableTexto':
+    'No hay plantillas de franjas para {dia}: la jornada se puede programar igual con hora manual.',
+  'programacion.fecha.enEspera': '{total} en espera',
+
+  // Cupo del día
+  'programacion.cupo.titulo': 'Cupo del día',
+  'programacion.cupo.contador': '{asignados}/{cupo}',
+  'programacion.cupo.contadorEtiqueta': 'Citas asignadas sobre el cupo del día',
+  'programacion.cupo.procedencia': 'Procedencia: {fuente}',
+  'programacion.cupo.fuente.explicito': 'cupo explícito',
+  'programacion.cupo.fuente.plantilla': 'calculado de las plantillas de franjas',
+  'programacion.cupo.fuente.defecto': 'cupo por defecto del consultorio',
+  'programacion.cupo.disponibles': '{disponibles} cupo(s) disponible(s)',
+  'programacion.cupo.completo': 'El día está completo',
+  'programacion.cupo.completoTexto':
+    'Se asignaron las {cupo} citas del cupo. Solo un administrador puede autorizar una cita por encima del cupo (sobrecupo) y queda en la auditoría.',
+  'programacion.cupo.editar': 'Editar el cupo',
+  'programacion.cupo.dialogoTitulo': 'Cupo del {fecha}',
+  'programacion.cupo.dialogoTexto':
+    'El cupo se puede cambiar en cualquier momento, incluso después de asignar. Bajarlo por debajo de lo asignado avisa pero no borra ninguna cita.',
+  'programacion.cupo.numero': 'Cupo de citas del día',
+  'programacion.cupo.numeroAyuda': 'Entre 0 y {max} citas.',
+  'programacion.cupo.notas': 'Notas del cupo',
+  'programacion.cupo.motivo': 'Motivo del cambio',
+  'programacion.cupo.ok': 'Cupo actualizado.',
+  'programacion.cupo.aviso': 'Aviso del cupo',
+  'programacion.cupo.avisoPrevio':
+    'Con {cupo} de cupo quedarían {asignados} citas asignadas: el servidor avisará y no borrará ninguna.',
+  'programacion.cupo.explicito': 'Cupo explícito: {cupo}',
+  'programacion.cupo.sinExplicito':
+    'Sin cupo explícito: se deduce de las plantillas o del valor por defecto.',
+  'programacion.ocupacion': 'Ocupación del día',
+  'programacion.ocupacion.barra': 'Ocupación del día: {asignados} de {cupo} citas asignadas.',
+  'programacion.contador.programadas': 'Programadas',
+  'programacion.contador.notificadas': 'Notificadas',
+  'programacion.contador.enSala': 'En sala',
+  'programacion.contador.atendidas': 'Atendidas',
+  'programacion.contador.noAsistio': 'No asistió',
+  'programacion.contador.canceladas': 'Canceladas',
+
+  // Franjas del día
+  'programacion.franja.titulo': 'Franjas del día',
+  'programacion.franja.ayuda':
+    'Arrastra una solicitud de la cola hasta una franja libre, o selecciónala en la cola y pulsa la franja (también con Enter).',
+  'programacion.franja.libre': 'Libre',
+  'programacion.franja.ocupada': 'Ocupada',
+  'programacion.franja.fuera_de_jornada': 'Fuera de jornada',
+  'programacion.franja.tipo.franja': 'Franja',
+  'programacion.franja.tipo.manual': 'Hora manual',
+  'programacion.franja.vacio': 'Este día no tiene franjas definidas.',
+  'programacion.franja.ocupadaPor': 'Ocupada por {paciente}',
+  'programacion.franja.etiqueta': '{inicio} a {fin} · {estado}',
+  'programacion.franja.asignarA': 'Asignar {paciente} a las {hora}',
+  'programacion.franja.asignar': 'Asignar una solicitud a las {hora}',
+  'programacion.franja.seleccionada': 'Solicitud seleccionada: {ticket} · {paciente}',
+  'programacion.franja.sinSeleccion':
+    'No hay ninguna solicitud seleccionada: elige una en la cola para asignarla con el teclado.',
+  'programacion.franja.sinPermiso':
+    'Tu rol no puede asignar citas: necesitas el permiso de programación (scheduling:write).',
+  'programacion.franja.verCita': 'Ver la cita de {paciente}',
+  'programacion.franja.total': '{total} franja(s)',
+
+  // Cola de solicitudes
+  'programacion.cola.titulo': 'Solicitudes',
+  'programacion.cola.descripcion': 'Tickets en espera y ya programados, con su antigüedad.',
+  'programacion.cola.nueva': 'Nueva solicitud',
+  'programacion.cola.filtro.estado': 'Estado',
+  'programacion.cola.filtro.soloEspera': 'Solo en espera',
+  'programacion.cola.filtro.canal': 'Canal',
+  'programacion.cola.filtro.buscar': 'Buscar',
+  'programacion.cola.filtro.buscarPlaceholder': 'Ticket, nombre o documento',
+  'programacion.cola.filtro.todos': 'Todos',
+  'programacion.cola.orden': 'Orden',
+  'programacion.cola.orden.ticket': 'Por ticket',
+  'programacion.cola.orden.antiguedad': 'Por antigüedad',
+  'programacion.cola.cargando': 'Cargando las solicitudes…',
+  'programacion.cola.error': 'No se pudieron cargar las solicitudes.',
+  'programacion.cola.vacio': 'No hay solicitudes con estos filtros.',
+  'programacion.cola.vacioTitulo': 'Sin solicitudes',
+  'programacion.cola.total': '{total} solicitud(es)',
+  'programacion.cola.pagina': 'Página {pagina} de {paginas}',
+  'programacion.cola.anterior': 'Anterior',
+  'programacion.cola.siguiente': 'Siguiente',
+  'programacion.cola.antiguedadHoy': 'Pidió cita hoy',
+  'programacion.cola.antiguedad': '{dias} día(s) esperando',
+  'programacion.cola.cita': 'Cita: {fecha} · {hora}',
+  'programacion.cola.seleccionar': 'Seleccionar la solicitud {ticket} de {paciente}',
+  'programacion.cola.seleccionada': 'Seleccionada',
+  'programacion.cola.asignar': 'Asignar',
+  'programacion.cola.cancelar': 'Cancelar',
+  'programacion.cola.yaAsignada': 'Ya tiene cita',
+  'programacion.cola.arrastrar': 'Arrastra la fila a una franja libre de la jornada.',
+
+  // Nueva solicitud
+  'programacion.nueva.titulo': 'Nueva solicitud',
+  'programacion.nueva.texto':
+    'Busca al paciente ya registrado y describe el motivo: la API entrega el ticket al crear la solicitud.',
+  'programacion.nueva.paciente': 'Paciente',
+  'programacion.nueva.buscar': 'Buscar paciente',
+  'programacion.nueva.buscarPlaceholder': 'Nombre, documento o teléfono',
+  'programacion.nueva.buscando': 'Buscando…',
+  'programacion.nueva.sinResultados': 'Sin coincidencias. Prueba con otro nombre o documento.',
+  'programacion.nueva.errorBusqueda': 'No se pudo buscar el paciente.',
+  'programacion.nueva.documento': 'Documento exacto',
+  'programacion.nueva.buscarDocumento': 'Buscar por documento',
+  'programacion.nueva.noEncontrado':
+    'No hay ningún paciente con el documento {documento}. Regístralo primero en el módulo Registro.',
+  'programacion.nueva.elegido': 'Paciente elegido',
+  'programacion.nueva.cambiar': 'Elegir otro paciente',
+  'programacion.nueva.sinPaciente': 'Elige un paciente de la lista para continuar.',
+  'programacion.nueva.motivo': 'Motivo de la consulta',
+  'programacion.nueva.canal': 'Canal de la solicitud',
+  'programacion.nueva.prioridad': 'Prioridad',
+  'programacion.nueva.prioridadAyuda': 'De 0 (normal) a 9 (más urgente).',
+  'programacion.nueva.notas': 'Notas',
+  'programacion.nueva.enviar': 'Crear la solicitud',
+  'programacion.nueva.ok': 'Solicitud creada con el ticket {ticket}.',
+  'programacion.nueva.irARegistro': 'Ir al registro de pacientes',
+
+  // Cancelar una solicitud
+  'programacion.solicitud.cancelarTitulo': 'Cancelar la solicitud {ticket}',
+  'programacion.solicitud.cancelarTexto':
+    'La solicitud queda cancelada con su motivo en el historial; el ticket se conserva.',
+  'programacion.solicitud.motivo': 'Motivo de la cancelación',
+  'programacion.solicitud.ok': 'Solicitud {ticket} cancelada.',
+
+  // Asignación de cita
+  'programacion.asignar.titulo': 'Asignar cita',
+  'programacion.asignar.texto':
+    'La solicitud se convierte en cita con fecha y hora. La franja o la hora manual la decides aquí.',
+  'programacion.asignar.ticket': 'Ticket {ticket}',
+  'programacion.asignar.fecha': 'Fecha de la cita',
+  'programacion.asignar.modalidad': 'Tipo de hora',
+  'programacion.asignar.franja': 'Franja disponible',
+  'programacion.asignar.manual': 'Hora manual',
+  'programacion.asignar.hora': 'Hora (HH:MM)',
+  'programacion.asignar.duracion': 'Duración (minutos)',
+  'programacion.asignar.notas': 'Notas de la cita',
+  'programacion.asignar.sinFranjas':
+    'No quedan franjas libres ese día: usa una hora manual o cambia la fecha.',
+  'programacion.asignar.enviar': 'Asignar la cita',
+  'programacion.asignar.ok': 'Cita asignada a las {hora} del {fecha}.',
+  'programacion.asignar.cargandoDia': 'Comprobando las franjas del día…',
+  'programacion.asignar.manualAviso':
+    'La hora manual no ocupa una franja de la rejilla: es para casos puntuales fuera de la jornada.',
+
+  // Sobrecupo (solo admin)
+  'programacion.sobrecupo.titulo': 'El día está completo: hace falta autorizar el sobrecupo',
+  'programacion.sobrecupo.texto':
+    'El {fecha} tiene {asignados} citas asignadas sobre un cupo de {cupo}. Para asignar una más hay que autorizar el sobrecupo y explicar el motivo: queda en la auditoría.',
+  'programacion.sobrecupo.motivo': 'Motivo del sobrecupo',
+  'programacion.sobrecupo.motivoAyuda': 'Mínimo 3 caracteres; explica por qué se autoriza.',
+  'programacion.sobrecupo.autorizar': 'Autorizar el sobrecupo y asignar',
+  'programacion.sobrecupo.sinPermiso':
+    'El día está completo y tu rol no puede autorizar sobrecupos (permiso «scheduling:overbook», solo administración).',
+  'programacion.sobrecupo.sinPermisoCorto':
+    'Solo un administrador puede autorizar sobrecupo en un día completo.',
+
+  // Reprogramar
+  'programacion.reprogramar.titulo': 'Reprogramar la cita de {paciente}',
+  'programacion.reprogramar.texto':
+    'Reprogramar no borra nada: la cita actual queda como «reprogramada» y se crea una nueva enlazada con el mismo ticket.',
+  'programacion.reprogramar.motivo': 'Motivo de la reprogramación',
+  'programacion.reprogramar.enviar': 'Reprogramar la cita',
+  'programacion.reprogramar.ok': 'Cita reprogramada para el {fecha} a las {hora}.',
+  'programacion.reprogramar.enlazada': 'Reprogramada',
+
+  // Acciones según la máquina de estados
+  'programacion.accion.asignar': 'Asignar fecha y hora',
+  'programacion.accion.notificar': 'Notificar al paciente',
+  'programacion.accion.checkIn': 'Registrar llegada',
+  'programacion.accion.llamado': 'Llamar al paciente',
+  'programacion.accion.llamado2': 'Segundo llamado',
+  'programacion.accion.consulta': 'Pasar a consulta',
+  'programacion.accion.atendido': 'Marcar atendido',
+  'programacion.accion.inasistencia': 'Marcar inasistencia',
+  'programacion.accion.cancelar': 'Cancelar la cita',
+  'programacion.accion.reprogramar': 'Reprogramar',
+  'programacion.accion.historial': 'Historial',
+  'programacion.accion.sinAcciones': 'Sin acciones para este estado',
+  'programacion.accion.para': 'Acciones para {paciente}',
+  'programacion.accion.checkInOk': 'Llegada registrada.',
+  'programacion.accion.llamadoOk': 'Paciente llamado.',
+  'programacion.accion.consultaOk': 'El paciente pasó a consulta.',
+  'programacion.accion.inasistenciaPendiente':
+    'La inasistencia se puede marcar {minutos} min después de la hora de la cita; faltan {faltan} min.',
+  'programacion.accion.llamados': '{total} llamado(s)',
+  'programacion.accion.segundoLlamado': '2.º llamado',
+  'programacion.accion.hora': '{inicio} a {fin}',
+
+  // Marcar atendido
+  'programacion.atendido.titulo': 'Marcar atendido a {paciente}',
+  'programacion.atendido.texto':
+    'La historia clínica y las sesiones llegan en la Fase 6. Mientras tanto, marcar «atendido» exige un motivo que queda registrado en la auditoría; cuando exista la sesión clínica cerrada, se enlazará sola.',
+  'programacion.atendido.motivo': 'Motivo (obligatorio en esta fase)',
+  'programacion.atendido.motivoCorto': 'Escribe el motivo (mínimo 3 caracteres)',
+  'programacion.atendido.motivoAyuda':
+    'Por ejemplo: sesión clínica en papel, control de ortodoncia.',
+  'programacion.atendido.enviar': 'Marcar atendido',
+  'programacion.atendido.ok': 'Cita marcada como atendida.',
+
+  // Inasistencia
+  'programacion.inasistencia.titulo': 'Marcar la inasistencia de {paciente}',
+  'programacion.inasistencia.texto':
+    'Solo se puede marcar después de la hora de la cita más {minutos} minutos de tolerancia. El servidor lo valida igual.',
+  'programacion.inasistencia.motivo': 'Motivo (opcional)',
+  'programacion.inasistencia.enviar': 'Marcar inasistencia',
+  'programacion.inasistencia.ok': 'Inasistencia registrada.',
+
+  // Cancelar cita
+  'programacion.cancelar.titulo': 'Cancelar la cita de {paciente}',
+  'programacion.cancelar.texto':
+    'La cita queda cancelada con su motivo en el historial y libera su lugar del cupo.',
+  'programacion.cancelar.motivo': 'Motivo de la cancelación',
+  'programacion.cancelar.enviar': 'Cancelar la cita',
+  'programacion.cancelar.ok': 'Cita cancelada.',
+
+  // Motivo genérico de las acciones
+  'programacion.motivo.opcional': 'opcional',
+  'programacion.accion.ok': 'Acción aplicada.',
+
+  // Errores con datos útiles del cuerpo RFC 7807
+  'programacion.error.diaCompleto':
+    'El día tiene {asignados} citas asignadas sobre un cupo de {cupo}.',
+  'programacion.error.franjaOcupada': 'La franja de las {hora} ya está ocupada por otra cita.',
+  'programacion.error.transicion':
+    'No se puede pasar de «{desde}» a «{hasta}». Transiciones permitidas: {permitidas}.',
+  'programacion.error.permiso':
+    'La operación la rechazó el servidor por permisos: pídeselo a la administración.',
+
+  // Historial de la cita
+  'programacion.historial.titulo': 'Historial de la cita',
+  'programacion.historial.texto':
+    'Cada cambio de estado queda registrado con su actor, su hora y su motivo.',
+  'programacion.historial.cargando': 'Cargando el historial…',
+  'programacion.historial.error': 'No se pudo cargar el historial.',
+  'programacion.historial.vacio': 'Esta cita todavía no tiene cambios de estado.',
+  'programacion.historial.total': '{total} movimiento(s)',
+  'programacion.historial.columna.cambio': 'Cambio',
+  'programacion.historial.columna.motivo': 'Motivo',
+  'programacion.historial.columna.actor': 'Quién',
+  'programacion.historial.columna.cuando': 'Cuándo',
+  'programacion.historial.de': '{desde} → {hasta}',
+  'programacion.historial.creacion': 'Creación de la cita',
+  'programacion.historial.sistema': 'Sistema',
+
+  // Citas del día
+  'programacion.citas.titulo': 'Citas del día',
+  'programacion.citas.columna.hora': 'Hora',
+  'programacion.citas.columna.paciente': 'Paciente',
+  'programacion.citas.columna.ticket': 'Ticket',
+  'programacion.citas.columna.estado': 'Estado',
+  'programacion.citas.columna.llamados': 'Llamados',
+  'programacion.citas.columna.acciones': 'Acciones',
+  'programacion.citas.total': '{total} cita(s) en la jornada',
+  'programacion.citas.vacio':
+    'Todavía no hay citas para este día. Selecciona una solicitud de la cola y pulsa una franja libre para asignar la primera.',
+  'programacion.citas.manual': 'Hora manual',
+
+  // Aviso en lote
+  'programacion.notificar.boton': 'Notificar',
+  'programacion.notificar.titulo': 'Avisos del {fecha}',
+  'programacion.notificar.texto': 'Estos son exactamente los mensajes que se prepararán.',
+  'programacion.notificar.individual': 'Aviso de {paciente}',
+  'programacion.notificar.individualTexto':
+    'Se prepara solo el aviso de esta cita; el resto quedan como están.',
+  'programacion.notificar.fase4':
+    'En esta fase el aviso queda registrado y encolado: el envío real por Telegram llega en la Fase 4. No se puede afirmar que el paciente ya lo recibió.',
+  'programacion.notificar.cargando': 'Preparando la vista previa…',
+  'programacion.notificar.error': 'No se pudo preparar la vista previa de los avisos.',
+  'programacion.notificar.vacio': 'No hay citas notificables en esta fecha.',
+  'programacion.notificar.total': '{total} cita(s) en el lote',
+  'programacion.notificar.prepararan': '{total} mensaje(s) por preparar',
+  'programacion.notificar.seEnvia': 'Se enviará',
+  'programacion.notificar.noSeEnvia': 'No se enviará',
+  'programacion.notificar.motivoOmision': 'Por qué no',
+  'programacion.notificar.asunto': 'Asunto',
+  'programacion.notificar.cuerpo': 'Mensaje',
+  'programacion.notificar.destino': 'Destino: {telefono}',
+  'programacion.notificar.sinTelefono': 'sin teléfono registrado',
+  'programacion.notificar.hora': 'Cita: {fecha} · {hora}',
+  'programacion.notificar.reenviar': 'Reenviar también los ya notificados',
+  'programacion.notificar.reenviarAyuda':
+    'Sin marcar, las citas que ya figuran como notificadas se omiten.',
+  'programacion.notificar.confirmar': 'Preparar los avisos',
+  'programacion.notificar.confirmarUno': 'Preparar el aviso',
+  'programacion.notificar.ok': 'Avisos preparados: {notified}. Omitidos: {skipped}.',
+
+  // Plantillas de franjas
+  'programacion.plantillas.abrir': 'Plantillas de franjas',
+  'programacion.plantillas.titulo': 'Plantillas de franjas de la semana',
+  'programacion.plantillas.texto':
+    'El servicio arma las franjas del día con estas plantillas cuando no hay cupo explícito. Las pausas se descartan de la rejilla.',
+  'programacion.plantillas.cargando': 'Cargando las plantillas…',
+  'programacion.plantillas.error': 'No se pudieron cargar las plantillas.',
+  'programacion.plantillas.vacio': 'No hay plantillas configuradas.',
+  'programacion.plantillas.horario': '{inicio} a {fin}',
+  'programacion.plantillas.franjas': '{total} franja(s) de {minutos} min',
+  'programacion.plantillas.pausas': 'Pausas: {pausas}',
+  'programacion.plantillas.sinPausas': 'Sin pausas',
+  'programacion.plantillas.inactiva': 'Inactiva',
+  'programacion.plantillas.nota':
+    'Esta vista es informativa: la plantilla se administra desde el servicio de agenda y alimenta el cupo y las franjas de cada día.',
 } as const;
 
 export type TranslationKey = keyof typeof DICCIONARIO;
@@ -654,6 +998,7 @@ export const PERMISSION_LABELS: Readonly<Record<Permission, string>> = {
   'scheduling:read': t('permiso.scheduling:read'),
   'scheduling:write': t('permiso.scheduling:write'),
   'scheduling:notify': t('permiso.scheduling:notify'),
+  'scheduling:overbook': t('permiso.scheduling:overbook'),
   'screens:manage': t('permiso.screens:manage'),
   'screens:display': t('permiso.screens:display'),
   'clinical:read': t('permiso.clinical:read'),
@@ -741,3 +1086,49 @@ export const PATIENT_FIELD_LABELS: Readonly<Record<string, string>> = {
   status: t('pacientes.campo.status'),
   guardian: t('pacientes.campo.guardian'),
 };
+
+/** Etiquetas de la agenda (Fase 3). */
+export const APPOINTMENT_STATUS_LABELS: Readonly<Record<AppointmentStatus, string>> = {
+  en_espera_cita: t('programacion.estado.en_espera_cita'),
+  programada: t('programacion.estado.programada'),
+  notificada: t('programacion.estado.notificada'),
+  en_sala_espera: t('programacion.estado.en_sala_espera'),
+  llamado: t('programacion.estado.llamado'),
+  en_consulta: t('programacion.estado.en_consulta'),
+  atendido: t('programacion.estado.atendido'),
+  no_asistio: t('programacion.estado.no_asistio'),
+  cancelada: t('programacion.estado.cancelada'),
+  reprogramada: t('programacion.estado.reprogramada'),
+};
+
+export const CHANNEL_LABELS: Readonly<Record<Channel, string>> = {
+  telegram: t('programacion.canal.telegram'),
+  registro: t('programacion.canal.registro'),
+  telefono: t('programacion.canal.telefono'),
+  presencial: t('programacion.canal.presencial'),
+};
+
+export const CAPACITY_SOURCE_LABELS: Readonly<Record<CapacitySource, string>> = {
+  explicito: t('programacion.cupo.fuente.explicito'),
+  plantilla: t('programacion.cupo.fuente.plantilla'),
+  defecto: t('programacion.cupo.fuente.defecto'),
+};
+
+export const SLOT_STATE_LABELS: Readonly<Record<SlotState, string>> = {
+  libre: t('programacion.franja.libre'),
+  ocupada: t('programacion.franja.ocupada'),
+  fuera_de_jornada: t('programacion.franja.fuera_de_jornada'),
+};
+
+export const SLOT_KIND_LABELS: Readonly<Record<SlotKind, string>> = {
+  franja: t('programacion.franja.tipo.franja'),
+  manual: t('programacion.franja.tipo.manual'),
+};
+
+/** Comprueba en tiempo de ejecución que un texto del servidor es un estado conocido. */
+export const isAppointmentStatus = (value: string): value is AppointmentStatus =>
+  (APPOINTMENT_STATUSES as readonly string[]).includes(value);
+
+/** Comprueba que un texto del servidor es un canal conocido. */
+export const isChannel = (value: string): value is Channel =>
+  (CHANNELS as readonly string[]).includes(value);
