@@ -18,6 +18,7 @@ export const EVENT_TOPICS = {
   patientFileUploaded: 'patients.file.uploaded',
 
   requestCreated: 'scheduling.request.created',
+  requestCancelled: 'scheduling.request.cancelled',
   capacityChanged: 'scheduling.capacity.changed',
   appointmentScheduled: 'scheduling.appointment.scheduled',
   appointmentRescheduled: 'scheduling.appointment.rescheduled',
