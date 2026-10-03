@@ -1,6 +1,7 @@
 import {
   changePatientStatusSchema,
   createPatientSchema,
+  deletePatientSchema,
   patientFiltersSchema,
   parseDocumentText,
   updatePatientSchema,
@@ -14,6 +15,7 @@ import { z } from 'zod';
 import {
   changePatientStatus,
   createPatient,
+  deletePatient,
   getPatientDetail,
   listPatients,
   lookupByDocumentText,
@@ -43,6 +45,8 @@ export const registerPatientRoutes = (app: FastifyInstance, services: PatientsSe
   const read = requirePermission('patients:read');
   const write = requirePermission('patients:write');
   const editSensitive = requirePermission('patients:edit_sensitive');
+  /** Borrar un paciente queda reservado al `admin` (ADR 0027). */
+  const remove = requirePermission('patients:delete');
 
   app.get('/api/v1/patients', { preHandler: read }, async (request, reply) => {
     const filters = parseQuery(patientFiltersSchema, request.query);
@@ -94,5 +98,17 @@ export const registerPatientRoutes = (app: FastifyInstance, services: PatientsSe
     const input = parseOrThrow(changePatientStatusSchema, request.body);
     const result = await changePatientStatus(db, id, input.status, input.reason, actor);
     return reply.status(200).send(result.detail);
+  });
+
+  /**
+   * Borrado lógico: **solo el admin** (permiso `patients:delete`) y siempre con
+   * motivo. Es `POST …/delete` y no `DELETE` porque lleva cuerpo con el motivo.
+   */
+  app.post('/api/v1/patients/:id/delete', { preHandler: remove }, async (request, reply) => {
+    const actor = actorFrom(request);
+    const { id } = parseOrThrow(idParamsSchema, request.params);
+    const input = parseOrThrow(deletePatientSchema, request.body);
+    const result = await deletePatient(db, id, input.reason, actor);
+    return reply.status(200).send({ patient: result.detail, deletedAt: result.deletedAt });
   });
 };

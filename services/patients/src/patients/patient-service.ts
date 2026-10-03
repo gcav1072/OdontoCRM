@@ -214,14 +214,28 @@ export const listPatients = async (
   if (search !== '') {
     const parsed = parseDocumentText(search);
     const digits = search.replace(/\D/g, '');
-    const alternatives: (SQL | undefined)[] = [
+    const normalizedSearch = normalizeDocNumber(search);
+
+    /**
+     * Cada alternativa se añade **solo si aporta** algo: un patrón vacío
+     * (`phone like '%%'` cuando la búsqueda no tiene números, por ejemplo al
+     * buscar «PRUEBA») sería cierto para todas las filas y el `or` devolvería el
+     * listado entero. Ojo con el matiz: una búsqueda **con** dígitos también mira
+     * los teléfonos, así que «E2E» filtra por el `2` además de por el nombre.
+     */
+    const alternatives: SQL[] = [
       sql`${patients.fullName} ilike ${likePattern(search)} escape '\\'`,
-      sql`${patients.phone} like ${`%${digits}%`}`,
-      sql`${patients.docNumber} like ${`%${normalizeDocNumber(search)}%`}`,
-      and(eq(patients.docType, parsed.type), eq(patients.docNumber, parsed.number)),
     ];
-    const usable = alternatives.filter((item): item is SQL => item !== undefined);
-    const combined = or(...usable);
+    if (digits !== '') alternatives.push(sql`${patients.phone} like ${`%${digits}%`}`);
+    if (normalizedSearch !== '') {
+      alternatives.push(sql`${patients.docNumber} like ${`%${normalizedSearch}%`}`);
+    }
+    if (parsed.number !== '') {
+      const exact = and(eq(patients.docType, parsed.type), eq(patients.docNumber, parsed.number));
+      if (exact !== undefined) alternatives.push(exact);
+    }
+
+    const combined = or(...alternatives);
     if (combined !== undefined) conditions.push(combined);
   }
 
@@ -275,7 +289,7 @@ interface WriteOutboxInput {
   patientId: string;
   document: string;
   fullName: string;
-  action: 'created' | 'updated' | 'status_changed';
+  action: 'created' | 'updated' | 'status_changed' | 'deleted';
   changedFields: string[];
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
@@ -578,6 +592,75 @@ export const changePatientStatus = async (
   }
 
   return { detail: await getPatientDetail(db, id), diff };
+};
+
+export interface DeleteResult {
+  /** Ficha tal como estaba justo antes de borrarla (para confirmar en la interfaz). */
+  detail: PatientDetail;
+  deletedAt: string;
+}
+
+/**
+ * Borrado **lógico** de un paciente (ADR 0027): solo el `admin` llega aquí
+ * (permiso `patients:delete`) y siempre con motivo.
+ *
+ * Nada se destruye: el paciente y sus archivos quedan marcados, desaparecen de
+ * listas y búsquedas, y el documento vuelve a quedar libre por si fue un error de
+ * tecleo. El rastro completo (historial de contactos y auditoría) se conserva.
+ */
+export const deletePatient = async (
+  db: PatientsDb,
+  id: string,
+  reason: string,
+  actor: ActorContext,
+): Promise<DeleteResult> => {
+  const current = await findPatientById(db, id);
+  if (current === null) throw new NotFoundError('El paciente no existe');
+
+  const detail = await getPatientDetail(db, id);
+  const deletedAt = new Date();
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(patients)
+      .set({ deletedAt, updatedBy: actor.actorId, updatedAt: deletedAt })
+      .where(eq(patients.id, id));
+
+    // Los adjuntos también quedan marcados; los binarios se conservan por si hay
+    // que reconstruir algo más adelante.
+    await tx
+      .update(patientFiles)
+      .set({ deletedAt })
+      .where(and(eq(patientFiles.patientId, id), isNull(patientFiles.deletedAt)));
+
+    await insertContactHistory(
+      tx,
+      id,
+      { deleted_at: null },
+      { deleted_at: deletedAt.toISOString() },
+      ['deleted_at'],
+      reason,
+      actor.actorId,
+    );
+
+    await outboxRow(
+      {
+        topic: EVENT_TOPICS.patientDeleted,
+        patientId: id,
+        document: formatDocument(current.docType as DocType, current.docNumber),
+        fullName: current.fullName,
+        action: 'deleted',
+        changedFields: ['deleted_at'],
+        before: { deleted_at: null },
+        after: { deleted_at: deletedAt.toISOString() },
+        reason,
+        actor,
+      },
+      tx,
+    );
+  });
+
+  return { detail, deletedAt: deletedAt.toISOString() };
 };
 
 /**

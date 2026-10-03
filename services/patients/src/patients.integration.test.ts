@@ -28,6 +28,7 @@ import { createPatientsDatabase } from './db/client.js';
 import { patients } from './db/schema.js';
 import {
   createPatient,
+  deletePatient,
   listPatients,
   lookupByDocumentText,
   updatePatient,
@@ -163,11 +164,10 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
   afterAll(async () => {
     if (!ready) return;
 
-    if (patientId !== '') {
-      await identityHandle.db
-        .delete(identitySchema.auditEvents)
-        .where(eq(identitySchema.auditEvents.entityId, patientId));
-    }
+    // Todo lo que creó esta prueba lleva su marca de actor o su sufijo en el nombre.
+    await identityHandle.db
+      .delete(identitySchema.auditEvents)
+      .where(eq(identitySchema.auditEvents.actorUsername, MARKER));
     await identityHandle.db.delete(identitySchema.processedEvents);
     await patientsHandle.db.delete(patients).where(like(patients.fullName, `%${suffix}%`));
     await stopBoss(boss).catch(() => undefined);
@@ -289,6 +289,49 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
     expect(byFormatted?.id).toBe(patientId);
     expect(byDotted?.id).toBe(patientId);
   });
+
+  it('el borrado lógico lo saca de listas y búsquedas, libera el documento y queda auditado', async () => {
+    expect(await lookupByDocumentText(patientsHandle.db, `8${suffix}`)).not.toBeNull();
+
+    const borrado = await deletePatient(
+      patientsHandle.db,
+      patientId,
+      'registro duplicado por error de tecleo',
+      actor,
+    );
+    expect(borrado.deletedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    // Ya no se encuentra ni por documento ni en la lista.
+    expect(await lookupByDocumentText(patientsHandle.db, `8${suffix}`)).toBeNull();
+    const listado = await listPatients(patientsHandle.db, {
+      page: 1,
+      pageSize: 25,
+      search: `8${suffix}`,
+    } as PatientFilters);
+    expect(listado.items).toHaveLength(0);
+
+    // El documento vuelve a estar libre: se puede registrar otra vez.
+    const reingresado = await createPatient(
+      patientsHandle.db,
+      aPatient({ fullName: `Reingresado ${suffix}` }),
+      actor,
+    );
+    expect(reingresado.document).toBe(`V-8${suffix}`);
+    expect(reingresado.id).not.toBe(patientId);
+
+    // Y el borrado llega a la auditoría con su motivo (acción propia).
+    const runner = createOutboxRunner({ pool: patientsHandle.pool, boss });
+    await runner.flush();
+    const filas = await waitForAudit((actuales) =>
+      actuales.some((item) => item.action === 'patient_deleted'),
+    );
+    const borradoAuditado = filas.find((item) => item.action === 'patient_deleted');
+
+    expect(borradoAuditado?.reason).toBe('registro duplicado por error de tecleo');
+    expect(borradoAuditado?.changedFields).toEqual(['deleted_at']);
+    expect(borradoAuditado?.before).toEqual({ deleted_at: null });
+    expect(borradoAuditado?.after).toMatchObject({ deleted_at: borrado.deletedAt });
+  }, 40_000);
 });
 
 describeWithDatabases('búsqueda con 5.000 pacientes', () => {
@@ -380,5 +423,25 @@ describeWithDatabases('búsqueda con 5.000 pacientes', () => {
       expect(item.age).toBeGreaterThanOrEqual(64);
       expect(item.age).toBeLessThanOrEqual(65);
     }
+  });
+
+  it('una búsqueda sin dígitos no devuelve el listado entero', async () => {
+    // Regresión: el patrón de teléfono vacío (`like '%%'`) convertía cualquier
+    // búsqueda sin números en «todo el listado».
+    const sinDigitos = await listPatients(handle.db, {
+      page: 1,
+      pageSize: 25,
+      search: 'zzzz-no-existe',
+    } as PatientFilters);
+    expect(sinDigitos.total).toBe(0);
+
+    // Y una búsqueda con dígitos sí mira los teléfonos (por diseño).
+    const porTelefono = await listPatients(handle.db, {
+      page: 1,
+      pageSize: 25,
+      search: '4140004000',
+    } as PatientFilters);
+    expect(porTelefono.total).toBeGreaterThan(0);
+    expect(porTelefono.items[0]?.phone).toContain('4140004000');
   });
 });
