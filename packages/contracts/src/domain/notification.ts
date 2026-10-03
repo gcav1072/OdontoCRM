@@ -1,16 +1,18 @@
 import { z } from 'zod';
 
+import { CHANNEL_IDS } from './channel.js';
 import { CHANNELS, DOC_TYPES, NOTIFICATION_STATUSES, SEXES, type DocType } from './enums.js';
 import { APPOINTMENT_CONFIRMATION_TEMPLATE, renderTemplate } from './scheduling.js';
 
 /**
- * Notificaciones y bot de Telegram (Fase 4).
+ * Notificaciones y asistente multicanal (Fases 4 y 4.1).
  *
  * El asistente sigue el guion del plan §7: siete pasos con validación y
- * normalización, idempotencia por `update_id`, anti-flood y conversaciones
- * reanudables. Los textos viven en plantillas editables (tabla
- * `message_templates`), sembradas desde aquí para que el sistema funcione desde el
- * primer arranque y se puedan cambiar sin recompilar.
+ * normalización, idempotencia por evento del canal (`update_id` o `wamid`),
+ * anti-flood y conversaciones reanudables por `(canal, dirección)`. Los textos
+ * viven en plantillas editables (tabla `message_templates`), sembradas desde aquí
+ * para que el sistema funcione desde el primer arranque y se puedan cambiar sin
+ * recompilar.
  */
 
 /* ── Asistente paso a paso ─────────────────────────────────────────────────── */
@@ -73,12 +75,15 @@ export const botDraftSchema = z.object({
 export type BotDraft = z.infer<typeof botDraftSchema>;
 
 export const botConversationSchema = z.object({
-  chatId: z.string(),
+  /** Canal por el que habla el paciente (`telegram` o `whatsapp`). */
+  canal: z.enum(CHANNEL_IDS),
+  /** Dirección enmascarada: nunca se expone completa en la interfaz. */
+  direccionMasked: z.string(),
   state: z.enum(BOT_CONVERSATION_STATES),
   draft: botDraftSchema,
-  /** Paciente ya vinculado a este chat, si lo hay. */
+  /** Paciente ya vinculado a esta conversación, si lo hay. */
   patientId: z.uuid().nullable(),
-  telegramUsername: z.string().nullable(),
+  usuario: z.string().nullable(),
   /** Mensajes recibidos en la ventana de anti-flood. */
   messageCount: z.number().int().min(0),
   windowStartedAt: z.string(),
@@ -202,7 +207,7 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     subject: null,
     body:
       '¡Hola! Soy el asistente de {clinica}. Puedo tomar tu solicitud de cita y darte tu ticket.\n' +
-      'Escríbeme /nueva para pedir una cita, /estado para saber cómo va la tuya o /ayuda para ver todo lo que puedo hacer.',
+      'Escríbeme «cita» para pedir una cita, «estado» para saber cómo va la tuya o «ayuda» para ver todo lo que puedo hacer.',
     placeholders: ['clinica'],
   },
   {
@@ -211,11 +216,11 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     subject: null,
     body:
       'Esto es lo que puedo hacer:\n' +
-      '/nueva — pedir una cita\n' +
-      '/estado — consultar tu solicitud\n' +
-      '/cancelar — anular tu solicitud\n' +
-      '/mi_ticket — recordarte tu ticket\n\n' +
-      'También puedes escribirme «cita» para empezar.',
+      '«cita» — pedir una cita\n' +
+      '«estado» — consultar tu solicitud\n' +
+      '«cancelar» — anular tu solicitud\n' +
+      '«mi ticket» — recordarte tu ticket\n\n' +
+      'Por Telegram también funcionan /nueva, /estado, /cancelar y /mi_ticket.',
     placeholders: [],
   },
   {
@@ -231,7 +236,7 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     subject: null,
     body:
       'Paso 2 de 7 · ¿Cuál es tu documento?\n' +
-      'Elige el tipo con los botones y escribe el número (por ejemplo V-12345678).',
+      'Elige el tipo (V, E, P o SC) y escríbeme el número, por ejemplo V-12345678.',
     placeholders: [],
   },
   {
@@ -302,7 +307,7 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     subject: null,
     body:
       'Ya tienes una solicitud en curso con el ticket {ticket}.\n' +
-      'Escríbeme /estado para ver cómo va. Si quieres anularla, escribe /cancelar.',
+      'Escríbeme «estado» para ver cómo va. Si quieres anularla, escribe «cancelar».',
     placeholders: ['ticket'],
   },
   {
@@ -311,7 +316,7 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     subject: null,
     body:
       'No encuentro ninguna solicitud tuya con ese ticket.\n' +
-      'Revisa el número o escríbeme /nueva para pedir una cita.',
+      'Revisa el número o escríbeme «cita» para pedir una cita.',
     placeholders: [],
   },
   {
@@ -340,7 +345,7 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     subject: 'Cita cancelada',
     body:
       'Hola {paciente}: tu cita del {fecha} a las {hora} quedó cancelada.\n' +
-      'Si quieres otra fecha, escríbeme /nueva y te ayudo.',
+      'Si quieres otra fecha, escríbeme «cita» y te ayudo.',
     placeholders: ['paciente', 'fecha', 'hora'],
   },
   {
@@ -449,9 +454,9 @@ export const patientChannelSchema = z.object({
   patientId: z.uuid(),
   patientName: z.string().nullable(),
   channel: z.enum(CHANNELS),
-  /** Identificador del chat enmascarado: nunca se expone completo en la interfaz. */
-  chatIdMasked: z.string(),
-  telegramUsername: z.string().nullable(),
+  /** Dirección enmascarada (chat o número): nunca se expone completa en la interfaz. */
+  direccionMasked: z.string(),
+  usuario: z.string().nullable(),
   linkedAt: z.string().nullable(),
   isBlocked: z.boolean(),
 });
@@ -471,7 +476,23 @@ export const linkCodeSchema = z.object({
 
 export type LinkCode = z.infer<typeof linkCodeSchema>;
 
-/* ── Estado del bot (para la bandeja) ──────────────────────────────────────── */
+/* ── Estado de los canales (para la bandeja) ───────────────────────────────── */
+
+/** Estado de un canal registrado: identidad visible y lo que sabe hacer. */
+export const channelStatusSchema = z.object({
+  canal: z.enum(CHANNEL_IDS),
+  nombre: z.string().nullable(),
+  usuario: z.string().nullable(),
+  conectado: z.boolean(),
+  capacidades: z.object({
+    botones: z.boolean(),
+    documentos: z.boolean(),
+    comandos: z.boolean(),
+    plantillasAprobadas: z.boolean(),
+  }),
+});
+
+export type ChannelStatus = z.infer<typeof channelStatusSchema>;
 
 export const botStatusSchema = z.object({
   /** `real` con token configurado; `simulado` sin token (modo de pruebas). */
@@ -483,6 +504,8 @@ export const botStatusSchema = z.object({
   lastError: z.string().nullable(),
   pendingUpdates: z.number().int().min(0),
   conversations: z.array(botConversationSchema),
+  /** Todos los canales activos (Telegram, WhatsApp…) con su identidad. */
+  canales: z.array(channelStatusSchema),
   counts: z.object({
     queued: z.number().int().min(0),
     sent: z.number().int().min(0),

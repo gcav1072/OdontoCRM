@@ -137,3 +137,116 @@ export const resolveNumberedOption = (
   if (match?.groups?.['numero'] === undefined) return null;
   return acciones.get(match.groups['numero']) ?? null;
 };
+
+/* ── Intenciones ───────────────────────────────────────────────────────────── */
+
+/**
+ * El núcleo conversacional habla de **intenciones**, no de comandos (ADR 0029):
+ * Telegram traduce `/nueva` a `nueva` y WhatsApp traduce «cita» o «quiero una
+ * cita» a la misma intención. Así el guion del asistente es el mismo en todos los
+ * canales y añadir uno nuevo no toca el núcleo.
+ */
+export const BOT_INTENTS = ['nueva', 'estado', 'mi_ticket', 'cancelar', 'ayuda', 'start'] as const;
+export type BotIntent = (typeof BOT_INTENTS)[number];
+
+/** Frases que llevan a cada intención (se comparan normalizadas: sin acentos ni signos). */
+export const INTENT_PHRASES: Readonly<Record<BotIntent, readonly string[]>> = {
+  nueva: [
+    'nueva',
+    'nueva cita',
+    'cita',
+    'cita nueva',
+    'quiero una cita',
+    'quiero cita',
+    'quiero sacar cita',
+    'necesito una cita',
+    'necesito cita',
+    'pedir cita',
+    'pedir una cita',
+    'solicitar cita',
+    'solicitar una cita',
+    'agendar',
+    'agendar cita',
+    'sacar cita',
+  ],
+  estado: [
+    'estado',
+    'mi estado',
+    'estado de mi cita',
+    'estado de mi solicitud',
+    'como va',
+    'como va mi cita',
+    'como va mi solicitud',
+    'seguimiento',
+  ],
+  mi_ticket: ['mi ticket', 'mi tiquete', 'ticket', 'tiquete', 'mi turno'],
+  cancelar: [
+    'cancelar',
+    'cancelar cita',
+    'cancelar mi cita',
+    'cancelar solicitud',
+    'anular',
+    'anular cita',
+    'anular solicitud',
+    'ya no quiero la cita',
+  ],
+  ayuda: ['ayuda', 'help', 'menu', 'opciones', 'que puedo hacer', 'como funciona'],
+  /** Arrancar la conversación: en Telegram es `/start` y admite el código de vinculación. */
+  start: ['start', 'iniciar', 'empezar', 'comenzar'],
+};
+
+/** Texto comparable: minúsculas, sin acentos, sin signos y con espacios simples. */
+export const normalizePhrase = (texto: string): string =>
+  texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    // Los comandos de Telegram usan `_` (`/mi_ticket`): se compara igual que «mi ticket».
+    .replace(/[.,;:!¡?¿"'()_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const INTENT_BY_PHRASE: ReadonlyMap<string, BotIntent> = new Map(
+  BOT_INTENTS.flatMap((intencion) =>
+    INTENT_PHRASES[intencion].map((frase) => [normalizePhrase(frase), intencion] as const),
+  ),
+);
+
+export interface DetectedIntent {
+  /** `null` cuando el texto no expresa ninguna intención conocida. */
+  intencion: BotIntent | null;
+  /** Lo que venía detrás (`/estado #000123` → `#000123`). */
+  argumento: string;
+  /** `true` si venía como comando con barra: en canales sin comandos no se acepta. */
+  comando: boolean;
+}
+
+/**
+ * Deduce la intención de un texto entrante. Los comandos con barra solo se
+ * interpretan en canales que los tienen (`capacidades.comandos`); las frases
+ * naturales funcionan en todos.
+ */
+export const detectIntent = (
+  texto: string | null,
+  opciones: { comandos: boolean },
+): DetectedIntent => {
+  const raw = (texto ?? '').trim();
+  if (raw === '') return { intencion: null, argumento: '', comando: false };
+
+  if (raw.startsWith('/')) {
+    if (!opciones.comandos) return { intencion: null, argumento: '', comando: true };
+    const [head = '', ...rest] = raw.split(/\s+/);
+    const nombre = normalizePhrase((head.slice(1).split('@')[0] ?? '').trim());
+    return {
+      intencion: INTENT_BY_PHRASE.get(nombre) ?? null,
+      argumento: rest.join(' ').trim(),
+      comando: true,
+    };
+  }
+
+  return {
+    intencion: INTENT_BY_PHRASE.get(normalizePhrase(raw)) ?? null,
+    argumento: '',
+    comando: false,
+  };
+};
