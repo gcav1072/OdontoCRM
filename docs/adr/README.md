@@ -32,3 +32,4 @@ tomaron durante la Fase 0 y quedan documentadas por la misma razón.
 | [0023](0023-contrasenas-con-scrypt.md) | Contraseñas con scrypt de `node:crypto` (sin dependencias nativas) | aceptada |
 | [0024](0024-secretos-fuera-del-repositorio.md) | Secretos fuera del repositorio, con escáner previo al commit | aceptada |
 | [0025](0025-horas-en-12-horas.md) | Horas en formato de 12 h en la interfaz, 24 h en datos y `.ics` | aceptada |
+| [0026](0026-cola-de-eventos-compartida.md) | Cola de eventos compartida en la base `odonto_events` | aceptada (corrige el ADR 0003) |
