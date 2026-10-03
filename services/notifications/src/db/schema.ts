@@ -8,6 +8,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -24,16 +25,21 @@ const sqlLiteralList = (values: readonly string[]) => {
   );
 };
 
-/** Canal de un paciente (hoy solo Telegram): el chat al que se le escribe. */
+/**
+ * Canal de un paciente: la **dirección** a la que se le escribe (`chat_id` de
+ * Telegram o número de WhatsApp). La identidad es `(channel, direccion)`, así que
+ * un mismo paciente puede estar vinculado por los dos canales sin pisarse.
+ */
 export const patientChannels = pgTable(
   'patient_channels',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     patientId: uuid('patient_id').notNull(),
     channel: text('channel').notNull().default('telegram'),
-    /** Identificador del chat en Telegram (numérico, guardado como texto). */
-    chatId: text('chat_id'),
-    telegramUsername: text('telegram_username'),
+    /** Dirección del interlocutor: chat numérico (Telegram) o número (WhatsApp). */
+    direccion: text('direccion'),
+    /** Nombre de usuario del canal, si lo hay (para mostrarlo en la bandeja). */
+    usuario: text('usuario'),
     linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
     /** Código del deep link de vinculación (se borra al usarlo). */
     linkCode: text('link_code'),
@@ -43,7 +49,7 @@ export const patientChannels = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('uq_patient_channels_chat').on(table.channel, table.chatId),
+    uniqueIndex('uq_patient_channels_direccion').on(table.channel, table.direccion),
     index('idx_patient_channels_patient').on(table.patientId),
     uniqueIndex('uq_patient_channels_link_code').on(table.linkCode),
     check('chk_patient_channels_channel', sql`${table.channel} in (${sqlLiteralList(CHANNELS)})`),
@@ -51,25 +57,35 @@ export const patientChannels = pgTable(
 );
 
 /**
- * Conversación del asistente por chat: permite **retomar** donde se quedó el
- * paciente (se va, vuelve al día siguiente y el bot sigue en el mismo paso).
+ * Conversación del asistente por **canal y dirección**: permite **retomar** donde
+ * se quedó el paciente (se va, vuelve al día siguiente y el bot sigue en el mismo
+ * paso) y que la misma persona hable por Telegram y por WhatsApp en paralelo.
  */
 export const botConversations = pgTable(
   'bot_conversations',
   {
-    chatId: text('chat_id').primaryKey(),
+    canal: text('canal').notNull().default('telegram'),
+    direccion: text('direccion').notNull(),
     state: text('state').notNull().default('inicio'),
     draft: jsonb('draft').$type<Record<string, unknown>>().notNull().default({}),
     patientId: uuid('patient_id'),
-    telegramUsername: text('telegram_username'),
-    /** Último ticket creado desde este chat (para `/estado` y `/mi_ticket`). */
+    usuario: text('usuario'),
+    /**
+     * Opciones numeradas del último paso enviado (ADR 0029): en los canales sin
+     * botones el paciente responde «2» y aquí se recuerda qué acción era.
+     */
+    opciones: jsonb('opciones').$type<Record<string, string>>().notNull().default({}),
+    /** Último ticket creado desde esta conversación (para «estado» y «mi ticket»). */
     lastTicket: bigint('last_ticket', { mode: 'number' }),
     /** Ventana móvil de anti-flood: mensajes recibidos y cuándo empezó. */
     messageCount: integer('message_count').notNull().default(0),
     windowStartedAt: timestamp('window_started_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('idx_bot_conversations_updated').on(table.updatedAt)],
+  (table) => [
+    primaryKey({ columns: [table.canal, table.direccion] }),
+    index('idx_bot_conversations_updated').on(table.updatedAt),
+  ],
 );
 
 /** Plantillas editables: el texto de los mensajes sin recompilar (plan §4.4). */
@@ -147,19 +163,21 @@ export const icsArtifacts = pgTable(
   (table) => [uniqueIndex('uq_ics_artifacts_appointment').on(table.appointmentId, table.sequence)],
 );
 
-/** `update_id` ya procesados: una pulsación repetida no crea dos tickets. */
-export const processedUpdates = pgTable('processed_updates', {
-  updateId: bigint('update_id', { mode: 'number' }).primaryKey(),
-  chatId: text('chat_id'),
-  processedAt: timestamp('processed_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
-/** Estado del bot entre reinicios (el `offset` de `getUpdates`). */
-export const botState = pgTable('bot_state', {
-  key: text('key').primaryKey(),
-  value: text('value').notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+/**
+ * Eventos entrantes ya procesados: la clave es `(canal, evento_id)` — el
+ * `update_id` de Telegram o el `wamid` de WhatsApp—, así que un reenvío del canal
+ * no crea dos tickets.
+ */
+export const processedUpdates = pgTable(
+  'processed_updates',
+  {
+    canal: text('canal').notNull().default('telegram'),
+    eventoId: text('evento_id').notNull(),
+    direccion: text('direccion'),
+    processedAt: timestamp('processed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.canal, table.eventoId] })],
+);
 
 export type PatientChannelRow = typeof patientChannels.$inferSelect;
 export type BotConversationRow = typeof botConversations.$inferSelect;

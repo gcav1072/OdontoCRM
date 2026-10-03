@@ -8,6 +8,20 @@
       "when": 1791053839026,
       "tag": "0000_bot_plantillas_cola_ics",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791067253831,
+      "tag": "0001_direccion_canal_evento",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791067418230,
+      "tag": "0002_plantillas_sin_comandos",
+      "breakpoints": true
     }
   ]
 }
