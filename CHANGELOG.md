@@ -4,6 +4,49 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 1] — Identidad, roles y shell de UI · 2026-10-02
+
+### Añadido
+
+- **`packages/contracts`**: contratos de sesión y usuarios — `loginSchema`, `AccessTokenClaims`,
+  `LoginResponse`, `SessionInfo`, `UserSummary`, creación/edición de usuarios, cambio y
+  restablecimiento de contraseña, catálogo de dispositivos kiosko, **auditoría** (`audit_events`,
+  filtros de consulta y `diffSensitiveFields`), y utilidades de permisos (`hasPermission`,
+  `permissionsForRoles`) con 13 pruebas.
+- **`packages/kernel`**: seguridad compartida — contraseñas con **scrypt** (parámetros
+  versionados en el propio hash, verificación en tiempo constante y `needsRehash`), claves
+  **EdDSA** (generación, carga e importación desde PEM), firma y verificación de **JWT**
+  (emisor, audiencia y caducidad), tokens opacos con hash SHA-256, **guardias de permiso**
+  asíncronas para Fastify y `parseOrThrow` para validar la entrada con Zod.
+- **`services/identity`**: esquema completo (usuarios, roles, tokens de refresco, dispositivos
+  kiosko y auditoría) con su migración; **login** con bloqueo tras 5 intentos (15 minutos);
+  **refresh rotativo con detección de reuso** (revoca la sesión completa y lo audita) con
+  ventana de gracia de 30 s para la carrera entre pestañas; **logout**; `/auth/me` para el panel
+  inferior; **cambio de contraseña** propio (cierra las demás sesiones); CRUD de **usuarios**
+  con motivo obligatorio y auditoría del cambio; **restablecimiento de contraseña** con
+  contraseña temporal generada; **dispositivos kiosko** (el token se muestra una sola vez);
+  y **consulta de auditoría** filtrable. Semilla de usuarios (`admin`, `recepcion`, `egomez`)
+  y generación de claves con `npm run keys:generate`.
+- **`apps/gateway`**: guardia de autenticación — borra las cabeceras `x-user-*` que envíe el
+  cliente, deja públicas solo la salud y el ciclo de autenticación, verifica el JWT y publica
+  la identidad (usuario, roles, permisos, sesión y contraseña pendiente) al servicio interno.
+  Cada servicio pasa a ser dueño de su prefijo público (las rutas ya no se recortan).
+
+### Verificado
+
+- `npm run verify` en verde: **98 pruebas** unitarias y de contrato.
+- **Pruebas de integración de autenticación contra PostgreSQL real** (`npm run test:integration`,
+  7 pruebas): login y auditoría; credenciales incorrectas sin revelar si el usuario existe;
+  bloqueo de 15 minutos tras 5 intentos; rotación del refresco, ventana de gracia y **reuso
+  revocando la familia**; cierre de sesión; 403 por permiso y 200 para el administrador; cambio
+  de contraseña.
+- **Recorrido de extremo a extremo por el gateway real** (18 comprobaciones): salud pública,
+  401 sin token, suplantación de cabeceras rechazada, login con cookie `httpOnly` y ruta
+  `/api/v1/auth`, bloqueo por contraseña pendiente, `/me`, rotación del refresco, token
+  inválido y cierre de sesión.
+- Regresión cubierta por prueba: un `preHandler` **síncrono** colgaba las peticiones en Fastify;
+  las guardias son asíncronas y hay una prueba que lo vigila.
+
 ## [Fase 0] — Fundación del repositorio e infraestructura local · 2026-10-02
 
 ### Añadido

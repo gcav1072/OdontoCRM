@@ -36,13 +36,18 @@ npm install
 # 3. Crea las 8 bases, sus roles y las credenciales de cada servicio
 npm run db:bootstrap
 
-# 4. Compila y aplica migraciones
+# 4. Compila, genera las claves del JWT, migra y siembra los usuarios iniciales
 npm run build
+npm run keys:generate          # claves EdDSA del JWT (una sola vez; .keys/ está ignorado)
 npm run db:migrate
+npm run seed:users             # admin, recepcion y egomez con contraseña temporal
 
-# 5. Arranca (compilación en modo vigilancia + gateway + identidad)
+# 5. Arranca (compilación en modo vigilancia + gateway + identidad + interfaz)
 npm run dev
 ```
+
+La primera vez que entres, el sistema te pedirá cambiar la contraseña temporal: hasta que lo
+hagas, ningún módulo queda habilitado (es una regla del servidor, no solo de la interfaz).
 
 Comprobación rápida:
 
@@ -74,6 +79,8 @@ Los secretos **nunca** se versionan ni se comparten por chat: ver
 | `npm run db:migrate` | Aplica las migraciones de todos los servicios |
 | `npm run db:verify-migrations` | Comprueba que las migraciones se aplican **desde cero** en una base limpia (crea y borra una base temporal) |
 | `npm run db:generate:identity` | Genera la migración de identity desde su esquema (desde la raíz) |
+| `npm run keys:generate` | Genera el par de claves EdDSA del JWT (no sobrescribe; `-- --force` regenera e invalida sesiones) |
+| `npm run seed:users` | Crea `admin`, `recepcion` y `egomez` con contraseña temporal (`-- --reset` las regenera) |
 | **`npm run verify`** | **Puerta de calidad: secretos + lint + formato + compilación + pruebas** |
 
 Antes de cerrar cualquier fase, `npm run verify` debe pasar en verde.
@@ -111,6 +118,36 @@ docs                  Plan maestro, formato de historia clínica y ADRs
 | odontogram | 4006 | Fase 6 |
 | screens | 4007 | Fase 5 |
 | reporting | 4008 | Fase 9 |
+
+---
+
+## API de la Fase 1 (identidad y sesión)
+
+Todo entra por el gateway (`http://127.0.0.1:8090`). El gateway **verifica el JWT**, borra
+cualquier cabecera `x-user-*` que venga del cliente y publica la identidad real para los
+servicios internos.
+
+| Método y ruta | Qué hace | Permiso |
+| :--- | :--- | :--- |
+| `POST /api/v1/auth/login` | Inicia sesión: token de acceso (15 min) + cookie de refresco `httpOnly` | público |
+| `POST /api/v1/auth/refresh` | Rota la sesión; un token reutilizado revoca la sesión completa | cookie |
+| `POST /api/v1/auth/logout` | Cierra la sesión actual | cookie |
+| `GET /api/v1/auth/me` | Datos del login para el panel inferior (inicio, caducidad, IP) | sesión |
+| `POST /api/v1/auth/password/change` | Cambia la propia contraseña y cierra las demás sesiones | sesión |
+| `GET /api/v1/users` · `POST` · `GET/PATCH /:id` · `POST /:id/reset-password` | Gestión de usuarios (el `PATCH` exige motivo y queda auditado) | `users:manage` |
+| `GET /api/v1/users/roles` | Catálogo de roles y sus permisos | `users:manage` |
+| `GET /api/v1/devices` · `POST` · `DELETE /:id` | Tokens de las pantallas kiosko (el token se muestra una sola vez) | `screens:manage` |
+| `GET /api/v1/audit/events` | Auditoría con filtros por fecha, usuario, acción, entidad y campo | `audit:read` |
+
+Reglas que aplica el servidor (no solo la interfaz):
+
+- **5 intentos fallidos bloquean la cuenta 15 minutos** (y el bloqueo queda auditado).
+- Mientras la contraseña esté pendiente de cambio, **ningún** módulo responde: solo el cambio
+  de contraseña.
+- Los errores son **RFC 7807** (`application/problem+json`) con `detail` en español y detalle
+  por campo cuando es un problema de validación.
+- Toda acción sensible (accesos, cambios de usuario, contraseñas, dispositivos) deja una fila
+  en `audit_events` con actor, IP, momento y valores anterior/nuevo.
 
 ---
 
