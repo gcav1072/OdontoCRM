@@ -62,6 +62,14 @@ export const registerAuthGuard = (app: FastifyInstance, publicKey: PublicKey): v
   app.addHook('onRequest', async (request) => {
     stripIdentityHeaders(request.headers);
 
+    /**
+     * `Expect: 100-continue` lo envían clientes como PowerShell
+     * (`Invoke-WebRequest`), curl con cuerpos grandes o algunos proxies. undici
+     * —el cliente HTTP del proxy— no lo soporta y devolvería 500, así que se
+     * elimina: es una optimización de la espera, no un requisito del protocolo.
+     */
+    delete request.headers.expect;
+
     const path = pathOf(request.url);
     if (isPublicPath(path)) return;
 
