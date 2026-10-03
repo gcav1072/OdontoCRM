@@ -56,6 +56,9 @@ const extraEnv = {
   TEST_SCHEDULING_DATABASE_URL:
     process.env.TEST_SCHEDULING_DATABASE_URL ??
     readEnvValue('services/scheduling/.env', 'DATABASE_URL'),
+  TEST_NOTIFICATIONS_DATABASE_URL:
+    process.env.TEST_NOTIFICATIONS_DATABASE_URL ??
+    readEnvValue('services/notifications/.env', 'DATABASE_URL'),
 };
 
 const url = new URL(databaseUrl);
