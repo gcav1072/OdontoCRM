@@ -55,3 +55,18 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   inexistente.
 - Normalización de fin de línea con `.gitattributes` (`eol=lf`) para que Windows y Fedora
   compartan el mismo contenido.
+- **Puerto del gateway: 8090 en lugar de 8080.** En esta máquina Windows el 8080 lo ocupa el
+  servicio de red del host (`hns`/Hyper-V) y el gateway fallaba con `listen EACCES`. Se unificó
+  el nuevo puerto en el código, `.env.example`, README, plan maestro y guía de Fedora.
+
+### Verificado
+
+- `npm run verify` en verde: escáner de secretos, ESLint, Prettier, compilación y **56 pruebas**.
+- `npm run db:bootstrap` crea las **8 bases** con su rol propietario y es **idempotente** (segunda
+  ejecución: «ya existía» / «conservada del .env», sin rotar contraseñas).
+- `npm run db:migrate` aplica la migración inicial (`users` + `outbox_events`) en PostgreSQL 18.6.
+- Arranque con PM2 y comprobación real: `GET :8090/health` (gateway), `GET :8090/api/v1/auth/health`
+  y `GET :8090/api/v1/users/health` (proxy hacia identity) y `GET :4001/ready` con
+  `database: ok`. Ruta desconocida → 404 en `application/problem+json`.
+- `.gitignore`: `node_modules`, `dist/` y todos los `.env` quedan fuera del control de versiones
+  (comprobado con `git check-ignore`).

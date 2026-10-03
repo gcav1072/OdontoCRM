@@ -101,7 +101,7 @@ Todas fueron confirmadas contigo en la sesión de planificación del 2026-10-02.
 
 | # | Servicio | Responsabilidad | BD | Puerto dev |
 | :-: | :--- | :--- | :--- | :-: |
-| 1 | `apps/gateway` | Punto único de entrada, proxy por recurso, verificación de JWT/token de dispositivo, rate limit, CORS, correlación de peticiones. | — | 8080 |
+| 1 | `apps/gateway` | Punto único de entrada, proxy por recurso, verificación de JWT/token de dispositivo, rate limit, CORS, correlación de peticiones. | — | 8090 |
 | 2 | `services/identity` | Usuarios, roles/permisos, login, refresh rotativo, cambio/restablecimiento de contraseña, bloqueo por intentos, **auditoría** (eventos + consulta con diff). | `odonto_identity` | 4001 |
 | 3 | `services/patients` | Paciente único (cédula V/E/P/SC), datos de contacto, representante de menores, estado (`en_espera_cita`, `activo`, `inactivo`), búsqueda/duplicados, **almacenamiento de archivos** (abstracción S3-ready sobre disco). | `odonto_patients` | 4002 |
 | 4 | `services/scheduling` | Solicitudes (**ticket**), cola «en espera de cita», cupo diario editable, plantilla de franjas, asignación/reprogramación/cancelación, estados de la cita, inasistencias. | `odonto_scheduling` | 4003 |
@@ -289,7 +289,9 @@ Reglas duras:
 
 ## 6. API y rutas del gateway
 
-Un solo origen para el frontend: `http(s)://<host>:8080/api/v1/**`.
+Un solo origen para el frontend: `http(s)://<host>:8090/api/v1/**`.
+
+> **Puerto del gateway: 8090.** El plan decía 8080, pero en la máquina de desarrollo Windows el 8080 lo ocupa el servicio de red del host (`hns`/Hyper-V) y el gateway fallaba con `listen EACCES`. Se unificó en **8090** (libre en Windows y en Fedora) para que la misma configuración sirva en ambos entornos.
 
 | Prefijo público | Servicio destino | Ejemplos |
 | :--- | :--- | :--- |
@@ -464,7 +466,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 8. `docs/SEGURIDAD_SECRETOS.md`: política de secretos (`.env` local nunca versionado, `/etc/odontocrm/*.env` con `0600` en Fedora vía `EnvironmentFile=`, generación de credenciales por servicio en el bootstrap, rotación del token del bot, y `tools/check-secrets.mjs` como escáner previo al commit).
 9. `docs/adr/` con una ADR por decisión de §1 (21 ADRs cortas) y corrección del enlace roto a `odontograma.md` en `formato_historia.md`.
 
-**Criterios de aceptación:** `npm run verify` verde · `npm run db:bootstrap` crea las 8 BD desde cero · `GET :8080/health` responde OK con estado de la BD del servicio piloto · `npm run build` genera artefactos · `.gitignore` impide que `node_modules` y `.env` entren a git (comprobado con `git status`).
+**Criterios de aceptación:** `npm run verify` verde · `npm run db:bootstrap` crea las 8 BD desde cero · `GET :8090/health` responde OK con estado de la BD del servicio piloto · `npm run build` genera artefactos · `.gitignore` impide que `node_modules` y `.env` entren a git (comprobado con `git status`).
 
 **Commits previstos:** `chore(repo): gitignore y configuración base` · `chore(tooling): monorepo ts/eslint/prettier` · `feat(kernel): plugin base, config, health y errores` · `feat(db): conexión drizzle, migrador y outbox` · `feat(infra): bootstrap de bases y roles` · `docs(setup): instalación windows y plan fedora` · `docs(adr): decisiones de arquitectura`.
 
@@ -659,10 +661,45 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 
 ---
 
-## 17. Próximo paso
+## 17. Estado de ejecución y próximo paso
 
-1. **Plan aprobado** (2026-10-02) con los ajustes del usuario: horas en 12 h, bot «Consultorio - Od. Erika Gómez» y PostgreSQL 18.
-2. ~~Instalar PostgreSQL~~ ✅ **Ya está instalado** (`postgresql-x64-18`, puerto 5432). Falta que crees el `.env` local con el password del superusuario para que el bootstrap cree las 8 bases y sus roles (ver `docs/SEGURIDAD_SECRETOS.md`).
-3. **Fase 0 en ejecución**: `.gitignore`, monorepo, kernel, outbox, bootstrap de las 8 BD, ADRs y tag `fase-0`.
+### Estado de las fases
 
-> Al aprobarlo, el trabajo pasa a `docs/adr/` como decisiones formales y este documento queda como referencia viva: cualquier cambio de alcance se refleja aquí **antes** de escribir código.
+| Fase | Estado | Evidencia |
+| :-: | :--- | :--- |
+| **0** | ✅ **completada** (2026-10-02) | 16 commits atómicos · `npm run verify` en verde con **56 pruebas** · 8 bases y 8 roles creados e idempotencia comprobada · migración `users` + `outbox_events` aplicada · `GET :8090/health` y `GET :8090/api/v1/auth/health` y `GET :4001/ready` (con PostgreSQL 18.6) respondiendo 200 · `.gitignore` verificado · 25 ADRs |
+| 1 | ⏭ **siguiente** | Identidad completa (usuarios, roles, auth), gateway con verificación de tokens y shell de la interfaz |
+| 2–10 | ⏳ pendientes | Ver §13 |
+
+### Lo que quedó funcionando
+
+```powershell
+npm run db:bootstrap   # 8 bases + 8 roles + credenciales (idempotente, --rotate, --only)
+npm run build          # tsc -b sobre todo el monorepo
+npm run db:migrate     # migraciones de todos los servicios
+npm run dev            # compilación vigilada + gateway + identity
+npm run verify         # secretos + lint + formato + compilación + pruebas
+pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.ps1
+```
+
+### Hallazgos de la Fase 0 que cambian supuestos
+
+1. **Puerto del gateway: 8090 en lugar de 8080.** En Windows el 8080 lo ocupa el servicio de red del
+   host (`hns`/Hyper-V) y el gateway moría con `listen EACCES`. Se unificó en 8090 en todo el
+   proyecto (código, `.env.example`, README, plan y guía de Fedora).
+2. **TypeScript 5.9.3 en lugar de 7.x** (ver [ADR 0022](adr/0022-typescript-5-9.md)).
+3. **PostgreSQL 18**, no 16, porque es el que estaba instalado; Fedora se alinea a la misma
+   versión mayor para que las migraciones sean idénticas.
+4. **El shell de la máquina es Windows PowerShell 5.1**: los scripts de operación usan solo
+   cmdlets compatibles (nada de `utf8NoBOM` ni de operadores de PowerShell 7).
+
+### Próximo paso
+
+Arrancar la **Fase 1** en una sesión nueva: usuarios y roles reales, login con refresh rotativo,
+auditoría de accesos, gateway verificando tokens y el shell de la interfaz con el panel inferior
+ocultable (tema claro/oscuro/sistema, info de login y botón de inicio). Todo con la misma regla:
+`npm run verify` en verde, commits atómicos y tag `fase-1`.
+
+> Este documento es la referencia viva del proyecto: cualquier cambio de alcance se refleja aquí
+> **antes** de escribir código, y cada decisión relevante se registra como ADR en
+> [`docs/adr/`](adr/README.md).
