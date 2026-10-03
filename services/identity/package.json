@@ -8,9 +8,12 @@
   "scripts": {
     "build": "tsc -b",
     "start": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/index.js",
-    "db:migrate": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/db/migrate.js"
+    "db:migrate": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/db/migrate.js",
+    "keys:generate": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/keys.js",
+    "seed:users": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/seed.js"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.2",
     "@odontocrm/contracts": "*",
     "@odontocrm/db": "*",
     "@odontocrm/events": "*",
