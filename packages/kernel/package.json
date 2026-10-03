@@ -1,0 +1,27 @@
+{
+  "name": "@odontocrm/kernel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Núcleo común de los servicios: configuración validada, logger, errores RFC 7807 y endpoints de salud",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@odontocrm/contracts": "*",
+    "fastify": "^5.12.5",
+    "pino": "^10.4.0",
+    "zod": "^4.6.5"
+  }
+}
