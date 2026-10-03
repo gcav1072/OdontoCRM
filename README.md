@@ -117,7 +117,7 @@ docs                  Plan maestro, formato de historia clínica y ADRs
 | identity | 4001 | ✅ Fase 0 (salud) · Fase 1 (usuarios y auth) |
 | patients | 4002 | ✅ Fase 2 |
 | scheduling | 4003 | ✅ Fase 3 |
-| notifications | 4004 | Fase 4 |
+| notifications | 4004 | ✅ Fase 4 (Telegram) · Fase 4.1 (multicanal + webhook) |
 | clinical | 4005 | Fase 6 |
 | odontogram | 4006 | Fase 6 |
 | screens | 4007 | Fase 5 |
@@ -207,6 +207,42 @@ Reglas que aplica el servidor (no solo la interfaz):
 - **Reprogramar no borra**: la cita original queda como `reprogramada`, la nueva apunta a ella y la
   secuencia `.ics` se incrementa para que los calendarios se actualicen.
 - **Cancelar una cita devuelve el ticket a la cola** ([ADR 0028](docs/adr/0028-cancelar-devuelve-el-ticket.md)).
+
+---
+
+## API de la Fase 4.1 (avisos, canales y webhook)
+
+El servicio de notificaciones ya no habla «Telegram»: habla **intenciones** y
+**canales** ([ADR 0029](docs/adr/0029-nucleo-conversacional-y-adaptadores.md)). El asistente
+de 7 pasos, la cola de envíos, las plantillas y el `.ics` son los mismos para todos.
+
+| Método y ruta | Qué hace | Permiso |
+| :--- | :--- | :--- |
+| `GET /api/v1/notifications` | Bandeja de envíos con filtros (estado, canal, fecha, búsqueda) | `scheduling:read` |
+| `GET /api/v1/notifications/status` | Estado de **cada canal** (identidad, capacidades) y de la cola, con las conversaciones en curso | `scheduling:read` |
+| `POST /api/v1/notifications/:id/retry` | Reintento manual: vuelve a la cola ahora | `scheduling:notify` |
+| `POST /api/v1/notifications/:id/contacted` | Deja constancia de un aviso hecho por teléfono | `scheduling:notify` |
+| `GET/PATCH/POST /api/v1/notifications/templates[/:key[/reset]]` | Plantillas editables del asistente | `scheduling:read` / `scheduling:notify` |
+| `GET /api/v1/notifications/channels` | Canales vinculados (canal + dirección enmascarada) | `scheduling:read` |
+| `POST /api/v1/notifications/channels/link-code` | Enlace `t.me/...` + QR para vincular a un paciente | `scheduling:notify` |
+| `DELETE /api/v1/notifications/channels/:patientId` | Desvincula al paciente | `scheduling:notify` |
+| `GET /api/v1/notifications/ics/:appointmentId` | Descarga el `.ics` archivado | `scheduling:read` |
+| `GET/POST /api/v1/notifications/webhook/:canal` | **Webhook público** de los canales que empujan (WhatsApp Cloud API) | **público** (lo valida la firma) |
+| `POST /internal/v1/notifications/process` | Fuerza un ciclo de la cola (operación y pruebas) | secreto interno |
+
+- **El núcleo habla de intenciones, no de comandos**: Telegram traduce `/nueva` y WhatsApp
+  «cita» o «quiero una cita» a la misma intención; añadir un canal es escribir un adaptador.
+- **Adaptación por capacidades**: donde no hay botones, las opciones van **numeradas** dentro del
+  texto y se guardan en la conversación, así que responder «2» vale como pulsar el botón.
+- **La identidad es `(canal, dirección)`**, no un `chat_id`: la misma persona puede hablar por
+  Telegram y por WhatsApp sin pisarse las conversaciones.
+- **Idempotencia por `eventoId`** (`update_id` de Telegram o `wamid` de WhatsApp) en
+  `processed_updates`.
+- **El webhook es público porque Meta no manda JWT**: la seguridad la da
+  `x-hub-signature-256` (HMAC del cuerpo crudo con el `app_secret`), que el adaptador verifica
+  **antes** de procesar nada. El gateway lo deja pasar sin token a propósito.
+- **Kit de conformidad**: `services/notifications/src/canales/conformidad.test.ts` corre el mismo
+  juego de pruebas contra Telegram, WhatsApp y el adaptador simulado; un canal que no lo pase no entra.
 
 ---
 

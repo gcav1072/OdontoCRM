@@ -1,6 +1,6 @@
 # ADR 0029 — Núcleo conversacional y adaptadores de canal
 
-- **Fecha:** 2026-10-03 · **Estado:** aceptada (decisión del usuario)
+- **Fecha:** 2026-10-03 · **Estado:** aceptada (decisión del usuario) · **Implementada:** fase 4.1 (2026-10-03)
 
 ## Contexto
 

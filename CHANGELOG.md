@@ -4,6 +4,47 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 4.1] — Núcleo conversacional y adaptadores de canal · 2026-10-03
+
+### Añadido
+
+- **`packages/contracts`**: **intenciones** del asistente (`BOT_INTENTS`, `INTENT_PHRASES`,
+  `detectIntent`, `normalizePhrase`) — Telegram traduce `/nueva` y WhatsApp «cita» a la misma
+  intención—, estado por canal (`ChannelStatus`) y las conversaciones y canales con
+  `canal`/`direccionMasked`/`usuario`. 30 pruebas del dominio de canal (6 nuevas de intenciones).
+- **`services/notifications`**: **núcleo conversacional** (`src/core/asistente.ts`) que trabaja sobre
+  `InboundMessage` y envía por el **adaptador** del canal, con las **opciones numeradas guardadas en
+  la conversación** (donde no hay botones, responder «2» vale como pulsar el botón) e
+  **idempotencia por `(canal, eventoId)`** (`update_id` o `wamid`).
+- **`services/notifications`**: **webhook público** `GET/POST /api/v1/notifications/webhook/:canal`
+  para los canales que empujan (WhatsApp Cloud API): verificación con `hub.challenge`, firma
+  `x-hub-signature-256` obligatoria sobre el **cuerpo crudo** y entrega al núcleo; un mensaje que
+  falle no tumba el lote (se cuenta y se registra).
+- **`services/notifications`**: **kit de conformidad** (`canales/conformidad.test.ts`): el mismo
+  juego de 24 pruebas contra Telegram, WhatsApp y el simulado.
+- **`apps/gateway`**: los webhooks de canal son **prefijos públicos** (`PUBLIC_PREFIXES`): no exigen
+  JWT porque la seguridad la da la firma del proveedor.
+- **`.env.example`**: variables de WhatsApp Cloud API documentadas.
+
+### Cambiado
+
+- **Migración `0001` de `notifications`**: `chat_id` → **`direccion`** y `telegram_username` →
+  `usuario`; `bot_conversations` pasa a clave **`(canal, direccion)`** con `opciones jsonb`;
+  `processed_updates` pasa a **`(canal, evento_id)`** con `evento_id text` (admite el `wamid` de
+  WhatsApp); se elimina `bot_state` (el `offset` de `getUpdates` vive dentro del adaptador).
+- **Migración `0002` de `notifications`**: las plantillas sembradas que seguían con el texto por
+  defecto hablan de intenciones («cita», «estado»…) en lugar de solo comandos; las editadas a mano
+  se respetan.
+- La cola de envíos manda **por el adaptador del canal** de cada aviso y el destino se resuelve por
+  `(canal, dirección)`, prefiriendo el canal pedido y, si no está vinculado, el que tenga el paciente.
+- El estado del bot en la bandeja lista **todos los canales** con su identidad y capacidades.
+- `telegram.ts` pasa a `canales/telegram-api.ts`: es un detalle del adaptador de Telegram.
+
+### Corregido
+
+- El botón pulsado en un canal deja de ser un detalle del núcleo: lo acusa el adaptador.
+- El texto de un botón interactivo de WhatsApp se conserva como contexto del mensaje.
+
 ## [Fase 4] — Bot de Telegram, avisos y `.ics` · 2026-10-03
 
 ### Añadido

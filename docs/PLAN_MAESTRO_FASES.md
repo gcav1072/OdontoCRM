@@ -196,12 +196,13 @@ Convenciones: `id uuid default gen_random_uuid()`, `created_at`/`updated_at` con
 - **Consecutivo:** `CREATE SEQUENCE ticket_seq START 1;` → `nextval` es atómico: dos solicitudes simultáneas nunca colisionan. `cycle = floor((n-1)/999999)`; prefijo `''` para ciclo 0, `A`…`Z`, luego `AA`… si algún día hiciera falta.
 
 ### 4.4 `notifications`
-- `patient_channels`: `patient_id`, `channel` (`telegram`), `chat_id`, `telegram_username?`, `linked_at`, `link_code`, `link_code_expires_at`, `is_blocked`.
-- `bot_conversations`: `chat_id`, `state` (paso del asistente), `draft jsonb`, `updated_at` — permite retomar el asistente si el paciente se va y vuelve.
+- `patient_channels`: `patient_id`, `channel` (`telegram|whatsapp`), **`direccion`** (chat o número), `usuario?`, `linked_at`, `link_code`, `link_code_expires_at`, `is_blocked`. La identidad es `(channel, direccion)`.
+- `bot_conversations`: **`(canal, direccion)`** como clave, `state` (paso del asistente), `draft jsonb`, **`opciones jsonb`** (las opciones numeradas del último mensaje), `usuario?`, `updated_at` — permite retomar el asistente si el paciente se va y vuelve.
 - `message_templates` (clave, canal, asunto, cuerpo con placeholders, `is_active`) — el texto de confirmación es **editable sin recompilar**.
 - `message_outbox` / `message_log`: `patient_id`, `appointment_id?`, `template_key`, `payload jsonb`, `status` (`queued|sending|sent|failed|skipped_no_channel`), `attempts`, `last_error`, `provider_message_id`, `sent_at`.
+- `processed_updates`: **`(canal, evento_id)`** con `evento_id text` — `update_id` de Telegram o `wamid` de WhatsApp; es la idempotencia del núcleo.
 - `ics_artifacts`: `appointment_id`, `sequence`, `content text`, `sha256`, `generated_at` (reproducible y auditable).
-- Reintentos con backoff exponencial (1 m, 5 m, 15 m, 1 h, 6 h) y **modo «manual pendiente»** cuando no hay `chat_id`.
+- Reintentos con backoff exponencial (1 m, 5 m, 15 m, 1 h, 6 h) y **modo «manual pendiente»** cuando no hay dirección vinculada.
 
 ### 4.5 `clinical`
 - `medical_records` (historia clínica, **1 por paciente**): `record_number` (`HC-000001` por secuencia), `status` (`borrador|firmada`), `signed_at`, `signed_by`, y las 11 secciones de `formato_historia.md` repartidas en tablas tipificadas:
@@ -447,6 +448,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | 2 | Pacientes y módulo Registro | 1 ⚠️ | 1 |
 | 3 | Agenda: tickets, cupos y Programación de jornada | 1 ⚠️ | 2 |
 | 4 | Notificaciones y bot de Telegram | 1 ⚠️ | 3 |
+| 4.1 | Núcleo conversacional y adaptadores de canal (ADR 0029) | 1 | 4 |
 | 5 | Secretaría y pantallas (lobby / consultorio) | 1 ⚠️ | 3 |
 | 6 | Historia clínica y odontograma | 2 ⚠️ | 1, 5 |
 | 7 | Sesiones clínicas, adjuntos y récipes A5 | 2 ⚠️ | 6 |
@@ -682,6 +684,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | **2** | ✅ **completada** (2026-10-03, decisiones cerradas el mismo día) | 13 commits · `npm run verify` en verde con **122 pruebas** (+20 de integración: **142 en total**) · servicio de pacientes con cédula V/E/P/SC normalizada y única, representante de menores, adjuntos en disco, búsqueda con trigramas (**< 300 ms con 5.000 pacientes**: 46 ms la peor) y **borrado lógico solo para `admin`** (ADR 0027) · edición **con motivo obligatorio** que deja `before`/`after` en la auditoría de identity pasando por el outbox y la **cola compartida** · el odontólogo registra y edita pacientes (decisión del 2026-10-03) · módulo de registro (autocompletado por cédula, solo lectura y confirmación de cambios) y lista/ficha de pacientes · **prueba de humo** (`npm run smoke:patients`) con 26 comprobaciones en verde · 27 ADRs |
 | **3** | ✅ **completada** (2026-10-03) | 11 commits · `npm run verify` en verde con **145 pruebas** (+36 de integración: **181 en total**) · `scheduling` con **secuencia atómica de tickets** (20 solicitudes simultáneas, 20 tickets distintos), cola «en espera de cita» ordenada por ticket/antigüedad/prioridad, cupo diario editable (bajarlo por debajo de lo asignado **avisa y no borra**), plantillas de franjas sembradas (L-V 8:00–12:00 y 13:00–17:00 → 16 franjas), hora manual, **sobrecupo solo con `scheduling:overbook` y motivo**, índice único parcial que impide dos citas a la misma hora (incluso en paralelo), reprogramación que conserva el ticket y enlaza la cita nueva, inasistencia con tolerancia de 15 min, `status_history` con actor y hora, aviso en lote con **vista previa exacta**, y auditoría de todos los eventos con resumen legible · módulo **Programación** con cola, jornada, franjas, arrastrar y soltar, cupo y aviso en lote · **prueba de humo** (`npm run smoke:agenda`) con **41 comprobaciones** en verde · 28 ADRs |
 | **4** | ✅ **completada** (2026-10-03) | 9 commits · `npm run verify` en verde con **165 pruebas** (+46 de integración: **211 en total**) · `notifications` con bot de Telegram **conectado** (@odegcrmbot, long polling único), asistente de **7 pasos** que valida y crea paciente + solicitud con ticket, `/estado`, `/cancelar`, `/mi_ticket`, vinculación por deep link y **QR**, anti-flood (10 mensajes/min) e **idempotencia por `update_id`**, 19 plantillas editables, cola con reintentos y retroceso exponencial, **aviso inmediato al formalizar la cita con el `.ics` adjunto**, «aviso manual pendiente» cuando el paciente no tiene Telegram, y `ics_artifacts` · **reparto de eventos por servicio** (cada consumidor tiene su cola: los eventos llegan a todos) · bandeja `/notificaciones` con estado del bot, envíos, reintento manual, plantillas y vinculación · **prueba de humo** (`npm run smoke:notifications`) en verde · 29 ADRs |
+| **4.1** | ✅ **completada** (2026-10-03) | 8 commits · **núcleo conversacional y adaptadores de canal** ([ADR 0029](adr/0029-nucleo-conversacional-y-adaptadores.md)): el asistente trabaja sobre `InboundMessage` y envía por el adaptador, con **intenciones** (no comandos) y **opciones numeradas guardadas en la conversación**; migraciones `0001` (`direccion` + `canal` + `opciones` + `evento_id text` para el `wamid`) y `0002` (plantillas sin comandos); **webhook público** de WhatsApp con firma obligatoria y su **excepción en el gateway**; **kit de conformidad** con el mismo juego de pruebas contra Telegram, WhatsApp y simulado; `npm run verify` y las pruebas de integración **en verde** · verificado con el webhook real contra un doble de la Graph API (verificación → 401 sin firma → 200 con firma → respuesta enviada) |
 | 5 | ⏭ **siguiente** | Secretaría y pantallas (lobby y consultorio) con SSE |
 | 4–10 | ⏳ pendientes | Ver §13 |
 
@@ -813,6 +816,28 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    reprogramar y un recordatorio 30 minutos antes: los calendarios actualizan el evento en vez de
    duplicarlo, y la web lo descarga desde `/api/v1/notifications/ics/:appointmentId` (el prefijo
    `/appointments` pertenece a la agenda en el gateway).
+
+### Hallazgos de la Fase 4.1 que cambian supuestos
+
+1. **El «paso 2» del refactor se hizo antes de la Fase 5** (decisión de la sesión del 2026-10-03):
+   dejar el núcleo atado a Telegram y añadir WhatsApp después habría obligado a reescribir el
+   asistente dos veces. Los adaptadores, el webhook y el kit de conformidad quedan cerrados como
+   **fase-4.1**, etiqueta propia y revertible en bloque.
+2. **La firma de Meta se calcula sobre los bytes exactos.** El servicio guarda el **cuerpo crudo**
+   en el analizador de contenido (y el proxy del gateway ya reenviaba el texto tal cual): si se
+   re-serializara el JSON, `x-hub-signature-256` no cuadraría. Es la razón de que el webhook tenga
+   su propio analizador y de que la ruta se documente como «pública pero firmada».
+3. **El `offset` del sondeo dejó de persistirse**: vive dentro del adaptador de Telegram y la
+   idempotencia real la da `processed_updates` por `(canal, evento_id)`. Sobraba la tabla `bot_state`
+   (se elimina en la migración `0001`) y sobraba el poller del servicio.
+4. **Sin token no se sondea.** El adaptador de Telegram solo arranca su bucle en modo real: con el
+   transporte simulado un `getUpdates` que responde al instante giraría en vacío.
+5. **Un mensaje que falla no puede tumbar el lote del webhook.** Meta exige un 200 rápido y
+   reintentar no ayuda (el evento ya está marcado como procesado), así que el adaptador cuenta los
+   fallidos, los registra y sigue con el resto.
+6. **Las opciones numeradas viven en la conversación, no en memoria.** `bot_conversations.opciones`
+   guarda la última lista enviada: si el paciente tarda un día en responder «2», el asistente
+   recuerda qué era.
 
 ### Próximo paso
 
