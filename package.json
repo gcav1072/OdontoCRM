@@ -31,6 +31,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "node tools/test-integration.mjs",
     "check-secrets": "node tools/check-secrets.mjs",
     "db:bootstrap": "node infra/db/bootstrap.mjs",
     "db:migrate": "node tools/migrate-all.mjs",
