@@ -34,3 +34,4 @@ tomaron durante la Fase 0 y quedan documentadas por la misma razón.
 | [0025](0025-horas-en-12-horas.md) | Horas en formato de 12 h en la interfaz, 24 h en datos y `.ics` | aceptada |
 | [0026](0026-cola-de-eventos-compartida.md) | Cola de eventos compartida en la base `odonto_events` | aceptada (corrige el ADR 0003) |
 | [0027](0027-borrado-logico-de-pacientes.md) | Borrado lógico de pacientes, solo para el administrador | aceptada |
+| [0028](0028-cancelar-devuelve-el-ticket.md) | Cancelar una cita devuelve el ticket a la cola | aceptada |
