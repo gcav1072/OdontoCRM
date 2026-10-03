@@ -25,8 +25,9 @@ export const handleDomainEvent = async (
 ): Promise<ConsumeSummary> => {
   const isPatientCreated = event.eventType === EVENT_TOPICS.patientCreated;
   const isPatientUpdated = event.eventType === EVENT_TOPICS.patientUpdated;
+  const isPatientDeleted = event.eventType === EVENT_TOPICS.patientDeleted;
 
-  if (!isPatientCreated && !isPatientUpdated) {
+  if (!isPatientCreated && !isPatientUpdated && !isPatientDeleted) {
     return { processed: false, reason: 'tipo_no_consumido' };
   }
 
@@ -53,7 +54,9 @@ export const handleDomainEvent = async (
       ? 'patient_created'
       : data.action === 'status_changed'
         ? 'patient_status_changed'
-        : 'patient_updated';
+        : data.action === 'deleted'
+          ? 'patient_deleted'
+          : 'patient_updated';
 
   await writeAuditEvent(db, {
     action,
