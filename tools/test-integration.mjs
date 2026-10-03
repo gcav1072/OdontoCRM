@@ -43,7 +43,9 @@ console.log(
 );
 
 const passthrough = process.argv.slice(2);
-const vitestArgs = ['run', ...(passthrough.length > 0 ? passthrough : ['packages/db/src'])];
+// Sin argumentos corre **toda** la suite: con `TEST_DATABASE_URL` presente, las
+// pruebas de integración (que sin ella se omiten) se ejecutan de verdad.
+const vitestArgs = ['run', ...passthrough];
 
 const result = spawnSync(
   process.execPath,
