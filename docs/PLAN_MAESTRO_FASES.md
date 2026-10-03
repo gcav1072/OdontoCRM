@@ -279,7 +279,8 @@ Reglas duras:
 | Acción | admin | secretario | odontologo | pantalla |
 | :--- | :-: | :-: | :-: | :-: |
 | Usuarios y contraseñas | ✅ | ❌ | ❌ | ❌ |
-| Registro/edición de pacientes (con motivo) | ✅ | ✅ | lectura | ❌ |
+| Registro/edición de pacientes (con motivo) | ✅ | ✅ | ✅ | ❌ |
+| Eliminar un paciente del registro (borrado lógico, con motivo) | ✅ | ❌ | ❌ | ❌ |
 | Programar jornada, cupos, notificar | ✅ | ✅ | lectura | ❌ |
 | Llamar / pasar a consulta / no asistió | ✅ | ✅ | ✅ | ❌ |
 | Marcar atendido | ✅ | ✅ (con advertencia) | ✅ | ❌ |
@@ -514,9 +515,9 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 
 **Objetivo:** que el paciente pida su cita por Telegram y reciba su confirmación con `.ics`.
 
-**Entregables:** `notifications` (poller único, asistente de 7 pasos con validación/normalización, `/estado` por ticket, `/cancelar`, idempotencia por `update_id`, anti-flood, `bot_conversations` reanudables, vinculación por deep link y QR, plantillas editables, cola con reintentos y backoff, `ics_artifacts` + `GET /appointments/:id/ics`, modo «manual pendiente») · integración REST interna con `patients` y `scheduling` · modo simulado para pruebas (sin token real) · web `/notificaciones` (bandeja de envíos, errores, reintento manual, plantillas) · guion de mensajes revisable.
+**Entregables:** `notifications` (poller único, asistente de 7 pasos con validación/normalización, `/estado` por ticket, `/cancelar`, idempotencia por `update_id`, anti-flood, `bot_conversations` reanudables, vinculación por deep link y QR, plantillas editables, cola con reintentos y backoff, `ics_artifacts` + `GET /appointments/:id/ics`, modo «manual pendiente») · **aviso inmediato al formalizar la cita**: al recibir `scheduling.appointment.scheduled`, el bot envía al paciente la notificación con **fecha, hora y lugar** y el **`.ics` adjunto** (decisión del 2026-10-03), con reintentos e idempotencia por cita y canal · integración REST interna con `patients` y `scheduling` · modo simulado para pruebas (sin token real) · web `/notificaciones` (bandeja de envíos, errores, reintento manual, plantillas) · guion de mensajes revisable.
 
-**Criterios de aceptación:** un flujo completo en Telegram real (o chat de pruebas) genera un ticket visible en `/programacion`; un `update_id` repetido no duplica tickets; el `.ics` abre correctamente en Google Calendar y en Apple Calendario con la hora correcta de Caracas; mensaje inválido en cualquier paso no avanza y explica el error; paciente sin Telegram queda en «manual pendiente» con su guion de llamada; reintentos automáticos visibles en la bandeja.
+**Criterios de aceptación:** un flujo completo en Telegram real (o chat de pruebas) genera un ticket visible en `/programacion`; **al formalizarse una cita en la aplicación llega el mensaje con fecha, hora, lugar y el `.ics` adjunto en menos de un minuto** (y si el paciente no tiene Telegram vinculado, queda en «manual pendiente»); un `update_id` repetido no duplica tickets ni avisos; el `.ics` abre correctamente en Google Calendar y en Apple Calendario con la hora correcta de Caracas; mensaje inválido en cualquier paso no avanza y explica el error; reintentos automáticos visibles en la bandeja.
 
 **Commits previstos:** `feat(notifications): poller y máquina de conversación del bot` · `feat(notifications): validación y normalización de datos del asistente` · `feat(notifications): creación de ticket vía scheduling` · `feat(notifications): vinculación de chat por deep link` · `feat(notifications): cola de envíos, reintentos y plantillas` · `feat(notifications): generación de ics` · `feat(web): bandeja de notificaciones` · `test(notifications): idempotencia y validaciones`.
 
@@ -648,9 +649,9 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 6. Presupuestos, facturación, seguros, ortodoncia avanzada y WhatsApp **no** están en este plan (quedan como fases futuras).
 7. Datos de prueba: rango de cédulas **90.000.000+** reservado y reservado también el prefijo `SC-` para menores ficticios.
 
-**Decisiones abiertas con default (dime si cambias alguna; si no, avanzo con el default)**
+**Decisiones cerradas (2026-10-03, con la revisión de la Fase 2)**
 
-| Tema | Default propuesto |
+| Tema | Decisión |
 | :--- | :--- |
 | Sobrecupo | Bloqueado por defecto; `admin` puede autorizarlo con motivo y queda en auditoría. |
 | Recordatorios | Telegram 24 h y 2 h antes (fase posterior al plan actual). |
@@ -658,8 +659,13 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | Impresión | Récipe en **A5**; historia clínica y consentimiento en **A4**. |
 | Copia del récipe al paciente | Descarga/impresión desde el historial; envío por Telegram queda para fase posterior. |
 | Numeración de historia | `HC-000001` por paciente, secuencia global. |
-| Membrete | Genérico hasta que envíes logo, RIF, teléfonos y datos del odontólogo (MPPS, especialidad). |
-| Nombre del bot | Bot de BotFather con **nombre visible «Consultorio - Od. Erika Gómez»** por los momentos (el nombre visible se cambia cuando quieras). El `@usuario` es único y también se puede cambiar, pero **cambiar el `@usuario` rompe los enlaces `t.me/...` ya compartidos**; si eso pasa, se crea otro bot y se reemplaza el token. El token se entrega por archivo `.env` según `docs/SEGURIDAD_SECRETOS.md` — **nunca por chat ni en el repo**. |
+| Membrete | Genérico hasta que envíes logo, RIF, teléfonos y datos del odontólogo (MPPS, especialidad). Te los pediré al construir el PDF de la Fase 7. |
+| Nombre del bot | Nombre visible «Consultorio - Od. Erika Gómez» (se cambia cuando quieras). El `@usuario` es único: cambiarlo rompe los enlaces `t.me/...` ya compartidos. El token se entrega por `.env`, nunca por chat ni en el repo. |
+| Aviso al formalizar la cita | **Al quedar formalizada la cita** (no solo como recordatorio), el bot envía al paciente la notificación con **fecha, hora y lugar**, e **incrusta el `.ics`** para que la agregue a su calendario. Es un envío disparado por el evento `scheduling.appointment.scheduled`, con reintentos e idempotencia; la plantilla y el `.ics` se construyen en la Fase 4. |
+| Tema claro/oscuro/sistema | Preferencia **por equipo** (clave `odontocrm:tema`), no por usuario: en un consultorio con puestos compartidos el tema es del puesto y la pantalla de login ya lo respeta. |
+| Cola de eventos | Se mantiene la **cola compartida** en la base `odonto_events` ([ADR 0026](adr/0026-cola-de-eventos-compartida.md)); cada servicio conserva su outbox. |
+| Permisos del odontólogo sobre pacientes | **Registra y edita** (tiene `patients:write` y `patients:edit_sensitive`), igual que la secretaría y siempre con motivo auditado. **No** puede eliminar pacientes. |
+| Eliminar un paciente | Se añade **borrado lógico** con motivo y **solo para `admin`** (permiso `patients:delete`, [ADR 0027](adr/0027-borrado-logico-de-pacientes.md)): nada se destruye y el documento vuelve a quedar libre. |
 
 ---
 
@@ -671,7 +677,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | :-: | :--- | :--- |
 | **0** | ✅ **completada** (2026-10-02) | 24 commits atómicos · `npm run verify` en verde con **56 pruebas** (+4 de integración con `npm run test:integration`) · 8 bases y 8 roles creados, idempotencia comprobada y **migraciones verificadas desde cero en base limpia** (`npm run db:verify-migrations`) · outbox + `pg-boss` probados contra PostgreSQL real · `GET :8090/health`, `GET :8090/api/v1/auth/health` y `GET :4001/ready` (PostgreSQL 18.6) respondiendo 200 · `.gitignore` verificado · 25 ADRs · guía de Fedora con `bash -n` y `check` de las unidades |
 | **1** | ✅ **completada** (2026-10-02) | 10 commits · `npm run verify` en verde con **98 pruebas** (+11 de integración) · identidad completa (login, refresh rotativo con detección de reuso, bloqueo tras 5 intentos, usuarios, dispositivos y auditoría) · gateway verificando el JWT y publicando la identidad · interfaz con shell, login, panel inferior ocultable, temas y módulo de usuarios · **prueba de humo del acceso** (`npm run smoke:auth`) con 17 comprobaciones en verde |
-| **2** | ✅ **completada** (2026-10-03) | 12 commits · `npm run verify` en verde con **120 pruebas** (+20 de integración: **140 en total**) · servicio de pacientes con cédula V/E/P/SC normalizada y única, representante de menores, adjuntos en disco y búsqueda con trigramas (**< 300 ms con 5.000 pacientes**: 45,6 ms la peor) · edición **con motivo obligatorio** que deja `before`/`after` en la auditoría de identity pasando por el outbox y la **cola compartida** · módulo de registro (autocompletado por cédula, solo lectura y confirmación de cambios) y lista/ficha de pacientes · **prueba de humo** (`npm run smoke:patients`) con 19 comprobaciones en verde · 26 ADRs |
+| **2** | ✅ **completada** (2026-10-03, decisiones cerradas el mismo día) | 13 commits · `npm run verify` en verde con **122 pruebas** (+20 de integración: **142 en total**) · servicio de pacientes con cédula V/E/P/SC normalizada y única, representante de menores, adjuntos en disco, búsqueda con trigramas (**< 300 ms con 5.000 pacientes**: 46 ms la peor) y **borrado lógico solo para `admin`** (ADR 0027) · edición **con motivo obligatorio** que deja `before`/`after` en la auditoría de identity pasando por el outbox y la **cola compartida** · el odontólogo registra y edita pacientes (decisión del 2026-10-03) · módulo de registro (autocompletado por cédula, solo lectura y confirmación de cambios) y lista/ficha de pacientes · **prueba de humo** (`npm run smoke:patients`) con 26 comprobaciones en verde · 27 ADRs |
 | 3 | ⏭ **siguiente** | Solicitudes con ticket, cola «en espera de cita», cupo diario y plantilla de franjas |
 | 3–10 | ⏳ pendientes | Ver §13 |
 
@@ -686,10 +692,10 @@ npm run db:verify-migrations    # comprueba que migran desde cero en una base li
 npm run seed:users              # admin, recepcion y egomez con contraseña temporal
 npm run seed:demo -- --count 5000   # pacientes ficticios deterministas (--reset los borra)
 npm run dev                     # compilación vigilada + gateway + identity + patients + interfaz (5173)
-npm test                        # 120 pruebas unitarias y de contrato
-npm run test:integration        # 140 pruebas contra PostgreSQL real (outbox, cola, sesión, pacientes y rendimiento)
+npm test                        # 122 pruebas unitarias y de contrato
+npm run test:integration        # 142 pruebas contra PostgreSQL real (outbox, cola, sesión, pacientes y rendimiento)
 npm run smoke:auth              # recorre el ciclo de sesión por el gateway real
-npm run smoke:patients          # registro, duplicado, edición con motivo y auditoría por el gateway real
+npm run smoke:patients          # registro, duplicado, edición y borrado con motivo y auditoría por el gateway real
 npm run verify                  # secretos + lint + formato + compilación + pruebas
 pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.ps1
 ```

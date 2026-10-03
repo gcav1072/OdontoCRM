@@ -12,8 +12,8 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   (`normalizeDocNumber`, `parseDocumentText`, `validateDocument`, `formatDocument`,
   `documentKey`), edad y minoría de edad en UTC, teléfono de Venezuela normalizado a `+58`,
   `cleanText` para texto libre, esquemas de alta/edición (**motivo obligatorio**), cambio de
-  estado, representante, adjuntos, filtros de búsqueda y la carga de auditoría que viaja por el
-  outbox. 22 pruebas nuevas (52 en el paquete).
+  estado, **borrado lógico**, representante, adjuntos, filtros de búsqueda y la carga de auditoría
+  que viaja por el outbox. 22 pruebas nuevas (55 en el paquete).
 - **`services/patients`** (nuevo, puerto 4002, base `odonto_patients`): paciente único por
   documento con índice único parcial y **409 con `existingPatientId`** ante duplicados,
   representante obligatorio para menores, historial local de datos de contacto, **adjuntos en
@@ -29,7 +29,18 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 - **Interfaz**: página **Registro** (`/registro`) con selector de tipo de cédula, máscara,
   autocompletado al salir del campo, ficha en solo lectura y botón **Editar** que exige motivo y
   confirma los cambios uno por uno; página **Pacientes** (`/pacientes`) con búsqueda con retardo,
-  filtros, paginación y ficha con adjuntos y cambio de estado.
+  filtros, paginación y ficha con adjuntos y cambio de estado; y **Eliminar del registro** en la
+  ficha (solo `admin`), con motivo obligatorio.
+
+### Decidido con el usuario (2026-10-03)
+
+- El **odontólogo registra y edita** pacientes (`patients:write` y `patients:edit_sensitive`); el
+  borrado queda reservado al `admin` (`patients:delete`, [ADR 0027](docs/adr/0027-borrado-logico-de-pacientes.md)).
+- El **tema** sigue siendo preferencia del equipo, no del usuario.
+- Se mantiene la **cola de eventos compartida** ([ADR 0026](docs/adr/0026-cola-de-eventos-compartida.md)).
+- El **bot avisará al formalizarse la cita** (fecha, hora, lugar y `.ics` adjunto), además de los
+  recordatorios de 24 h y 2 h (Fase 4).
+- El **membrete** sigue genérico hasta la Fase 7.
 
 ### Cambiado
 

@@ -163,11 +163,14 @@ Reglas que aplica el servidor (no solo la interfaz):
 | `GET /api/v1/patients/:id` | Ficha completa con representante y número de adjuntos | `patients:read` |
 | `PATCH /api/v1/patients/:id` | Edita datos **con motivo obligatorio**; el cambio queda auditado con el valor anterior y el nuevo | `patients:edit_sensitive` |
 | `POST /api/v1/patients/:id/status` | Activación/desactivación con motivo | `patients:edit_sensitive` |
+| `POST /api/v1/patients/:id/delete` | **Borrado lógico** con motivo: sale de listas y búsquedas y libera el documento; nada se destruye | `patients:delete` (**solo admin**) |
 | `GET/POST/DELETE /api/v1/patients/:id/files[/:fileId]` | Radiografías, fotos y PDF (JPG/PNG/WEBP/PDF, máx. 20 MB) | `patients:read` / `patients:write` |
 | `POST /internal/v1/patients/upsert-by-cedula` | Alta o actualización idempotente por documento, para el bot y otros servicios | secreto interno |
 
 - **El documento es la identidad**: `V-12345678`, `v 12.345.678` y `12345678` resuelven al mismo
   paciente. Una cédula repetida responde **409** con `existingPatientId` para abrir esa ficha.
+- **Quién puede qué**: `admin` todo; `secretario` y `odontologo` registran y editan pacientes (toda
+  edición queda auditada con motivo); **eliminar** del registro es exclusivo del `admin`.
 - **Los cambios sensibles viajan por el outbox** (en la misma transacción del cambio) hasta la
   **cola compartida** y de allí a la auditoría de identity, con `before`/`after`, motivo, usuario
   e IP. Los consumidores son idempotentes (`processed_events`).
