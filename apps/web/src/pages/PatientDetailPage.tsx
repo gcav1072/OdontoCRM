@@ -10,9 +10,9 @@ import {
   CardTitle,
   Spinner,
 } from '@odontocrm/ui';
-import { ArrowLeft, Eye, FileText, IdCard, ShieldAlert, UserRound } from 'lucide-react';
+import { ArrowLeft, Eye, FileText, IdCard, ShieldAlert, Trash2, UserRound } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { useNotice } from '../hooks/useNotice';
 import { apiErrorMessage, isApiError } from '../lib/api';
@@ -23,6 +23,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { LinkButton } from '../components/LinkButton';
 import { NoticeBanner } from '../components/NoticeBanner';
 import { PatientAttachments } from '../components/patients/PatientAttachments';
+import { PatientDeleteDialog } from '../components/patients/PatientDeleteDialog';
 import { PatientForm } from '../components/patients/PatientForm';
 import { PatientStatusDialog } from '../components/patients/PatientStatusDialog';
 
@@ -49,8 +50,10 @@ export const PatientDetailPage = () => {
   const { id = '' } = useParams<{ id: string }>();
   const { hasPermission } = useAuth();
   const cliente = useQueryClient();
+  const navegar = useNavigate();
   const { notice, limpiar, exito } = useNotice();
   const [cambiandoEstado, setCambiandoEstado] = useState(false);
+  const [borrando, setBorrando] = useState(false);
 
   const pacienteQuery = useQuery({
     queryKey: ['paciente', id],
@@ -162,6 +165,16 @@ export const PatientDetailPage = () => {
                 {t('pacientes.estado.boton')}
               </Button>
             )}
+            {/* Borrado lógico: solo el admin tiene `patients:delete` (ADR 0027). */}
+            {hasPermission('patients:delete') && (
+              <Button
+                variant="danger"
+                onClick={() => setBorrando(true)}
+                leadingIcon={<Trash2 className="size-4" aria-hidden="true" />}
+              >
+                {t('pacientes.borrar.boton')}
+              </Button>
+            )}
           </div>
         </CardHeader>
 
@@ -220,6 +233,20 @@ export const PatientDetailPage = () => {
           cliente.setQueryData(['paciente', id], actualizado);
           refrescarLista();
           exito(t('pacientes.estado.ok'));
+        }}
+      />
+
+      <PatientDeleteDialog
+        open={borrando}
+        patient={paciente}
+        onClose={() => setBorrando(false)}
+        onDone={() => {
+          // El paciente desaparece de listas y búsquedas: se limpia la caché y se
+          // vuelve al listado con el aviso correspondiente.
+          cliente.removeQueries({ queryKey: ['paciente', id] });
+          refrescarLista();
+          exito(t('pacientes.borrar.ok'));
+          navegar('/pacientes');
         }}
       />
     </div>

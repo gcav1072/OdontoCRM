@@ -430,6 +430,18 @@ const DICCIONARIO = {
   'pacientes.estado.esperaTexto':
     'El paciente queda «en espera de cita»: está registrado y pendiente de programar.',
 
+  // Borrado lógico (solo admin)
+  'pacientes.borrar.boton': 'Eliminar del registro',
+  'pacientes.borrar.titulo': 'Eliminar a {paciente} del registro',
+  'pacientes.borrar.texto':
+    'Se usa cuando alguien quedó registrado por error. El paciente desaparece de las listas y de las búsquedas, y su documento vuelve a quedar libre.',
+  'pacientes.borrar.aviso':
+    'No se destruye nada: la ficha, sus adjuntos y el historial de cambios se conservan marcados, y el borrado queda en la auditoría con tu motivo y tu usuario.',
+  'pacientes.borrar.motivo': 'Motivo del borrado',
+  'pacientes.borrar.motivoPlaceholder': 'Por ejemplo: registro duplicado por error de tecleo',
+  'pacientes.borrar.enviar': 'Eliminar del registro',
+  'pacientes.borrar.ok': 'Paciente eliminado del registro.',
+
   // Adjuntos
   'pacientes.adjuntos.titulo': 'Adjuntos',
   'pacientes.adjuntos.texto':
@@ -572,6 +584,7 @@ const DICCIONARIO = {
   'permiso.patients:read': 'Consultar pacientes',
   'permiso.patients:write': 'Registrar y editar pacientes',
   'permiso.patients:edit_sensitive': 'Editar datos sensibles del paciente',
+  'permiso.patients:delete': 'Eliminar un paciente del registro',
   'permiso.scheduling:read': 'Consultar la agenda',
   'permiso.scheduling:write': 'Programar la jornada y asignar cupos',
   'permiso.scheduling:notify': 'Enviar notificaciones de citas',
@@ -637,6 +650,7 @@ export const PERMISSION_LABELS: Readonly<Record<Permission, string>> = {
   'patients:read': t('permiso.patients:read'),
   'patients:write': t('permiso.patients:write'),
   'patients:edit_sensitive': t('permiso.patients:edit_sensitive'),
+  'patients:delete': t('permiso.patients:delete'),
   'scheduling:read': t('permiso.scheduling:read'),
   'scheduling:write': t('permiso.scheduling:write'),
   'scheduling:notify': t('permiso.scheduling:notify'),

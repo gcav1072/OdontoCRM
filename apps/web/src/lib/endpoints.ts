@@ -4,6 +4,7 @@ import {
   type ChangePatientStatusInput,
   type CreatePatientInput,
   type CreateUserInput,
+  type DeletePatientInput,
   type LoginInput,
   type LoginResponse,
   type Paginated,
@@ -131,6 +132,12 @@ export interface PatientFileList {
   total: number;
 }
 
+/** Respuesta del borrado lógico: la ficha que había y cuándo se marcó. */
+export interface PatientRemoveResult {
+  patient: PatientDetail;
+  deletedAt: string;
+}
+
 /**
  * Pacientes (Fase 2). Todo pasa por el gateway y el transporte compartido: el
  * token sigue en memoria, un 401 dispara **un** refresco y los errores llegan
@@ -159,6 +166,13 @@ export const patientsApi = {
 
   changeStatus: (id: string, input: ChangePatientStatusInput): Promise<PatientDetail> =>
     api.post<PatientDetail>(`/patients/${id}/status`, input),
+
+  /**
+   * Borrado lógico (solo `admin`, permiso `patients:delete`). Es `POST …/delete`
+   * y no `DELETE` porque lleva el motivo en el cuerpo.
+   */
+  remove: (id: string, input: DeletePatientInput): Promise<PatientRemoveResult> =>
+    api.post<PatientRemoveResult>(`/patients/${id}/delete`, input),
 
   listFiles: (id: string, signal?: AbortSignal): Promise<PatientFileList> =>
     api.get<PatientFileList>(`/patients/${id}/files`, { signal }),
