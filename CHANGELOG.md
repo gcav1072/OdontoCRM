@@ -34,6 +34,18 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   `--all`) buscando tokens de Telegram, claves PEM, cadenas de conexión con contraseña,
   claves de AWS y GitHub, y archivos que nunca deben versionarse.
 - **`tools/migrate-all.mjs`**: aplica las migraciones de todos los servicios compilados.
+- **`tools/verify-migrations.mjs`** (`npm run db:verify-migrations`): crea una base limpia, aplica
+  las migraciones con el migrador real, comprueba tablas, migraciones registradas e índices, y
+  borra la base temporal. Convierte el criterio «migraciones desde cero» en un comando.
+- **`tools/test-integration.mjs`** (`npm run test:integration`): pruebas contra PostgreSQL real
+  (outbox transaccional y cola `pg-boss`).
+- **Guía de producción en Fedora** ([`infra/fedora/`](infra/fedora/INSTALL.md)): guía paso a paso
+  (paquetes `dnf`, PostgreSQL 18, usuario de sistema, permisos, secretos, `systemd` o PM2,
+  `firewalld`, SELinux, TLS interno, Tailscale, respaldos y restauración con prueba documentada,
+  rollback y 33 puntos de comprobación), `install.sh` idempotente que simula por defecto, las dos
+  unidades `systemd`, el `ecosystem.config.cjs` de PM2 y los scripts de respaldo/restauración
+  (restauración primero en una base temporal de verificación). Los 38 puntos que solo se pueden
+  probar en el servidor real están marcados como `> PENDIENTE FASE 10:`.
 - **Documentación**: política de secretos ([`docs/SEGURIDAD_SECRETOS.md`](docs/SEGURIDAD_SECRETOS.md)),
   ADRs, guía de instalación en Windows y borrador de producción en Fedora.
 - **Calidad**: TypeScript 5.9 estricto, ESLint 10 con reglas anti SQL-injection, Prettier,
@@ -74,3 +86,10 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   `database: ok`. Ruta desconocida → 404 en `application/problem+json`.
 - `.gitignore`: `node_modules`, `dist/` y todos los `.env` quedan fuera del control de versiones
   (comprobado con `git check-ignore`).
+- **Migraciones desde cero en base limpia** (`npm run db:verify-migrations`): base temporal creada
+  con el rol del servicio, migración aplicada con `runMigrations`, tablas `users` y `outbox_events`
+  presentes, 1 migración registrada, índices del outbox correctos y base temporal eliminada.
+- **Guía de Fedora**: `bash -n` en los 3 scripts, `node --check` del ecosistema de PM2, sin CRLF en
+  ningún archivo, UTF-8 sin BOM y sin secretos en los ejemplos (`check-secrets --all`).
+- **Documentación**: 32 documentos con todos sus enlaces relativos resolviendo y las 25 ADRs
+  indexadas sin huérfanas.

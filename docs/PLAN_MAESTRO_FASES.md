@@ -667,18 +667,21 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 
 | Fase | Estado | Evidencia |
 | :-: | :--- | :--- |
-| **0** | ✅ **completada** (2026-10-02) | 16 commits atómicos · `npm run verify` en verde con **56 pruebas** · 8 bases y 8 roles creados e idempotencia comprobada · migración `users` + `outbox_events` aplicada · `GET :8090/health` y `GET :8090/api/v1/auth/health` y `GET :4001/ready` (con PostgreSQL 18.6) respondiendo 200 · `.gitignore` verificado · 25 ADRs |
+| **0** | ✅ **completada** (2026-10-02) | 24 commits atómicos · `npm run verify` en verde con **56 pruebas** (+4 de integración con `npm run test:integration`) · 8 bases y 8 roles creados, idempotencia comprobada y **migraciones verificadas desde cero en base limpia** (`npm run db:verify-migrations`) · outbox + `pg-boss` probados contra PostgreSQL real · `GET :8090/health`, `GET :8090/api/v1/auth/health` y `GET :4001/ready` (PostgreSQL 18.6) respondiendo 200 · `.gitignore` verificado · 25 ADRs · guía de Fedora con `bash -n` y `check` de las unidades |
 | 1 | ⏭ **siguiente** | Identidad completa (usuarios, roles, auth), gateway con verificación de tokens y shell de la interfaz |
 | 2–10 | ⏳ pendientes | Ver §13 |
 
 ### Lo que quedó funcionando
 
 ```powershell
-npm run db:bootstrap   # 8 bases + 8 roles + credenciales (idempotente, --rotate, --only)
-npm run build          # tsc -b sobre todo el monorepo
-npm run db:migrate     # migraciones de todos los servicios
-npm run dev            # compilación vigilada + gateway + identity
-npm run verify         # secretos + lint + formato + compilación + pruebas
+npm run db:bootstrap            # 8 bases + 8 roles + credenciales (idempotente, --rotate, --only)
+npm run build                   # tsc -b sobre todo el monorepo
+npm run db:migrate              # migraciones de todos los servicios
+npm run db:verify-migrations    # comprueba que migran desde cero en una base limpia
+npm run dev                     # compilación vigilada + gateway + identity
+npm test                        # 56 pruebas unitarias
+npm run test:integration        # pruebas contra PostgreSQL real (outbox + pg-boss)
+npm run verify                  # secretos + lint + formato + compilación + pruebas
 pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.ps1
 ```
 
