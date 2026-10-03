@@ -1,17 +1,28 @@
 import type { HealthReport, Role, UserSummary } from '@odontocrm/contracts';
+import { permissionsForRoles } from '@odontocrm/contracts';
 
 import { createRng, type SeededRandom } from './prng.js';
 
 /** Usuario ficticio para pruebas y para el modo test. */
-export const aUserSummary = (overrides: Partial<UserSummary> = {}): UserSummary => ({
-  id: overrides.id ?? globalThis.crypto.randomUUID(),
-  username: overrides.username ?? 'recepcion',
-  fullName: overrides.fullName ?? 'María Pérez',
-  roles: overrides.roles ?? (['secretario'] as Role[]),
-  isActive: overrides.isActive ?? true,
-  mustChangePassword: overrides.mustChangePassword ?? false,
-  lastLoginAt: overrides.lastLoginAt ?? null,
-});
+export const aUserSummary = (overrides: Partial<UserSummary> = {}): UserSummary => {
+  const roles: Role[] = overrides.roles ?? ['secretario'];
+
+  return {
+    id: globalThis.crypto.randomUUID(),
+    username: 'recepcion',
+    fullName: 'María Pérez',
+    email: null,
+    roles,
+    permissions: permissionsForRoles(roles),
+    isActive: true,
+    mustChangePassword: false,
+    isLocked: false,
+    failedAttempts: 0,
+    lastLoginAt: null,
+    createdAt: '2026-10-02T12:00:00.000Z',
+    ...overrides,
+  };
+};
 
 /** Informe de salud ficticio, útil para probar el tablero de estado. */
 export const aHealthReport = (overrides: Partial<HealthReport> = {}): HealthReport => ({
