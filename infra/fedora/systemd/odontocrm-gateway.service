@@ -1,0 +1,91 @@
+# =============================================================================
+# OdontoCRM · gateway (punto único de entrada)
+# Archivo : infra/fedora/systemd/odontocrm-gateway.service
+# Destino : /etc/systemd/system/odontocrm-gateway.service
+# Versión : 0.1.0-draft (borrador Fase 0 — se prueba en la Fase 10)
+#
+# El gateway NO usa PostgreSQL (no tiene base de datos propia): solo necesita
+# red, el secreto de servicio y las URLs internas. Recibe las variables por los
+# DOS archivos de entorno, en el mismo orden que el arranque de desarrollo
+# (`node --env-file-if-exists=.env --env-file-if-exists=apps/gateway/.env …`):
+#   /etc/odontocrm/odontocrm.env   común (WEB_ORIGIN, *_URL, GATEWAY_PORT, …)
+#   /etc/odontocrm/gateway.env     propio (INTERNAL_SERVICE_SECRET)
+# systemd lee esos archivos COMO ROOT y le pasa las variables al proceso, por eso
+# pueden ser 0600 root:root (INSTALL.md §7.2 y §10.4).
+#
+# Instalación:
+#   sudo install -m 0644 -o root -g root \
+#     infra/fedora/systemd/odontocrm-gateway.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now odontocrm-gateway.service
+#
+# > PENDIENTE FASE 10: validar con `systemd-analyze verify` y arrancar de verdad
+#   en el Fedora de producción (ruta del ejecutable, EnvironmentFile y
+#   endurecimiento). Ver INSTALL.md §10.2 y §10.3.
+# =============================================================================
+
+[Unit]
+Description=OdontoCRM gateway (API en 127.0.0.1:8090)
+Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
+# El gateway puede arrancar antes que los servicios internos: responde /health
+# y reintenta por su cuenta. No se declara dependencia dura con ellos.
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=odontocrm
+Group=odontocrm
+
+# La raíz del monorepo, igual que en desarrollo (`cwd: root` en
+# infra/windows/ecosystem.config.cjs).
+WorkingDirectory=/opt/odontocrm
+
+# Dos EnvironmentFile= en orden (el segundo pisa al primero si repite variable):
+# el COMÚN con WEB_ORIGIN, las ocho *_URL y GATEWAY_PORT, y el PROPIO del gateway
+# con INTERNAL_SERVICE_SECRET. systemd los lee como root: el proceso NO necesita
+# permisos de lectura sobre /etc/odontocrm (0600 root:root; 0640 root:odontocrm
+# solo si eliges PM2, INSTALL.md §10.4).
+EnvironmentFile=/etc/odontocrm/odontocrm.env
+EnvironmentFile=/etc/odontocrm/gateway.env
+Environment=NODE_ENV=production
+Environment=SERVICE_NAME=gateway
+
+ExecStart=/usr/bin/node /opt/odontocrm/apps/gateway/dist/index.js
+
+# Supervisión: reinicio permanente con espera entre intentos.
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+UMask=0027
+
+# --- Endurecimiento básico (detalle y precauciones en INSTALL.md §10.3) ------
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Escritura permitida SOLO donde el gateway la necesita. Si en el futuro
+# almacena en disco (caché de subidas, temporales), añada aquí la ruta:
+#   ReadWritePaths=/var/lib/odontocrm
+ReadWritePaths=/var/log/odontocrm
+# AVISO: no añadir MemoryDenyWriteExecute=true — rompe el JIT de V8/Node.
+# AVISO: no añadir RestrictNamespaces=true si el servicio usará Chromium.
+
+# Logs al journal (ver: journalctl -u odontocrm-gateway -f)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=odontocrm-gateway
+
+[Install]
+WantedBy=multi-user.target

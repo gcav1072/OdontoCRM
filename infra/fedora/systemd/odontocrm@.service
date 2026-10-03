@@ -1,0 +1,121 @@
+# =============================================================================
+# OdontoCRM · unidad plantilla para los 8 servicios internos
+# Archivo : infra/fedora/systemd/odontocrm@.service
+# Destino : /etc/systemd/system/odontocrm@.service
+# Versión : 0.1.0-draft (borrador Fase 0 — se prueba en la Fase 10)
+#
+# Una instancia por servicio. El nombre de la instancia (%i) determina:
+#   · los DOS archivos de entorno (igual que en desarrollo, donde el arranque es
+#     `node --env-file-if-exists=.env --env-file-if-exists=services/%i/.env …`):
+#       /etc/odontocrm/odontocrm.env   común a los 9 servicios (equivale al .env
+#                                      de la raíz del repositorio)
+#       /etc/odontocrm/%i.env          propio del servicio (equivale a
+#                                      services/%i/.env)
+#     Se cargan con dos `EnvironmentFile=` EN ESE ORDEN: si ambos definen la
+#     misma variable, gana el último (el propio del servicio).
+#   · los logs en el journal : odontocrm-%i
+#   · el ejecutable          : /opt/odontocrm/services/%i/dist/index.js
+#     (verificado en la Fase 0: scripts `start:*` de package.json,
+#      infra/windows/ecosystem.config.cjs e infra/fedora/ecosystem.config.cjs usan
+#      dist/index.js. `dist/server.js` es un módulo interno —la fábrica del
+#      servidor—, no un punto de entrada: no se arranca con `node`.)
+#
+# Instancias válidas (una por servicio, todas en 127.0.0.1):
+#   identity (4001, odonto_identity)        patients (4002, odonto_patients)
+#   scheduling (4003, odonto_scheduling)    notifications (4004, odonto_notifications)
+#   clinical (4005, odonto_clinical)        odontogram (4006, odonto_odontogram)
+#   screens (4007, odonto_screens)          reporting (4008, odonto_reporting)
+#
+# El puerto NO se fija aquí: cada servicio lee su propio <SERVICIO>_PORT
+# (IDENTITY_PORT=4001, PATIENTS_PORT=4002, …, REPORTING_PORT=4008) del archivo
+# COMÚN, de modo que la tabla de puertos vive en un solo sitio:
+# /etc/odontocrm/odontocrm.env (INSTALL.md §2.2 y §8.2). No existe un `PORT`
+# genérico en el código.
+#
+# Instalación:
+#   sudo install -m 0644 -o root -g root \
+#     infra/fedora/systemd/odontocrm@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now odontocrm@{identity,patients,scheduling,notifications,clinical,odontogram,screens,reporting}.service
+#
+# > PENDIENTE FASE 10: validar con `systemd-analyze verify` y arrancar de verdad
+#   en el Fedora de producción. Caso especial: `odontocrm@clinical` ejecuta
+#   Chromium (récipe PDF) y debe comprobarse bajo este endurecimiento
+#   (INSTALL.md §10.3 y §9.5).
+# =============================================================================
+
+[Unit]
+Description=OdontoCRM servicio %i (API interna en 127.0.0.1)
+Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
+# Orden de arranque: los 8 servicios usan PostgreSQL (datos + outbox + pg-boss).
+After=network-online.target postgresql-18.service
+Wants=network-online.target postgresql-18.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=odontocrm
+Group=odontocrm
+
+# El directorio de trabajo es la RAÍZ del monorepo, igual que en desarrollo
+# (`cwd: root` en infra/windows/ecosystem.config.cjs), para que las rutas
+# relativas del código se resuelvan igual en Windows y en Fedora.
+WorkingDirectory=/opt/odontocrm
+
+# Dos archivos de entorno, como en desarrollo (.env de la raíz + services/%i/.env):
+#   1) /etc/odontocrm/odontocrm.env  variables COMUNES a los 9 servicios
+#      (NODE_ENV, LOG_LEVEL, TZ, TEST_MODE, todos los <SERVICIO>_PORT y *_URL,
+#      WEB_ORIGIN).
+#   2) /etc/odontocrm/%i.env         variables PROPIAS del servicio
+#      (DATABASE_URL, INTERNAL_SERVICE_SECRET y las de su fase).
+# systemd (como root) los lee y pasa las variables al proceso: el servicio NO
+# necesita permisos de lectura sobre ellos (0600 root:root; 0640 root:odontocrm
+# solo si eliges PM2 como supervisor — INSTALL.md §10.4). El orden importa: si
+# el segundo archivo repite una variable, gana la del segundo.
+EnvironmentFile=/etc/odontocrm/odontocrm.env
+EnvironmentFile=/etc/odontocrm/%i.env
+Environment=NODE_ENV=production
+Environment=SERVICE_NAME=%i
+
+ExecStart=/usr/bin/node /opt/odontocrm/services/%i/dist/index.js
+
+# Supervisión: reinicio permanente. Un servicio que muere vuelve solo; el
+# reinicio de la máquina lo devuelve porque la unidad está habilitada.
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+UMask=0027
+
+# --- Endurecimiento básico (detalle y precauciones en INSTALL.md §10.3) ------
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Rutas de escritura: almacenamiento de archivos y logs.
+#   /var/lib/odontocrm/storage          radiografías, PDFs de récipes (Fase 7)
+#   /var/lib/odontocrm/ms-playwright    caché del navegador (clinical, Fase 7)
+#   /var/lib/odontocrm/tmp              temporales de trabajo
+#   /var/log/odontocrm                  logs en archivo (además del journal)
+# El HOME del usuario es /var/lib/odontocrm, así que queda cubierto.
+ReadWritePaths=/var/lib/odontocrm /var/log/odontocrm
+# AVISO: no añadir MemoryDenyWriteExecute=true — rompe el JIT de V8/Node.
+# AVISO: no añadir RestrictNamespaces=true — Chromium (récipe PDF) usa
+#        espacios de nombres sin privilegios; bloquearlos rompe la Fase 7.
+
+# Logs al journal (ver: journalctl -u odontocrm@clinical -f)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=odontocrm-%i
+
+[Install]
+WantedBy=multi-user.target
