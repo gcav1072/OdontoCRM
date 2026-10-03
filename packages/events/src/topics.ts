@@ -14,6 +14,7 @@ export const EVENT_TOPICS = {
 
   patientCreated: 'patients.patient.created',
   patientUpdated: 'patients.patient.updated',
+  patientDeleted: 'patients.patient.deleted',
   patientFileUploaded: 'patients.file.uploaded',
 
   requestCreated: 'scheduling.request.created',
