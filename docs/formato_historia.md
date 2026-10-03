@@ -46,7 +46,7 @@ Evaluación visual y palpación de:
 ## 6. Examen Clínico Intraoral
 El corazón del examen dental, que incluye:
 - **Odontograma:** representación gráfica del estado de cada pieza dental (piezas ausentes, cariadas, restauradas, con prótesis o con tratamiento de conducto).  
-  > 📎 *Referencia:* Ver implementación en [`odontograma.md`](odontograma.md)
+  > 📎 *Referencia:* Ver implementación en [`implementation_plan_odontogram_microservice.md`](implementation_plan_odontogram_microservice.md)
 - **Evaluación de tejidos blandos:** labios, mejillas, lengua, paladar, piso de boca.
 - **Evaluación periodontal:** encías, profundidad de sondaje.
 - **Oclusión dental.**
