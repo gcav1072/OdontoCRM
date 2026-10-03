@@ -1,0 +1,22 @@
+{
+  "name": "@odontocrm/scheduling",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agenda: tickets, cola de espera, cupos diarios, franjas y citas",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/index.js",
+    "db:migrate": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/db/migrate.js",
+    "seed:agenda": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/seed.js"
+  },
+  "dependencies": {
+    "@odontocrm/contracts": "*",
+    "@odontocrm/db": "*",
+    "@odontocrm/events": "*",
+    "@odontocrm/kernel": "*",
+    "@odontocrm/testing": "*",
+    "fastify": "^5.12.5"
+  }
+}

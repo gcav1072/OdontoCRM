@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "uq_appointments_slot" ON "appointments" USING btree ("appointment_date","start_time") WHERE "appointments"."status" in ('programada', 'notificada', 'en_sala_espera', 'llamado', 'en_consulta', 'atendido', 'no_asistio');
