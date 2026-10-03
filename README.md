@@ -66,12 +66,12 @@ Los secretos **nunca** se versionan ni se comparten por chat: ver
 
 | Comando | Qué hace |
 | :--- | :--- |
-| `npm run dev` | Compila en modo vigilancia y arranca gateway + identity |
-| `npm run build` | Compila todo el monorepo (`tsc -b`, incremental) |
+| `npm run dev` | Compila en modo vigilancia y arranca gateway + identity + patients + interfaz |
+| `npm run build` | Compila todo el monorepo (`tsc -b` + `vite build`) |
 | `npm run typecheck` | Igual que `build`: el proyecto se valida compilando |
-| `npm test` | Pruebas unitarias y de integración (Vitest) |
+| `npm test` | Pruebas unitarias y de contrato (Vitest) |
 | `npm run test:watch` | Pruebas en modo vigilancia |
-| `npm run test:integration` | Pruebas contra PostgreSQL real (outbox y cola `pg-boss`); requiere `db:bootstrap` y `db:migrate` |
+| `npm run test:integration` | Suite completa contra PostgreSQL real (outbox, cola compartida, autenticación, pacientes y rendimiento); requiere `db:bootstrap`, `db:migrate` y `build` |
 | `npm run lint` | ESLint (incluye las reglas anti SQL-injection) |
 | `npm run format` / `format:check` | Prettier |
 | `npm run check-secrets` | Busca secretos antes de commitear (`-- --all` audita todo) |
@@ -81,6 +81,8 @@ Los secretos **nunca** se versionan ni se comparten por chat: ver
 | `npm run db:generate:identity` | Genera la migración de identity desde su esquema (desde la raíz) |
 | `npm run keys:generate` | Genera el par de claves EdDSA del JWT (no sobrescribe; `-- --force` regenera e invalida sesiones) |
 | `npm run seed:users` | Crea `admin`, `recepcion` y `egomez` con contraseña temporal (`-- --reset` las regenera) |
+| `npm run seed:demo` | Pacientes ficticios deterministas (`-- --count 5000`, `-- --reset` borra solo lo ficticio) |
+| `npm run db:generate:patients` | Genera la migración del servicio de pacientes desde su esquema |
 | **`npm run verify`** | **Puerta de calidad: secretos + lint + formato + compilación + pruebas** |
 
 Antes de cerrar cualquier fase, `npm run verify` debe pasar en verde.
@@ -111,7 +113,7 @@ docs                  Plan maestro, formato de historia clínica y ADRs
 | :--- | :-: | :--- |
 | gateway | 8090 | ✅ Fase 0 |
 | identity | 4001 | ✅ Fase 0 (salud) · Fase 1 (usuarios y auth) |
-| patients | 4002 | Fase 2 |
+| patients | 4002 | ✅ Fase 2 |
 | scheduling | 4003 | Fase 3 |
 | notifications | 4004 | Fase 4 |
 | clinical | 4005 | Fase 6 |
@@ -148,6 +150,29 @@ Reglas que aplica el servidor (no solo la interfaz):
   por campo cuando es un problema de validación.
 - Toda acción sensible (accesos, cambios de usuario, contraseñas, dispositivos) deja una fila
   en `audit_events` con actor, IP, momento y valores anterior/nuevo.
+
+---
+
+## API de la Fase 2 (pacientes)
+
+| Método y ruta | Qué hace | Permiso |
+| :--- | :--- | :--- |
+| `GET /api/v1/patients` | Lista con búsqueda (nombre, documento, teléfono), estado, tipo de documento, sexo y rango de edad | `patients:read` |
+| `GET /api/v1/patients/lookup?document=…` | Resuelve una cédula escrita de cualquier forma (`V-12345678`, `v 12.345.678`); responde `{found:false}` si no existe | `patients:read` |
+| `POST /api/v1/patients` | Alta de paciente (representante obligatorio para menores) | `patients:write` |
+| `GET /api/v1/patients/:id` | Ficha completa con representante y número de adjuntos | `patients:read` |
+| `PATCH /api/v1/patients/:id` | Edita datos **con motivo obligatorio**; el cambio queda auditado con el valor anterior y el nuevo | `patients:edit_sensitive` |
+| `POST /api/v1/patients/:id/status` | Activación/desactivación con motivo | `patients:edit_sensitive` |
+| `GET/POST/DELETE /api/v1/patients/:id/files[/:fileId]` | Radiografías, fotos y PDF (JPG/PNG/WEBP/PDF, máx. 20 MB) | `patients:read` / `patients:write` |
+| `POST /internal/v1/patients/upsert-by-cedula` | Alta o actualización idempotente por documento, para el bot y otros servicios | secreto interno |
+
+- **El documento es la identidad**: `V-12345678`, `v 12.345.678` y `12345678` resuelven al mismo
+  paciente. Una cédula repetida responde **409** con `existingPatientId` para abrir esa ficha.
+- **Los cambios sensibles viajan por el outbox** (en la misma transacción del cambio) hasta la
+  **cola compartida** y de allí a la auditoría de identity, con `before`/`after`, motivo, usuario
+  e IP. Los consumidores son idempotentes (`processed_events`).
+- Los adjuntos se guardan en disco (`STORAGE_DIR`, ignorado por Git) con los metadatos en la base;
+  el binario solo se sirve por un endpoint autorizado, nunca por ruta directa del sistema.
 
 ---
 

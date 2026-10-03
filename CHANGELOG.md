@@ -4,6 +4,48 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 2] — Pacientes, registro y auditoría de datos sensibles · 2026-10-03
+
+### Añadido
+
+- **`packages/contracts`**: contratos de paciente — identificación **V/E/P/SC**
+  (`normalizeDocNumber`, `parseDocumentText`, `validateDocument`, `formatDocument`,
+  `documentKey`), edad y minoría de edad en UTC, teléfono de Venezuela normalizado a `+58`,
+  `cleanText` para texto libre, esquemas de alta/edición (**motivo obligatorio**), cambio de
+  estado, representante, adjuntos, filtros de búsqueda y la carga de auditoría que viaja por el
+  outbox. 22 pruebas nuevas (52 en el paquete).
+- **`services/patients`** (nuevo, puerto 4002, base `odonto_patients`): paciente único por
+  documento con índice único parcial y **409 con `existingPatientId`** ante duplicados,
+  representante obligatorio para menores, historial local de datos de contacto, **adjuntos en
+  disco** con almacén abstraído (JPG/PNG/WEBP/PDF, máx. 20 MB, metadatos y SHA-256 en la base),
+  búsqueda por nombre (trigramas `pg_trgm`), documento, teléfono, estado, sexo y rango de edad, y
+  **endpoint interno idempotente** `upsert-by-cedula` para el bot y otros servicios.
+- **`packages/db`**: publicador del outbox por intervalos (`createOutboxRunner`, sin ciclos
+  solapados y con parada ordenada) y `toOutboxInsert` para insertar el evento **en la misma
+  transacción** del cambio de datos con Drizzle.
+- **`services/identity`**: **consumidor de eventos** idempotente (`processed_events`) que
+  convierte los cambios de paciente en filas de `audit_events` con `before`, `after`, motivo,
+  usuario, IP y agente.
+- **Interfaz**: página **Registro** (`/registro`) con selector de tipo de cédula, máscara,
+  autocompletado al salir del campo, ficha en solo lectura y botón **Editar** que exige motivo y
+  confirma los cambios uno por uno; página **Pacientes** (`/pacientes`) con búsqueda con retardo,
+  filtros, paginación y ficha con adjuntos y cambio de estado.
+
+### Cambiado
+
+- **La cola de eventos es compartida** (`odonto_events`, [ADR 0026](docs/adr/0026-cola-de-eventos-compartida.md)):
+  `db:bootstrap` crea la base y reparte `EVENTS_DATABASE_URL` a todos los servicios.
+- El gateway **elimina `Expect`** antes de reenviar (PowerShell y `curl` enviaban la cabecera y el
+  proxy respondía 500).
+- Los campos opcionales del contrato aceptan `null` además de `''`.
+- Los errores RFC 7807 admiten **miembros de extensión** (`existingPatientId`).
+- `seed:demo` avisa si ya hay datos ficticios en lugar de chocar con el índice único.
+
+### Corregido
+
+- **Edad y minoría de edad** se calculaban mezclando fecha UTC con getters locales: en Venezuela
+  (UTC−4) un menor de 18 podía contar como mayor un día antes.
+
 ## [Fase 1] — Identidad, roles y shell de UI · 2026-10-02
 
 ### Añadido

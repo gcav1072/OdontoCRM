@@ -111,7 +111,9 @@ Todas fueron confirmadas contigo en la sesión de planificación del 2026-10-02.
 | 8 | `services/screens` | Estado de las pantallas de sala y consultorio, turnos, llamados (1.º/2.º), **SSE** para actualización en vivo, registro de dispositivos kiosko. | `odonto_screens` | 4007 |
 | 9 | `services/reporting` | Read model por eventos, vistas materializadas, KPIs, filtros (fecha, rango de edad, sexo, estado), exportación CSV/PDF. | `odonto_reporting` | 4008 |
 
-> **Costo asumido:** 9 procesos + 8 bases + outbox es más operación que un monolito modular. Se mitiga con un único comando de arranque (`npm run dev`), migraciones y seeds automatizados, health checks y el `ecosystem.config.cjs` de PM2. Si en la práctica resulta pesado, el camino de repliegue es fusionar `odontogram` + `clinical` y `screens` + `reporting` sin tocar contratos públicos.
+> **Costo asumido:** 9 procesos + **9 bases** (las 8 de servicio más la cola de eventos) + outbox es más operación que un monolito modular. Se mitiga con un único comando de arranque (`npm run dev`), migraciones y seeds automatizados, health checks y el `ecosystem.config.cjs` de PM2. Si en la práctica resulta pesado, el camino de repliegue es fusionar `odontogram` + `clinical` y `screens` + `reporting` sin tocar contratos públicos.
+>
+> **La cola de eventos es compartida** (`odonto_events`, [ADR 0026](adr/0026-cola-de-eventos-compartida.md)): pg-boss guarda sus tablas en una sola base, así que una cola por servicio sería invisible para los demás. Cada servicio mantiene su propio `outbox_events` para la garantía transaccional y publica en esa cola común.
 
 ### 2.3 Comunicación
 
@@ -669,22 +671,25 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | :-: | :--- | :--- |
 | **0** | ✅ **completada** (2026-10-02) | 24 commits atómicos · `npm run verify` en verde con **56 pruebas** (+4 de integración con `npm run test:integration`) · 8 bases y 8 roles creados, idempotencia comprobada y **migraciones verificadas desde cero en base limpia** (`npm run db:verify-migrations`) · outbox + `pg-boss` probados contra PostgreSQL real · `GET :8090/health`, `GET :8090/api/v1/auth/health` y `GET :4001/ready` (PostgreSQL 18.6) respondiendo 200 · `.gitignore` verificado · 25 ADRs · guía de Fedora con `bash -n` y `check` de las unidades |
 | **1** | ✅ **completada** (2026-10-02) | 10 commits · `npm run verify` en verde con **98 pruebas** (+11 de integración) · identidad completa (login, refresh rotativo con detección de reuso, bloqueo tras 5 intentos, usuarios, dispositivos y auditoría) · gateway verificando el JWT y publicando la identidad · interfaz con shell, login, panel inferior ocultable, temas y módulo de usuarios · **prueba de humo del acceso** (`npm run smoke:auth`) con 17 comprobaciones en verde |
-| 2 | ⏭ **siguiente** | Pacientes con cédula V/E/P/SC, edición auditada con motivo y módulo de registro |
-| 2–10 | ⏳ pendientes | Ver §13 |
+| **2** | ✅ **completada** (2026-10-03) | 12 commits · `npm run verify` en verde con **120 pruebas** (+20 de integración: **140 en total**) · servicio de pacientes con cédula V/E/P/SC normalizada y única, representante de menores, adjuntos en disco y búsqueda con trigramas (**< 300 ms con 5.000 pacientes**: 45,6 ms la peor) · edición **con motivo obligatorio** que deja `before`/`after` en la auditoría de identity pasando por el outbox y la **cola compartida** · módulo de registro (autocompletado por cédula, solo lectura y confirmación de cambios) y lista/ficha de pacientes · **prueba de humo** (`npm run smoke:patients`) con 19 comprobaciones en verde · 26 ADRs |
+| 3 | ⏭ **siguiente** | Solicitudes con ticket, cola «en espera de cita», cupo diario y plantilla de franjas |
+| 3–10 | ⏳ pendientes | Ver §13 |
 
 ### Lo que quedó funcionando
 
 ```powershell
-npm run db:bootstrap            # 8 bases + 8 roles + credenciales (idempotente, --rotate, --only)
+npm run db:bootstrap            # 8 bases + 8 roles + la cola de eventos (idempotente, --rotate, --only)
 npm run build                   # tsc -b (servicios) + vite build (interfaz)
 npm run keys:generate           # claves EdDSA del JWT (una sola vez; .keys/ está ignorado)
 npm run db:migrate              # migraciones de todos los servicios
 npm run db:verify-migrations    # comprueba que migran desde cero en una base limpia
 npm run seed:users              # admin, recepcion y egomez con contraseña temporal
-npm run dev                     # compilación vigilada + gateway + identity + interfaz (5173)
-npm test                        # 98 pruebas unitarias y de contrato
-npm run test:integration        # 11 pruebas contra PostgreSQL real (outbox, cola y autenticación)
+npm run seed:demo -- --count 5000   # pacientes ficticios deterministas (--reset los borra)
+npm run dev                     # compilación vigilada + gateway + identity + patients + interfaz (5173)
+npm test                        # 120 pruebas unitarias y de contrato
+npm run test:integration        # 140 pruebas contra PostgreSQL real (outbox, cola, sesión, pacientes y rendimiento)
 npm run smoke:auth              # recorre el ciclo de sesión por el gateway real
+npm run smoke:patients          # registro, duplicado, edición con motivo y auditoría por el gateway real
 npm run verify                  # secretos + lint + formato + compilación + pruebas
 pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.ps1
 ```
@@ -724,13 +729,38 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    secretaría → `scheduling:read`; consultorio → `clinical:read`; reportes → `reports:read`;
    auditoría → `audit:read`; pantallas → `screens:manage`.
 
+### Hallazgos de la Fase 2 que cambian supuestos
+
+1. **pg-boss necesita una cola compartida** ([ADR 0026](adr/0026-cola-de-eventos-compartida.md)):
+   sus tablas viven en una sola base, así que una cola por servicio sería invisible para los demás
+   servicios. Se creó la base `odonto_events`; cada servicio conserva su `outbox_events` para la
+   garantía transaccional y publica allí. Los consumidores son idempotentes
+   (`processed_events`), y hay una prueba de integración que lo verifica.
+2. **La edad se calcula en UTC.** Las fechas de nacimiento llegan como `YYYY-MM-DD` (medianoche
+   UTC) y los getters locales las interpretan como el día anterior en Venezuela (UTC−4): eso
+   convertía a un menor de 18 en mayor un día antes. Se detectó escribiendo la prueba del
+   contrato.
+3. **`Expect: 100-continue` rompía el proxy.** `Invoke-WebRequest` de PowerShell (y `curl` con
+   cuerpos grandes) envían esa cabecera, y el cliente HTTP del proxy (undici) la rechaza con un
+   500. El gateway la elimina antes de reenviar: es una optimización, no un requisito.
+4. **Los campos opcionales aceptan `null`.** Los formularios y los clientes JSON mandan `null`
+   para «vacío»; el contrato lo normaliza junto con `''` en lugar de rechazarlo con 400.
+5. **El seed de demo avisa en vez de chocar.** Una segunda ejecución sin `--reset` encontraba el
+   índice único de documentos; ahora detecta los datos ficticios existentes y explica cómo
+   regenerarlos (los datos sembrados usan el rango 90.000.000+ y el banco de pruebas el 97.000.000+,
+   para que nunca se pisen).
+6. **La auditoría de un cambio sensible vive en identity**, no en el servicio de pacientes: el
+   evento viaja por el outbox y allí se traduce a `audit_events` con `before`, `after`, motivo,
+   usuario e IP. El servicio de pacientes conserva además un historial local de datos de contacto
+   para consultarlo sin salir de él.
+
 ### Próximo paso
 
-Arrancar la **Fase 2** en una sesión nueva: servicio de pacientes con cédula V/E/P/SC
-(normalización, unicidad y duplicados), representante de menores, archivos adjuntos, edición de
-datos sensibles **con motivo obligatorio** que deja rastro en la auditoría, y el módulo de
-Registro de la interfaz con autocompletado por cédula y modo de solo lectura. Misma regla:
-`npm run verify` en verde, commits atómicos y tag `fase-2`.
+Arrancar la **Fase 3** en una sesión nueva: servicio de **scheduling** con solicitudes y ticket
+`#000000`–`#999999`, la cola «en espera de cita», el cupo diario editable, la plantilla de franjas,
+la asignación/reprogramación/cancelación de citas y el registro de inasistencias. Es la fase en la
+que el módulo de Registro gana la acción «crear solicitud» (en la Fase 2 solo registra y edita
+pacientes). Misma regla: `npm run verify` en verde, commits atómicos y tag `fase-3`.
 
 > Este documento es la referencia viva del proyecto: cualquier cambio de alcance se refleja aquí
 > **antes** de escribir código, y cada decisión relevante se registra como ADR en
