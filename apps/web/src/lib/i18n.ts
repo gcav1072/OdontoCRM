@@ -54,6 +54,12 @@ const DICCIONARIO = {
   'comun.opcional': 'Opcional',
   'comun.sinDato': '—',
   'comun.desconocido': 'Sin dato',
+  /** Nombre del canal por el que habla un paciente (bandeja y conversaciones). */
+  'comun.canal.telegram': 'Telegram',
+  'comun.canal.whatsapp': 'WhatsApp',
+  'comun.canal.registro': 'Registro',
+  'comun.canal.telefono': 'Teléfono',
+  'comun.canal.presencial': 'Presencial',
   'comun.cerrarSesion': 'Cerrar sesión',
   'comun.cerrando': 'Cerrando…',
 
@@ -647,6 +653,7 @@ const DICCIONARIO = {
 
   // Canales de la solicitud
   'programacion.canal.telegram': 'Telegram',
+  'programacion.canal.whatsapp': 'WhatsApp',
   'programacion.canal.registro': 'Registro',
   'programacion.canal.telefono': 'Teléfono',
   'programacion.canal.presencial': 'Presencial',
@@ -1353,6 +1360,7 @@ export const APPOINTMENT_STATUS_LABELS: Readonly<Record<AppointmentStatus, strin
 
 export const CHANNEL_LABELS: Readonly<Record<Channel, string>> = {
   telegram: t('programacion.canal.telegram'),
+  whatsapp: t('programacion.canal.whatsapp'),
   registro: t('programacion.canal.registro'),
   telefono: t('programacion.canal.telefono'),
   presencial: t('programacion.canal.presencial'),

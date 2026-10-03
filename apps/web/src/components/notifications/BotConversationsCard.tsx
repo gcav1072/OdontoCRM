@@ -77,15 +77,14 @@ export const BotConversationsCard = ({
             </TableHeader>
             <TableBody>
               {conversations?.map((conversacion) => (
-                <TableRow key={conversacion.chatId}>
+                <TableRow key={`${conversacion.canal}:${conversacion.direccionMasked}`}>
                   <TableCell>
-                    <span className="block font-mono text-xs text-ink-muted">
-                      {conversacion.chatId}
+                    <Badge variant="neutral">{t(`comun.canal.${conversacion.canal}`)}</Badge>
+                    <span className="block pt-1 font-mono text-xs text-ink-muted">
+                      {conversacion.direccionMasked}
                     </span>
-                    {conversacion.telegramUsername !== null && (
-                      <span className="block text-xs text-ink-subtle">
-                        @{conversacion.telegramUsername}
-                      </span>
+                    {conversacion.usuario !== null && (
+                      <span className="block text-xs text-ink-subtle">@{conversacion.usuario}</span>
                     )}
                   </TableCell>
                   <TableCell>

@@ -365,12 +365,13 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
                       )}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-ink-muted">
-                      {canal.chatIdMasked}
+                      {canal.direccionMasked}
+                      <span className="block font-sans text-xs text-ink-subtle">
+                        {t(`comun.canal.${canal.channel}`)}
+                      </span>
                     </TableCell>
                     <TableCell className="text-sm text-ink-muted">
-                      {canal.telegramUsername === null
-                        ? t('comun.sinDato')
-                        : `@${canal.telegramUsername}`}
+                      {canal.usuario === null ? t('comun.sinDato') : `@${canal.usuario}`}
                     </TableCell>
                     <TableCell className="text-sm text-ink-muted">
                       {canal.linkedAt === null
