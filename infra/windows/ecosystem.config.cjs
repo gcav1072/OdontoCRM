@@ -44,6 +44,7 @@ module.exports = {
     service('identity', 'services/identity/dist/index.js', 'services/identity/.env'),
     service('patients', 'services/patients/dist/index.js', 'services/patients/.env'),
     service('scheduling', 'services/scheduling/dist/index.js', 'services/scheduling/.env'),
+    service('notifications', 'services/notifications/dist/index.js', 'services/notifications/.env'),
     // Fase 4: notifications
     // Fase 5: screens · Fase 6: clinical y odontogram · Fase 9: reporting
   ],

@@ -9,6 +9,7 @@
     { "path": "services/identity" },
     { "path": "services/patients" },
     { "path": "services/scheduling" },
+    { "path": "services/notifications" },
     { "path": "apps/gateway" }
   ]
 }
