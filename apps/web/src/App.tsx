@@ -10,6 +10,7 @@ import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { ModulePlaceholder } from './pages/ModulePlaceholder';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { PatientDetailPage } from './pages/PatientDetailPage';
 import { PatientRegistryPage } from './pages/PatientRegistryPage';
 import { PatientsPage } from './pages/PatientsPage';
@@ -30,7 +31,9 @@ import { UsersPage } from './pages/UsersPage';
 export const App = () => {
   const modulosFuturos = Object.values(MODULES).filter(
     (modulo) =>
-      !['inicio', 'usuarios', 'registro', 'pacientes', 'programacion'].includes(modulo.id),
+      !['inicio', 'usuarios', 'registro', 'pacientes', 'programacion', 'notificaciones'].includes(
+        modulo.id,
+      ),
   );
 
   return (
@@ -104,6 +107,18 @@ export const App = () => {
           element={
             <RequirePermission permission="scheduling:read">
               <SchedulingPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* Fase 4: la bandeja del bot se abre a quien puede consultar la agenda;
+            reintentar, marcar contacto, plantillas y canales exigen
+            `scheduling:notify` y se comprueban dentro de la pantalla. */}
+        <Route
+          path="notificaciones"
+          element={
+            <RequirePermission permission="scheduling:read">
+              <NotificationsPage />
             </RequirePermission>
           }
         />

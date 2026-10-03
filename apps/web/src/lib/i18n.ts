@@ -1,13 +1,16 @@
 import {
   APPOINTMENT_STATUSES,
   AUDIT_ACTIONS,
+  BOT_STEP_LABELS,
   CHANNELS,
   PERMISSIONS,
   ROLES,
   type AppointmentStatus,
+  type BotConversationState,
   type CapacitySource,
   type Channel,
   type DocType,
+  type NotificationStatus,
   type PatientFileKind,
   type PatientStatus,
   type Permission,
@@ -139,6 +142,9 @@ const DICCIONARIO = {
   'modulo.usuarios.descripcion': 'Cuentas, roles, contraseñas y bloqueos.',
   'modulo.pacientes.titulo': 'Pacientes',
   'modulo.pacientes.descripcion': 'Listado, filtros y ficha completa de cada paciente.',
+  'modulo.notificaciones.titulo': 'Notificaciones',
+  'modulo.notificaciones.descripcion':
+    'Bandeja de envíos del bot, plantillas de mensajes y vinculación de pacientes.',
   'modulo.pantallas.titulo': 'Pantallas',
   'modulo.pantallas.descripcion': 'Dispositivos y tokens de las pantallas de sala y consultorio.',
 
@@ -957,6 +963,250 @@ const DICCIONARIO = {
   'programacion.plantillas.inactiva': 'Inactiva',
   'programacion.plantillas.nota':
     'Esta vista es informativa: la plantilla se administra desde el servicio de agenda y alimenta el cupo y las franjas de cada día.',
+
+  // --- Notificaciones y bot (Fase 4) ---------------------------------------
+  'notificaciones.titulo': 'Notificaciones',
+  'notificaciones.descripcion':
+    'Bandeja de los envíos del bot de Telegram: qué salió, qué falló, quién espera un aviso manual, las conversaciones a medio camino y los textos que se envían.',
+
+  // Estado del bot
+  'notificaciones.bot.titulo': 'Estado del bot',
+  'notificaciones.bot.actualizado': 'Actualizado {cuando}',
+  'notificaciones.bot.cargando': 'Consultando el estado del bot…',
+  'notificaciones.bot.error': 'No se pudo consultar el estado del bot.',
+  'notificaciones.bot.recargar': 'Actualizar el estado',
+  'notificaciones.bot.sinUsuario': 'Sin @usuario configurado',
+  'notificaciones.bot.modo.real': 'Modo real',
+  'notificaciones.bot.modo.simulado': 'Modo simulado',
+  'notificaciones.bot.real.texto':
+    'El bot tiene token configurado y está conectado: los mensajes salen por Telegram.',
+  'notificaciones.bot.real.sinConexion':
+    'El bot tiene token configurado, pero ahora mismo no está conectado: los envíos quedan en cola hasta que vuelva la conexión.',
+  'notificaciones.bot.simulado.texto':
+    'No hay token configurado: los mensajes quedan registrados en la bandeja, pero no se envían. Configura el token del bot para activar los envíos reales.',
+  'notificaciones.bot.conectado': 'Conectado',
+  'notificaciones.bot.desconectado': 'Sin conexión',
+  'notificaciones.bot.pendientes': 'Actualizaciones por procesar',
+  'notificaciones.bot.ultimaActualizacion': 'Última actualización recibida',
+  'notificaciones.bot.contador.queued': 'En cola',
+  'notificaciones.bot.contador.sent': 'Enviados',
+  'notificaciones.bot.contador.failed': 'Fallidos',
+  'notificaciones.bot.contador.manualPending': 'Avisos manuales pendientes',
+
+  // Conversaciones
+  'notificaciones.conversaciones.titulo': 'Conversaciones del bot',
+  'notificaciones.conversaciones.texto':
+    'Chats que están a medio camino en el asistente. Solo informa: la conversación la continúa el propio bot.',
+  'notificaciones.conversaciones.cargando': 'Cargando las conversaciones…',
+  'notificaciones.conversaciones.vacio': 'Ahora mismo no hay conversaciones abiertas.',
+  'notificaciones.conversaciones.total': '{total} conversación(es)',
+  'notificaciones.conversaciones.columna.chat': 'Chat',
+  'notificaciones.conversaciones.columna.paso': 'Paso del asistente',
+  'notificaciones.conversaciones.columna.actualizada': 'Última actualización',
+  'notificaciones.conversaciones.paciente': 'Paciente vinculado',
+  'notificaciones.conversaciones.sinPaciente': 'Sin paciente vinculado',
+  'notificaciones.conversaciones.estado.inicio': 'Inicio',
+  'notificaciones.conversaciones.estado.listo': 'Listo',
+  'notificaciones.conversaciones.estado.esperando': 'Esperando {paso}',
+  'notificaciones.conversaciones.estado.representante': 'Datos del representante',
+
+  // Bandeja
+  'notificaciones.bandeja.titulo': 'Bandeja de envíos',
+  'notificaciones.bandeja.descripcion':
+    'Cada fila es un mensaje preparado por el bot, con sus intentos y su último error.',
+  'notificaciones.bandeja.cargando': 'Cargando los envíos…',
+  'notificaciones.bandeja.error': 'No se pudieron cargar los envíos.',
+  'notificaciones.bandeja.vacioTitulo': 'Sin envíos',
+  'notificaciones.bandeja.vacio': 'No hay envíos que coincidan con estos filtros.',
+  'notificaciones.bandeja.total': '{total} envío(s)',
+  'notificaciones.bandeja.pagina': 'Página {pagina} de {paginas}',
+  'notificaciones.bandeja.anterior': 'Anterior',
+  'notificaciones.bandeja.siguiente': 'Siguiente',
+  'notificaciones.bandeja.filtro.estado': 'Estado',
+  'notificaciones.bandeja.filtro.canal': 'Canal',
+  'notificaciones.bandeja.filtro.buscar': 'Buscar paciente',
+  'notificaciones.bandeja.filtro.buscarPlaceholder': 'Nombre o documento',
+  'notificaciones.bandeja.filtro.desde': 'Desde',
+  'notificaciones.bandeja.filtro.hasta': 'Hasta',
+  'notificaciones.bandeja.filtro.todos': 'Todos',
+  'notificaciones.bandeja.columna.creado': 'Creado',
+  'notificaciones.bandeja.columna.paciente': 'Paciente',
+  'notificaciones.bandeja.columna.plantilla': 'Plantilla',
+  'notificaciones.bandeja.columna.canal': 'Canal',
+  'notificaciones.bandeja.columna.estado': 'Estado',
+  'notificaciones.bandeja.columna.intentos': 'Intentos',
+  'notificaciones.bandeja.columna.error': 'Último error',
+  'notificaciones.bandeja.columna.enviado': 'Enviado',
+  'notificaciones.bandeja.columna.acciones': 'Acciones',
+  'notificaciones.bandeja.reintentar': 'Reintentar',
+  'notificaciones.bandeja.contactado': 'Marcar contacto hecho',
+  'notificaciones.bandeja.contactadoCorto': 'Contacto',
+  'notificaciones.bandeja.ver': 'Ver detalle',
+  'notificaciones.bandeja.proximoIntento': 'Próximo intento: {cuando}',
+  'notificaciones.bandeja.contactoHecho': 'Contactado el {fecha} por {actor}',
+  'notificaciones.bandeja.contactoHechoSinActor': 'Contactado el {fecha}',
+
+  // Solo lectura para quien no tiene el permiso de avisos
+  'notificaciones.soloLectura':
+    'Puedes consultar esta sección, pero no modificarla: hace falta el permiso de avisos (`scheduling:notify`).',
+
+  // Estados
+  'notificaciones.estado.queued': 'En cola',
+  'notificaciones.estado.sending': 'Enviando',
+  'notificaciones.estado.sent': 'Enviado',
+  'notificaciones.estado.failed': 'Falló',
+  'notificaciones.estado.skipped_no_channel': 'Aviso manual pendiente',
+  'notificaciones.estado.avisoManual':
+    'El paciente no tiene Telegram vinculado: hay que llamarlo y marcar el contacto como hecho.',
+
+  // Reintento y contacto
+  'notificaciones.reintento.titulo': 'Reintentar el envío',
+  'notificaciones.reintento.texto':
+    'El envío vuelve a la cola del bot y se intenta de nuevo con los mismos datos.',
+  'notificaciones.reintento.motivo': 'Motivo del reintento',
+  'notificaciones.reintento.enviar': 'Reintentar el envío',
+  'notificaciones.reintento.ok': 'Envío devuelto a la cola.',
+  'notificaciones.contacto.titulo': 'Marcar el contacto como hecho',
+  'notificaciones.contacto.texto':
+    'Se registra que la secretaría ya avisó al paciente por teléfono, con la nota y la fecha.',
+  'notificaciones.contacto.nota': 'Nota del contacto',
+  'notificaciones.contacto.notaAyuda': 'Entre 3 y 300 caracteres. Queda en el registro del envío.',
+  'notificaciones.contacto.notaPlaceholder': 'Por ejemplo: llamé a las 9:20 y confirmó la cita.',
+  'notificaciones.contacto.enviar': 'Marcar contacto hecho',
+  'notificaciones.contacto.ok': 'Contacto registrado.',
+
+  // Detalle del envío
+  'notificaciones.detalle.titulo': 'Detalle del envío',
+  'notificaciones.detalle.texto': 'El mensaje que se envió o que se enviará al paciente.',
+  'notificaciones.detalle.mensaje': 'Mensaje',
+  'notificaciones.detalle.sinMensaje':
+    'El payload de este envío no trae el texto del mensaje; revisa la plantilla con la que se preparó.',
+  'notificaciones.detalle.plantilla': 'Plantilla',
+  'notificaciones.detalle.canal': 'Canal',
+  'notificaciones.detalle.destino': 'Destino',
+  'notificaciones.detalle.ticket': 'Ticket',
+  'notificaciones.detalle.fecha': 'Fecha de la cita',
+  'notificaciones.detalle.hora': 'Hora de la cita',
+  'notificaciones.detalle.lugar': 'Lugar',
+  'notificaciones.detalle.creado': 'Creado',
+  'notificaciones.detalle.enviado': 'Enviado',
+  'notificaciones.detalle.intentos': 'Intentos',
+  'notificaciones.detalle.error': 'Último error',
+  'notificaciones.detalle.nota': 'Nota del contacto',
+  'notificaciones.detalle.datos': 'Datos del mensaje',
+  'notificaciones.detalle.dato': 'Dato',
+  'notificaciones.detalle.valor': 'Valor',
+
+  // Plantillas
+  'notificaciones.plantillas.titulo': 'Plantillas de los mensajes',
+  'notificaciones.plantillas.descripcion':
+    'Los textos que envía el bot. Se envían tal cual por Telegram: no se admite HTML, solo texto y saltos de línea.',
+  'notificaciones.plantillas.cargando': 'Cargando las plantillas…',
+  'notificaciones.plantillas.error': 'No se pudieron cargar las plantillas.',
+  'notificaciones.plantillas.vacio': 'Todavía no hay plantillas configuradas.',
+  'notificaciones.plantillas.total': '{total} plantilla(s)',
+  'notificaciones.plantillas.modificada': 'Modificada',
+  'notificaciones.plantillas.original': 'Texto por defecto',
+  'notificaciones.plantillas.inactiva': 'Inactiva',
+  'notificaciones.plantillas.sinGuardar': 'Sin guardar',
+  'notificaciones.plantillas.editor': 'Editando «{clave}»',
+  'notificaciones.plantillas.sinSeleccion':
+    'Elige una plantilla de la lista para verla y editarla.',
+  'notificaciones.plantillas.asunto': 'Asunto',
+  'notificaciones.plantillas.asuntoAyuda': 'Solo lo usan las plantillas de avisos de cita.',
+  'notificaciones.plantillas.asuntoNoAplica': 'Esta plantilla no lleva asunto.',
+  'notificaciones.plantillas.cuerpo': 'Texto del mensaje',
+  'notificaciones.plantillas.cuerpoAyuda':
+    'Máximo {max} caracteres. Los saltos de línea se respetan tal cual.',
+  'notificaciones.plantillas.cuerpoVacio': 'El texto no puede quedar vacío.',
+  'notificaciones.plantillas.marcadores': 'Marcadores disponibles',
+  'notificaciones.plantillas.marcadoresAyuda':
+    'Pulsa uno para insertarlo en el texto, donde tengas el cursor.',
+  'notificaciones.plantillas.sinMarcadores': 'Esta plantilla no usa marcadores.',
+  'notificaciones.plantillas.insertar': 'Insertar el marcador {marcador}',
+  'notificaciones.plantillas.vista': 'Vista previa',
+  'notificaciones.plantillas.vistaAyuda': 'Con datos de ejemplo para que veas cómo llega.',
+  'notificaciones.plantillas.vistaSistema': 'Así lo recibe el paciente',
+  'notificaciones.plantillas.guardar': 'Guardar plantilla',
+  'notificaciones.plantillas.guardada': 'Plantilla guardada.',
+  'notificaciones.plantillas.guardando': 'Guardando la plantilla…',
+  'notificaciones.plantillas.restaurar': 'Restaurar texto por defecto',
+  'notificaciones.plantillas.restaurarTitulo': 'Restaurar «{clave}»',
+  'notificaciones.plantillas.restaurarTexto':
+    'El texto vuelve al que trae el sistema de fábrica y se pierde el que está guardado. La operación queda registrada.',
+  'notificaciones.plantillas.restaurada': 'Plantilla restaurada al texto por defecto.',
+  'notificaciones.plantillas.avisoHtml':
+    'Telegram recibe el texto tal cual: no se admite HTML ni formatos, solo texto y saltos de línea.',
+  'notificaciones.plantillas.activa': 'Plantilla activa',
+  'notificaciones.plantillas.activaAyuda':
+    'Si la desactivas, el bot no encuentra texto para ese paso y avisa por el registro.',
+
+  // Nombre de cada plantilla (las claves llegan del contrato, en snake_case)
+  'notificaciones.plantilla.bienvenida': 'Bienvenida',
+  'notificaciones.plantilla.ayuda': 'Ayuda',
+  'notificaciones.plantilla.pedir_nombre': 'Pedir el nombre',
+  'notificaciones.plantilla.pedir_documento': 'Pedir el documento',
+  'notificaciones.plantilla.pedir_telefono': 'Pedir el teléfono',
+  'notificaciones.plantilla.pedir_nacimiento': 'Pedir la fecha de nacimiento',
+  'notificaciones.plantilla.pedir_sexo': 'Pedir el sexo',
+  'notificaciones.plantilla.pedir_motivo': 'Pedir el motivo',
+  'notificaciones.plantilla.confirmar': 'Confirmar los datos',
+  'notificaciones.plantilla.documento_duplicado': 'Documento ya registrado',
+  'notificaciones.plantilla.solicitud_recibida': 'Solicitud recibida',
+  'notificaciones.plantilla.cita_confirmada': 'Cita confirmada',
+  'notificaciones.plantilla.cita_reprogramada': 'Cita reprogramada',
+  'notificaciones.plantilla.cita_cancelada': 'Cita cancelada',
+  'notificaciones.plantilla.estado_solicitud': 'Estado de la solicitud',
+  'notificaciones.plantilla.manual_pendiente': 'Aviso manual pendiente',
+
+  // Vinculación de pacientes
+  'notificaciones.canales.titulo': 'Vinculación de pacientes',
+  'notificaciones.canales.descripcion':
+    'El paciente abre el enlace o escanea el QR y su Telegram queda vinculado; desde ahí el bot le escribe.',
+  'notificaciones.canales.buscar': 'Buscar paciente',
+  'notificaciones.canales.buscarPlaceholder': 'Nombre, documento o teléfono',
+  'notificaciones.canales.buscando': 'Buscando pacientes…',
+  'notificaciones.canales.sinResultados': 'Sin coincidencias. Prueba con otro nombre o documento.',
+  'notificaciones.canales.errorBusqueda': 'No se pudo buscar el paciente.',
+  'notificaciones.canales.elegido': 'Paciente elegido',
+  'notificaciones.canales.cambiar': 'Elegir otro paciente',
+  'notificaciones.canales.sinPaciente': 'Elige un paciente para generar su enlace.',
+  'notificaciones.canales.generar': 'Generar enlace de vinculación',
+  'notificaciones.canales.generando': 'Generando el enlace…',
+  'notificaciones.canales.codigo': 'Código de vinculación',
+  'notificaciones.canales.enlace': 'Enlace para el paciente',
+  'notificaciones.canales.copiar': 'Copiar el enlace',
+  'notificaciones.canales.copiado': 'Enlace copiado al portapapeles.',
+  'notificaciones.canales.copiarError': 'No se pudo copiar: selecciona el enlace y cópialo a mano.',
+  'notificaciones.canales.caduca': 'Caduca el {fecha}',
+  'notificaciones.canales.expirado': 'Este enlace ya caducó: genera uno nuevo.',
+  'notificaciones.canales.instruccion':
+    'El paciente abre este enlace o escanea el QR y su Telegram queda vinculado.',
+  'notificaciones.canales.qrAlt':
+    'Código QR del enlace de vinculación de {paciente} con el bot de Telegram.',
+  'notificaciones.canales.sinQr': 'El servicio no devolvió la imagen del QR: usa el enlace.',
+  'notificaciones.canales.noDisponible':
+    'El enlace estará disponible cuando se configure el token del bot. Ahora mismo el bot está en modo simulado y los mensajes no se envían.',
+  'notificaciones.canales.listaTitulo': 'Canales vinculados',
+  'notificaciones.canales.listaTexto':
+    'Chats que ya están vinculados a un paciente. El identificador se muestra enmascarado.',
+  'notificaciones.canales.cargando': 'Cargando los canales vinculados…',
+  'notificaciones.canales.errorLista': 'No se pudieron cargar los canales vinculados.',
+  'notificaciones.canales.vacio': 'Todavía no hay ningún paciente con Telegram vinculado.',
+  'notificaciones.canales.total': '{total} vínculo(s)',
+  'notificaciones.canales.columna.paciente': 'Paciente',
+  'notificaciones.canales.columna.chat': 'Chat',
+  'notificaciones.canales.columna.usuario': 'Usuario de Telegram',
+  'notificaciones.canales.columna.vinculado': 'Vinculado',
+  'notificaciones.canales.columna.acciones': 'Acciones',
+  'notificaciones.canales.bloqueado': 'Bloqueado',
+  'notificaciones.canales.desvincular': 'Desvincular',
+  'notificaciones.canales.desvincularTitulo': 'Desvincular a {paciente}',
+  'notificaciones.canales.desvincularTexto':
+    'El chat queda bloqueado y el paciente no vuelve a recibir mensajes del bot. Podrá vincularse otra vez con un enlace nuevo.',
+  'notificaciones.canales.desvinculado': 'Paciente desvinculado.',
+  'notificaciones.canales.generado': 'Enlace de vinculación generado para {paciente}.',
+  'notificaciones.canales.errorGenerar': 'No se pudo generar el enlace de vinculación.',
 } as const;
 
 export type TranslationKey = keyof typeof DICCIONARIO;
@@ -1123,6 +1373,90 @@ export const SLOT_STATE_LABELS: Readonly<Record<SlotState, string>> = {
 export const SLOT_KIND_LABELS: Readonly<Record<SlotKind, string>> = {
   franja: t('programacion.franja.tipo.franja'),
   manual: t('programacion.franja.tipo.manual'),
+};
+
+/* ── Notificaciones (Fase 4) ───────────────────────────────────────────────── */
+
+/** Estado de un envío del bot. */
+export const NOTIFICATION_STATUS_LABELS: Readonly<Record<NotificationStatus, string>> = {
+  queued: t('notificaciones.estado.queued'),
+  sending: t('notificaciones.estado.sending'),
+  sent: t('notificaciones.estado.sent'),
+  failed: t('notificaciones.estado.failed'),
+  skipped_no_channel: t('notificaciones.estado.skipped_no_channel'),
+};
+
+/** Variante de `Badge` por estado del envío. */
+export const NOTIFICATION_STATUS_VARIANTS: Readonly<
+  Record<NotificationStatus, 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'>
+> = {
+  queued: 'neutral',
+  sending: 'primary',
+  sent: 'success',
+  failed: 'danger',
+  skipped_no_channel: 'warning',
+};
+
+/** Estados del asistente del bot que no son un paso del guion. */
+export const BOT_EXTRA_STATE_LABELS: Readonly<Record<'inicio' | 'listo', string>> = {
+  inicio: t('notificaciones.conversaciones.estado.inicio'),
+  listo: t('notificaciones.conversaciones.estado.listo'),
+};
+
+/**
+ * Paso del asistente tal como lo muestra la bandeja. Se escribe el mapa entero
+ * (y no un índice sobre `BOT_STEP_LABELS`) para que el contrato pueda añadir
+ * estados sin romper esta traducción en silencio.
+ */
+const BOT_STATE_LABELS: Readonly<Record<BotConversationState, string>> = {
+  inicio: t('notificaciones.conversaciones.estado.inicio'),
+  nombre: BOT_STEP_LABELS.nombre,
+  documento: BOT_STEP_LABELS.documento,
+  telefono: BOT_STEP_LABELS.telefono,
+  nacimiento: BOT_STEP_LABELS.nacimiento,
+  sexo: BOT_STEP_LABELS.sexo,
+  motivo: BOT_STEP_LABELS.motivo,
+  confirmacion: BOT_STEP_LABELS.confirmacion,
+  representante: t('notificaciones.conversaciones.estado.representante'),
+  esperando_confirmacion: t('notificaciones.conversaciones.estado.esperando', {
+    paso: BOT_STEP_LABELS.confirmacion,
+  }),
+  listo: t('notificaciones.conversaciones.estado.listo'),
+};
+
+export const botStateLabel = (state: BotConversationState): string => BOT_STATE_LABELS[state];
+
+/**
+ * Nombre legible de una plantilla. El registro de un envío trae la clave como
+ * texto libre, así que si el servicio añade una plantilla nueva se muestra una
+ * versión legible de la clave en vez de la clave cruda.
+ */
+const NOMBRES_PLANTILLA: Readonly<Record<string, string>> = {
+  bienvenida: t('notificaciones.plantilla.bienvenida'),
+  ayuda: t('notificaciones.plantilla.ayuda'),
+  pedir_nombre: t('notificaciones.plantilla.pedir_nombre'),
+  pedir_documento: t('notificaciones.plantilla.pedir_documento'),
+  pedir_telefono: t('notificaciones.plantilla.pedir_telefono'),
+  pedir_nacimiento: t('notificaciones.plantilla.pedir_nacimiento'),
+  pedir_sexo: t('notificaciones.plantilla.pedir_sexo'),
+  pedir_motivo: t('notificaciones.plantilla.pedir_motivo'),
+  confirmar: t('notificaciones.plantilla.confirmar'),
+  documento_duplicado: t('notificaciones.plantilla.documento_duplicado'),
+  solicitud_recibida: t('notificaciones.plantilla.solicitud_recibida'),
+  cita_confirmada: t('notificaciones.plantilla.cita_confirmada'),
+  cita_reprogramada: t('notificaciones.plantilla.cita_reprogramada'),
+  cita_cancelada: t('notificaciones.plantilla.cita_cancelada'),
+  estado_solicitud: t('notificaciones.plantilla.estado_solicitud'),
+  manual_pendiente: t('notificaciones.plantilla.manual_pendiente'),
+};
+
+export const templateName = (key: string): string => {
+  const conocido = NOMBRES_PLANTILLA[key];
+  if (conocido !== undefined) return conocido;
+  const legible = key.replace(/[_-]+/g, ' ').trim();
+  return legible.length === 0
+    ? key
+    : legible.charAt(0).toLocaleUpperCase('es-VE') + legible.slice(1);
 };
 
 /** Comprueba en tiempo de ejecución que un texto del servidor es un estado conocido. */

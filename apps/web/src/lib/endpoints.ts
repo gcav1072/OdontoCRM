@@ -4,6 +4,7 @@ import {
   type AssignAppointmentInput,
   type AttendAppointmentInput,
   type AuditEventRecord,
+  type BotStatus,
   type CancelAppointmentInput,
   type CancelRequestInput,
   type ChangePasswordInput,
@@ -15,14 +16,21 @@ import {
   type DayCapacity,
   type DayView,
   type DeletePatientInput,
+  type LinkCode,
   type LoginInput,
   type LoginResponse,
+  type MarkContactedInput,
+  type MessageTemplate,
+  type MessageTemplateInput,
   type NoShowAppointmentInput,
+  type NotificationRecord,
+  type NotificationStatus,
   type NotifyBatch,
   type NotifyBatchInput,
   type NotifyBatchResult,
   type NotifyPreviewInput,
   type Paginated,
+  type PatientChannel,
   type PatientDetail,
   type PatientFile,
   type PatientFileKind,
@@ -33,6 +41,7 @@ import {
   type RequestSummary,
   type ResetPasswordInput,
   type RescheduleAppointmentInput,
+  type RetryNotificationInput,
   type Role,
   type SessionInfo,
   type SetCapacityInput,
@@ -368,4 +377,86 @@ export const appointmentsApi = {
 
   reschedule: (id: string, input: RescheduleAppointmentInput): Promise<AppointmentSummary> =>
     api.post<AppointmentSummary>(`/appointments/${id}/reschedule`, input),
+};
+
+/* ── Notificaciones y bot (Fase 4) ─────────────────────────────────────────── */
+
+/** Filtros de la bandeja de envíos: los mismos del contrato, sin paginación. */
+export interface NotificationsListParams {
+  status?: NotificationStatus;
+  channel?: Channel;
+  search?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+/** Lista de plantillas de mensaje: `{ items, total }`, sin paginar. */
+export interface MessageTemplateList {
+  items: MessageTemplate[];
+  total: number;
+}
+
+/** Lista de canales vinculados: `{ items, total }`, sin paginar. */
+export interface PatientChannelList {
+  items: PatientChannel[];
+  total: number;
+}
+
+/**
+ * Enlace de vinculación con la imagen del QR ya renderizada.
+ *
+ * El contrato comparte `LinkCode` sin `qrDataUrl` porque la generación del QR es
+ * responsabilidad del servicio; la API lo añade en esta respuesta, así que se
+ * declara aquí (y se lee de forma defensiva) en vez de castear la respuesta.
+ */
+export interface LinkCodeResponse extends LinkCode {
+  qrDataUrl?: string | null;
+}
+
+/**
+ * Bandeja del bot (Fase 4). Ver la bandeja exige `scheduling:read`; reintentar,
+ * marcar el contacto, editar plantillas y desvincular exigen
+ * `scheduling:notify` (la API lo comprueba igual).
+ */
+export const notificationsApi = {
+  list: (
+    params: NotificationsListParams,
+    signal?: AbortSignal,
+  ): Promise<Paginated<NotificationRecord>> =>
+    api.get<Paginated<NotificationRecord>>('/notifications', {
+      query: { ...params } as QueryParams,
+      signal,
+    }),
+
+  status: (signal?: AbortSignal): Promise<BotStatus> =>
+    api.get<BotStatus>('/notifications/status', { signal }),
+
+  retry: (id: string, input: RetryNotificationInput): Promise<NotificationRecord> =>
+    api.post<NotificationRecord>(`/notifications/${id}/retry`, input),
+
+  markContacted: (id: string, input: MarkContactedInput): Promise<NotificationRecord> =>
+    api.post<NotificationRecord>(`/notifications/${id}/contacted`, input),
+
+  templates: (signal?: AbortSignal): Promise<MessageTemplateList> =>
+    api.get<MessageTemplateList>('/notifications/templates', { signal }),
+
+  updateTemplate: (key: string, input: MessageTemplateInput): Promise<MessageTemplate> =>
+    api.patch<MessageTemplate>(`/notifications/templates/${key}`, input),
+
+  resetTemplate: (key: string): Promise<MessageTemplate> =>
+    api.post<MessageTemplate>(`/notifications/templates/${key}/reset`),
+
+  channels: (patientId?: string, signal?: AbortSignal): Promise<PatientChannelList> =>
+    api.get<PatientChannelList>('/notifications/channels', {
+      query: patientId === undefined ? undefined : { patientId },
+      signal,
+    }),
+
+  linkCode: (patientId: string): Promise<LinkCodeResponse> =>
+    api.post<LinkCodeResponse>('/notifications/channels/link-code', { patientId }),
+
+  unlinkChannel: (patientId: string): Promise<void> =>
+    api.delete<void>(`/notifications/channels/${patientId}`),
 };

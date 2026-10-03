@@ -1,5 +1,6 @@
 import type { Permission } from '@odontocrm/contracts';
 import {
+  BellRing,
   CalendarRange,
   ChartColumn,
   ClipboardList,
@@ -28,6 +29,7 @@ export type ModuleId =
   | 'registro'
   | 'pacientes'
   | 'programacion'
+  | 'notificaciones'
   | 'secretaria'
   | 'consultorio'
   | 'reportes'
@@ -97,6 +99,18 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     permission: 'scheduling:read',
     phase: 3,
   },
+  notificaciones: {
+    id: 'notificaciones',
+    path: '/notificaciones',
+    labelKey: 'modulo.notificaciones.titulo',
+    descriptionKey: 'modulo.notificaciones.descripcion',
+    icon: BellRing,
+    // Ver la bandeja de envíos basta para entrar (el odontólogo solo mira);
+    // reintentar, editar plantillas y desvincular exigen `scheduling:notify` y
+    // se comprueban dentro de la pantalla.
+    permission: 'scheduling:read',
+    phase: 4,
+  },
   secretaria: {
     id: 'secretaria',
     path: '/secretaria',
@@ -162,7 +176,15 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   { titleKey: 'menu.seccion.principal', modules: ['inicio'] },
   {
     titleKey: 'menu.seccion.operacion',
-    modules: ['recepcion', 'registro', 'pacientes', 'programacion', 'secretaria', 'consultorio'],
+    modules: [
+      'recepcion',
+      'registro',
+      'pacientes',
+      'programacion',
+      'notificaciones',
+      'secretaria',
+      'consultorio',
+    ],
   },
   { titleKey: 'menu.seccion.analisis', modules: ['reportes', 'auditoria'] },
   { titleKey: 'menu.seccion.admin', modules: ['usuarios', 'pantallas'] },
