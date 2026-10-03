@@ -70,6 +70,14 @@ webhook se expone a internet por el túnel, el resto de la API sigue cerrada tra
 
 **Nunca son secretos configurables por el usuario** (van en `.env.example` sin valor): puertos, URLs internas, zona horaria, nombre de la clínica. Eso no es sensible y ayuda a desplegar.
 
+**El token de una pantalla kiosko** se muestra **una sola vez** al registrarla y en la base queda su
+hash (como el de refresco de una sesión). La pantalla lo canjea en `POST /api/v1/auth/device` —ruta
+pública, porque el televisor no tiene usuario ni cookie— por un JWT de 15 minutos con el rol
+`pantalla` y el único permiso `screens:display`; el token de larga vida nunca viaja en cada petición.
+El enlace de configuración lleva el token en la consulta y la pantalla lo **borra de la barra de
+direcciones** en cuanto lo guarda. Desactivar la pantalla en `/pantallas` corta el acceso al
+instante, aunque el token siga vigente.
+
 ---
 
 ## 3. Reglas técnicas

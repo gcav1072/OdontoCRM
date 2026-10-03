@@ -228,9 +228,9 @@ Convenciones: `id uuid default gen_random_uuid()`, `created_at`/`updated_at` con
 Se implementa el esquema de `implementation_plan_odontogram_microservice.md` §4 (`odontograms` + `tooth_findings` con `UNIQUE(odontogram_id, tooth_number, surface)`), añadiendo: `recorded_by`, `recorded_in_session_id?`, `resolved_at?`, y **tabla de histórico** `tooth_finding_history` (append-only, alimenta la auditoría del odontograma tal como pediste).
 
 ### 4.7 `screens`
-- `screen_devices` (`label`, `kind` (`lobby|consultorio`), `device_token_id`, `last_seen_at`, `is_active`, `settings jsonb` con voz on/off, volumen, tiempo de resalte).
-- `call_events` (`appointment_id`, `patient_display_name`, `turn_number`, `call_number` 1/2, `chair_label`, `called_at`, `called_by`, `acknowledged_at`).
-- `room_state` (paciente en consultorio: `appointment_id`, `patient_id`, `since`, `critical_flags` — proyección de alergias/crónicos recibida por evento).
+- `screen_devices` (`label`, `kind` (`lobby|consultorio`), `token_id` —el token de identity, que se guarda hasheado allí—, `settings jsonb` con voz on/off, volumen, segundos de resalte y de repetición, `last_seen_at`, `is_active`).
+- `call_events` (`appointment_id`, `patient_display_name`, `turn_number`, `ticket`, `call_number` 1/2, `chair_label`, `called_at`, `called_by`, `acknowledged_at`, `event_id` **único**: un evento repetido no vuelve a llamar).
+- `room_state` (proyección del estado de la sala: `appointment_id` como clave, paciente y su nombre abreviado, motivo, `patient_birth_date`/`patient_sex` para calcular la edad, `estado` (`en_sala_espera|llamado|en_consulta`), `chair_label`, `critical_flags jsonb` —los envía la historia clínica—, `since` y **`left_at`** como lápida: quien salió de la sala no vuelve por un evento tardío).
 
 ### 4.8 `reporting`
 Read model propio (nada de consultar BDs ajenas): `dim_patient` (edad calculada, sexo, estado, crónicos/alergias), `fact_appointment` (fecha, hora, estado, canal, tiempos de espera), `fact_clinical_event` (sesiones, procedimientos, recetas, hallazgos del odontograma), más vistas materializadas `mv_daily_kpis`, `mv_funnel`, `mv_oral_health`, `mv_demographics`, `mv_prescriptions` refrescadas por eventos y por un job nocturno. Toda consulta pesada sirve desde aquí.
@@ -310,7 +310,7 @@ Un solo origen para el frontend: `http(s)://<host>:8090/api/v1/**`.
 | `/api/v1/appointments/**` | scheduling | `GET /:id`, `POST /:id/check-in`, `POST /:id/call`, `POST /:id/start`, `POST /:id/attend`, `GET /:id/ics` |
 | `/api/v1/clinical/**` | clinical | historia, sesiones, récipes, PDF, adjuntos |
 | `/api/v1/odontogram/**` | odontogram | `GET /patients/:id`, `POST /patients/:id/findings`, `DELETE /patients/:id/findings` |
-| `/api/v1/screens/**` | screens | `POST /devices`, `GET /lobby/stream` (SSE), `GET /consultorio/stream` (SSE) |
+| `/api/v1/screens/**` | screens | `POST /devices`, `GET /device`, `GET /lobby`, `GET /lobby/stream` (SSE), `GET /consultorio/stream` (SSE) · `POST /api/v1/auth/device` canjea el token de la pantalla |
 | `/api/v1/reports/**` | reporting | `GET /funnel`, `GET /demographics`, `GET /oral-health`, `GET /prescriptions`, `GET /:key/export.csv` |
 | `/internal/v1/**` | todos | solo red interna + service JWT (`upsert-by-cedula`, `patients/:id/summary`, …) |
 
@@ -685,7 +685,8 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | **3** | ✅ **completada** (2026-10-03) | 11 commits · `npm run verify` en verde con **145 pruebas** (+36 de integración: **181 en total**) · `scheduling` con **secuencia atómica de tickets** (20 solicitudes simultáneas, 20 tickets distintos), cola «en espera de cita» ordenada por ticket/antigüedad/prioridad, cupo diario editable (bajarlo por debajo de lo asignado **avisa y no borra**), plantillas de franjas sembradas (L-V 8:00–12:00 y 13:00–17:00 → 16 franjas), hora manual, **sobrecupo solo con `scheduling:overbook` y motivo**, índice único parcial que impide dos citas a la misma hora (incluso en paralelo), reprogramación que conserva el ticket y enlaza la cita nueva, inasistencia con tolerancia de 15 min, `status_history` con actor y hora, aviso en lote con **vista previa exacta**, y auditoría de todos los eventos con resumen legible · módulo **Programación** con cola, jornada, franjas, arrastrar y soltar, cupo y aviso en lote · **prueba de humo** (`npm run smoke:agenda`) con **41 comprobaciones** en verde · 28 ADRs |
 | **4** | ✅ **completada** (2026-10-03) | 9 commits · `npm run verify` en verde con **165 pruebas** (+46 de integración: **211 en total**) · `notifications` con bot de Telegram **conectado** (@odegcrmbot, long polling único), asistente de **7 pasos** que valida y crea paciente + solicitud con ticket, `/estado`, `/cancelar`, `/mi_ticket`, vinculación por deep link y **QR**, anti-flood (10 mensajes/min) e **idempotencia por `update_id`**, 19 plantillas editables, cola con reintentos y retroceso exponencial, **aviso inmediato al formalizar la cita con el `.ics` adjunto**, «aviso manual pendiente» cuando el paciente no tiene Telegram, y `ics_artifacts` · **reparto de eventos por servicio** (cada consumidor tiene su cola: los eventos llegan a todos) · bandeja `/notificaciones` con estado del bot, envíos, reintento manual, plantillas y vinculación · **prueba de humo** (`npm run smoke:notifications`) en verde · 29 ADRs |
 | **4.1** | ✅ **completada** (2026-10-03) | 7 commits · `npm run verify` en verde con **198 pruebas** (+51 de integración: **249 en total**) · **núcleo conversacional y adaptadores de canal** ([ADR 0029](adr/0029-nucleo-conversacional-y-adaptadores.md)): el asistente trabaja sobre `InboundMessage` y envía por el adaptador, con **intenciones** (no comandos) y **opciones numeradas guardadas en la conversación**; migraciones `0001` (`direccion` + `canal` + `opciones` + `evento_id text` para el `wamid`) y `0002` (plantillas sin comandos), verificadas desde cero en base limpia; **webhook público** de WhatsApp con firma obligatoria y su **excepción en el gateway**; **kit de conformidad** con el mismo juego de 24 pruebas contra Telegram, WhatsApp y simulado · **prueba de humo** (`npm run smoke:notifications`) con **24 comprobaciones** en verde y el webhook verificado contra un doble de la Graph API (verificación → 401 sin firma → 200 con firma → respuesta enviada) |
-| 5 | ⏭ **siguiente** | Secretaría y pantallas (lobby y consultorio) con SSE |
+| 5 | ✅ **completada** (2026-10-03) | 8 commits · `npm run verify` en verde con **206 pruebas** (+60 de integración: **266 en total**) · **`services/screens`** (nuevo, puerto 4007, [ADR 0030](adr/0030-pantallas-kiosko-y-sse.md)): proyección de la sala por eventos, histórico de llamados idempotente, dispositivos con ajustes y latido, y **flujo SSE** con estado completo; **login de pantalla kiosko** (token de dispositivo → JWT de rol `pantalla`); **`/secretaría`** con las acciones del flujo (registrar llegada, llamar —segundo llamado—, pasar a consulta, atendido con motivo, inasistencia y **llamada fuera de orden**); **displaylobby** con turno, nombre abreviado, 2.º llamado en rojo y **voz en español**; **pantalla de consultorio** con motivo y datos críticos en semáforo; **`/pantallas`** para registrar televisores y desactivarlos · **prueba de humo** (`npm run smoke:screens`) con **26 comprobaciones** en verde, con el llamado llegando al lobby en **882 ms** · se corrigió el **orden de los eventos del lote** (pg-boss no lo garantiza) · 30 ADRs |
+| 6 | ⏭ **siguiente** | Historia clínica y odontograma (dos sesiones) |
 | 4–10 | ⏳ pendientes | Ver §13 |
 
 ### Lo que quedó funcionando
@@ -839,14 +840,50 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    guarda la última lista enviada: si el paciente tarda un día en responder «2», el asistente
    recuerda qué era.
 
+### Hallazgos de la Fase 5 que cambian supuestos
+
+1. **La cola no garantiza el orden del lote.** `pg-boss` entrega los trabajos de un lote
+   en orden arbitrario: al aplicar `called` antes que `checked_in`, el paciente quedaba
+   «en sala de espera» en vez de «llamado» (el lobby no lo mostraba) y `attended` antes
+   que `in_consultation` volvía a ocupar el consultorio después de que el paciente se
+   fuera. Lo destapó la prueba de humo, no las pruebas de integración (que aplicaban los
+   eventos de uno en uno). Ahora el lote se **ordena por `occurredAt`** y la proyección
+   **no retrocede** ni resucita a quien ya salió (lápida `left_at` en `room_state`).
+2. **La aprobación de un criterio depende de dos relojes.** «Llamar aparece en el lobby
+   en menos de 1 s» exigía bajar el publicador del outbox de agenda de 2 s a **500 ms** y
+   el sondeo del consumidor de `screens` a **500 ms**. Medido con el flujo SSE real: 882 ms.
+3. **La latencia hay que medirla como la vive el televisor.** El primer intento medía con
+   sondeos HTTP y daba 19 s: era el saludo TCP de cada sondeo en una máquina cargada (el
+   servicio respondía en 2-4 ms). La medición buena se hace **por el flujo SSE**, que es
+   una única conexión abierta antes del llamado.
+4. **Una pantalla no puede tener sesión de usuario.** El token de dispositivo se canjea
+   por un JWT de rol `pantalla` (solo `screens:display`) que se renueva solo, y `screens`
+   comprueba además que la pantalla siga activa: desactivarla corta el acceso al instante.
+5. **`EventSource` no manda cabeceras.** El kiosko abre el SSE con `fetch` y gestiona a
+   mano la reconexión, el `Last-Event-ID` y un **refresco de respaldo** por HTTP cada 20 s
+   (si el flujo muere en silencio, el estado se corrige igual).
+6. **Los ajustes de la pantalla no viven en identity.** El login del dispositivo no puede
+   traerlos (son de `screens`), así que la pantalla pide su ficha con
+   `GET /api/v1/screens/device` y de ahí salen voz, volumen y segundos de resalte.
+7. **El motivo de la consulta lo publica la agenda.** Para que la pantalla del consultorio
+   lo muestre sin leer la base de otro servicio, `scheduling` lo añade al evento de la
+   cita; los datos clínicos (alergias, crónicos) llegan por la ruta interna que usará la
+   Fase 6.
+
 ### Próximo paso
 
-Arrancar la **Fase 5** en una sesión nueva: módulo de **secretaría** (llamar al paciente, pasar a
-consulta, marcar inasistencia y marcar atendido con advertencia si no hay historia clínica) y las
-**pantallas** de sala y consultorio con **SSE** para que se actualicen en vivo. Los eventos de agenda
-ya viajan con todo lo necesario (`appointment.checked_in`, `appointment.called`,
-`appointment.in_consultation`, `appointment.attended`, `appointment.no_show`) y las pantallas solo
-tienen que escucharlos. Misma regla: `npm run verify` en verde, commits atómicos y tag `fase-5`.
+Arrancar la **Fase 6** en una sesión nueva (son dos): **historia clínica** con las 11
+secciones de [`formato_historia.md`](formato_historia.md), catálogos tipificados + «otros»,
+estados `BORRADOR → FIRMADA` y adendas; y el **odontograma FDI** con captura por excepción,
+histórico de hallazgos y el componente SVG con carga por teclado.
+
+Dos ganchos ya están puestos para esa fase:
+- `POST /internal/v1/screens/room/critical-flags` recibe alergias y crónicos y los pinta la
+  pantalla del consultorio con semáforo de riesgo (hoy avisa de que aún no hay datos).
+- `POST /api/v1/appointments/:id/attend` acepta `clinicalSessionId`: cuando exista la sesión
+  cerrada, el «atendido» deja de pedir motivo (hoy lo exige y lo deja en la auditoría).
+
+Misma regla: `npm run verify` en verde, commits atómicos y tag `fase-6`.
 
 > Este documento es la referencia viva del proyecto: cualquier cambio de alcance se refleja aquí
 > **antes** de escribir código, y cada decisión relevante se registra como ADR en

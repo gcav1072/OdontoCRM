@@ -120,7 +120,7 @@ docs                  Plan maestro, formato de historia clínica y ADRs
 | notifications | 4004 | ✅ Fase 4 (Telegram) · Fase 4.1 (multicanal + webhook) |
 | clinical | 4005 | Fase 6 |
 | odontogram | 4006 | Fase 6 |
-| screens | 4007 | Fase 5 |
+| screens | 4007 | ✅ Fase 5 (secretaría y pantallas con SSE) |
 | reporting | 4008 | Fase 9 |
 
 ---
@@ -243,6 +243,32 @@ de 7 pasos, la cola de envíos, las plantillas y el `.ics` son los mismos para t
   **antes** de procesar nada. El gateway lo deja pasar sin token a propósito.
 - **Kit de conformidad**: `services/notifications/src/canales/conformidad.test.ts` corre el mismo
   juego de pruebas contra Telegram, WhatsApp y el adaptador simulado; un canal que no lo pase no entra.
+
+---
+
+## API de la Fase 5 (secretaría y pantallas)
+
+Las pantallas kiosko no usan la sesión del personal: se configuran **una vez** con el
+token de su dispositivo ([ADR 0030](docs/adr/0030-pantallas-kiosko-y-sse.md)), que
+canjean por un JWT de rol `pantalla`, y se actualizan por **SSE**.
+
+| Método y ruta | Qué hace | Permiso |
+| :--- | :--- | :--- |
+| `POST /api/v1/auth/device` | Canjea el token de la pantalla por un JWT (15 min, rol `pantalla`) | **público** |
+| `GET /api/v1/screens/devices` · `POST` · `PATCH /:id` · `DELETE /:id` | Registrar pantallas, ajustar su voz y volumen, y desactivarlas | `screens:manage` |
+| `GET /api/v1/screens/conectadas` | Cuántas pantallas están conectadas en vivo | `screens:manage` |
+| `GET /api/v1/screens/device` | Ficha de **esta** pantalla, con sus ajustes | `screens:display` |
+| `GET /api/v1/screens/lobby` · `GET /api/v1/screens/consultorio` | Estado de la sala y del consultorio | `screens:display` |
+| `GET /api/v1/screens/lobby/stream` · `GET /api/v1/screens/consultorio/stream` | Flujo **SSE** con el estado (trama completa por cambio + latido) | `screens:display` |
+| `POST /internal/v1/screens/room/critical-flags` | Datos críticos del paciente en curso (los enviará la historia clínica) | secreto interno |
+
+- **El llamado se empuja**: la secretaría llama por `/api/v1/appointments/:id/call` y el
+  displaylobby lo recibe por SSE (medido: **882 ms**).
+- **Una pantalla desactivada deja de ver la sala**, aunque su token siga vigente.
+- La **secretaría** usa las rutas de agenda ya existentes (`check-in`, `call`, `start`,
+  `attend`, `no-show`); la llamada fuera de orden registra llegada y llamado para que las
+  dos transiciones queden en el historial y en la auditoría.
+- `npm run smoke:screens` comprueba todo el camino contra el gateway real (26 comprobaciones).
 
 ---
 

@@ -4,6 +4,44 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 5] — Secretaría y pantallas (lobby y consultorio) · 2026-10-03
+
+### Añadido
+
+- **`packages/contracts`**: contratos de pantallas ([ADR 0030](docs/adr/0030-pantallas-kiosko-y-sse.md)) —
+  dispositivos kiosko con sus **ajustes** (voz, volumen, segundos de resalte y de repetición),
+  estado de la sala (`LobbyState`, `ConsultationState`), llamados, **datos críticos** con severidad,
+  tramas SSE, nombre abreviado para pantalla (`Juan P.`) y edad en UTC. 8 pruebas nuevas.
+- **`services/screens`** (nuevo, puerto 4007, base `odonto_screens`): **proyección de la sala** por
+  eventos de agenda (`en_sala_espera` → `llamado` → `en_consulta`, y fuera al atenderse, faltar o
+  cancelarse), **histórico de llamados** idempotente por evento, dispositivos con latido, **flujo
+  SSE** con estado completo, latido y `Last-Event-ID`, y rutas internas para los datos críticos que
+  enviará la historia clínica.
+- **`services/identity`**: `POST /api/v1/auth/device` cambia el **token de dispositivo** por un JWT
+  de rol `pantalla` (solo `screens:display`), deja en auditoría los intentos fallidos y actualiza la
+  última señal del dispositivo. `services/patients` expone la ficha interna por id (edad y sexo para
+  la pantalla del consultorio).
+- **Interfaz**: **`/secretaria`** (jornada hora por hora, buscador, contadores, registrar llegada,
+  llamar —con segundo llamado—, pasar a consulta, marcar atendido con motivo y marcar inasistencia,
+  y **llamada fuera de orden** con confirmación), **`/pantalla/lobby`** (displaylobby con turno,
+  nombre abreviado, sillón, 2.º llamado en rojo y **voz en español**), **`/pantalla/consultorio`**
+  (paciente en curso, motivo y **semáforo de riesgo** de los datos críticos) y **`/pantallas`**
+  (registrar cada televisor, ajustar su voz y desactivarlo, con el enlace del token una sola vez).
+
+### Cambiado
+
+- La **agenda publica el motivo de la consulta** con el evento de la cita y su publicador del outbox
+  late cada **500 ms** (antes 2 s): de ahí depende que un llamado llegue al lobby en menos de un
+  segundo (medido: **882 ms** en la prueba de humo).
+- El gateway deja pasar `POST /api/v1/auth/device` sin token (la pantalla no tiene usuario ni cookie).
+
+### Corregido
+
+- **El orden de los eventos del lote**: `pg-boss` no garantiza el orden y aplicar `called` antes que
+  `checked_in` dejaba al paciente «esperando» en lugar de «llamado» (y `attended` antes que
+  `in_consultation` volvía a ocupar el consultorio). El lote se ordena por `occurredAt` y la
+  proyección no retrocede ni resucita a quien ya salió (lápida `left_at`).
+
 ## [Fase 4.1] — Núcleo conversacional y adaptadores de canal · 2026-10-03
 
 ### Añadido

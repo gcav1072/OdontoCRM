@@ -3,7 +3,8 @@
 Una ADR por decisión relevante, en el formato *Contexto · Decisión · Consecuencias*.
 Las decisiones 0001–0021 provienen de la sesión de planificación del **2026-10-02**
 (§1 de [`../PLAN_MAESTRO_FASES.md`](../PLAN_MAESTRO_FASES.md)); las 0022–0025 se
-tomaron durante la Fase 0 y quedan documentadas por la misma razón.
+tomaron durante la Fase 0, la 0029 en la Fase 4.1 y la 0030 en la Fase 5, y quedan
+documentadas por la misma razón.
 
 | # | Decisión | Estado |
 | :-: | :--- | :--- |
@@ -35,3 +36,5 @@ tomaron durante la Fase 0 y quedan documentadas por la misma razón.
 | [0026](0026-cola-de-eventos-compartida.md) | Cola de eventos compartida en la base `odonto_events` | aceptada (corrige el ADR 0003) |
 | [0027](0027-borrado-logico-de-pacientes.md) | Borrado lógico de pacientes, solo para el administrador | aceptada |
 | [0028](0028-cancelar-devuelve-el-ticket.md) | Cancelar una cita devuelve el ticket a la cola | aceptada |
+| [0029](0029-nucleo-conversacional-y-adaptadores.md) | Núcleo conversacional y adaptadores de canal (Telegram, WhatsApp) | aceptada (fase 4.1) |
+| [0030](0030-pantallas-kiosko-y-sse.md) | Pantallas kiosko con token de dispositivo y SSE | aceptada (fase 5) |
