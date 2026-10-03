@@ -72,7 +72,7 @@ export type DocType = (typeof DOC_TYPES)[number];
 export const SEXES = ['M', 'F', 'O'] as const;
 export type Sex = (typeof SEXES)[number];
 
-export const CHANNELS = ['telegram', 'registro', 'telefono', 'presencial'] as const;
+export const CHANNELS = ['telegram', 'whatsapp', 'registro', 'telefono', 'presencial'] as const;
 export type Channel = (typeof CHANNELS)[number];
 
 export const PATIENT_STATUSES = ['en_espera_cita', 'activo', 'inactivo'] as const;

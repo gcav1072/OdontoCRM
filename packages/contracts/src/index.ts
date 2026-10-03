@@ -3,6 +3,7 @@ export * from './common/pagination.js';
 export * from './common/problem.js';
 export * from './domain/audit.js';
 export * from './domain/auth.js';
+export * from './domain/channel.js';
 export * from './domain/enums.js';
 export * from './domain/health.js';
 export * from './domain/ics.js';

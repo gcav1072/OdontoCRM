@@ -1,0 +1,139 @@
+import { z } from 'zod';
+
+/**
+ * Contrato de canal (ADR 0029): lo que el núcleo conversacional necesita de
+ * Telegram, WhatsApp o cualquier canal futuro, sin saber nada de sus detalles.
+ */
+
+export const CHANNEL_IDS = ['telegram', 'whatsapp'] as const;
+export type ChannelId = (typeof CHANNEL_IDS)[number];
+
+export const CHANNEL_LABELS: Readonly<Record<ChannelId, string>> = {
+  telegram: 'Telegram',
+  whatsapp: 'WhatsApp',
+};
+
+/** Qué sabe hacer un canal: el núcleo se adapta a esto. */
+export interface ChannelCapabilities {
+  /** Botones interactivos (Telegram: teclado en línea; WhatsApp: interactivo). */
+  botones: boolean;
+  /** Adjuntos (el `.ics` de la cita). */
+  documentos: boolean;
+  /** Comandos con barra (`/nueva`); WhatsApp no los tiene. */
+  comandos: boolean;
+  /**
+   * El canal exige **plantillas aprobadas** fuera de la ventana de atención
+   * (WhatsApp Cloud API): el adaptador decide cuándo usar plantilla y cuándo texto.
+   */
+  plantillasAprobadas: boolean;
+}
+
+/** Mensaje entrante ya normalizado, venga de donde venga. */
+export interface InboundMessage {
+  canal: ChannelId;
+  /** Dirección del interlocutor: id de chat (Telegram) o número (WhatsApp). */
+  direccion: string;
+  /** Nombre de usuario del canal, si lo hay. */
+  usuario: string | null;
+  texto: string | null;
+  /** Acción de un botón o respuesta rápida pulsada. */
+  accion: string | null;
+  /** Identificador del evento en el canal, para la idempotencia. */
+  eventoId: string;
+  recibidoEn: string;
+}
+
+export const inboundMessageSchema = z.object({
+  canal: z.enum(CHANNEL_IDS),
+  direccion: z.string().min(1).max(80),
+  usuario: z.string().max(80).nullable(),
+  texto: z.string().max(4000).nullable(),
+  accion: z.string().max(120).nullable(),
+  eventoId: z.string().min(1).max(120),
+  recibidoEn: z.string(),
+});
+
+export interface OutboundButton {
+  etiqueta: string;
+  /** Acción que vuelve como `InboundMessage.accion`. */
+  accion: string;
+}
+
+export interface OutboundDocument {
+  nombre: string;
+  contenido: Buffer;
+  mime: string;
+}
+
+/** Mensaje saliente que el adaptador sabe entregar. */
+export interface OutboundMessage {
+  direccion: string;
+  texto: string;
+  botones?: readonly OutboundButton[];
+  documento?: OutboundDocument;
+  /** Plantilla del catálogo que originó el mensaje (para WhatsApp aprobado). */
+  plantilla?: string;
+}
+
+export interface SendResult {
+  /** Identificador del mensaje en el canal, para la trazabilidad. */
+  idMensaje: string;
+}
+
+export interface WebhookRequest {
+  metodo: 'GET' | 'POST';
+  query: Readonly<Record<string, string | undefined>>;
+  headers: Readonly<Record<string, string | undefined>>;
+  /** Cuerpo ya leído (texto) y su forma analizada si es JSON. */
+  rawBody: string;
+  json: unknown;
+}
+
+export interface WebhookResponse {
+  estado: number;
+  cuerpo?: unknown;
+  contentType?: string;
+}
+
+/**
+ * Adaptador de canal. El núcleo **no** sondea ni escucha: cada adaptador entrega
+ * los mensajes con `entregar()` (Telegram los saca por long polling; WhatsApp los
+ * recibe por webhook) y sabe enviar lo que el núcleo decide.
+ */
+export interface ChannelAdapter {
+  readonly id: ChannelId;
+  readonly capacidades: ChannelCapabilities;
+  /** Empieza a escuchar. Debe ser idempotente. */
+  iniciar: (entregar: (entrante: InboundMessage) => Promise<void>) => Promise<void>;
+  detener: () => Promise<void>;
+  enviar: (saliente: OutboundMessage) => Promise<SendResult>;
+  /** Solo los canales con webhook (WhatsApp) lo implementan. */
+  webhook?: (peticion: WebhookRequest) => Promise<WebhookResponse>;
+  /** Identidad visible del canal, para la pantalla de estado. */
+  identidad: () => Promise<{ nombre: string | null; usuario: string | null; conectado: boolean }>;
+}
+
+/**
+ * Opciones numeradas para canales sin botones: el mismo paso, en texto que se
+ * puede responder con un número.
+ */
+export const numberedOptions = (
+  opciones: readonly OutboundButton[],
+): { texto: string; acciones: ReadonlyMap<string, string> } => {
+  const acciones = new Map<string, string>();
+  const lineas = opciones.map((opcion, index) => {
+    acciones.set(String(index + 1), opcion.accion);
+    return `${String(index + 1)}) ${opcion.etiqueta}`;
+  });
+  return { texto: lineas.join('\n'), acciones };
+};
+
+/** Traduce «2» o «2) Femenino» a la acción correspondiente, si la hay. */
+export const resolveNumberedOption = (
+  entrada: string,
+  acciones: ReadonlyMap<string, string>,
+): string | null => {
+  const match = /^\s*(?<numero>\d{1,2})\b/.exec(entrada);
+  if (match?.groups?.['numero'] === undefined) return null;
+  return acciones.get(match.groups['numero']) ?? null;
+};

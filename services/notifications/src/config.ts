@@ -25,6 +25,15 @@ export const notificationsEnvSchema = baseEnvSchema.extend({
   TELEGRAM_BOT_USERNAME: z.string().min(1).optional(),
   /** `auto` usa el bot real si hay token; `simulado` fuerza las pruebas sin red. */
   TELEGRAM_MODE: z.enum(['auto', 'real', 'simulado']).default('auto'),
+  /**
+   * WhatsApp Cloud API (ADR 0029). Sin credenciales el adaptador **no se activa**
+   * y el servicio sigue solo con Telegram: cuando estén, se enciende solo.
+   */
+  WHATSAPP_TOKEN: z.string().min(20).optional(),
+  WHATSAPP_PHONE_ID: z.string().min(3).optional(),
+  WHATSAPP_VERIFY_TOKEN: z.string().min(8).optional(),
+  WHATSAPP_APP_SECRET: z.string().min(8).optional(),
+  WHATSAPP_API_BASE: z.string().min(1).default('https://graph.facebook.com/v21.0'),
   /** Base de la API de Telegram (se puede apuntar a un doble local en pruebas). */
   TELEGRAM_API_BASE: z.string().min(1).default('https://api.telegram.org'),
   /** Segundos de espera del long polling. */

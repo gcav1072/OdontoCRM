@@ -158,7 +158,7 @@ describe('solicitudes de cita', () => {
         patientId: globalThis.crypto.randomUUID(),
         patientName: 'María Pérez',
         reason: 'Limpieza',
-        channel: 'whatsapp',
+        channel: 'sms',
       }).success,
     ).toBe(false);
   });
