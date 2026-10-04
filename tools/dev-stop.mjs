@@ -5,91 +5,29 @@
  *
  *   npm run dev:stop
  *
- * Lo que **no** hace: tocar los procesos de PM2. Esos se paran con `pm2 stop all`
- * (matarlos por PID haría que PM2 los reintentara). Se informa de cuáles son.
+ * Es el caso «sueltos» de `npm run stack:down`: aquel además para las aplicaciones
+ * de PM2. Aquí, si un puerto lo tiene PM2, **no se mata por PID** (PM2 lo
+ * reintentaría): se dice qué aplicación es y cómo pararla.
  */
-import { execFileSync, execSync } from 'node:child_process';
-import { createConnection } from 'node:net';
+import {
+  PUERTOS,
+  matar,
+  nombreDeProceso,
+  pidDelPuerto,
+  estaOcupado,
+  aplicacionesPm2,
+} from './lib/stack.mjs';
 
-const PUERTOS = [5173, 8090, 4001, 4002, 4003, 4004, 4005, 4006, 4007];
-const HOST = '127.0.0.1';
-
-const estaOcupado = (puerto) =>
-  new Promise((resolve) => {
-    const socket = createConnection({ port: puerto, host: HOST });
-    const terminar = (ocupado) => {
-      socket.removeAllListeners();
-      socket.destroy();
-      resolve(ocupado);
-    };
-    socket.setTimeout(700);
-    socket.once('connect', () => terminar(true));
-    socket.once('timeout', () => terminar(false));
-    socket.once('error', () => terminar(false));
-  });
-
-const pidDelPuerto = (puerto) => {
-  try {
-    if (process.platform === 'win32') {
-      const salida = execFileSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8' });
-      for (const linea of salida.split(/\r?\n/)) {
-        const campos = linea.trim().split(/\s+/);
-        if (
-          campos.length >= 5 &&
-          campos[1]?.endsWith(`:${String(puerto)}`) &&
-          campos[3] === 'LISTENING'
-        ) {
-          return Number(campos[4]);
-        }
-      }
-      return null;
-    }
-    const salida = execFileSync('ss', ['-ltnp'], { encoding: 'utf8' });
-    for (const linea of salida.split('\n')) {
-      if (!linea.includes(`:${String(puerto)} `)) continue;
-      const coincidencia = /pid=(\d+)/.exec(linea);
-      if (coincidencia?.[1] !== undefined) return Number(coincidencia[1]);
-    }
-    return null;
-  } catch {
-    return null;
-  }
-};
-
-const aplicacionesPm2 = () => {
-  try {
-    // `pm2` es un `.cmd` en Windows: hay que lanzarlo con shell (comando fijo).
-    return JSON.parse(
-      execSync('pm2 jlist', {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-        windowsHide: true,
-      }),
-    );
-  } catch {
-    return [];
-  }
-};
-
-const matar = (pid) => {
-  try {
-    if (process.platform === 'win32') {
-      execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
-    } else {
-      process.kill(pid, 'SIGKILL');
-    }
-    return true;
-  } catch {
-    return false;
-  }
-};
+const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const pm2 = aplicacionesPm2();
-const dePm2 = new Map(pm2.map((app) => [app?.pid, String(app?.name ?? 'app')]));
+const dePm2 = new Map(pm2.map((app) => [Number(app.pid), String(app.name ?? 'app')]));
 
 const ocupados = [];
 for (const puerto of PUERTOS) {
-  if (await estaOcupado(puerto)) ocupados.push({ puerto, pid: pidDelPuerto(puerto) });
+  if (await estaOcupado(puerto.puerto)) {
+    ocupados.push({ ...puerto, pid: pidDelPuerto(puerto.puerto) });
+  }
 }
 
 if (ocupados.length === 0) {
@@ -116,24 +54,31 @@ for (const entrada of ocupados) {
     continue;
   }
 
-  const hecho = matar(entrada.pid);
+  matar(entrada.pid);
+  // Lo que decide es el puerto: `taskkill` falla si el proceso ya murió o si su
+  // padre se lo llevó por delante, y en los dos casos el puerto queda libre igual.
+  let libre = false;
+  for (let intento = 0; intento < 12 && !libre; intento += 1) {
+    libre = !(await estaOcupado(entrada.puerto));
+    if (!libre) await esperar(300);
+  }
   console.log(
-    hecho
-      ? `  ✔ ${String(entrada.puerto)} liberado (PID ${String(entrada.pid)})`
-      : `  ✖ ${String(entrada.puerto)}: no se pudo terminar el PID ${String(entrada.pid)} (¿permisos?)`,
+    libre
+      ? `  ✔ ${String(entrada.puerto)} liberado (${nombreDeProceso(entrada.pid)}, PID ${String(entrada.pid)})`
+      : `  ✖ ${String(entrada.puerto)} sigue ocupado (PID ${String(entrada.pid)}): ¿permisos?`,
   );
-  if (hecho) matados += 1;
+  if (libre) matados += 1;
 }
 
 if (conPm2.size > 0) {
   console.log(`\nServicios de PM2 en marcha: ${[...conPm2].join(', ')}`);
-  console.log('  Para pararlos:  pm2 stop all   (o `pm2 stop <nombre>`)');
+  console.log('  Para pararlos:  npm run stack:down   (o `pm2 stop all`)');
 }
 
 // Comprobación final: que los puertos que tocábamos estén de verdad libres.
 const siguen = [];
 for (const puerto of PUERTOS) {
-  if (await estaOcupado(puerto)) siguen.push(puerto);
+  if (await estaOcupado(puerto.puerto)) siguen.push(puerto.puerto);
 }
 
 console.log(

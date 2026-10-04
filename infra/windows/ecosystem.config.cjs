@@ -48,6 +48,30 @@ module.exports = {
     service('screens', 'services/screens/dist/index.js', 'services/screens/.env'),
     service('clinical', 'services/clinical/dist/index.js', 'services/clinical/.env'),
     service('odontogram', 'services/odontogram/dist/index.js', 'services/odontogram/.env'),
+    /**
+     * La interfaz la sirve Vite en desarrollo (el 5173), y va aquí para que la pila
+     * «fija» quede **completa**: si la web dependiera de una terminal aparte,
+     * volveríamos a tener dos cosas vivas y nadie sabría cuál está sirviendo
+     * (`npm run stack:status` las ve todas). En producción la sirve el reverse proxy
+     * sobre la SPA compilada (Fase 10).
+     *
+     * Se lanza **Vite directamente**, no `npm run dev:web`: en Windows PM2 no puede
+     * lanzar `npm` sin shell (`spawn EINVAL`), y el envoltorio no aporta nada.
+     */
+    {
+      name: 'odontocrm-web',
+      script: path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'),
+      cwd: path.join(root, 'apps', 'web'),
+      interpreter: 'node',
+      autorestart: true,
+      max_restarts: 20,
+      restart_delay: 3000,
+      kill_timeout: 8000,
+      merge_logs: true,
+      time: true,
+      out_file: path.join(root, 'logs', 'web.out.log'),
+      error_file: path.join(root, 'logs', 'web.error.log'),
+    },
     // Fase 9: reporting
   ],
 };
