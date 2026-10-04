@@ -678,6 +678,7 @@ Nombres exactos de los puertos (los del código y los de §2.2):
 | Variable | Servicios | Notas |
 | :--- | :--- | :--- |
 | `DATABASE_URL` | los 8 con BD | `postgres://<rol>:<clave>@127.0.0.1:5432/<base>`; la genera `npm run db:bootstrap` y se traslada aquí (§8.6). |
+| **`EVENTS_DATABASE_URL`** | los 8 con BD | **La cola compartida** (`odonto_events`): **el mismo valor en los ocho**, con el rol `odonto_events`. Sin ella cada servicio usaría **su propia base** para `pg-boss` y los eventos no llegarían a los demás (el read model de reportes se queda vacío y la auditoría no ve nada). La escribe el bootstrap en `services/<servicio>/.env` y se traslada aquí (§8.6). |
 | `DATABASE_POOL_MAX` | los 8 con BD | Conexiones por servicio (valor por defecto del código: 10). |
 | `INTERNAL_SERVICE_SECRET` | los 9 | Secreto HS256 de los JWT de servicio. **El mismo valor en los 9.** |
 | `COOKIE_SECRET` | `identity` | Secreto de cookies; lo genera el bootstrap. |
@@ -754,13 +755,15 @@ cd /opt/odontocrm
 
 # 1) Trasladar SOLO los valores generados al archivo propio de producción y borrar el
 #    .env del repositorio. El resto de la plantilla (URLs, claves, rutas) ya está puesto.
+#    OJO: EVENTS_DATABASE_URL va incluida —es la cola compartida y sin ella los
+#    servicios no se ven entre sí—.
 for s in identity patients scheduling notifications clinical odontogram screens reporting; do
   src="services/$s/.env"; dst="/etc/odontocrm/$s.env"
   [ -f "$src" ] || { echo "AVISO: todavía no existe $src (¿ejecutaste db:bootstrap?)"; continue; }
   sudo bash -c "
     set -euo pipefail
-    grep -vE '^(DATABASE_URL|INTERNAL_SERVICE_SECRET|COOKIE_SECRET)=' '$dst' > '$dst.tmp'
-    grep -E  '^(DATABASE_URL|INTERNAL_SERVICE_SECRET|COOKIE_SECRET)=' '$src' >> '$dst.tmp'
+    grep -vE '^(DATABASE_URL|EVENTS_DATABASE_URL|INTERNAL_SERVICE_SECRET|COOKIE_SECRET)=' '$dst' > '$dst.tmp'
+    grep -E  '^(DATABASE_URL|EVENTS_DATABASE_URL|INTERNAL_SERVICE_SECRET|COOKIE_SECRET)=' '$src' >> '$dst.tmp'
     install -m 0640 -o root -g odontocrm '$dst.tmp' '$dst'
     rm -f '$dst.tmp' '$src'
   "
@@ -778,6 +781,10 @@ sudo chown root:root /etc/odontocrm/*.env && sudo chmod 0600 /etc/odontocrm/*.en
 # 4) Comprobación: NINGÚN .env dentro del código desplegado
 sudo find /opt/odontocrm -type f -name '.env' -not -path '*/node_modules/*'
 #    → debe salir vacío (`.env.example` es del repositorio y no contiene secretos).
+
+# 5) Comprobación: los ocho tienen la cola compartida (el mismo valor en todos)
+sudo grep -c '^EVENTS_DATABASE_URL=' /etc/odontocrm/{identity,patients,scheduling,notifications,clinical,odontogram,screens,reporting}.env
+#    → un 1 por archivo; si falta en alguno, ese servicio no verá los eventos de los demás
 ```
 
 Notas:

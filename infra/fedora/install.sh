@@ -583,6 +583,10 @@ env_service_body() {
 # .env del repositorio se BORRA: no debe quedar ninguno dentro de ${CODE_DIR}
 # (INSTALL.md §8.6). No la escriba a mano salvo que sepa lo que hace.
 DATABASE_URL=postgres://CAMBIAR_USUARIO_DB:CAMBIAR_PASSWORD_DB@127.0.0.1:5432/${db}
+# EVENTS_DATABASE_URL (la cola compartida, odonto_events) NO se pone aquí: la escribe
+# `npm run db:bootstrap` en services/<servicio>/.env y se traslada a este archivo en
+# INSTALL.md §8.6. Sin ella, cada servicio usaría su propia base para la cola y los
+# eventos no llegarían a los demás.
 DATABASE_POOL_MAX=10
 EOF
   fi
