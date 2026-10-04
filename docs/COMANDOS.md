@@ -99,7 +99,7 @@ powershell -ExecutionPolicy Bypass -File infra/windows/start-services.ps1
 | `npm test` | Vitest: unitarias y de contrato | Sin base de datos; las de integración se **omiten** |
 | `npm run test:watch` | Vitest en vigilancia | Mientras se programa |
 | `npx vitest run <ruta>` | Una sola suite unitaria | Ej.: `npx vitest run packages/contracts/src/domain/screens.test.ts` |
-| `npm run test:integration` | Suites contra PostgreSQL real | `-- <ruta>` para una sola; requiere `db:bootstrap`, `db:migrate` y `build` |
+| `npm run test:integration` | Suites contra PostgreSQL real | `-- <ruta>` para una sola; requiere `db:bootstrap`, `db:migrate` y `build`. Corre con 4 workers (varias suites esperan a que los servicios en marcha auditen sus eventos) y le prepara a la de reportes **una base temporal propia** que borra al terminar |
 | `npm run db:verify-migrations` | Aplica las migraciones de **cada servicio** desde cero en bases limpias | `-- --only screens`; necesita `build` y `PG_ADMIN_URL` |
 | `npm run audit` | **Auditoría de conexiones**: eventos (quién publica y quién escucha), HTTP (rutas ↔ gateway ↔ interfaz, internas no expuestas), permisos y configuración, y bases + cola compartida | `-- --solo eventos\|http\|permisos\|datos`; sale con error solo si algo es estructural |
 
@@ -112,7 +112,7 @@ powershell -ExecutionPolicy Bypass -File infra/windows/start-services.ps1
 | `npm run db:bootstrap` | Crea las 8 bases, un rol por servicio con privilegios solo sobre la suya, las extensiones (`pgcrypto`, `pg_trgm`), la cola compartida `odonto_events` y escribe las credenciales en cada `services/<svc>/.env` | `-- --rotate` (contraseñas nuevas), `-- --only <servicio>` |
 | `npm run db:migrate` | Aplica las migraciones de todos los servicios implementados | `-- --only <servicio>` |
 | `npm run db:verify-migrations` | Desde cero: crea una base temporal por servicio, migra con el migrador real, comprueba tablas/índices y la borra | `-- --only <servicio>` |
-| `npm run db:generate:<servicio>` | Genera una migración a partir del esquema Drizzle del servicio | `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram` |
+| `npm run db:generate:<servicio>` | Genera una migración a partir del esquema Drizzle del servicio | `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram`, `reporting` |
 | `npm run db:reset` | **Borra absolutamente todo** y deja el sistema **listo para usar**: las 9 bases `odonto_*` (con `with (force)`) y el contenido de `storage/`; después compila, hace `db:bootstrap`, `db:migrate` y **siembra los usuarios**. Solo consola y **exige `--yes`** | `-- --yes` (hace falta) · `-- --solo-bases` (conserva los archivos) · `-- --remoto` (permite una base que no es de esta máquina) |
 | `npm run env:check` | Compara cada `services/<svc>/.env` con su **plantilla** (`.env.example`) y dice qué claves faltan y qué se pierde con cada una. Nunca imprime valores | `-- --todo` (informa también de los `.env` ausentes) |
 | `npm run keys:generate` | Par de claves EdDSA del JWT en `services/identity/.keys/` (ignorado por Git) | `-- --force` regenera (invalida todas las sesiones) |
@@ -340,6 +340,7 @@ un puerto lo ocupa un programa ajeno, avisa y lo deja en paz.
 | clinical | 4005 | | | |
 | odontogram | 4006 | | | |
 | screens | 4007 | | | |
+| reporting | 4008 | | | |
 
 Todos los servicios escuchan en `127.0.0.1`: se entra **solo** por el gateway.
 
@@ -371,7 +372,10 @@ base de datos). Necesitan los servicios arrancados y datos sembrados.
 | `npm run smoke:odontogram` | Boca por teclado, superación de caras por la pieza completa, borrado y auditoría | 29 |
 | `npm run smoke:clinical` | Sesión clínica: abrir, autoguardar, cerrar (y no cerrar en blanco), enmendar, hallazgo del odontograma ligado a la sesión y «atendido» con y sin sesión (estrena paciente y busca hora libre en cada corrida) | 30 |
 | `npm run smoke:prescription` | Fase 7B: adjunto de la sesión (subida, listado, descarga y pieza), catálogo, borrador del récipe, **emisión con número y PDF A5**, no emitir dos veces, reimpresión auditada, anulación con motivo, **verificación pública sin token**, y que la secretaría imprime pero no receta | 32 |
-| `npm run e2e:flujo` | Fase 8: **el día completo en Chromium** sobre `/flujo`. La odontóloga entra con su usuario `odontologo`, registra al paciente, le da cita, registra la llegada, llama con `F4`, lo pasa a consulta, escribe y cierra la sesión con `F8` y marca la cita atendida **sin salir de `/flujo`**; después comprueba `/secretaria` y `/consultorio` y que la consola y la red queden limpias | 24 |
+| `npm run smoke:reporting` | Fase 9: **el recorrido que alimenta los reportes** —alta, teléfono editado con motivo, cita, aviso, historia firmada con diabetes y alergia, sesión cerrada, récipe emitido y tres hallazgos del odontograma— y después el tablero, los **seis reportes** con sus cifras, la **exportación CSV y PDF**, los permisos de la secretaría (operativos 200 / clínicos 403) y la **auditoría del teléfono** con su valor anterior, el nuevo y el motivo | 81 |
+| `npm run e2e:flujo` | Fase 8: **el día completo en Chromium** sobre `/flujo`. La odontóloga entra con su usuario `odontologo`, registra al paciente, le da cita, registra la llegada, llama con `F4`, lo pasa a consulta, escribe y cierra la sesión con `F8` y marca la cita atendida **sin salir de `/flujo`**; después comprueba `/secretaria` y `/consultorio` y que la consola y la red queden limpias | 27 |
+| `npm run e2e:reportes` | Fase 9: `/reportes` y `/auditoria` en **Chromium**. Entra por el menú lateral, comprueba las tarjetas del tablero, las **gráficas de Recharts**, la tabla y las descargas, recorre **las seis pestañas**, cambia el rango de fechas, y en `/auditoria` filtra por la acción del cambio de teléfono y verifica el **diff antes/después** con el motivo; deja una captura en `tmp/e2e-reportes.png` | 37 |
+| `npm run reports:latencia` | Fase 9: llena el read model con **10.000 citas y 3.000 pacientes sintéticos** (marcados, y los borra al terminar) y cronometra los seis reportes por el gateway. Falla si alguno pasa de 2 s (`REPORTS_LIMIT_MS`); `-- --keep` deja los datos para mirar la pantalla y `-- --clean` los borra | 6 |
 
 > `smoke:prescription` necesita Chromium (lo usa el propio servicio para componer el PDF):
 > `npx playwright install chromium`. Si el navegador no está, la emisión responde 500 y el humo lo
@@ -458,6 +462,7 @@ npm run typecheck -w @odontocrm/web
 | `@odontocrm/scheduling` | `build`, `start`, `db:migrate`, `seed:agenda` |
 | `@odontocrm/notifications` | `build`, `start`, `db:migrate` |
 | `@odontocrm/screens` | `build`, `start`, `db:migrate` |
+| `@odontocrm/reporting` | `build`, `start`, `db:migrate` (su refresco de vistas también se puede forzar por `POST /internal/v1/reporting/refresh`) |
 | `@odontocrm/gateway` | `build`, `start` |
 | `@odontocrm/web` | `dev`, `build`, `preview`, `typecheck` |
 
@@ -518,7 +523,7 @@ claves de `services/identity/.keys/`. Detalle en
 | Síntoma | Causa y qué hacer |
 | :--- | :--- |
 | **`127.0.0.1:5173` en negro / en blanco** | Casi siempre es un servidor de Vite **de una sesión anterior** que sigue ocupando el 5173 con el grafo de módulos roto: `npm run dev` no puede tomar el puerto (`strictPort`) y el navegador sigue mirando el viejo. Diagnóstico y arreglo: `npm run check:web` (dice si monta o no) → `npm run dev:stop` → `npm run dev`. Si el paquete no arranca, la propia página muestra un aviso con el error en vez de quedarse en negro |
-| `EADDRINUSE` en 4001-4007 o 8090 | Ya hay un servicio arrancado (PM2 o un `dev` viejo): `npm run dev:check` dice quién es; `pm2 status` para los de PM2 y `npm run dev:stop` para los sueltos |
+| `EADDRINUSE` en 4001-4008 o 8090 | Ya hay un servicio arrancado (PM2 o un `dev` viejo): `npm run dev:check` dice quién es; `pm2 status` para los de PM2 y `npm run dev:stop` para los sueltos |
 | El 5173 está ocupado | Quedó un Vite de otra sesión: `npm run dev:stop` antes de `npm run dev` |
 | `listen EACCES` en 8090 | Es el aviso de la Fase 0: el 8080 lo ocupa Windows; el gateway usa 8090 |
 | «Falta packages/db/dist» | Falta compilar: `npm run build` (o `build:node`) |

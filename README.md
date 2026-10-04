@@ -84,9 +84,11 @@ está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)**. Estos son los del día a d�
 | `npm run stack:status` | ¿Qué pila está corriendo (dev con recarga o PM2), quién la tiene y desde cuándo? |
 | `npm run stack:dev` / `stack:fijo` / `stack:down` | Cambiar de modo sin dejar dos pilas vivas, o parar todo |
 | `npm test` | Pruebas unitarias y de contrato (Vitest) |
-| `npm run test:integration` | Suites contra PostgreSQL real (outbox, colas, sesión, pacientes, agenda, pantallas) |
-| `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`, `prescription` |
+| `npm run test:integration` | Suites contra PostgreSQL real (outbox, colas, sesión, pacientes, agenda, pantallas, reportes) |
+| `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`, `prescription`, `reporting` |
 | `npm run e2e:flujo` | **El día completo en un navegador de verdad**: `/flujo` con Chromium (Fase 8) |
+| `npm run e2e:reportes` | `/reportes` y `/auditoria` con Chromium: gráficas, seis pestañas, filtros y diff (Fase 9) |
+| `npm run reports:latencia` | Llena el read model con 10.000 citas y mide los seis reportes (criterio: < 2 s cada uno) |
 | `npm run db:reset -- --yes` | **Empezar de cero**: borra las 9 bases y `storage/`, y deja todo migrado y sembrado (solo consola; sin `--yes` no borra nada) |
 | `npm run env:check` | ¿A algún `.env` le falta una clave de su plantilla (`.env.example`)? |
 | **`npm run verify`** | **Puerta de calidad: secretos + lint + formato + compilación + pruebas unitarias** |
@@ -154,7 +156,7 @@ odontólogo, `npm run seed:users`. El logo se deja en [`assets/clinic/`](assets/
 | clinical | 4005 | ✅ Fase 6 (historia clínica) · Fase 7 (sesiones, adjuntos y récipes A5) |
 | odontogram | 4006 | ✅ Fase 6, sesión B (odontograma FDI) |
 | screens | 4007 | ✅ Fase 5 (secretaría y pantallas con SSE) |
-| reporting | 4008 | Fase 9 |
+| reporting | 4008 | ✅ Fase 9 (read model, KPIs y auditoría UI) |
 
 ---
 
@@ -524,7 +526,44 @@ en la barra superior ([ADR 0038](docs/adr/0038-permisos-del-odontologo-en-el-flu
   820 px.
 - **Permisos**: se entra con `clinical:read`; las acciones de escritura se comprueban dentro y siguen
   las del servidor (máquina de estados + permisos).
-- `npm run e2e:flujo` hace el día completo en Chromium (24 comprobaciones), **sin salir de `/flujo`**.
+- `npm run e2e:flujo` hace el día completo en Chromium (27 comprobaciones), **sin salir de `/flujo`**.
+
+---
+
+## Reportes y auditoría (Fase 9)
+
+**`/reportes`** decide con datos: el **tablero del día** (citas, atendidas, inasistencias, pendientes,
+cupo, pacientes y avisos) y **seis reportes** con los mismos filtros —fecha, rango de edad, sexo y
+estado del paciente— y la misma forma: cifras, gráficas y tabla.
+
+| Reporte | Qué muestra | Permiso |
+| :--- | :--- | :--- |
+| **Embudo y tasa de inasistencia** | Solicitudes → programadas → avisadas → atendidas, por día, semana o mes | `reports:read` |
+| **Ocupación de la agenda** | Cupo usado por día, días completos, día de mayor demanda y **hora pico** | `reports:read` |
+| **Demografía** | Pirámide por tramos de edad y sexo, con el rango editable | `reports:read` |
+| **Perfil clínico** | Diabéticos, hipertensos, cardiópatas, alérgicos, anticoagulados y bifosfonatos | `reports:clinical` |
+| **Salud bucal** | Caries, obturaciones y piezas ausentes por pieza y por paciente | `reports:clinical` |
+| **Recetas por medicamento** | Lo más recetado en el período, con renglones y porcentaje | `reports:clinical` |
+
+- **Exportación**: `Descargar CSV` (abre en Excel: BOM, `;` y coma decimal), `Descargar PDF`
+  (A4 con el membrete, compuesto en el servidor con Chromium) e `Imprimir`.
+- **Los reportes clínicos exigen `reports:clinical`** ([ADR 0039](docs/adr/0039-reportes-clinicos-con-permiso-propio.md)):
+  los ve el odontólogo y el administrador; la secretaría ve los operativos, y la pantalla le explica
+  por qué no ve el resto en vez de ofrecerle un botón que devuelve 403.
+- **De dónde salen los datos**: de `services/reporting` (puerto 4008), un **read model propio**
+  alimentado por los eventos de dominio y servido desde **vistas materializadas** que se refrescan al
+  cerrar cada lote y de noche ([ADR 0040](docs/adr/0040-refresco-del-read-model-de-reportes.md));
+  ningún reporte consulta las bases de los demás servicios.
+
+**`/auditoria`** responde «quién cambió qué y cuándo»: búsqueda por rango de fechas —el día completo
+en hora de Venezuela—, usuario, acción, tipo e identificador de entidad y **campo** cambiado; la lista
+lleva el resumen y el motivo, y el detalle muestra el **diff antes/después** (valor anterior tachado,
+nuevo en negrita), el autor, la IP y la petición. `Descargar CSV` baja exactamente el listado filtrado
+(tope de 5.000 eventos, avisado en la última fila).
+
+- `npm run smoke:reporting` provoca el recorrido completo y comprueba las cifras (81 comprobaciones).
+- `npm run e2e:reportes` recorre las dos pantallas en Chromium (37 comprobaciones) y deja una captura.
+- `npm run reports:latencia` mide los seis reportes con 10.000 citas (**3–8 ms** en la última medición).
 
 ---
 

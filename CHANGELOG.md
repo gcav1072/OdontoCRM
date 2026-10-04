@@ -4,6 +4,108 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 9] — Reportes, KPIs y auditoría · 2026-10-04 · tag `fase-9`
+
+### Añadido
+
+- **`services/reporting` (nuevo, puerto 4008, base `odonto_reporting`)**: **read model propio
+  alimentado por eventos** ([ADR 0019](docs/adr/0019-reportes-y-kpis.md)) — ningún reporte consulta
+  las bases operativas. Proyecta `patients.patient.*`, `scheduling.request.*`, `scheduling.appointment.*`
+  (con **todas** las marcas de tiempo del ciclo), `scheduling.capacity.changed`, `clinical.record.*`,
+  `clinical.session.*`, `clinical.prescription.*`, `odontogram.finding.*` y `notifications.message.*`
+  en `dim_patient`, `dim_day_capacity`, `fact_request`, `fact_appointment`, `fact_clinical_session`,
+  `fact_prescription`, `fact_prescription_item` y `fact_tooth_finding`; idempotente por `eventId`
+  (`processed_events`) y con el estado de la cita «solo hacia adelante» (un evento tardío no la
+  devuelve a `programada`).
+- **Cinco vistas materializadas** (`mv_daily_kpis`, `mv_funnel`, `mv_oral_health`, `mv_demographics`,
+  `mv_prescriptions`), refrescadas **al cerrar cada lote de eventos** (solo las afectadas) y por un
+  **job nocturno** a la hora configurada, con su bitácora en `report_refreshes`
+  ([ADR 0040](docs/adr/0040-refresco-del-read-model-de-reportes.md)). `POST /internal/v1/reporting/refresh`
+  las rehace a mano y `GET /internal/v1/reporting/status` dice cuánto hay y cuándo se refrescó.
+- **Los seis reportes del [ADR 0019](docs/adr/0019-reportes-y-kpis.md)**, todos con los mismos filtros
+  (fecha, rango de edad, sexo y estado) y la misma forma de documento (`ReportDocument`: cifras,
+  series, tabla y notas): **embudo y tasa de inasistencia** (por día, semana o mes), **ocupación de
+  la agenda** con horas pico, **demografía** (pirámide por tramos y sexo), **perfil clínico**
+  (diabetes, hipertensión, cardiopatía, alergias, anticoagulados, bifosfonatos y otros), **salud bucal**
+  (prevalencia de caries, obturaciones y ausencias por pieza) y **recetas por medicamento**.
+  `GET /api/v1/reports/summary` sirve el tablero del día.
+- **Exportación CSV y PDF** de cualquier reporte con los mismos filtros: CSV con **BOM UTF-8**,
+  separador `;`, CRLF y **coma decimal** (`buildCsv`, en contratos, con pruebas: es lo que hace que
+  Excel en español abra los acentos y sume los decimales), y **PDF A4 por Chromium** con el membrete
+  de la clínica, para imprimir sin depender del navegador.
+- **Módulo `/reportes`**: tablero del día, seis pestañas, filtros combinables, **gráficas con
+  Recharts** (`bar`, `stacked-bar`, `line`, `pie` y pirámide por sexo), tabla con el tipo de cada
+  columna, avisos del documento, descarga CSV/PDF, **impresión** (el armazón se oculta solo al
+  imprimir) y aviso explicativo cuando falta `reports:clinical`.
+- **Módulo `/auditoria`**: búsqueda por rango de fechas —**el día completo en Venezuela**, no
+  medianoche UTC—, usuario, acción (las 53 del catálogo, todas con etiqueta), tipo y **campo**
+  cambiado, lista paginada con el motivo y **diálogo de detalle con el diff antes/después**
+  (valor anterior tachado, nuevo en negrita), autor, IP, petición y navegador, más
+  `GET /api/v1/audit/events/export.csv` con los mismos filtros (tope de 5.000 eventos, avisado en la
+  última fila).
+- **Permiso `reports:clinical`** ([ADR 0039](docs/adr/0039-reportes-clinicos-con-permiso-propio.md)):
+  los reportes operativos (embudo, ocupación, demografía) siguen con `reports:read` —los tres roles—
+  y los clínicos (perfil clínico, salud bucal y recetas) exigen el permiso nuevo, que tienen `admin`
+  y `odontologo`. **Los permisos viajan en el token: hay que volver a entrar.**
+- **Los eventos llevan lo que el consumidor necesita** ([ADR 0041](docs/adr/0041-el-evento-lleva-lo-que-el-consumidor-necesita.md)):
+  `patients.patient.created|updated` publica el bloque `patient` (sexo, estado, fecha de nacimiento),
+  `clinical.record.created|updated|signed` publica `profile` (códigos de alerta clínica calculados con
+  la misma función que usa la pantalla del consultorio y `sectionKey`) y `clinical.session.created|closed`
+  publica `session` (procedimientos en código, sin recortar).
+- **`npm run smoke:reporting`** (81 comprobaciones): el recorrido completo por el gateway —alta,
+  teléfono editado con motivo, cita, aviso, historia firmada con diabetes y alergia, sesión cerrada,
+  récipe emitido y tres hallazgos del odontograma— y después los seis reportes, el CSV, el PDF, los
+  permisos de la secretaría y la auditoría del teléfono. **`npm run e2e:reportes`** (37 comprobaciones)
+  recorre `/reportes` en Chromium —seis pestañas, gráficas, filtros y descargas— y el diff de
+  `/auditoria`, con captura final.
+- **`npm run reports:latencia`**: llena el read model con **10.000 citas y 3.000 pacientes** sintéticos
+  y cronometra los seis reportes por el gateway. Medido: **3–8 ms por reporte** (el criterio pedía
+  menos de 2 s).
+
+### Cambiado
+
+- **El gateway ya tiene a quién preguntar**: `/api/v1/reports/**` apunta al puerto 4008; el servicio
+  entra en `npm run dev`, en la pila fija (`stack:fijo`), en PM2 (Windows y Fedora), en
+  `db:migrate`, en `db:verify-migrations` y en `npm run audit` (que ya no lo trata como fase futura).
+- **`npm run test:integration`** da a la suite de reportes una **base temporal propia** (creada y
+  migrada al vuelo, borrada al terminar) y corre con **cuatro workers** en vez de 68 en paralelo: la
+  suite de reportes afirma cifras absolutas sobre su read model y las demás esperan a que los
+  servicios en marcha auditen sus eventos por el outbox. Antes fallaba una suite distinta en cada
+  corrida; ahora son **695 pruebas en verde y reproducibles**.
+- La suite de reportes **solo proyecta los eventos que ella misma publica**: el publicador reparte
+  cada evento entre todas las colas `domain-events.*`, incluida la de prueba, así que sin ese filtro
+  las cifras se mezclaban con las del humo.
+- El grupo de atajos de `/flujo` tiene **nombre accesible** («Atajos del día»): había dos botones
+  «Buscar paciente» en pantalla (el atajo y el de la pantalla vacía) y la prueba de punta a punta no
+  podía distinguirlos.
+
+### Corregido
+
+- **El perfil clínico se perdía si los eventos llegaban desordenados.** El alta del paciente y el
+  guardado de su anamnesis los publican **dos servicios distintos**, sin orden garantizado: medido en
+  el humo, el alta llegó a procesarse **un segundo después** de la firma de la historia, el `UPDATE`
+  del perfil no encontró fila y el reporte de crónicos contaba cero diabéticos y cero alérgicos. Ahora
+  el perfil se guarda en una tabla de paso (`patient_profiles`) y se aplica cuando la ficha aparece,
+  además del camino normal. Hay una prueba de integración que emite los eventos **al revés** a
+  propósito.
+- **Una migración escrita a mano podía quedar invisible para el migrador.** El `when` de la migración
+  de las vistas materializadas era mayor que el de la migración que `drizzle-kit` generó después, y el
+  migrador solo aplica lo que tiene `when` mayor que lo último aplicado: la tabla nueva no se creaba y
+  el fallo era silencioso. El `_journal.json` quedó con marcas crecientes.
+- **El `snapshot.json` escrito a mano llevaba BOM** y `npm run db:generate:reporting` moría con
+  «Unexpected token» al leerlo. Se limpió (los `.json` se escriben sin BOM).
+
+### Notas de despliegue
+
+- **Hay que volver a entrar** tras desplegar: el permiso `reports:clinical` viaja en el token.
+- El **seed de demostración no emite eventos** (inserta por SQL y no ensucia la auditoría), así que el
+  read model nace vacío y se llena con lo que se hace en la aplicación. El **seed determinista
+  completo** —con historias, sesiones, odontogramas y récipes— es el entregable de la Fase 10
+  (§12 del plan).
+- El **cupo efectivo** de un día (el que sale de las plantillas de franjas) no viaja en ningún evento:
+  el tablero usa como suelo las citas asignadas y el detalle por día lo dice en sus notas. Lo suyo es
+  publicar el cupo resuelto en los eventos de cita (anotado para la Fase 10).
+
 ## [Pantallas] — Reemitir el enlace de una pantalla · 2026-10-04
 
 ### Añadido

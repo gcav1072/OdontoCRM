@@ -4,8 +4,8 @@ Una ADR por decisión relevante, en el formato *Contexto · Decisión · Consecu
 Las decisiones 0001–0021 provienen de la sesión de planificación del **2026-10-02**
 (§1 de [`../PLAN_MAESTRO_FASES.md`](../PLAN_MAESTRO_FASES.md)); las 0022–0025 se
 tomaron durante la Fase 0, la 0029 en la Fase 4.1, la 0030 en la Fase 5, las 0031–0033
-en la Fase 6, las 0034–0036 en la Fase 7 y la 0038 en la Fase 8, y quedan documentadas
-por la misma razón.
+en la Fase 6, las 0034–0036 en la Fase 7, la 0038 en la Fase 8 y las 0039–0041 en la
+Fase 9, y quedan documentadas por la misma razón.
 
 | # | Decisión | Estado |
 | :-: | :--- | :--- |
@@ -47,3 +47,6 @@ por la misma razón.
 | [0036](0036-recipe-emitido-documento-archivado.md) | El récipe emitido es un documento archivado (copia del paciente, del medicamento y del PDF) | aceptada (fase 7B) |
 | [0037](0037-una-sola-pila-a-la-vez.md) | Una sola pila a la vez, y los puertos mandan (`stack:status/dev/fijo/down`) | aceptada (herramientas) |
 | [0038](0038-permisos-del-odontologo-en-el-flujo.md) | El odontólogo escribe el flujo del día (`scheduling:write`); el mostrador conserva la jornada | aceptada (fase 8) |
+| [0039](0039-reportes-clinicos-con-permiso-propio.md) | Los reportes clínicos exigen un permiso propio (`reports:clinical`) | aceptada (fase 9) |
+| [0040](0040-refresco-del-read-model-de-reportes.md) | El read model de reportes se refresca al cerrar el lote y de noche | aceptada (fase 9) |
+| [0041](0041-el-evento-lleva-lo-que-el-consumidor-necesita.md) | Un evento de dominio lleva lo que su consumidor necesita (bloques `patient`, `profile` y `session`) | aceptada (fase 9) |
