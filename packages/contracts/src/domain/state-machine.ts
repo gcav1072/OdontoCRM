@@ -4,6 +4,12 @@ import type { AppointmentStatus, Role } from './enums.js';
  * Máquina de estados de la cita aprobada por el usuario el 2026-10-02
  * (docs/PLAN_MAESTRO_FASES.md §5.1). Se expone como dato para que la interfaz,
  * la API y las pruebas usen exactamente las mismas reglas.
+ *
+ * El odontólogo entra en las transiciones del **flujo del día** (llegada, llamado,
+ * paso a consulta, atendido e inasistencia) porque en la Fase 8 es él quien lleva
+ * la jornada desde `/flujo` cuando trabaja solo; notificar, cancelar, reprogramar
+ * y el sobrecupo siguen siendo de la secretaría y del `admin`
+ * ([ADR 0038](../../../docs/adr/0038-permisos-del-odontologo-en-el-flujo.md)).
  */
 export interface AppointmentTransition {
   from: AppointmentStatus;
@@ -61,10 +67,30 @@ export const APPOINTMENT_TRANSITIONS: readonly AppointmentTransition[] = [
     label: 'Marcar atendido',
     requiresReason: true,
   },
-  { from: 'programada', to: 'no_asistio', roles: ['secretario'], label: 'Marcar inasistencia' },
-  { from: 'notificada', to: 'no_asistio', roles: ['secretario'], label: 'Marcar inasistencia' },
-  { from: 'en_sala_espera', to: 'no_asistio', roles: ['secretario'], label: 'Marcar inasistencia' },
-  { from: 'llamado', to: 'no_asistio', roles: ['secretario'], label: 'Marcar inasistencia' },
+  {
+    from: 'programada',
+    to: 'no_asistio',
+    roles: ['secretario', 'odontologo'],
+    label: 'Marcar inasistencia',
+  },
+  {
+    from: 'notificada',
+    to: 'no_asistio',
+    roles: ['secretario', 'odontologo'],
+    label: 'Marcar inasistencia',
+  },
+  {
+    from: 'en_sala_espera',
+    to: 'no_asistio',
+    roles: ['secretario', 'odontologo'],
+    label: 'Marcar inasistencia',
+  },
+  {
+    from: 'llamado',
+    to: 'no_asistio',
+    roles: ['secretario', 'odontologo'],
+    label: 'Marcar inasistencia',
+  },
   { from: 'en_espera_cita', to: 'cancelada', roles: ['secretario'], label: 'Cancelar solicitud' },
   { from: 'programada', to: 'cancelada', roles: ['secretario'], label: 'Cancelar cita' },
   { from: 'notificada', to: 'cancelada', roles: ['secretario'], label: 'Cancelar cita' },

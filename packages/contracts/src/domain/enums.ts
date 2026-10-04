@@ -56,12 +56,20 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
    * consultorio de una sola odontóloga es ella quien a veces da el alta, y toda
    * edición queda auditada con motivo igual que la de la secretaría. No puede
    * borrar: eso queda reservado al `admin`.
+   *
+   * **`scheduling:write` (decisión del 2026-10-04, Fase 8):** la odontóloga que
+   * trabaja sola lleva el día desde `/flujo` —registra la llegada, llama, pasa a
+   * consulta, marca atendida o inasistencia—, así que necesita escribir la agenda.
+   * La máquina de estados sigue decidiendo **qué transición** puede hacer cada
+   * rol (`state-machine.ts`): notificar, cancelar y reprogramar siguen siendo de
+   * la secretaría, y el sobrecupo del `admin` ([ADR 0038](../../../docs/adr/0038-permisos-del-odontologo-en-el-flujo.md)).
    */
   odontologo: [
     'patients:read',
     'patients:write',
     'patients:edit_sensitive',
     'scheduling:read',
+    'scheduling:write',
     'screens:display',
     'clinical:read',
     'clinical:write',

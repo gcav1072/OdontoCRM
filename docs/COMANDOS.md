@@ -269,10 +269,14 @@ base de datos). Necesitan los servicios arrancados y datos sembrados.
 | `npm run smoke:odontogram` | Boca por teclado, superación de caras por la pieza completa, borrado y auditoría | 29 |
 | `npm run smoke:clinical` | Sesión clínica: abrir, autoguardar, cerrar (y no cerrar en blanco), enmendar, hallazgo del odontograma ligado a la sesión y «atendido» con y sin sesión (estrena paciente y busca hora libre en cada corrida) | 30 |
 | `npm run smoke:prescription` | Fase 7B: adjunto de la sesión (subida, listado, descarga y pieza), catálogo, borrador del récipe, **emisión con número y PDF A5**, no emitir dos veces, reimpresión auditada, anulación con motivo, **verificación pública sin token**, y que la secretaría imprime pero no receta | 32 |
+| `npm run e2e:flujo` | Fase 8: **el día completo en Chromium** sobre `/flujo`. La odontóloga entra con su usuario `odontologo`, registra al paciente, le da cita, registra la llegada, llama con `F4`, lo pasa a consulta, escribe y cierra la sesión con `F8` y marca la cita atendida **sin salir de `/flujo`**; después comprueba `/secretaria` y `/consultorio` y que la consola y la red queden limpias | 24 |
 
 > `smoke:prescription` necesita Chromium (lo usa el propio servicio para componer el PDF):
 > `npx playwright install chromium`. Si el navegador no está, la emisión responde 500 y el humo lo
 > dice con claridad.
+>
+> `e2e:flujo` necesita además la **interfaz** levantada (5173) y Chromium. Cambia la contraseña del
+> odontólogo sembrado (`egomez`); al terminar, `npm run seed:users -- --reset`.
 
 Variables opcionales (mismas en todas):
 
@@ -283,6 +287,8 @@ Variables opcionales (mismas en todas):
 | `SMOKE_NEW_PASSWORD` | Contraseña a la que se cambia la temporal | `prueba-e2e-odontocrm-2026` |
 | `SMOKE_TELEGRAM_CHAT_ID` | Enviar de verdad por Telegram en el humo de avisos | vacío (modo simulado) |
 | `SMOKE_PATIENT_DOCUMENT` | Fijar el paciente en el humo de pacientes | aleatorio |
+| `E2E_WEB_URL` / `E2E_GATEWAY_URL` | Apuntar la prueba de `/flujo` a otra interfaz o gateway | `http://127.0.0.1:5173` / `http://127.0.0.1:8090` |
+| `E2E_USERNAME` / `E2E_PASSWORD` / `E2E_NEW_PASSWORD` | Usuario de la prueba de `/flujo` (tiene que ser `odontologo`) | `egomez` / `consultorio-odontocrm-2026` / `flujo-odontocrm-2026` |
 
 ```powershell
 # Ejemplo: humo de pantallas contra un gateway en otro puerto

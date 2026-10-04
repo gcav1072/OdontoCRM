@@ -141,6 +141,9 @@ const DICCIONARIO = {
   'modulo.secretaria.descripcion': 'Calendario del día, sala de espera y acciones del flujo.',
   'modulo.consultorio.titulo': 'Consultorio',
   'modulo.consultorio.descripcion': 'Historia clínica, sesiones, odontograma y récipes.',
+  'modulo.flujo.titulo': 'Flujo del día',
+  'modulo.flujo.descripcion':
+    'La jornada completa en una pantalla: cola del día, paciente en curso y acciones del flujo.',
   'modulo.reportes.titulo': 'Reportes',
   'modulo.reportes.descripcion': 'Indicadores operativos y clínicos del consultorio.',
   'modulo.auditoria.titulo': 'Auditoría',
@@ -1291,6 +1294,33 @@ const DICCIONARIO = {
   'secretaria.historial.texto': 'Transiciones de estado con su actor, motivo y hora.',
   'secretaria.historial.vacio': 'Sin transiciones registradas.',
 
+  // --- Fase 8: página unificada del flujo diario ---------------------------
+  'flujo.titulo': 'Flujo del día',
+  'flujo.fecha': 'Fecha de la jornada',
+  'flujo.cola.titulo': 'Cola del día',
+  'flujo.cola.vacia': 'No hay citas que mostrar',
+  'flujo.sinPaciente': 'Sin paciente en curso',
+  'flujo.sinPacienteTexto':
+    'Elige una cita en la cola del día o busca un paciente con F2 para abrir su expediente aquí mismo.',
+  'flujo.volverCola': 'Volver a la cola del día',
+  'flujo.buscar.texto': 'Escribe el nombre, el documento o el teléfono del paciente.',
+  'flujo.atajo.buscar': 'Buscar paciente',
+  'flujo.atajo.llamar': 'Llamar al paciente',
+  'flujo.atajo.cerrar': 'Cerrar la sesión',
+  'flujo.atajo.buscarAyuda': 'Abre el buscador de pacientes',
+  'flujo.atajo.llamarAyuda': 'Llama al paciente en curso (sale en la pantalla de la sala)',
+  'flujo.atajo.cerrarAyuda': 'Cierra la sesión clínica de la visita',
+  'flujo.atajos.ayuda': '{buscar} · {llamar} · {cerrar}',
+  'flujo.cerrar.sinPaciente': 'No hay ningún paciente abierto: elige su cita en la cola del día.',
+  'flujo.cerrar.sinContenido':
+    'Para cerrar la sesión hace falta el motivo, el diagnóstico o algún procedimiento.',
+  'flujo.llamar.sinPaciente': 'No hay ninguna cita en curso a la que llamar.',
+  'flujo.llamar.noDisponible':
+    'Esta cita no admite un llamado ahora mismo; usa «Llamar fuera de orden» si el paciente ya está aquí.',
+  'flujo.ayuda.titulo': 'Atajos de esta pantalla',
+  'flujo.ayuda.texto':
+    'Funcionan desde cualquier punto del flujo, salvo con un diálogo abierto. En la tableta están también como botones en la barra de arriba.',
+
   // --- Fase 5: pantallas kiosko --------------------------------------------
   'pantalla.cargando': 'Conectando con la pantalla…',
   'pantalla.sinToken.titulo': 'Esta pantalla no está configurada',
@@ -1654,6 +1684,7 @@ const DICCIONARIO = {
   'clinica.primeraVisita.titulo': 'Primera visita del paciente',
   'clinica.primeraVisita.texto': 'Primera visita del paciente, se debe llenar su historia clínica.',
   'clinica.primeraVisita.abrir': 'Abrir historia clínica',
+  'clinica.primeraVisita.irHistoria': 'Llenar la historia clínica',
 
   'clinica.paciente.desconocido': 'Paciente',
   'clinica.paciente.sinFicha':

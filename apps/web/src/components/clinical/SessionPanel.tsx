@@ -1,4 +1,4 @@
-﻿import {
+import {
   clinicalSessionHasContent,
   sessionProcedureText,
   type AppointmentSummary,
@@ -72,12 +72,35 @@ export interface SessionPanelProps {
   sessions: readonly ClinicalSessionSummary[];
   /** Recarga la lista de sesiones (abrir, cerrar, enmendar). */
   onChanged: () => void;
+  /**
+   * Cita en curso que respalda la sesión que se abra (`/flujo` la conoce: es la que
+   * tiene delante). Sin ella se elige la que la agenda tenga en el consultorio.
+   */
+  appointmentId?: string | null;
   /** Lleva a la pestaña del odontograma: lo que se marca allí cae en esta sesión. */
   onOpenOdontogram?: (() => void) | undefined;
+  /**
+   * Contador que pide cerrar la sesión abierta: el atajo `F8` de `/flujo` lo
+   * incrementa. Cada cambio de número abre el diálogo de cierre (y si la sesión
+   * todavía no tiene contenido, avisa con `onCloseBlocked`).
+   */
+  closeRequest?: number;
+  /** La sesión no se puede cerrar todavía: el contenedor lo dice en pantalla. */
+  onCloseBlocked?: () => void;
 }
 
 /** Fecha de hoy en la zona del consultorio (la que usa la agenda). */
 const today = (): string => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
+
+/**
+ * Cita que respalda la sesión que se va a abrir: la que está en el consultorio y, si
+ * todavía no pasó, la llamada o la que espera en la sala. Un paciente puede sentarse
+ * en el sillón antes de que nadie marque «pasar a consulta».
+ */
+const citaQueRespalda = (citas: readonly AppointmentSummary[]): AppointmentSummary | undefined =>
+  citas.find((cita) => cita.status === 'en_consulta') ??
+  citas.find((cita) => cita.status === 'llamado') ??
+  citas.find((cita) => cita.status === 'en_sala_espera');
 
 /** Fila de una sesión cerrada: número, fecha, resumen y acciones. */
 const ClosedSessionCard = ({
@@ -122,7 +145,10 @@ export const SessionPanel = ({
   openSession,
   sessions,
   onChanged,
+  appointmentId = null,
   onOpenOdontogram,
+  closeRequest = 0,
+  onCloseBlocked,
 }: SessionPanelProps) => {
   const queryClient = useQueryClient();
   const { notice, exito, error, limpiar } = useNotice();
@@ -179,9 +205,15 @@ export const SessionPanel = ({
     setHoraGuardado(null);
   }, [sesionQuery.data]);
 
-  /** Citas de hoy del paciente: es lo que enlaza la sesión con el «atendido». */
+  /**
+   * Citas de hoy del paciente: es lo que enlaza la sesión con el «atendido».
+   *
+   * La clave lleva la cita en curso (`appointmentId`) porque la lista puede ser de
+   * antes de que el paciente pasara a consulta: al cambiar la cita que el flujo tiene
+   * delante, la lista se vuelve a pedir y el respaldo de la sesión queda al día.
+   */
   const citasQuery = useQuery({
-    queryKey: ['clinica', 'citas-hoy', patientId],
+    queryKey: ['clinica', 'citas-hoy', patientId, appointmentId],
     queryFn: ({ signal }) =>
       appointmentsApi.list({ date: today(), patientId, page: 1, pageSize: 20 }, signal),
     enabled: canWrite && openSession === null,
@@ -192,17 +224,33 @@ export const SessionPanel = ({
     [citasQuery.data],
   );
 
-  const enConsulta = citas.find((cita) => cita.status === 'en_consulta');
+  /**
+   * La sesión se abre **respaldada por la cita que está delante**: la que trae el
+   * flujo si la hay y, si no, la que la agenda tiene en el consultorio. Sin ese
+   * respaldo, marcar «atendido» pediría un motivo y la visita quedaría sin enlace.
+   */
   useEffect(() => {
-    if (enConsulta !== undefined && citaElegida === '') setCitaElegida(enConsulta.id);
-  }, [enConsulta, citaElegida]);
+    if (citaElegida !== '') return;
+    const respaldo = appointmentId ?? citaQueRespalda(citas)?.id ?? null;
+    if (respaldo !== null) setCitaElegida(respaldo);
+  }, [appointmentId, citas, citaElegida]);
 
   const abrir = useMutation({
-    mutationFn: () =>
-      clinicalApi.openSession(patientId, {
-        appointmentId: citaElegida === '' ? null : citaElegida,
+    mutationFn: async () => {
+      // Si no hay cita elegida se resuelve **al abrir**, releyendo la agenda: entre
+      // que la pantalla pintó la lista y el doctor pulsó el botón, el paciente pudo
+      // pasar a consulta (y la lista que se ve es de antes).
+      let respaldo = citaElegida;
+      if (respaldo === '') {
+        const frescas = await citasQuery.refetch();
+        const enAgenda = citaQueRespalda(frescas.data?.items ?? []);
+        respaldo = appointmentId ?? enAgenda?.id ?? '';
+      }
+      return clinicalApi.openSession(patientId, {
+        appointmentId: respaldo === '' ? null : respaldo,
         motivo: null,
-      }),
+      });
+    },
     onSuccess: () => {
       onChanged();
       exito(t('clinica.sesion.exito.abierta'));
@@ -250,12 +298,46 @@ export const SessionPanel = ({
   }, [contenido, sessionId, canWrite]);
 
   /**
+   * El atajo `F8` de `/flujo` pide cerrar la sesión del paciente en curso: abre el
+   * mismo diálogo que el botón (con la pregunta del récipe) y, si la sesión todavía no
+   * tiene contenido, avisa en vez de abrir un cierre que el servidor rechazaría.
+   *
+   * El número se recuerda para que el pedido se atienda **una vez**: cada tecla
+   * posterior no vuelve a abrir el diálogo.
+   */
+  const ultimoPedido = useRef(0);
+  useEffect(() => {
+    if (closeRequest <= 0 || closeRequest === ultimoPedido.current) return;
+    ultimoPedido.current = closeRequest;
+
+    if (openSession === null || !canWrite) return;
+    if (!clinicalSessionHasContent(contenido)) {
+      onCloseBlocked?.();
+      return;
+    }
+    setDialogo('cerrar');
+  }, [closeRequest, openSession, canWrite, contenido, onCloseBlocked]);
+
+  /**
    * Cerrar la sesión. Si el doctor dijo que sí al récipe, al terminar se abre el
    * editor: la sesión ya está cerrada (el récipe cuelga de ella y no la reabre).
+   *
+   * Antes de cerrar se guarda lo que quede pendiente: el cierre es inmutable y el
+   * autoguardado espera 1,2 s desde la última tecla, así que cerrar sin guardar
+   * —con el botón o con `F8`— perdería lo último escrito.
    */
   const cerrar = useMutation({
-    mutationFn: (values: { closureNote: string | null }) =>
-      clinicalApi.closeSession(sessionId ?? '', { confirm: true, closureNote: values.closureNote }),
+    mutationFn: async (values: { closureNote: string | null }) => {
+      if (sessionId !== null && JSON.stringify(contenido) !== ultimoEnviado.current) {
+        const guardada = await clinicalApi.saveSession(sessionId, contenido);
+        ultimoEnviado.current = JSON.stringify(guardada.content);
+        setGuardado('guardado');
+      }
+      return clinicalApi.closeSession(sessionId ?? '', {
+        confirm: true,
+        closureNote: values.closureNote,
+      });
+    },
     onSuccess: () => {
       setDialogo(recipeAlCerrar ? 'recipe' : null);
       setRecipeAlCerrar(false);

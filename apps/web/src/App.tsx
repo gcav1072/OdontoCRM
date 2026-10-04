@@ -7,6 +7,7 @@ import { RequirePermission } from './components/shell/RequirePermission';
 import { MODULES } from './lib/nav';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { ConsultorioPage } from './pages/ConsultorioPage';
+import { FlujoPage } from './pages/FlujoPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { MedicalRecordPrintPage } from './pages/MedicalRecordPrintPage';
@@ -52,6 +53,7 @@ export const App = () => {
         'secretaria',
         'pantallas',
         'consultorio',
+        'flujo',
       ].includes(modulo.id),
   );
 
@@ -208,6 +210,18 @@ export const App = () => {
           element={
             <RequirePermission permission="clinical:read">
               <ConsultorioPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* Fase 8: el día completo en una sola pantalla. Se entra con
+            `clinical:read` (el centro es el expediente); las acciones de la barra
+            superior —agenda y escritura clínica— se comprueban dentro. */}
+        <Route
+          path="flujo"
+          element={
+            <RequirePermission permission="clinical:read">
+              <FlujoPage />
             </RequirePermission>
           }
         />

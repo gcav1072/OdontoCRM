@@ -12,6 +12,7 @@ import {
   ScrollText,
   Stethoscope,
   Users,
+  Workflow,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -32,6 +33,7 @@ export type ModuleId =
   | 'notificaciones'
   | 'secretaria'
   | 'consultorio'
+  | 'flujo'
   | 'reportes'
   | 'auditoria'
   | 'usuarios'
@@ -129,6 +131,18 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     permission: 'clinical:read',
     phase: 6,
   },
+  flujo: {
+    id: 'flujo',
+    path: '/flujo',
+    labelKey: 'modulo.flujo.titulo',
+    descriptionKey: 'modulo.flujo.descripcion',
+    icon: Workflow,
+    // La página unificada necesita las dos mitades del día: la agenda (cola,
+    // llamados y estados) y la clínica (historia y sesión). Sin `clinical:read`
+    // el centro de la pantalla no tendría nada que mostrar.
+    permission: 'clinical:read',
+    phase: 8,
+  },
   reportes: {
     id: 'reportes',
     path: '/reportes',
@@ -177,6 +191,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   {
     titleKey: 'menu.seccion.operacion',
     modules: [
+      'flujo',
       'recepcion',
       'registro',
       'pacientes',

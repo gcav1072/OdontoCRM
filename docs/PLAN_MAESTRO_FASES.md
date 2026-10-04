@@ -286,13 +286,21 @@ Reglas duras:
 | Usuarios y contraseñas | ✅ | ❌ | ❌ | ❌ |
 | Registro/edición de pacientes (con motivo) | ✅ | ✅ | ✅ | ❌ |
 | Eliminar un paciente del registro (borrado lógico, con motivo) | ✅ | ❌ | ❌ | ❌ |
-| Programar jornada, cupos, notificar | ✅ | ✅ | lectura | ❌ |
+| Programar jornada, cupos, notificar | ✅ | ✅ | **[ADR 0038](adr/0038-permisos-del-odontologo-en-el-flujo.md):** asigna y edita cupos, **no notifica** | ❌ |
 | Autorizar sobrecupo en un día completo (con motivo) | ✅ | ❌ | ❌ | ❌ |
 | Llamar / pasar a consulta / no asistió | ✅ | ✅ | ✅ | ❌ |
 | Marcar atendido | ✅ | ✅ (con advertencia) | ✅ | ❌ |
+| Cancelar y reprogramar una cita | ✅ | ✅ | ❌ (409: es del mostrador) | ❌ |
 | Historia clínica, sesiones, récipes, odontograma | ✅ | **lectura** (imprime todo: récipes, consentimientos, historia y odontograma) | ✅ | ❌ |
 | Reportes y auditoría | ✅ | reportes operativos | clínicos | ❌ |
 | Displaylobby / pantalla consultorio | ✅ | ✅ | ✅ | ✅ (solo lectura) |
+
+> **Odontólogo y agenda (Fase 8, [ADR 0038](adr/0038-permisos-del-odontologo-en-el-flujo.md)):** el
+> rol gana `scheduling:write` para que la doctora que trabaja sola lleve el día desde `/flujo`
+> —llegada, llamado, paso a consulta, atendido e inasistencia—. Notificar y autorizar sobrecupo
+> siguen en `scheduling:notify` / `scheduling:overbook`, y cancelar y reprogramar siguen sin estar
+> en su máquina de estados. **Los permisos viajan en el token: tras desplegar esto hay que volver a
+> entrar.**
 
 ---
 
@@ -406,7 +414,7 @@ END:VEVENT / END:VCALENDAR
   - `/programacion` (jornada: cola «en espera de cita», selector de fecha, cupo editable, franjas, asignación, notificación en lote con vista previa)
   - `/secretaria` (calendario, lista por hora, acciones de flujo, advertencias)
   - `/consultorio` (primera visita → historia clínica; siguientes → sesión + odontograma + recetas)
-  - `/flujo` (**página unificada** secretaría + consultorio para cuando el doctor hace todo)
+  - `/flujo` (**página unificada** secretaría + consultorio para cuando el doctor hace todo): cola del día a la izquierda, paciente en curso al centro, acciones de secretaría arriba, `F2`/`F4`/`F8` y modo tableta
   - `/pacientes` · `/pacientes/:id` (historial clínico completo, adjuntos, recetas)
   - `/reportes` · `/auditoria` · `/usuarios` · `/pantallas` (dispositivos y tokens)
   - `/pantalla/lobby` y `/pantalla/consultorio` (**kiosko**, sin shell, con token de dispositivo, reconexión SSE y *fullscreen*)
@@ -572,7 +580,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 
 ---
 
-### Fase 8 — Página unificada del flujo completo
+### Fase 8 — Página unificada del flujo completo ✅
 
 **Objetivo:** que el odontólogo sin asistente haga todo en una sola pantalla.
 
@@ -581,6 +589,10 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 **Criterios de aceptación:** un doctor puede llevar el día completo sin salir de `/flujo`; ninguna capacidad de secretaría o consultorio queda inaccesible desde ahí; no hay regresiones en las rutas individuales.
 
 **Commits previstos:** `feat(web): layout unificado de flujo diario` · `feat(web): acciones de secretaria integradas` · `feat(web): atajos de teclado y modo tablet` · `test(web): e2e del flujo completo`.
+
+**Lo que se construyó (2026-10-04):** 9 commits · `npm run e2e:flujo` **en verde con 24 comprobaciones** sobre Chromium y la pila real, y `npm run verify` con **15 pruebas nuevas** de las piezas del flujo. El área del paciente salió de `/consultorio` a `PatientWorkspace` (un solo expediente para las dos rutas, que es lo que garantiza que `/flujo` no se quede corta), la barra superior reutiliza los diálogos y la máquina de estados de la secretaría, y **el rol `odontologo` gana `scheduling:write`** ([ADR 0038](adr/0038-permisos-del-odontologo-en-el-flujo.md)) con la inasistencia abierta en la máquina de estados. Dos cosas las encontró la prueba de punta a punta, no la lectura del código: **la sesión nacía sin la cita que la respalda** (la lista de citas del día se pedía una vez y se quedaba vieja) y **la fila de la cola se partía** en la columna estrecha. Los cuatro commits previstos se reorganizaron en nueve: los contratos, el refactor del expediente, el layout, las acciones, el enlace de la sesión, la cola legible, las pruebas, la documentación y un arreglo de la prueba de integración (pedía las 12:00, que caen en la pausa del mediodía).
+
+**Commits reales:** `feat(contracts): el odontologo escribe el flujo del dia` · `refactor(web): el area del paciente sale a un componente reutilizable` · `feat(web): el layout unificado del flujo diario` · `feat(web): las acciones de secretaria y los atajos del flujo` · `fix(web): la sesion del flujo se abre enlazada a la cita` · `test(web): el flujo del dia probado de punta a punta` · `feat(web): la cola del dia se lee en la columna estrecha` · `docs: la fase 8 al dia con el flujo unificado y sus decisiones` · `test(scheduling): la prueba del flujo usa franjas de la jornada`.
 
 ---
 
@@ -679,6 +691,13 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | Permisos del odontólogo sobre pacientes | **Registra y edita** (tiene `patients:write` y `patients:edit_sensitive`), igual que la secretaría y siempre con motivo auditado. **No** puede eliminar pacientes. |
 | Eliminar un paciente | Se añade **borrado lógico** con motivo y **solo para `admin`** (permiso `patients:delete`, [ADR 0027](adr/0027-borrado-logico-de-pacientes.md)): nada se destruye y el documento vuelve a quedar libre. |
 
+**Decisiones cerradas (2026-10-04, al cerrar la Fase 7 y arrancar la Fase 8)**
+
+| Tema | Decisión |
+| :--- | :--- |
+| Permisos del odontólogo en el flujo | **El rol `odontologo` escribe el flujo del día**: gana `scheduling:write` y la máquina de estados le abre la inasistencia, para que la doctora que trabaja sola lleve `/flujo` de principio a fin ([ADR 0038](adr/0038-permisos-del-odontologo-en-el-flujo.md)). Notificar, autorizar sobrecupo, cancelar y reprogramar siguen siendo del mostrador. |
+| Atajo `F8` de `/flujo` | Cierra la **sesión clínica de la visita** (con la pregunta del récipe), no la sesión del sistema: es lo que se hace con el paciente delante. El cierre de sesión de usuario sigue en el panel inferior. |
+
 ---
 
 ## 17. Estado de ejecución y próximo paso
@@ -696,7 +715,8 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | 5 | ✅ **completada** (2026-10-03) | 8 commits · `npm run verify` en verde con **206 pruebas** (+60 de integración: **266**, **267** tras el aviso a mano del botón «Notificar») · **`services/screens`** (nuevo, puerto 4007, [ADR 0030](adr/0030-pantallas-kiosko-y-sse.md)): proyección de la sala por eventos, histórico de llamados idempotente, dispositivos con ajustes y latido, y **flujo SSE** con estado completo; **login de pantalla kiosko** (token de dispositivo → JWT de rol `pantalla`); **`/secretaría`** con las acciones del flujo (registrar llegada, llamar —segundo llamado—, pasar a consulta, atendido con motivo, inasistencia y **llamada fuera de orden**); **displaylobby** con turno, nombre abreviado, 2.º llamado en rojo y **voz en español**; **pantalla de consultorio** con motivo y datos críticos en semáforo; **`/pantallas`** para registrar televisores y desactivarlos · **prueba de humo** (`npm run smoke:screens`) con **26 comprobaciones** en verde, con el llamado llegando al lobby en **882 ms** (después, 303-443 ms con el índice y el aviso sin espera) · se corrigió el **orden de los eventos del lote** (pg-boss no lo garantiza) · 30 ADRs |
 | 6 | ✅ **completada** (2026-10-04, en dos sesiones) | **Sesión A — historia clínica**: contrato de las **11 secciones** de [`formato_historia.md`](formato_historia.md) con catálogos tipificados + «otros», estados `borrador → firmada`, firma (exige secciones obligatorias y consentimiento), adendas con motivo, consentimiento con quién acepta y ante quién, constancia de impresión; **`services/clinical`** (nuevo, puerto 4005) con 4 pruebas de integración contra PostgreSQL real; **`/consultorio`** con aviso obligatorio de primera visita, formulario por pasos con autoguardado, alertas clínicas resaltadas y vista de impresión A4; la secretaría gana `clinical:read` (imprime, no escribe). **Sesión B — odontograma**: contrato FDI (52 piezas, dentición deducida del número, geometría de §7 y máquina de teclado de la carga rápida); **`services/odontogram`** (nuevo, puerto 4006) con odontograma uno por paciente, **captura por excepción**, histórico append-only `tooth_finding_history`, evento y auditoría por outbox, constancia de impresión y ruta interna de resumen; **interfaz** con pestañas Historia/Odontograma, SVG interactivo, carga rápida por teclado, **hoja táctil de botones grandes** para tableta, deshacer, evolución y impresión A4; **ADRs 0031, 0032 y 0033** (superación de caras, convivencia de tratamientos con las fases del implante, y posición anatómica del odontograma). **Revisión del odontólogo (2026-10-04)**: se corrigieron los números espejados de la mandíbula en el papel, el hueco de la **línea media**, la orientación de las caras en cada arcada, el **borde incisal** en incisivos y caninos, el espejo **mesial/distal** de la derecha del paciente, la leyenda **bicolor** de los tratamientos, el orden determinista de la tabla, las celdas de notas vacías y la edición de hallazgos; se añadió la **fase quirúrgica** del implante (`ausente` + `implante`); la **corona cubre** las caras que había debajo (el dato queda en la historia) y la **caries recurrente** se registra encima; `superar` y `excluir` las caras quedaron como dos reglas distintas. Cuatro capturas reales del gráfico y del informe revisadas a ojo. **Hoja táctil validada en tableta por el odontólogo** (2026-10-04): marcar con botones queda perfecto, así que el diseño táctil ya no tiene comprobaciones pendientes — lo que falta para el uso con el dedo en el consultorio es publicar el acceso por TLS en la LAN (Fase 10). **Añadido tras el cierre (2026-10-04)**, pedido por el odontólogo: el informe impreso puede incluir el **historial de cambios con fechas** mediante una casilla, y las **notas se escriben al marcar** (antes había que guardar y editar). 33 ADRs ·
 | 7 | ✅ **completada** (2026-10-04, en dos sesiones) · tag `fase-7` | **Sesión A — sesiones clínicas**: contrato del **documento del día** (signos vitales con rangos, examen intraoral y periodontal, **28 procedimientos y 16 materiales** de catálogo con «otros», diagnóstico, indicaciones, próxima cita y notas internas) y **`clinical_sessions`** con `content jsonb`, numeración por paciente `S-000001`, estados `borrador → cerrada` y `amended_from_id` ([ADR 0034](adr/0034-sesion-clinica-evolucion.md)); **autoguardado** sin evento ni auditoría (el acto clínico nace al **cerrar**, que exige contenido mínimo), **cierre inmutable** y **enmienda** que abre una sesión nueva con el motivo; **«atendido» con respaldo verificado**: la agenda pregunta al servicio clínico si la sesión existe, es del mismo paciente y está cerrada antes de aceptarla sin motivo (`appointments.clinical_session_id`, migración `0003`) —antes un UUID inventado bastaba—; **el odontograma marca dentro de la sesión** (`recordedInSessionId`); **pantalla del consultorio con los datos críticos de verdad** (leídos de la historia, [ADR 0035](adr/0035-datos-criticos-leidos-no-empujados.md)); pestaña **Sesión clínica** en `/consultorio` con autoguardado, cierre, corrección y la evolución a la vista; **prueba de humo** (`npm run smoke:clinical`) con **30 comprobaciones** en verde, repetible; se corrigió el `CHECK` del canal `whatsapp` que faltaba desde la Fase 4.1 (migración `0002` de scheduling). **Sesión B — adjuntos y récipes A5**: `clinical_session_files` (radiografía, foto clínica, documento u otro, con pie y pieza FDI) con cuadrícula de miniaturas, **visor con zoom** y borrado solo en sesión borrador; **catálogo de 25 medicamentos** sembrado en la migración; **récipe** borrador → **emitido** (número `RX-000001` de una secuencia, **PDF A5 con Chromium** desde la plantilla del membrete, archivado con su `sha256` y código de verificación) → **anulado con motivo** (nunca se borra) → **reimpresión contada y auditada** ([ADR 0036](adr/0036-recipe-emitido-documento-archivado.md)); **verificación pública sin sesión** en `/verificar/<código>` (sin datos clínicos), con el QR comprobado **de ida y vuelta** con un decodificador real; el consultorio se personaliza en una **sección editable** (`packages/contracts/src/clinic.ts`); **`packages/storage`** extraído para compartir el almacén de binarios; se corrigió la **subida de archivos del paciente, que nunca funcionó por HTTP** desde la Fase 2 (hallazgo 9). 504 pruebas de integración y 406 unitarias en verde · `npm run smoke:prescription` (**32 comprobaciones**) · 36 ADRs |
-| 8–10 | ⏳ pendientes | Ver §13 |
+| 8 | ✅ **completada** (2026-10-04) · tag `fase-8` | 9 commits · `npm run verify` en verde con **432 pruebas** (+**99** de integración: **531 en total**, 48 suites) · **`/flujo`**, la jornada en una pantalla: **cola del día** a la izquierda (selector de fecha, buscador, contadores y estado por fila), **paciente en curso** en el centro con el mismo expediente de `/consultorio` (`PatientWorkspace`: historia, sesión —con adjuntos y récipe— y odontograma) y las **cinco acciones de secretaría** en la barra superior (llegada, llamar, pasar a consulta, atendido e inasistencia) más el **llamado fuera de orden** y el historial de la cita; los llamados salen al lobby por el mismo evento de siempre · **atajos** `F2` buscar paciente, `F4` llamar y `F8` cerrar la sesión clínica —también como botones, porque en la tableta no hay teclado— y **modo tableta** comprobado a 820 px · **`npm run e2e:flujo`**: el día completo en Chromium sobre la pila real con **24 comprobaciones** en verde (la doctora registra al paciente, le da cita, registra la llegada, llama con `F4`, lo pasa a consulta, escribe y cierra la sesión con `F8` y marca la cita atendida, **sin salir de `/flujo`**, con la URL vigilada en cada paso) y **15 pruebas nuevas** de las piezas puras (cita en curso, cola y atajos) · **el rol `odontologo` gana `scheduling:write`** y la máquina de estados le abre la inasistencia ([ADR 0038](adr/0038-permisos-del-odontologo-en-el-flujo.md)); notificar, sobrecupo, cancelar y reprogramar siguen fuera de su alcance, con una prueba de integración que lo fija · humos de agenda (41), clínica (30) y pantallas (26) repetidos en verde · hallazgos: **la sesión nacía sin la cita que la respalda** y **dos pestañas a la vez revocan la sesión** (ver los hallazgos de la Fase 8) |
+| 9–10 | ⏳ pendientes | Ver §13 |
 
 ### Lo que quedó funcionando
 
@@ -719,6 +739,7 @@ npm run smoke:notifications     # asistente del bot, vinculación y aviso con .i
 npm run smoke:screens           # llamado en el lobby por SSE y pantalla de consultorio por el gateway real
 npm run smoke:odontogram        # boca por teclado, superación de caras y auditoría por el gateway real
 npm run smoke:clinical          # sesión clínica: abrir, autoguardar, cerrar, enmendar y «atendido» con respaldo
+npm run e2e:flujo               # el día completo en Chromium sobre `/flujo` (Fase 8), con la pila real
 npm run db:generate:odontogram  # drizzle-kit: genera la migración del odontograma
 npm run verify                  # secretos + lint + formato + compilación + pruebas
 pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.ps1
@@ -1083,14 +1104,52 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
     el visor los hace el navegador sobre el archivo pedido al endpoint autorizado, sin URL pública ni
     procesamiento de imágenes en el servidor.
 
+### Hallazgos de la Fase 8 que cambian supuestos
+
+16. **Un permiso que no se usa es un permiso que no existe.** La tabla de permisos por acción (§5.4)
+    decía desde la Fase 1 que el odontólogo podía llamar, pasar a consulta y marcar inasistencia, y
+    la máquina de estados lo autorizaba en cuatro de esas cinco transiciones… pero el rol no tenía
+    `scheduling:write` y las cinco rutas del flujo lo exigían: **la Fase 8 no podía funcionar** y
+    nadie lo había notado porque ninguna prueba ni pantalla lo ejercía con ese rol. Se resolvió con
+    el [ADR 0038](adr/0038-permisos-del-odontologo-en-el-flujo.md) y, sobre todo, con una prueba que
+    entra **como odontóloga** y hace el día entero. Lección: **cada rol que aparece en la máquina de
+    estados necesita una prueba que lo use de verdad**, no una tabla que lo prometa.
+17. **Una lista que se pide una vez se queda vieja en la mano.** La pestaña de la sesión ofrecía «la
+    cita que respalda la sesión» desde una consulta hecha al abrir el paciente; para cuando el doctor
+    pulsaba «Abrir sesión», el paciente ya estaba en el consultorio y la lista seguía diciendo
+    `programada`. El resultado era silencioso y caro: la sesión nacía **sin** `appointment_id`, así
+    que «atendido» pedía un motivo y la visita perdía su enlace con la agenda —justo lo que la Fase 7
+    había arreglado—. Ahora la cita se resuelve **al abrir** (releyendo la agenda) y, en `/flujo`, la
+    cita que el doctor tiene delante manda. Lo encontró la prueba de punta a punta: leyendo el código
+    todo parecía bien.
+18. **Vista la pantalla, no el código.** En la columna de 20 rem la hora se partía en dos líneas y el
+    nombre del paciente quedaba en «PACIENTE PRUEBA DE HU…». La fila pasó a dos líneas (hora y estado
+    arriba; paciente, documento y ticket debajo) y se comprobó en captura a 1440 px y a 820 px. Es la
+    misma lección de la Fase 6: **hay detalles que solo salen mirando lo renderizado**.
+19. **Dos pestañas a la vez se pelean por el refresco** (hallazgo, **no** arreglado en esta fase).
+    El refresco es rotativo con detección de reuso ([ADR 0005](adr/0005-autenticacion-y-roles.md)): si
+    dos pestañas restauran la sesión a la vez, la segunda usa un token ya rotado, el servicio lo lee
+    como reuso y **revoca la familia entera** (401 en las dos; la que tenía token en memoria sigue
+    hasta que caduque). Se reprodujo con Chromium: abrir una segunda pestaña en el mismo contexto
+    provoca el 401 en la primera. **No se toca aquí** porque es la política de identidad, no la
+    pantalla, y cambiarla merece su propia decisión (una ventana de gracia para el token anterior, o
+    el refresco por pestaña). Queda anotado para la Fase 10, que es donde se endurece el despliegue; la
+    prueba de `/flujo` comprueba el modo tableta **en la misma pestaña** para no dispararlo.
+20. **El arranque en frío responde 401 y no es un fallo.** La SPA intenta restaurar la sesión al
+    cargar; sin cookie, el `POST /auth/refresh` responde 401 y la aplicación lo interpreta como
+    «visita nueva». La prueba de extremo a extremo lo descarta explícitamente y vigila que **después**
+    de entrar no quede ninguna petición en rojo: un e2e que se queja del 401 inicial se vuelve ruido y
+    se acaba ignorando.
+
 ### Próximo paso
 
-**Fase 8 — Página unificada del flujo completo** (`/flujo`), con la Fase 7 cerrada (tag `fase-7`) y
-su documentación al día. El odontólogo que trabaja solo tiene que poder llevar el día completo sin
-salir de esa pantalla: cola del día, paciente en curso (historia y **sesión**, con sus adjuntos y su
-récipe) y las acciones de secretaría en la barra superior, con atajos de teclado y modo tableta.
+**Fase 9 — Reportes, KPIs y auditoría UI**, con la Fase 8 cerrada (tag `fase-8`) y su documentación al
+día. El servicio `reporting` (puerto 4008) con su read model por eventos, los reportes de embudo,
+demografía, salud bucal y perfil clínico con sus filtros y exportación, y el módulo `/auditoria` con
+el diff antes/después.
 
-Antes de arrancarla, dos cosas de la Fase 7 que quedan en manos del odontólogo:
+Antes de arrancarla, tres cosas que quedan en manos del odontólogo (las mismas de la Fase 7 más una
+nueva):
 
 - **Los datos reales del membrete** (logo, RIF, teléfonos, MPPS y especialidad): se editan en
   [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) y el editor del récipe
@@ -1098,11 +1157,16 @@ Antes de arrancarla, dos cosas de la Fase 7 que quedan en manos del odontólogo:
   El logo se deja en [`assets/clinic/`](../assets/clinic/README.md).
 - **La revisión a ojo del récipe impreso** (A5) y de la página pública de verificación, que ya se
   revisaron en captura durante la sesión.
+- **La vuelta por `/flujo` con el día real**: es la pantalla que va a usar todo el tiempo, así que
+  conviene probarla con la agenda de una jornada de verdad (y decidir si el atajo `F8` —que cierra la
+  sesión clínica, no la del sistema— es el que quiere).
 
-Lo que la Fase 8 puede dar por puesto: el **récipe** ya se prepara y se emite desde la pestaña de la
-sesión (con la pregunta «¿Desea guardar el récipe?» al cerrar), así que `/flujo` reutiliza ese panel
-en vez de reimplementarlo; el **panel inferior** y el **shell** ya soportan tablet; y los estados de
-la cita (en espera → en consulta → atendido) ya están donde la barra superior los necesita.
+Lo que la Fase 9 puede dar por puesto: los **permisos del odontólogo** ya incluyen el día completo
+(ADR 0038) y `reports:read` lo tienen los tres roles operativos desde la Fase 1; el **shell y el panel
+inferior** ya soportan tablet; y los **eventos de dominio** que alimentan el read model
+(`scheduling.appointment.*`, `clinical.session.*`, `clinical.prescription.issued`,
+`odontogram.finding.recorded`, `patients.patient.*`) llevan publicándose desde sus fases con su
+`event_id`, su actor y su hora.
 
 > Este documento es la referencia viva del proyecto: cualquier cambio de alcance se refleja aquí
 > **antes** de escribir código, y cada decisión relevante se registra como ADR en

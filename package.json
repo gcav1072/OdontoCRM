@@ -74,6 +74,7 @@
     "smoke:odontogram": "node tools/smoke-odontogram.mjs",
     "smoke:clinical": "node tools/smoke-clinical-session.mjs",
     "smoke:prescription": "node tools/smoke-prescription.mjs",
+    "e2e:flujo": "node tools/e2e-flujo.mjs",
     "check-secrets": "node tools/check-secrets.mjs",
     "db:bootstrap": "node infra/db/bootstrap.mjs",
     "db:migrate": "node tools/migrate-all.mjs",

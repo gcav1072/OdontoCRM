@@ -43,6 +43,21 @@ describe('máquina de estados de la cita', () => {
     expect(canTransition('programada', 'notificada', 'odontologo')).toBe(false);
   });
 
+  it('el odontólogo hace el flujo del día completo, no solo el consultorio (2026-10-04)', () => {
+    // Fase 8: las cinco acciones de la barra de `/flujo`.
+    expect(canTransition('programada', 'en_sala_espera', 'odontologo')).toBe(true);
+    expect(canTransition('en_sala_espera', 'llamado', 'odontologo')).toBe(true);
+    expect(canTransition('llamado', 'llamado', 'odontologo')).toBe(true);
+    expect(canTransition('llamado', 'en_consulta', 'odontologo')).toBe(true);
+    expect(canTransition('en_consulta', 'atendido', 'odontologo')).toBe(true);
+    expect(canTransition('programada', 'no_asistio', 'odontologo')).toBe(true);
+    expect(canTransition('en_sala_espera', 'no_asistio', 'odontologo')).toBe(true);
+    // Lo que sigue siendo de la secretaría.
+    expect(canTransition('programada', 'cancelada', 'odontologo')).toBe(false);
+    expect(canTransition('programada', 'reprogramada', 'odontologo')).toBe(false);
+    expect(canTransition('programada', 'notificada', 'odontologo')).toBe(false);
+  });
+
   it('admin puede ejecutar cualquier transición declarada', () => {
     expect(canTransition('programada', 'notificada', 'admin')).toBe(true);
     expect(canTransition('en_consulta', 'atendido', 'admin')).toBe(true);
