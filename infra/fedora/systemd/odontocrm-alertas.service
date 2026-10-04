@@ -1,0 +1,71 @@
+# =============================================================================
+# OdontoCRM · alertas del sistema (servicio caído, cola atascada, disco)
+# Archivo : infra/fedora/systemd/odontocrm-alertas.service
+# Destino : /etc/systemd/system/odontocrm-alertas.service
+# Pareja  : odontocrm-alertas.timer (lo lanza cada 5 minutos)
+#
+# Ejecuta el tablero de estado en modo alertas (`node tools/estado.mjs --alertas`):
+#   · sale 0 y no imprime nada si todo está bien,
+#   · sale 1 y escribe el problema en el journal si algo falla.
+#
+# Ese "silencio cuando todo va bien" es lo que hace útil al temporizador: si el
+# servicio aparece en `systemctl --failed`, hay algo que mirar. Y para verlo:
+#
+#   systemctl list-timers odontocrm-alertas.timer
+#   systemctl status odontocrm-alertas.service
+#   journalctl -u odontocrm-alertas -n 50 --no-pager
+#
+# Instalación:
+#   sudo install -m 0644 -o root -g root \
+#     infra/fedora/systemd/odontocrm-alertas.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now odontocrm-alertas.timer
+#
+# > PENDIENTE FASE 10: probar en el Fedora real (INSTALL.md §10.5) y decidir si se
+#   añade un aviso externo (correo, Telegram del administrador) con `OnFailure=`.
+# =============================================================================
+
+[Unit]
+Description=OdontoCRM · comprobar el estado del sistema (alertas)
+Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Corre como root para poder leer /etc/odontocrm/*.env (0600 root:root), que es
+# donde viven las URLs de las bases. Solo lee y consulta por HTTP a 127.0.0.1.
+User=root
+WorkingDirectory=/opt/odontocrm
+
+# El archivo común (puertos, URLs, TZ) y la variable que le dice al tablero que
+# los entornos están en /etc/odontocrm y no dentro del repositorio.
+EnvironmentFile=/etc/odontocrm/odontocrm.env
+Environment=ODONTOCRM_ENV_DIR=/etc/odontocrm
+Environment=NODE_ENV=production
+
+ExecStart=/usr/bin/node tools/estado.mjs --alertas
+
+# Es una comprobación: no debe competir con la clínica.
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=120
+
+# --- Endurecimiento ----------------------------------------------------------
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Solo lectura: el código y los entornos.
+ReadOnlyPaths=/opt/odontocrm /etc/odontocrm
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=odontocrm-alertas

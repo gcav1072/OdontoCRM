@@ -733,6 +733,31 @@ localhost:5432:*:CAMBIAR_USUARIO_DE_RESPALDO:CAMBIAR_PASSWORD_DE_RESPALDO"
 }
 
 # -----------------------------------------------------------------------------
+# 5-bis. Rotación de logs (logrotate)
+# -----------------------------------------------------------------------------
+install_logrotate() {
+  step "5-bis/9 · Rotación de logs"
+
+  local src="$SCRIPT_DIR/logrotate/odontocrm" dst="/etc/logrotate.d/odontocrm"
+  if [[ ! -f "$src" ]]; then
+    warn "no se encontró $src; se omite la rotación de logs"
+    return 0
+  fi
+
+  if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+    ok "logrotate ya actualizado, sin cambios: $dst"
+    return 0
+  fi
+
+  if (( APPLY )); then
+    install -m 0644 -o root -g root "$src" "$dst"
+    ok "logrotate instalado: $dst (diario, 30 días, comprimido)"
+  else
+    printf '       %s[dry-run] install -m 0644 %s %s%s\n' "$C_DIM" "$src" "$dst" "$C_RESET"
+  fi
+}
+
+# -----------------------------------------------------------------------------
 # 6. Unidades systemd
 # -----------------------------------------------------------------------------
 install_systemd_units() {
@@ -746,7 +771,12 @@ install_systemd_units() {
 
   install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm@.service" "/etc/systemd/system/odontocrm@.service"
   install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-gateway.service" "/etc/systemd/system/odontocrm-gateway.service"
+  # Observabilidad (Fase 10): el tablero de estado cada 5 minutos. Es un
+  # temporizador, no un servicio de la pila: no depende del supervisor elegido.
+  install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-alertas.service" "/etc/systemd/system/odontocrm-alertas.service"
+  install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-alertas.timer" "/etc/systemd/system/odontocrm-alertas.timer"
   run systemctl daemon-reload
+  run systemctl enable --now odontocrm-alertas.timer
 
   if (( ENABLE_SERVICES )); then
     log "habilitando servicios (no se arrancan en este paso)"
@@ -926,6 +956,7 @@ main() {
   install_pm2
   create_user_and_dirs
   write_env_templates
+  install_logrotate
   install_systemd_units
   configure_firewall
   configure_selinux
