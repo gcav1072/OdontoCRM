@@ -6,7 +6,24 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
 ## [Sin publicar] — Correcciones posteriores a la Fase 5 · 2026-10-03
 
+### Auditoría previa a la Fase 6
+
+- **Informe completo en [`docs/AUDITORIA_PRE_FASE_6.md`](docs/AUDITORIA_PRE_FASE_6.md)**: se
+  revisaron las siete conexiones (eventos, HTTP, auditoría, bases, permisos, configuración y
+  llamadas entre servicios) con evidencia reproducible. Resultado: ninguna ruta inalcanzable,
+  ninguna llamada de la interfaz sin ruta, ninguna ruta interna expuesta (probado con un JWT de
+  administrador → 404), outbox a cero en los cinco servicios y las bases de `clinical`,
+  `odontogram` y `reporting` ya aprovisionadas.
+
 ### Corregido
+
+- **La cola padre `domain-events` acumulaba trabajos que nadie procesaba.** El publicador
+  entregaba una copia a todas las colas conocidas, incluida la padre, que ningún servicio
+  trabaja: cada evento dejaba un trabajo en `created` que pg-boss no borra nunca (su retención
+  solo aplica a los completados), y había llegado a **1.305**. Ahora se publica **solo en colas
+  de consumidor** (`domain-events.<servicio>`), la padre queda como último recurso si no hay
+  ninguna, la prueba del outbox usa su propia cola y la borra al terminar, y se limpiaron los
+  1.305 acumulados. Verificado: tras un humo completo la cola padre recibe **0** trabajos nuevos.
 
 - **Pantalla en negro en `127.0.0.1:5173`.** La causa no era la aplicación: un servidor de Vite
   **de una sesión anterior** seguía ocupando el puerto con el grafo de módulos roto, `npm run dev`
@@ -73,6 +90,9 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   con un botón de recarga, en lugar de quedarse en negro.
 - **`docs/COMANDOS.md`**: guía única de comandos (puesta en marcha, calidad, base de datos, semillas,
   arranque, humos, PM2/Fedora, «quiero hacer X» y problemas típicos). El README deja de duplicarla.
+- **`.env.example` completo**: sección «Ajustes finos» con las ~30 variables que los servicios leen
+  y no estaban documentadas (hosts, pool de conexiones, cookies, anti-flood, reintentos, ritmo de la
+  cola, tope de archivo, rutas de las claves del JWT), cada una con su valor por defecto.
 
 ### Cambiado
 
