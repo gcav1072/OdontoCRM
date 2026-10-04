@@ -36,6 +36,7 @@ export const EVENT_TOPICS = {
   patientChannelLinked: 'notifications.patient_channel.linked',
 
   recordCreated: 'clinical.record.created',
+  recordUpdated: 'clinical.record.updated',
   recordSigned: 'clinical.record.signed',
   recordAmended: 'clinical.record.amended',
   sessionCreated: 'clinical.session.created',
