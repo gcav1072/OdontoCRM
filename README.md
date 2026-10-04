@@ -357,7 +357,8 @@ fila**— y motor geométrico SVG sin dependencias. La dentición (permanente 11
   caries oclusal pendiente, `C` la marca completada; `a` ausente, `x` extracción indicada, `r`
   corona, `i` implante, `e` endodoncia; `v l n s d` eligen cara y `Supr` deja la cara sana—,
   deshacer, **evolución** en `/consultorio/:patientId/odontograma/historial` e **impresión A4** en
-  `/consultorio/:patientId/odontograma/imprimir` (que la secretaría comparte en solo lectura).
+  `/consultorio/:patientId/odontograma/imprimir` (que la secretaría comparte en solo lectura); el
+  informe puede incluir, con una casilla, el **historial de cambios con fechas**.
 - **Se dibuja en posición anatómica** ([ADR 0033](docs/adr/0033-odontograma-en-posicion-anatomica.md)): dos filas con la **línea media** en el centro, la cara vestibular arriba en el maxilar y abajo en la mandíbula, y las piezas de la **derecha del paciente** (cuadrantes 1 y 4, y 5 y 8 temporales) **espejadas**, para que la cara mesial mire siempre a la línea media —es decir, al vecino que de verdad toca—. El número de pieza se lee siempre derecho y cada arcada lleva su nota de orientación. En incisivos y caninos (posiciones 1–3) la cara de masticación se llama **borde incisal** en toda la interfaz, aunque se guarde como `occlusal` (mismo polígono, sin migración).
 - **Se maneja con el dedo**: en una tableta (`pointer: coarse`) el toque sobre una pieza abre la
   **hoja de la pieza** con caras, condición, estado y borrado en botones de ≥44 px, y el gráfico

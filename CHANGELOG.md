@@ -8,6 +8,13 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
 ### Añadido
 
+- **El informe puede llevar detrás el historial de cambios.** La vista de impresión tiene una
+  casilla —«Incluir el historial de cambios (con fechas)»— que añade al documento la evolución del
+  odontograma: fecha y hora, pieza, cara (con su nombre clínico), condición, estado, qué pasó
+  (registrado, actualizado, superado, eliminado), quién y el motivo cuando lo hay. Va **en orden
+  cronológico** —lo primero que pasó, primero—, porque es una historia clínica y no una bandeja de
+  entrada, y si el historial llegó al tope (500) el papel lo dice: uno recortado en silencio se lee
+  como si no hubiera más. Sin marcar la casilla, el informe sale como antes.
 - **`packages/contracts`**: contrato del odontograma — nomenclatura **FDI** de dos dígitos
   (permanentes 11–48 y temporales 51–85, con la dentición **deducida del propio número**, sin que
   el cliente pueda contradecirla), el **dominio geométrico** de §7 del documento (los cinco
