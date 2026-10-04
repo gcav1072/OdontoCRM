@@ -881,6 +881,14 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    lo muestre sin leer la base de otro servicio, `scheduling` lo añade al evento de la
    cita; los datos clínicos (alergias, crónicos) llegan por la ruta interna que usará la
    Fase 6.
+9. **Un servidor de desarrollo viejo deja una pantalla en negro sin mensaje.** El 5173
+   seguía ocupado por un Vite de la sesión anterior con el grafo de módulos roto; como el
+   puerto es estricto, `npm run dev` no arrancaba y el navegador miraba el servidor viejo
+   (`#root` vacío, consola parada en «[vite] connecting…»). Se comprobó abriendo la página
+   con Chromium sin interfaz, que es la única forma de ver este tipo de fallo. Ahora hay
+   preflight de puertos (`npm run dev:check`, automático antes de `dev`), parada de restos
+   (`npm run dev:stop`), comprobación de que la SPA monta (`npm run check:web`) y una
+   reserva visible en la página para que el fallo nunca sea un negro mudo.
 
 ### Próximo paso
 

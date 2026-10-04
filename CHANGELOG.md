@@ -4,6 +4,38 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Sin publicar] — Endurecimiento del arranque de la interfaz · 2026-10-03
+
+### Corregido
+
+- **Pantalla en negro en `127.0.0.1:5173`.** La causa no era la aplicación: un servidor de Vite
+  **de una sesión anterior** seguía ocupando el puerto con el grafo de módulos roto, `npm run dev`
+  no podía tomarlo (`strictPort`) y `concurrently -k` mataba el resto, así que el navegador seguía
+  mirando el servidor viejo sin ningún mensaje. Se comprobó con Chromium sin interfaz: ese servidor
+  dejaba `#root` vacío, mientras que uno recién arrancado y la app compilada montan bien.
+
+### Añadido
+
+- **`npm run dev:check`** (se ejecuta solo antes de `npm run dev`): comprueba los puertos del
+  desarrollo y, si están ocupados, dice **quién** los ocupa (proceso y si es de PM2) y cómo
+  liberarlos. Evita arrancar a medias.
+- **`npm run dev:stop`**: para lo que dejó vivo un `npm run dev` anterior (Vite y servicios sueltos).
+  No toca los procesos de PM2, que se paran con `pm2 stop all`, y lo explica.
+- **`npm run check:web`**: abre la interfaz con Chromium sin interfaz y verifica que **monta** (el
+  contenedor `#root` con contenido) y que la consola no trae errores. Es la comprobación que habría
+  cazado la pantalla en negro: ninguna prueba unitaria puede verla.
+- **Reserva visible en `index.html` y aviso de arranque en `main.tsx`**: si el paquete no llega a
+  ejecutarse o falla al montar, la página muestra «Cargando OdontoCRM…» y, si hay error, el mensaje
+  con un botón de recarga, en lugar de quedarse en negro.
+- **`docs/COMANDOS.md`**: guía única de comandos (puesta en marcha, calidad, base de datos, semillas,
+  arranque, humos, PM2/Fedora, «quiero hacer X» y problemas típicos). El README deja de duplicarla.
+
+### Cambiado
+
+- **`npm run db:verify-migrations` comprueba todos los servicios** desde cero en bases limpias (antes
+  solo identity), replicando las extensiones que crea el bootstrap. Al hacerlo destapó que las
+  migraciones de `patients` dependen de `pg_trgm` y que la tabla es `patient_files`.
+
 ## [Fase 5] — Secretaría y pantallas (lobby y consultorio) · 2026-10-03
 
 ### Añadido

@@ -150,11 +150,20 @@ Detalles que conviene saber:
 | Comando | Arranca |
 | :--- | :--- |
 | `npm run dev` | Todo: `tsc -b --watch` + gateway + identity + patients + scheduling + notifications + screens + web |
+| `npm run dev:web` | **Solo la interfaz** (Vite en `http://127.0.0.1:5173`): es lo que se usa cuando los servicios están en PM2 |
 | `npm run dev:<servicio>` | Un solo servicio en vigilancia: `identity`, `patients`, `scheduling`, `notifications`, `screens`, `gateway`, `web`, `build` |
-| `npm run dev:web` | Solo la interfaz (Vite en `http://127.0.0.1:5173`) |
+| `npm run dev:check` | Comprueba que los puertos del desarrollo estén libres y dice quién los ocupa (se ejecuta **solo** antes de `npm run dev`) |
+| `npm run dev:stop` | Para lo que dejó vivo un `npm run dev` anterior (los procesos de PM2 no se tocan: los para `pm2 stop all`) |
+| `npm run check:web` | Abre la interfaz con un navegador sin interfaz y verifica que **monta** y que la consola está limpia |
 
 `npm run dev` requiere haber migrado y sembrado antes; los servicios leen
 `.env` (raíz) + `services/<svc>/.env`.
+
+> **PM2 y `npm run dev` no conviven**: los dos quieren los mismos puertos. Si tienes
+> los servicios en PM2, trabaja con `npm run dev:web` (solo la web, el `/api` va por
+> el proxy de Vite al gateway del 8090) o para PM2 con `pm2 stop all` y arranca todo
+> con `npm run dev`. El preflight `dev:check` lo detecta y te lo dice antes de que
+> nada falle a medias.
 
 ### Sin vigilancia (lo que corre PM2)
 
@@ -282,6 +291,9 @@ workspace y las rutas siguen siendo correctas.
 | Quiero… | Comando |
 | :--- | :--- |
 | Levantar todo y usar la app | `npm run dev` (o `infra/windows/start-services.ps1`) |
+| Usar la app con los servicios en PM2 | `npm run dev:web` (solo la web; el `/api` va al gateway por el proxy) |
+| Saber si la pantalla está en negro por culpa de un servidor viejo | `npm run check:web` y `npm run dev:check` |
+| Liberar los puertos que dejó una sesión anterior | `npm run dev:stop` |
 | Saber si puedo commitear | `npm run verify` |
 | Probar solo lo que toqué | `npx vitest run <ruta>` y luego `npm run test:integration -- <ruta>` |
 | Verificar que las migraciones siguen aplicándose desde cero | `npm run db:verify-migrations` |
@@ -322,11 +334,12 @@ claves de `services/identity/.keys/`. Detalle en
 
 | Síntoma | Causa y qué hacer |
 | :--- | :--- |
-| `EADDRINUSE` en 4001-4007 | Ya hay un servicio arrancado (PM2 o un `dev` viejo): `pm2 status` y `pm2 stop`, o mira el puerto con `Get-NetTCPConnection -LocalPort 4004` |
-| El 5173 está ocupado | Quedó un Vite de otra sesión: ciérralo antes de `npm run dev` |
+| **`127.0.0.1:5173` en negro / en blanco** | Casi siempre es un servidor de Vite **de una sesión anterior** que sigue ocupando el 5173 con el grafo de módulos roto: `npm run dev` no puede tomar el puerto (`strictPort`) y el navegador sigue mirando el viejo. Diagnóstico y arreglo: `npm run check:web` (dice si monta o no) → `npm run dev:stop` → `npm run dev`. Si el paquete no arranca, la propia página muestra un aviso con el error en vez de quedarse en negro |
+| `EADDRINUSE` en 4001-4007 o 8090 | Ya hay un servicio arrancado (PM2 o un `dev` viejo): `npm run dev:check` dice quién es; `pm2 status` para los de PM2 y `npm run dev:stop` para los sueltos |
+| El 5173 está ocupado | Quedó un Vite de otra sesión: `npm run dev:stop` antes de `npm run dev` |
 | `listen EACCES` en 8090 | Es el aviso de la Fase 0: el 8080 lo ocupa Windows; el gateway usa 8090 |
 | «Falta packages/db/dist» | Falta compilar: `npm run build` (o `build:node`) |
-| `EADDRINUSE` tras compilar y nada funciona | PM2 sigue con el código viejo: `npm run build:node` y `pm2 restart <proceso> --update-env` |
+| Cambio código y la app no cambia | PM2 sigue con el código viejo: `npm run build:node` y `pm2 restart <proceso> --update-env` |
 | Login 401 con la contraseña sembrada | Alguien (una prueba de humo) la cambió: `npm run seed:users -- --reset` |
 | 423 «cuenta bloqueada» | 5 intentos fallidos: 15 minutos, o `npm run seed:users -- --reset` |
 | Las pruebas de integración se saltan | Falta `TEST_*_DATABASE_URL`: ejecútalas con `npm run test:integration`, no con `npm test` |
