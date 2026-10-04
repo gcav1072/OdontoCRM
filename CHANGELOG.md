@@ -21,11 +21,33 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   aplica la política acordada: **asegura sin duplicar** — no repite el aviso que ya salió, recupera
   el que quedó en manual pendiente o falló, y solo la casilla «reenviar también los ya notificados»
   (`force`) vuelve a enviar, identificando el reenvío por su evento.
+- **El paciente con cita seguía apareciendo «En espera de cita».** El estado lo escribe
+  `patients` (su base), y `en_espera_cita` significa «todavía sin cita»: al asignársela, la
+  agenda publicaba el evento pero **ningún consumidor de `patients` lo escuchaba**, así que se
+  quedaba así para siempre (en la base: 1.503 pacientes en espera, de los cuales 1 con cita
+  programada y `.ics` enviado — el del usuario que lo reportó). Ahora `patients` tiene su
+  consumidor: al recibir `scheduling.appointment.scheduled` promueve a `activo` (idempotente,
+  solo desde `en_espera_cita`, nunca resucita a un `inactivo`) y lo deja auditado como
+  `patient_status_changed` con el motivo «se le asignó una cita». Los datos anteriores se
+  repararon con `tools/reparar-estados-pacientes.mjs` (informa por defecto, `--apply` escribe).
+- **El buscador de la bandeja tardaba 406 ms por letra.** El campo era una entrada controlada
+  atada al valor **ya diferido** (350 ms), así que las letras aparecían tarde y el cursor
+  saltaba; medido en un navegador real: 406 ms por letra de media. Ahora el campo usa el texto
+  de cada tecla y solo la consulta usa el diferido: **35 ms por letra** (15 ms de render, dentro
+  de un fotograma).
 - **Textos que habían envejecido con el multicanal (Fase 4.1)**: la bandeja, las plantillas, el
   catálogo de canales y el aviso de la programación hablaban solo de Telegram; ahora nombran el
   canal del paciente, y la tarjeta de estado muestra los canales activos con su identidad.
 
 ### Añadido
+
+- **Pruebas de la proyección del paciente**: la suite de `patients` cubre la promoción a
+  `activo`, su idempotencia, que no toca temas ajenos y que **no resucita a un `inactivo`**; el
+  humo de agenda crea un paciente nuevo y comprueba que pasa a `activo` al asignársele la cita
+  (por el camino real: outbox → cola → proyección).
+- **`tools/reparar-estados-pacientes.mjs`**: repara los pacientes que quedaron en
+  `en_espera_cita` con cita ya asignada, con la misma función y el mismo rastro que la
+  proyección. Informa por defecto; `--apply` escribe.
 
 - **Pruebas del aviso a mano**: la suite de integración de notificaciones cubre los cuatro caminos
   (aviso nuevo, ya enviado, pendiente que se recupera y reenvío explícito), y el humo comprueba que

@@ -330,6 +330,7 @@ workspace y las rutas siguen siendo correctas.
 | Probar WhatsApp | credenciales `WHATSAPP_*` en `services/notifications/.env`; el webhook es `/api/v1/notifications/webhook/whatsapp` |
 | Registrar una pantalla kiosko | módulo `/pantallas` → «Nueva pantalla» → abrir el enlace con el token en el televisor |
 | Revisar la auditoría de un cambio | módulo `/auditoria` o `GET /api/v1/audit/events` |
+| Un paciente con cita sigue como «en espera de cita» | `node tools/reparar-estados-pacientes.mjs` (informa) y `--apply` para repararlo · requiere `npm run build:node` |
 | Parar todo | `pm2 stop all` |
 
 ---

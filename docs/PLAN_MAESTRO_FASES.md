@@ -180,6 +180,7 @@ Convenciones: `id uuid default gen_random_uuid()`, `created_at`/`updated_at` con
 
 ### 4.2 `patients`
 - `patients`: `doc_type` (`V|E|P|SC`), `doc_number`, `full_name`, `birth_date`, `sex` (`M|F|O`), `phone`, `phone_alt?`, `email?`, `address?`, `occupation?`, `status` (`en_espera_cita|activo|inactivo`), `is_fictitious` (**rango 90.000.000+ del modo test**), `notes?`, `promoted_from_sc_at?`. Único parcial: `(doc_type, doc_number) WHERE deleted_at IS NULL`.
+  - **Transiciones del estado**: `en_espera_cita → activo` **sola**, cuando la agenda publica la cita asignada (proyección por evento, `services/patients/src/consumer.ts`); `activo → inactivo` y vuelta a `activo` **a mano**, con motivo y auditoría. Ningún evento revierte una baja.
 - `patient_guardians` (representante de menores: nombre, cédula, parentesco, teléfono).
 - `patient_contacts_history` (teléfono/dirección anteriores → alimenta auditoría de datos sensibles).
 - `files` (metadatos de adjuntos: `owner_type`, `owner_id`, `kind` (`radiografia|foto|pdf|consentimiento`), `mime`, `size`, `sha256`, `storage_path`, `uploaded_by`). El binario vive en `storage/` con **abstracción `BlobStore`** (implementación disco hoy, S3/MinIO mañana sin cambiar llamadas).
@@ -897,6 +898,27 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    un hueco real. Lección para las fases siguientes: **cada tema del catálogo necesita un
    consumidor o una prueba que falle si no lo tiene** (el humo de notificaciones ya lo cubre);
    y un texto de la interfaz que promete algo debe caducar con la funcionalidad, no antes.
+11. **El estado del paciente también necesitaba proyección.** Al asignarle una cita, el
+   paciente seguía en `en_espera_cita` para siempre: el estado lo escribe `patients` (su base)
+   y no había consumidor de los eventos de agenda, así que en `/pacientes` aparecía «En espera
+   de cita» con la cita programada y el `.ics` enviado. Se arregló con un consumidor en
+   `patients` (idempotente, sin resucitar bajas) y una reparación de los datos anteriores.
+   Regla general: **si un evento cambia un dato de otro servicio, ese servicio necesita su
+   proyección y una prueba que la cubra**; el humo de agenda ya crea un paciente nuevo y
+   comprueba la transición.
+12. **La cola padre `domain-events` recibe una copia que nadie trabaja.** El publicador entrega
+   el evento a todas las colas conocidas (`domain-events` y `domain-events.<servicio>`), pero en
+   este despliegue ningún servicio trabaja la padre: acumula trabajos en estado `created` que no
+   se borran (≈970 tras un día de pruebas), porque la retención de `deleteAfterSeconds` solo
+   aplica a los completados. Es **crecimiento de almacenamiento, no de latencia**. Opciones para
+   la Fase 10: no publicar en la padre cuando hay colas de consumidores, trabajarla, o darle
+   retención a los `created`.
+13. **El buscador de la bandeja ataba la entrada al valor diferido.** El campo usaba el texto
+   con retardo (350 ms) como `value`, así que las letras aparecían tarde y el cursor saltaba:
+   medido en un navegador real, **406 ms por letra**. La consulta puede diferirse; **el campo,
+   nunca**. Checklist para los buscadores que vengan: `value` = estado inmediato,
+   `queryKey`/petición = valor diferido, y medirlo con un navegador (el retardo de red no era
+   el problema: la API responde en 1-38 ms).
 
 ### Próximo paso
 
