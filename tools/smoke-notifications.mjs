@@ -105,8 +105,25 @@ if (login.body?.user?.mustChangePassword === true) {
 // 2) Estado del bot: modo, identidad y cola.
 const status = await call('/api/v1/notifications/status');
 check('el estado del bot responde', status.status === 200, `status ${status.status}`);
+
+/**
+ * Dos situaciones válidas, y cada una se comprueba como es:
+ *
+ * - **Instalación normal**: el bot tiene token y está conectado; los envíos salen.
+ * - **Modo test (ADR 0020)**: aunque haya token, el transporte es **simulado a
+ *   propósito** (ningún mensaje puede salir a un paciente) y `testMode` lo dice.
+ *   Aquí se comprueba eso mismo, no que esté «conectado».
+ */
+const enModoTest = status.body?.testMode === true;
 const botConfigurado = status.body?.mode === 'real' && typeof status.body?.botUsername === 'string';
-if (!botConfigurado && BOT_OPCIONAL) {
+
+if (enModoTest) {
+  check(
+    'en modo test el bot queda simulado a propósito (los envíos están bloqueados)',
+    status.body?.mode === 'simulado',
+    `modo ${status.body?.mode}`,
+  );
+} else if (!botConfigurado && BOT_OPCIONAL) {
   omitir('el bot está configurado', 'esta máquina no tiene TELEGRAM_BOT_TOKEN/USERNAME');
   omitir('el bot está conectado con Telegram', 'no hay bot que conectar');
 } else {
@@ -185,7 +202,7 @@ check(
   linkCode.status === 200,
   `código ${linkCode.body?.code}`,
 );
-if (!botConfigurado && BOT_OPCIONAL) {
+if (!botConfigurado && BOT_OPCIONAL && !enModoTest) {
   omitir('el enlace apunta al bot real', 'hace falta el @usuario del bot');
   omitir('el QR viene listo para mostrar', 'hace falta el @usuario del bot');
 } else {
