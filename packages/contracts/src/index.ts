@@ -1,3 +1,4 @@
+export * from './clinic.js';
 export * from './common/ids.js';
 export * from './common/optional.js';
 export * from './common/pagination.js';
