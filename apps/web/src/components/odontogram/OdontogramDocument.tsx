@@ -126,6 +126,14 @@ export const OdontogramDocument = ({
     .filter((hallazgo) => hallazgo.state === 'completado').length;
   const paciente = detail.patient;
 
+  /** Condiciones de pieza completa que **cubren** las caras: se explican en el pie. */
+  const condicionesQueCubren = new Set(
+    Object.values(detail.findings)
+      .flat()
+      .filter((hallazgo) => supersedesSurfaces(hallazgo.condition))
+      .map((hallazgo) => hallazgo.condition),
+  );
+
   return (
     <article className="mx-auto max-w-[21cm] bg-white px-8 py-6 text-ink print:px-0 print:py-0">
       <header className="border-b-2 border-ink pb-3">
@@ -188,14 +196,17 @@ export const OdontogramDocument = ({
             ? ` · ${t('odonto.imprimir.veces', { veces: detail.printCount })}`
             : ''}
         </p>
-        {/* Qué manda sobre qué, en el papel: solo `ausente` deja sin efecto las
-            caras; los tratamientos conviven con ellas (ADR 0032). */}
-        {Object.values(detail.findings)
-          .flat()
-          .some((hallazgo) => supersedesSurfaces(hallazgo.condition)) && (
-          <p className="mt-1">
-            En las piezas marcadas como ausentes, las caras que hubiera quedan sin efecto.
-          </p>
+        {/*
+          Qué manda sobre qué, en el papel (ADR 0032): `ausente` deja las caras sin
+          efecto y la **corona las recubre** (en boca ya no se ven, aunque el dato siga
+          en la historia); el conducto, el implante y la extracción indicada conviven
+          con ellas. Cada nota sale sola cuando hay una pieza en esa situación.
+        */}
+        {condicionesQueCubren.has('ausente') && (
+          <p className="mt-1">{t('odonto.imprimir.notaAusente')}</p>
+        )}
+        {condicionesQueCubren.has('corona') && (
+          <p className="mt-1">{t('odonto.imprimir.notaCorona')}</p>
         )}
       </footer>
     </article>

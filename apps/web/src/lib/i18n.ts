@@ -1684,6 +1684,15 @@ const DICCIONARIO = {
   'odonto.hallazgos.notas': 'Notas',
   /** Celda vacía en el informe: se escribe que se miró, no se deja en blanco. */
   'odonto.hallazgos.sinNotas': 'Sin observaciones',
+  /**
+   * Notas del pie del informe: que se ve arriba no es todo lo que hay. La corona
+   * cubre el muneon (el dato sigue en la historia) y la pieza ausente deja las caras
+   * sin efecto.
+   */
+  'odonto.imprimir.notaAusente':
+    'En las piezas marcadas como ausentes, las caras que hubiera quedan sin efecto.',
+  'odonto.imprimir.notaCorona':
+    'En las piezas con corona, las caras que había debajo quedan cubiertas por la corona: el dato se conserva en la historia clínica.',
   'odonto.hallazgos.ninguno':
     'Todavía no hay hallazgos: la boca se lee como sana (captura por excepción).',
   'odonto.afectadas': 'Piezas afectadas: {total}',
@@ -1760,7 +1769,7 @@ const DICCIONARIO = {
   /** Un mismo símbolo significa «indicado» o «realizado» según su color. */
   'odonto.leyenda.tratamiento': '{condicion}: rojo indicado · azul realizado',
   'odonto.leyenda.caras':
-    'Las caras se leen de fuera hacia dentro: vestibular arriba (abajo en la mandíbula), lingual o palatino enfrente, y proximales a los lados (mesial hacia la línea media). En incisivos y caninos la cara de masticación es el borde incisal. Los tratamientos (corona, implante, endodoncia) y la extracción indicada conviven con las caras; «ausente» las deja sin efecto, salvo con un implante, que puede sostener la pieza.',
+    'Las caras se leen de fuera hacia dentro: vestibular arriba (abajo en la mandíbula), lingual o palatino enfrente, y proximales a los lados (mesial hacia la línea media). En incisivos y caninos la cara de masticación es el borde incisal. La corona cubre lo que había debajo —el dato queda en la historia— y el conducto, el implante y la extracción indicada conviven con las caras; «ausente» las deja sin efecto, salvo con un implante, que puede sostener la pieza.',
   'odonto.arcada.superior': 'Arcada superior (18–28)',
   'odonto.arcada.inferior': 'Arcada inferior (48–38)',
   /**

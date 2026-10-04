@@ -96,14 +96,17 @@ describe('documento imprimible del odontograma', () => {
     expect(documento(detalle({}))).toContain('Todavía no hay hallazgos');
   });
 
-  it('la pieza ausente se explica en el pie; un tratamiento no borra las caras', () => {
+  it('la pieza ausente y la corona se explican en el pie; el conducto no tapa nada', () => {
     const ausente = documento(
       detalle({ '36': [hallazgo({ toothNumber: 36, surface: null, condition: 'ausente' })] }),
     );
     expect(ausente).toContain('Ausente');
     expect(ausente).toContain('quedan sin efecto');
+    // De la corona no se avisa aquí: no hay ninguna.
+    expect(ausente).not.toContain('cubiertas por la corona');
 
-    // Corona y obturación en la misma pieza: las dos salen y no se avisa de nada.
+    // Corona y obturación en la misma pieza: las dos salen en la tabla, y el pie
+    // explica que la corona **recubre** el muñón (ADR 0032).
     const tratada = documento(
       detalle({
         '36': [
@@ -119,7 +122,20 @@ describe('documento imprimible del odontograma', () => {
     );
     expect(tratada).toContain('Corona');
     expect(tratada).toContain('Obturación');
+    expect(tratada).toContain('cubiertas por la corona');
     expect(tratada).not.toContain('quedan sin efecto');
+
+    // El conducto no recubre nada: no se avisa de nada.
+    const conducto = documento(
+      detalle({
+        '36': [
+          hallazgo({ toothNumber: 36, surface: null, condition: 'endodoncia' }),
+          hallazgo({ toothNumber: 36, surface: 'occlusal', condition: 'caries' }),
+        ],
+      }),
+    );
+    expect(conducto).not.toContain('quedan sin efecto');
+    expect(conducto).not.toContain('cubiertas por la corona');
   });
 });
 
