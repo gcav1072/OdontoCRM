@@ -32,8 +32,16 @@ export const PUBLIC_PATHS: readonly string[] = [
  * API) es público porque Meta no manda JWT: la seguridad la da la firma
  * (`x-hub-signature-256` con el `app_secret`), que el adaptador verifica antes de
  * procesar nada. El canal va en la ruta (`/webhook/whatsapp`).
+ *
+ * La **verificación del récipe** (`/api/v1/clinical/verify/<código>`) también lo es:
+ * la abre quien tiene el papel en la mano —el paciente, una farmacia— y no tiene
+ * sesión. Lo que devuelve no lleva datos clínicos (ADR 0015): solo confirma que el
+ * récipe consta y a nombre de quién está.
  */
-export const PUBLIC_PREFIXES: readonly string[] = ['/api/v1/notifications/webhook/'];
+export const PUBLIC_PREFIXES: readonly string[] = [
+  '/api/v1/notifications/webhook/',
+  '/api/v1/clinical/verify/',
+];
 
 export const isPublicPath = (path: string): boolean =>
   PUBLIC_PATHS.includes(path) || PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix));

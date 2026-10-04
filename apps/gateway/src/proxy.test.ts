@@ -62,7 +62,7 @@ describe('mapa de rutas del gateway', () => {
     expect(auth?.rewritePrefix).toBeUndefined();
   });
 
-  it('clasifica las rutas públicas (salud, ciclo de autenticación y webhooks)', () => {
+  it('clasifica las rutas públicas (salud, ciclo de autenticación, webhooks y verificación)', () => {
     expect(isPublicPath('/health')).toBe(true);
     expect(isPublicPath('/api/v1/auth/login')).toBe(true);
     expect(isPublicPath('/api/v1/auth/refresh')).toBe(true);
@@ -70,9 +70,14 @@ describe('mapa de rutas del gateway', () => {
     // El webhook de WhatsApp no lleva JWT: lo valida la firma del proveedor.
     expect(isPublicPath('/api/v1/notifications/webhook/whatsapp')).toBe(true);
     expect(isPublicPath('/api/v1/notifications/webhook/telegram')).toBe(true);
+    // El QR del récipe lo abre cualquiera con el papel en la mano, sin sesión.
+    expect(isPublicPath('/api/v1/clinical/verify/ABCDE-FGHJK')).toBe(true);
     expect(isPublicPath('/api/v1/users')).toBe(false);
     expect(isPublicPath('/api/v1/auth/me')).toBe(false);
     expect(isPublicPath('/api/v1/notifications')).toBe(false);
+    // Los récipes del paciente y sus adjuntos sí exigen sesión.
+    expect(isPublicPath('/api/v1/clinical/prescriptions/abc')).toBe(false);
+    expect(isPublicPath('/api/v1/clinical/sessions/abc/attachments')).toBe(false);
     expect(pathOf('/api/v1/users?page=2')).toBe('/api/v1/users');
   });
 });
