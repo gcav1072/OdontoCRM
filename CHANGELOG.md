@@ -8,6 +8,41 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
 ### Añadido
 
+- **Adjuntos de la sesión**: `clinical_session_files` (migración `0002` de `clinical`) con
+  radiografía, foto clínica, documento u otro, **pie** y **pieza FDI** opcional. Se suben y se ven
+  en la sesión (cuadrícula de miniaturas y **visor con zoom** por botones, rueda y teclado), se
+  descargan por endpoint autorizado —nunca por una URL pública— y se quitan **solo mientras la
+  sesión es borrador**: en una sesión cerrada son parte del documento. La ficha del paciente tiene su
+  propia tarjeta con los adjuntos de todas sus sesiones.
+  - La **miniatura la hace el navegador** (CSS): generar miniaturas en el servidor sería una librería
+    de imágenes para algo que el navegador ya sabe hacer, y el original tiene que estar accesible
+    igual para el visor.
+- **Récipes A5 numerados y verificables** ([ADR 0015](docs/adr/0015-recipe-a5-en-pdf.md),
+  [ADR 0036](docs/adr/0036-recipe-emitido-documento-archivado.md)): borrador por sesión → **emisión**
+  (número `RX-000001` de una secuencia, PDF A5 archivado con su `sha256` y código de verificación) →
+  **anulación con motivo** (nunca se borra) → **reimpresión contada y auditada**.
+  - **El récipe emitido es un documento cerrado**: guarda una copia de los datos del paciente
+    (`patient_snapshot`) y de cada medicamento, así que corregir la ficha o editar el catálogo **no**
+    reescribe lo que se entregó; lo que se descarga después es el mismo PDF, byte a byte.
+  - **El PDF A5 lo compone Chromium** (Playwright) desde la plantilla del membrete: A5 exacto
+    (148 × 210 mm), membrete desde `CLINIC`, logo del consultorio, tabla de medicamentos, indicaciones
+    generales, QR de verificación y bloque de firma con MPPS y especialidad. Chromium se levanta una
+    vez por proceso y se reutiliza; si falta un dato del membrete, el editor **avisa antes de emitir**.
+  - **El QR se comprueba de ida y vuelta**: se rasteriza y se **lee con un decodificador real**
+    (`jsqr`), que es lo que garantiza que un teléfono llegue a la página de verificación.
+  - **`GET /api/v1/clinical/verify/:code` es pública** (el gateway la deja pasar sin token): la abre
+    quien tiene el papel en la mano y confirma que el récipe es auténtico **sin datos clínicos** —ni
+    diagnóstico, ni medicamentos, ni cédula, solo el nombre abreviado del paciente y si está vigente o
+    anulado—. El código usa un alfabeto sin 0/O ni 1/I/L y se acepta con guion, sin guion y en
+    minúsculas. La página `/verificar/<código>` vive fuera del shell, sin sesión.
+  - **Catálogo de 25 medicamentos de odontología** sembrado en la migración (nombre, presentaciones,
+    vías, dosis/frecuencia/duración habituales e indicaciones) con autocompletado en el editor; lo que
+    se elige se copia a la línea del récipe y se puede editar.
+  - **`package.json`**: `npm run smoke:prescription` (32 comprobaciones por el gateway, incluida la
+    verificación sin token).
+  - **`packages/storage`**: el almacén de binarios (`BlobStore` en disco) sale de `patients` a un
+    paquete propio que comparten pacientes y clínica; `services/clinical` gana `STORAGE_DIR`,
+    `PUBLIC_APP_URL`, `PDF_CHROMIUM_PATH` y `PDF_TIMEOUT_MS`.
 - **El consultorio se pone con otro odontólogo editando un solo archivo**
   ([`packages/contracts/src/clinic.ts`](packages/contracts/src/clinic.ts), decisión del 2026-10-04):
   nombre, razón social, dirección, ciudad, teléfonos, correo, RIF, sitio web, logo y **los
@@ -24,6 +59,18 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   - [`assets/clinic/`](assets/clinic/README.md) es donde se deja el logo del membrete.
   - 15 pruebas nuevas: la sección completa, los usuarios sin repetir, el odontólogo que firma según
     el usuario y que los tres servicios leen de ahí (no de un literal).
+
+### Corregido
+
+- **La subida de archivos del paciente nunca funcionó por HTTP** (encontrado al probar los adjuntos
+  de la sesión): con `attachFieldsToBody`, `@fastify/multipart` deja **cada campo de texto como un
+  objeto** (`{ fieldname, value }`) y la ruta los pasaba tal cual al esquema de Zod, así que
+  respondía `400 — se esperaba string, se recibió object`. Ninguna prueba lo veía porque las de
+  integración llaman al servicio directamente y la de humo no subía archivos. Ahora los campos pasan
+  por `multipartFieldValue()` (`@odontocrm/kernel`) en las dos rutas de subida, y
+  `npm run smoke:patients` **sube, lista y descarga** un adjunto para que no vuelva a pasar.
+- El encabezado del récipe tomaba el **resumen de la sesión** («Endodoncia multirradicular · pieza
+  36») en vez del nombre del paciente; ahora el nombre sale de la ficha del paciente.
 
 ## [Fase 7, sesión A] — Sesiones clínicas · 2026-10-04
 

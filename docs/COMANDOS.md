@@ -219,6 +219,16 @@ Detalles que conviene saber:
 
 Todos los servicios escuchan en `127.0.0.1`: se entra **solo** por el gateway.
 
+### Qué se instala aparte
+
+| Qué | Cuándo | Comando |
+| :--- | :--- | :--- |
+| Chromium de Playwright | Para el **PDF A5 del récipe** (Fase 7B) y para las capturas de revisión | `npx playwright install chromium` |
+
+Los adjuntos de la sesión y los PDF de los récipes se guardan en disco: `STORAGE_DIR`
+(por defecto `./storage/clinical` en el servicio clínico, `./storage/patients` en el de pacientes).
+Están en `.gitignore` y **entran en el respaldo** junto con la base de datos (Fase 10).
+
 ---
 
 ## 7. Pruebas de humo
@@ -230,12 +240,17 @@ base de datos). Necesitan los servicios arrancados y datos sembrados.
 | :--- | :--- | :--- |
 | `npm run telegram:menu` | El **menú de comandos** que Telegram tiene registrado para el bot, comparado con el catálogo del contrato | 1 (con `-- --set` lo vuelve a registrar) |
 | `npm run smoke:auth` | Ciclo de sesión: login, refresco, permisos, cierre | 17 |
-| `npm run smoke:patients` | Registro, duplicado, edición con motivo, borrado y auditoría | 26 |
+| `npm run smoke:patients` | Registro, duplicado, edición con motivo, borrado y auditoría · **subida, listado y descarga de un adjunto** | 29 |
 | `npm run smoke:agenda` | Ticket, cupo, franja, sobrecupo, reprogramación y aviso en lote | 41 |
 | `npm run smoke:notifications` | Estado de canales, plantillas, vinculación con QR, aviso de cita con `.ics` y el botón «Notificar» sin duplicar | 27 |
 | `npm run smoke:screens` | Pantalla kiosko, llamado en el lobby por SSE (mide la latencia), consultorio y baja de la pantalla | 26 |
 | `npm run smoke:odontogram` | Boca por teclado, superación de caras por la pieza completa, borrado y auditoría | 29 |
 | `npm run smoke:clinical` | Sesión clínica: abrir, autoguardar, cerrar (y no cerrar en blanco), enmendar, hallazgo del odontograma ligado a la sesión y «atendido» con y sin sesión (estrena paciente y busca hora libre en cada corrida) | 30 |
+| `npm run smoke:prescription` | Fase 7B: adjunto de la sesión (subida, listado, descarga y pieza), catálogo, borrador del récipe, **emisión con número y PDF A5**, no emitir dos veces, reimpresión auditada, anulación con motivo, **verificación pública sin token**, y que la secretaría imprime pero no receta | 32 |
+
+> `smoke:prescription` necesita Chromium (lo usa el propio servicio para componer el PDF):
+> `npx playwright install chromium`. Si el navegador no está, la emisión responde 500 y el humo lo
+> dice con claridad.
 
 Variables opcionales (mismas en todas):
 

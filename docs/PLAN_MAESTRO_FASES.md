@@ -628,7 +628,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | Git | ✅ instalado (2.55) | |
 | **PostgreSQL 18** | ✅ instalado y corriendo (`postgresql-x64-18`, puerto 5432) | Binarios en `C:\Program Files\PostgreSQL\18\bin`. Falta solo definir el **password del superusuario** en el `.env` local para que el bootstrap cree las 8 bases y sus roles. |
 | PM2 | ✅ instalado global (`npm i -g pm2`) | Mantiene los 9 servicios vivos y los reinicia si se caen |
-| Playwright + Chromium | ⏳ pendiente | Solo a partir de la **Fase 7** (PDF del récipe): `npx playwright install chromium` |
+| Playwright + Chromium | ✅ instalado (Fase 7B) | Chromium compone el **PDF A5 del récipe**: `npx playwright install chromium` |
 | Tailscale | ⏳ opcional, **Fase 10** | Para el acceso remoto sin exponer nada a internet |
 
 **Fedora (producción — se documenta y prueba en la Fase 10):** `nodejs`, `postgresql18-server`, `postgresql18-contrib`, `firewalld`, PM2 global (o unidades `systemd`), dependencias de Chromium para Playwright (`npx playwright install-deps chromium`), usuario de sistema `odontocrm`, `pg_dump` para respaldos y Tailscale. Se instala la **misma versión mayor de PostgreSQL que en desarrollo (18)** para que las migraciones sean idénticas.
@@ -694,7 +694,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | **4.1** | ✅ **completada** (2026-10-03) | 7 commits · `npm run verify` en verde con **198 pruebas** (+51 de integración: **249 en total**) · **núcleo conversacional y adaptadores de canal** ([ADR 0029](adr/0029-nucleo-conversacional-y-adaptadores.md)): el asistente trabaja sobre `InboundMessage` y envía por el adaptador, con **intenciones** (no comandos) y **opciones numeradas guardadas en la conversación**; migraciones `0001` (`direccion` + `canal` + `opciones` + `evento_id text` para el `wamid`) y `0002` (plantillas sin comandos), verificadas desde cero en base limpia; **webhook público** de WhatsApp con firma obligatoria y su **excepción en el gateway**; **kit de conformidad** con el mismo juego de 24 pruebas contra Telegram, WhatsApp y simulado · **prueba de humo** (`npm run smoke:notifications`) con **24 comprobaciones** en verde y el webhook verificado contra un doble de la Graph API (verificación → 401 sin firma → 200 con firma → respuesta enviada) |
 | 5 | ✅ **completada** (2026-10-03) | 8 commits · `npm run verify` en verde con **206 pruebas** (+60 de integración: **266**, **267** tras el aviso a mano del botón «Notificar») · **`services/screens`** (nuevo, puerto 4007, [ADR 0030](adr/0030-pantallas-kiosko-y-sse.md)): proyección de la sala por eventos, histórico de llamados idempotente, dispositivos con ajustes y latido, y **flujo SSE** con estado completo; **login de pantalla kiosko** (token de dispositivo → JWT de rol `pantalla`); **`/secretaría`** con las acciones del flujo (registrar llegada, llamar —segundo llamado—, pasar a consulta, atendido con motivo, inasistencia y **llamada fuera de orden**); **displaylobby** con turno, nombre abreviado, 2.º llamado en rojo y **voz en español**; **pantalla de consultorio** con motivo y datos críticos en semáforo; **`/pantallas`** para registrar televisores y desactivarlos · **prueba de humo** (`npm run smoke:screens`) con **26 comprobaciones** en verde, con el llamado llegando al lobby en **882 ms** (después, 303-443 ms con el índice y el aviso sin espera) · se corrigió el **orden de los eventos del lote** (pg-boss no lo garantiza) · 30 ADRs |
 | 6 | ✅ **completada** (2026-10-04, en dos sesiones) | **Sesión A — historia clínica**: contrato de las **11 secciones** de [`formato_historia.md`](formato_historia.md) con catálogos tipificados + «otros», estados `borrador → firmada`, firma (exige secciones obligatorias y consentimiento), adendas con motivo, consentimiento con quién acepta y ante quién, constancia de impresión; **`services/clinical`** (nuevo, puerto 4005) con 4 pruebas de integración contra PostgreSQL real; **`/consultorio`** con aviso obligatorio de primera visita, formulario por pasos con autoguardado, alertas clínicas resaltadas y vista de impresión A4; la secretaría gana `clinical:read` (imprime, no escribe). **Sesión B — odontograma**: contrato FDI (52 piezas, dentición deducida del número, geometría de §7 y máquina de teclado de la carga rápida); **`services/odontogram`** (nuevo, puerto 4006) con odontograma uno por paciente, **captura por excepción**, histórico append-only `tooth_finding_history`, evento y auditoría por outbox, constancia de impresión y ruta interna de resumen; **interfaz** con pestañas Historia/Odontograma, SVG interactivo, carga rápida por teclado, **hoja táctil de botones grandes** para tableta, deshacer, evolución y impresión A4; **ADRs 0031, 0032 y 0033** (superación de caras, convivencia de tratamientos con las fases del implante, y posición anatómica del odontograma). **Revisión del odontólogo (2026-10-04)**: se corrigieron los números espejados de la mandíbula en el papel, el hueco de la **línea media**, la orientación de las caras en cada arcada, el **borde incisal** en incisivos y caninos, el espejo **mesial/distal** de la derecha del paciente, la leyenda **bicolor** de los tratamientos, el orden determinista de la tabla, las celdas de notas vacías y la edición de hallazgos; se añadió la **fase quirúrgica** del implante (`ausente` + `implante`); la **corona cubre** las caras que había debajo (el dato queda en la historia) y la **caries recurrente** se registra encima; `superar` y `excluir` las caras quedaron como dos reglas distintas. Cuatro capturas reales del gráfico y del informe revisadas a ojo. **Hoja táctil validada en tableta por el odontólogo** (2026-10-04): marcar con botones queda perfecto, así que el diseño táctil ya no tiene comprobaciones pendientes — lo que falta para el uso con el dedo en el consultorio es publicar el acceso por TLS en la LAN (Fase 10). **Añadido tras el cierre (2026-10-04)**, pedido por el odontólogo: el informe impreso puede incluir el **historial de cambios con fechas** mediante una casilla, y las **notas se escriben al marcar** (antes había que guardar y editar). 33 ADRs ·
-| 7 | 🟡 **sesión A completada** (2026-10-04) · sesión B pendiente (adjuntos, récipes A5) | **Sesión A — sesiones clínicas**: contrato del **documento del día** (signos vitales con rangos, examen intraoral y periodontal, **28 procedimientos y 16 materiales** de catálogo con «otros», diagnóstico, indicaciones, próxima cita y notas internas) y **`clinical_sessions`** con `content jsonb`, numeración por paciente `S-000001`, estados `borrador → cerrada` y `amended_from_id` ([ADR 0034](adr/0034-sesion-clinica-evolucion.md)); **autoguardado** sin evento ni auditoría (el acto clínico nace al **cerrar**, que exige contenido mínimo), **cierre inmutable** y **enmienda** que abre una sesión nueva con el motivo; **«atendido» con respaldo verificado**: la agenda pregunta al servicio clínico si la sesión existe, es del mismo paciente y está cerrada antes de aceptarla sin motivo (`appointments.clinical_session_id`, migración `0003`) —antes un UUID inventado bastaba—; **el odontograma marca dentro de la sesión** (`recordedInSessionId`); **pantalla del consultorio con los datos críticos de verdad** (leídos de la historia, [ADR 0035](adr/0035-datos-criticos-leidos-no-empujados.md)); pestaña **Sesión clínica** en `/consultorio` con autoguardado, cierre, corrección y la evolución a la vista; **prueba de humo** (`npm run smoke:clinical`) con **30 comprobaciones** en verde, repetible; se corrigió el `CHECK` del canal `whatsapp` que faltaba desde la Fase 4.1 (migración `0002` de scheduling). **Pendiente de la sesión B**: adjuntos con visor, recetas estructuradas y PDF A5 con QR |
+| 7 | ✅ **completada** (2026-10-04, en dos sesiones) · tag `fase-7` | **Sesión A — sesiones clínicas**: contrato del **documento del día** (signos vitales con rangos, examen intraoral y periodontal, **28 procedimientos y 16 materiales** de catálogo con «otros», diagnóstico, indicaciones, próxima cita y notas internas) y **`clinical_sessions`** con `content jsonb`, numeración por paciente `S-000001`, estados `borrador → cerrada` y `amended_from_id` ([ADR 0034](adr/0034-sesion-clinica-evolucion.md)); **autoguardado** sin evento ni auditoría (el acto clínico nace al **cerrar**, que exige contenido mínimo), **cierre inmutable** y **enmienda** que abre una sesión nueva con el motivo; **«atendido» con respaldo verificado**: la agenda pregunta al servicio clínico si la sesión existe, es del mismo paciente y está cerrada antes de aceptarla sin motivo (`appointments.clinical_session_id`, migración `0003`) —antes un UUID inventado bastaba—; **el odontograma marca dentro de la sesión** (`recordedInSessionId`); **pantalla del consultorio con los datos críticos de verdad** (leídos de la historia, [ADR 0035](adr/0035-datos-criticos-leidos-no-empujados.md)); pestaña **Sesión clínica** en `/consultorio` con autoguardado, cierre, corrección y la evolución a la vista; **prueba de humo** (`npm run smoke:clinical`) con **30 comprobaciones** en verde, repetible; se corrigió el `CHECK` del canal `whatsapp` que faltaba desde la Fase 4.1 (migración `0002` de scheduling). **Sesión B — adjuntos y récipes A5**: `clinical_session_files` (radiografía, foto clínica, documento u otro, con pie y pieza FDI) con cuadrícula de miniaturas, **visor con zoom** y borrado solo en sesión borrador; **catálogo de 25 medicamentos** sembrado en la migración; **récipe** borrador → **emitido** (número `RX-000001` de una secuencia, **PDF A5 con Chromium** desde la plantilla del membrete, archivado con su `sha256` y código de verificación) → **anulado con motivo** (nunca se borra) → **reimpresión contada y auditada** ([ADR 0036](adr/0036-recipe-emitido-documento-archivado.md)); **verificación pública sin sesión** en `/verificar/<código>` (sin datos clínicos), con el QR comprobado **de ida y vuelta** con un decodificador real; el consultorio se personaliza en una **sección editable** (`packages/contracts/src/clinic.ts`); **`packages/storage`** extraído para compartir el almacén de binarios; se corrigió la **subida de archivos del paciente, que nunca funcionó por HTTP** desde la Fase 2 (hallazgo 9). 504 pruebas de integración y 406 unitarias en verde · `npm run smoke:prescription` (**32 comprobaciones**) · 36 ADRs |
 | 8–10 | ⏳ pendientes | Ver §13 |
 
 ### Lo que quedó funcionando
@@ -1038,27 +1038,70 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    pide al pintar y usa lo empujado como respaldo: el mismo patrón que ya usaba para la ficha del
    paciente.
 
+### Hallazgos de la Fase 7 (sesión B) que cambian supuestos
+
+9. **La subida de archivos del paciente nunca funcionó por HTTP** (encontrado al probar los adjuntos
+   de la sesión, Fase 2 de por medio). Con `attachFieldsToBody`, `@fastify/multipart` deja **cada
+   campo de texto como un objeto** (`{ fieldname, value }`) y la ruta los pasaba tal cual al esquema
+   de Zod: `400 — se esperaba string, se recibió object`. La subida de la ficha del paciente estaba
+   rota desde que se escribió y **ninguna prueba lo veía**: las de integración llaman al servicio
+   directamente y la de humo no subía archivos. Ahora los campos pasan por `multipartFieldValue()`
+   (`@odontocrm/kernel`), `npm run smoke:patients` sube, lista y descarga un adjunto, y el humo del
+   récipe hace lo mismo con los de la sesión. Lección: **una ruta `multipart` solo está probada
+   cuando la prueba manda `multipart`**; el atajo de llamar al servicio se salta justo la capa que
+   puede estar mal.
+10. **Emitir es cerrar: el récipe guarda copia de lo que se imprimió**
+    ([ADR 0036](adr/0036-recipe-emitido-documento-archivado.md)). El paciente corrige su nombre, el
+    catálogo cambia de presentación, alguien anula un récipe ya entregado: si el documento se compone
+    al vuelo, el papel que tiene el paciente deja de coincidir con el sistema. El récipe emitido
+    archiva los datos del paciente, los del medicamento y **el PDF** (`sha256`), no se borra nunca y
+    solo se anula con motivo; y reimprimir deja constancia con su actor. Vale para cualquier
+    documento que salga del sistema (informe del odontograma, historia impresa, y los presupuestos
+    cuando lleguen —§13 los deja como fase futura—): **lo que se entrega en papel se guarda como se
+    entregó**.
+11. **Los huecos de numeración se aceptan, y hay que decirlo.** El número se toma de la secuencia
+    antes de renderizar el PDF; si Chromium falla, ese número no se reutiliza y queda un hueco. Se
+    acepta (como en cualquier numeración de documentos) **a cambio** de que dos emisiones simultáneas
+    nunca compartan número y de que la emisión no tenga una transacción abierta mientras Chromium
+    trabaja. Está escrito en el ADR para que nadie lo «arregle» sin querer.
+12. **Chromium tarda, pero se reutiliza.** Un PDF A5 cuesta ~0,9 s con el navegador ya levantado y
+    bastante más si se arranca por petición: el renderizador es **uno por proceso**, encolado en
+    serie, y se cierra con el servicio. Para que la emisión no deje nada a medias, el PDF se genera
+    **antes** de escribir en la base y, si la transacción no cuaja, el archivo se borra del almacén.
+13. **La página pública la abre cualquiera, y eso decide el diseño.** El cliente HTTP del navegador
+    tuvo que aprender a llamar **sin token** (`anonymous`), la ruta vive fuera del shell y el gateway
+    la exceptúa por prefijo. Lo que devuelve no lleva datos clínicos (ADR 0015): nombre **abreviado**
+    del paciente —el mismo que ya usan las pantallas de la sala—, fecha, quién firmó, cuántos
+    medicamentos y si está vigente o anulado. El esquema del contrato tiene una prueba que **enumera
+    sus campos**, para que añadir el diagnóstico sea una decisión y no un descuido.
+14. **El QR hay que leerlo, no mirarlo.** Comprobar que el SVG «tiene pinta de QR» no dice nada: la
+    prueba lo rasteriza y lo **decodifica con `jsqr`**, que es la única forma de saber que un teléfono
+    va a llegar a la página de verificación.
+15. **Los adjuntos de una sesión cerrada son parte del documento.** Se pueden leer y descargar
+    siempre, pero solo se quitan mientras la sesión es **borrador** (409 después); y la miniatura y
+    el visor los hace el navegador sobre el archivo pedido al endpoint autorizado, sin URL pública ni
+    procesamiento de imágenes en el servidor.
+
 ### Próximo paso
 
-Arrancar la **sesión B de la Fase 7** (adjuntos y récipes A5): subida de imágenes y radiografías con
-miniatura, visor con zoom, pie de foto y referencia a la pieza; **recetas estructuradas** con el
-catálogo de medicamentos (presentación, vía, dosis, frecuencia, duración e indicaciones por
-medicamento más las generales); el diálogo **«¿Desea guardar el récipe?»** al cerrar la sesión; y el
-**PDF A5** con Playwright, membrete configurable, numeración `RX-000001`, QR de verificación y la
-página pública `/verificar/<code>`, con reimpresión auditada.
+**Fase 8 — Página unificada del flujo completo** (`/flujo`), con la Fase 7 cerrada (tag `fase-7`) y
+su documentación al día. El odontólogo que trabaja solo tiene que poder llevar el día completo sin
+salir de esa pantalla: cola del día, paciente en curso (historia y **sesión**, con sus adjuntos y su
+récipe) y las acciones de secretaría en la barra superior, con atajos de teclado y modo tableta.
 
-Lo que ya está puesto para esa sesión:
-- La **sesión cerrada** existe y es inmutable, así que el récipe cuelga de ella (`session_id`) y el
-  diálogo de guardado tiene dónde apoyarse.
-- El **cierre de sesión** ya deja su acta en la auditoría, que es lo que la reimpresión del récipe
-  extiende con `prescription_issued` / `prescription_reprinted` (las acciones ya están en el
-  catálogo de auditoría).
-- El **membrete** sigue genérico: al construir el PDF hay que pedir logo, RIF, teléfonos y datos del
-  odontólogo (MPPS y especialidad), como dice §16.
-- Playwright **no está instalado** todavía (`npx playwright install chromium`), y en Windows el
-  Chromium de la caché de Playwright ya se usa para las capturas de revisión de la interfaz.
+Antes de arrancarla, dos cosas de la Fase 7 que quedan en manos del odontólogo:
 
-Misma regla: `npm run verify` en verde, commits atómicos y tag `fase-7` al cerrar la fase completa.
+- **Los datos reales del membrete** (logo, RIF, teléfonos, MPPS y especialidad): se editan en
+  [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) y el editor del récipe
+  avisa mientras falten, así que hoy el récipe sale **sin** esos datos, no con datos inventados.
+  El logo se deja en [`assets/clinic/`](../assets/clinic/README.md).
+- **La revisión a ojo del récipe impreso** (A5) y de la página pública de verificación, que ya se
+  revisaron en captura durante la sesión.
+
+Lo que la Fase 8 puede dar por puesto: el **récipe** ya se prepara y se emite desde la pestaña de la
+sesión (con la pregunta «¿Desea guardar el récipe?» al cerrar), así que `/flujo` reutiliza ese panel
+en vez de reimplementarlo; el **panel inferior** y el **shell** ya soportan tablet; y los estados de
+la cita (en espera → en consulta → atendido) ya están donde la barra superior los necesita.
 
 > Este documento es la referencia viva del proyecto: cualquier cambio de alcance se refleja aquí
 > **antes** de escribir código, y cada decisión relevante se registra como ADR en

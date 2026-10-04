@@ -1,12 +1,12 @@
-# OdontoCRM
+﻿# OdontoCRM
 
 CRM para un consultorio odontológico: gestión de citas, secretaría, historia clínica,
 odontograma, récipes, reportes y auditoría — construido como **microservicios Node.js +
 TypeScript** sobre **PostgreSQL**, pensado para correr en la red local de la clínica y,
 más adelante, fuera de ella por VPN.
 
-> **Estado: Fase 7 completada en su sesión A** (sesiones clínicas, fase 7B pendiente: adjuntos y
-> récipes A5). El plan completo, con las 11 fases y sus criterios de aceptación, está en
+> **Estado: Fase 7 completada** (sesiones clínicas, adjuntos y récipes A5, en dos sesiones). El plan
+> completo, con las 11 fases y sus criterios de aceptación, está en
 > [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md).
 
 ---
@@ -80,7 +80,7 @@ está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)**. Estos son los del día a d�
 | `npm run dev` | Compila en modo vigilancia y arranca gateway + servicios + interfaz (5173) |
 | `npm test` | Pruebas unitarias y de contrato (Vitest) |
 | `npm run test:integration` | Suites contra PostgreSQL real (outbox, colas, sesión, pacientes, agenda, pantallas) |
-| `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical` |
+| `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`, `prescription` |
 | **`npm run verify`** | **Puerta de calidad: secretos + lint + formato + compilación + pruebas unitarias** |
 
 Antes de cerrar cualquier fase, `npm run verify` debe pasar en verde, además de
@@ -143,7 +143,7 @@ odontólogo, `npm run seed:users`. El logo se deja en [`assets/clinic/`](assets/
 | patients | 4002 | ✅ Fase 2 |
 | scheduling | 4003 | ✅ Fase 3 |
 | notifications | 4004 | ✅ Fase 4 (Telegram) · Fase 4.1 (multicanal + webhook) |
-| clinical | 4005 | ✅ Fase 6, sesión A (historia clínica) · Fase 7A (sesiones) |
+| clinical | 4005 | ✅ Fase 6 (historia clínica) · Fase 7 (sesiones, adjuntos y récipes A5) |
 | odontogram | 4006 | ✅ Fase 6, sesión B (odontograma FDI) |
 | screens | 4007 | ✅ Fase 5 (secretaría y pantallas con SSE) |
 | reporting | 4008 | Fase 9 |
@@ -440,6 +440,47 @@ pasa a `cerrada`, que es inmutable ([ADR 0034](docs/adr/0034-sesion-clinica-evol
   indicaciones, próxima cita y notas internas; indicador de guardado, cierre con nota y la evolución
   anterior a la vista.
 - `npm run smoke:clinical` recorre todo el camino contra el gateway real (30 comprobaciones).
+
+---
+
+## API de la Fase 7B (adjuntos, récipes A5 y verificación)
+
+Los **adjuntos** son radiografías, fotos clínicas y documentos de la sesión (con pie). El **récipe**
+es un documento A5 con membrete, numerado `RX-000001` y verificable por QR
+([ADR 0015](docs/adr/0015-recipe-a5-en-pdf.md), [ADR 0036](docs/adr/0036-recipe-emitido-documento-archivado.md)).
+
+| Método y ruta | Qué hace | Permiso |
+| :--- | :--- | :--- |
+| `GET /api/v1/clinical/sessions/:id/attachments` | Adjuntos de la sesión | `clinical:read` |
+| `POST /api/v1/clinical/sessions/:id/attachments` | Sube un archivo (`multipart`: `file`, `kind`, `caption`, `toothNumber`) | `clinical:write` |
+| `GET /api/v1/clinical/sessions/:id/attachments/:attachmentId` | Descarga autorizada del adjunto | `clinical:read` |
+| `DELETE /api/v1/clinical/sessions/:id/attachments/:attachmentId` | Quita un adjunto (solo en sesión **borrador**) | `clinical:write` |
+| `GET /api/v1/clinical/patients/:patientId/attachments` | Todos los adjuntos del paciente (ficha) | `clinical:read` |
+| `GET /api/v1/clinical/medications?search=` | Catálogo de medicamentos para el autocompletado | `clinical:read` |
+| `PUT /api/v1/clinical/sessions/:id/prescription` | Guarda el **borrador** del récipe de la sesión | `clinical:write` |
+| `POST /api/v1/clinical/prescriptions/:id/issue` | **Emite**: número, PDF A5 archivado y código de verificación | `clinical:write` |
+| `GET /api/v1/clinical/prescriptions/:id/pdf` | Descarga el PDF archivado (imprimir es leer) | `clinical:read` |
+| `POST /api/v1/clinical/prescriptions/:id/printed` | Deja constancia de la impresión o descarga | `clinical:read` |
+| `POST /api/v1/clinical/prescriptions/:id/annul` | Anula con motivo (nunca se borra) | `clinical:write` |
+| `GET /api/v1/clinical/patients/:patientId/prescriptions` | Historial de récipes del paciente | `clinical:read` |
+| `GET /api/v1/clinical/verify/:code` | **Público**: confirma que el récipe es auténtico, sin datos clínicos | — |
+
+- **El PDF A5 lo compone Chromium** (Playwright) desde la plantilla del membrete, que sale de la
+  [sección editable del consultorio](packages/contracts/src/clinic.ts); si falta un dato (RIF,
+  teléfono, MPPS, especialidad) el editor **avisa antes de emitir** y el récipe sale sin él.
+  Se instala una vez: `npx playwright install chromium`.
+- **El récipe emitido es un documento cerrado**: guarda una copia de los datos del paciente y de
+  cada medicamento, y el PDF se archiva con su `sha256`. Lo que se descarga después es ese mismo
+  archivo; editar el catálogo o la ficha del paciente **no** reescribe lo entregado.
+- **Verificación pública sin sesión**: el QR apunta a `<PUBLIC_APP_URL>/verificar/<código>`, que
+  responde con el nombre del consultorio, la fecha, quién lo firmó, el nombre **abreviado** del
+  paciente y si está vigente o anulado. Ni diagnóstico, ni medicamentos, ni cédula.
+- **La miniatura y el visor los hace el navegador**: el archivo se pide por el endpoint autorizado
+  (nunca por una URL pública) y el visor tiene zoom con botones, rueda y teclado. No hay generación
+  de miniaturas en el servidor a propósito: sería una librería de imágenes para algo que el
+  navegador ya sabe hacer.
+- `npm run smoke:prescription` recorre todo el camino (32 comprobaciones), incluida la verificación
+  pública **sin token**.
 
 ---
 
