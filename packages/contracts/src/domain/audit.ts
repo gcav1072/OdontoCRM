@@ -56,8 +56,11 @@ export const AUDIT_ACTIONS = [
   'clinical_session_created',
   'clinical_session_closed',
   'clinical_session_amended',
+  'clinical_session_file_uploaded',
+  'clinical_session_file_removed',
   'prescription_issued',
   'prescription_reprinted',
+  'prescription_annulled',
   // Odontograma (llegan por el outbox desde el servicio de odontograma)
   'tooth_finding_recorded',
   'tooth_finding_updated',
