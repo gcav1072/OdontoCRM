@@ -6,8 +6,10 @@ import { RequireAuth } from './components/shell/RequireAuth';
 import { RequirePermission } from './components/shell/RequirePermission';
 import { MODULES } from './lib/nav';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
+import { ConsultorioPage } from './pages/ConsultorioPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
+import { MedicalRecordPrintPage } from './pages/MedicalRecordPrintPage';
 import { ModulePlaceholder } from './pages/ModulePlaceholder';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { NotificationsPage } from './pages/NotificationsPage';
@@ -46,6 +48,7 @@ export const App = () => {
         'notificaciones',
         'secretaria',
         'pantallas',
+        'consultorio',
       ].includes(modulo.id),
   );
 
@@ -63,6 +66,19 @@ export const App = () => {
         element={
           <RequireAuth>
             <ChangePasswordPage />
+          </RequireAuth>
+        }
+      />
+
+      {/* Vista de impresión de la historia clínica: fuera del shell para que el
+          papel no lleve navegación. La secretaría entra con `clinical:read`. */}
+      <Route
+        path="/consultorio/:id/imprimir"
+        element={
+          <RequireAuth>
+            <RequirePermission permission="clinical:read">
+              <MedicalRecordPrintPage />
+            </RequirePermission>
           </RequireAuth>
         }
       />
@@ -158,6 +174,18 @@ export const App = () => {
           element={
             <RequirePermission permission="screens:manage">
               <ScreensPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* Fase 6: historia clínica. Se entra con `clinical:read`; escribir
+            (guardar, firmar, adendas y consentimiento) exige `clinical:write` y
+            se comprueba dentro de la pantalla. */}
+        <Route
+          path="consultorio"
+          element={
+            <RequirePermission permission="clinical:read">
+              <ConsultorioPage />
             </RequirePermission>
           }
         />

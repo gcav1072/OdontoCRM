@@ -1,4 +1,5 @@
 import {
+  type AcceptConsentInput,
   type AppointmentStatus,
   type AppointmentSummary,
   type AssignAppointmentInput,
@@ -10,7 +11,11 @@ import {
   type ChangePasswordInput,
   type ChangePatientStatusInput,
   type Channel,
+  type ClinicalRecordDetail,
+  type ClinicalRecordLookup,
+  type ClinicalSectionKey,
   type ConsultationState,
+  type CreateAmendmentInput,
   type CreatePatientInput,
   type CreateRequestInput,
   type CreateUserInput,
@@ -535,4 +540,51 @@ export const notificationsApi = {
 
   unlinkChannel: (patientId: string): Promise<void> =>
     api.delete<void>(`/notifications/channels/${patientId}`),
+};
+
+/** Constancia de impresión de una historia clínica. */
+export interface PrintRecordResult {
+  id: string;
+  printCount: number;
+  lastPrintedAt: string;
+}
+
+/**
+ * Historia clínica (Fase 6, sesión A). Leer exige `clinical:read` (la secretaría
+ * imprime) y escribir `clinical:write` (odontólogo y admin); la comprobación la
+ * hace el servidor en cada ruta.
+ */
+export const clinicalApi = {
+  /** Historia del paciente, o `exists: false` cuando es la primera visita. */
+  recordByPatient: (patientId: string, signal?: AbortSignal): Promise<ClinicalRecordLookup> =>
+    api.get<ClinicalRecordLookup>(`/clinical/patients/${patientId}/record`, { signal }),
+
+  /** Abre la historia (idempotente). Solo odontólogo y admin. */
+  openRecord: (patientId: string): Promise<ClinicalRecordDetail> =>
+    api.post<ClinicalRecordDetail>(`/clinical/patients/${patientId}/record`, {}),
+
+  getRecord: (id: string, signal?: AbortSignal): Promise<ClinicalRecordDetail> =>
+    api.get<ClinicalRecordDetail>(`/clinical/records/${id}`, { signal }),
+
+  saveSection: (
+    id: string,
+    sectionKey: ClinicalSectionKey,
+    content: Record<string, unknown>,
+  ): Promise<ClinicalRecordDetail> =>
+    api.request<ClinicalRecordDetail>('PUT', `/clinical/records/${id}/sections/${sectionKey}`, {
+      body: { content },
+    }),
+
+  acceptConsent: (id: string, input: AcceptConsentInput): Promise<ClinicalRecordDetail> =>
+    api.request<ClinicalRecordDetail>('PUT', `/clinical/records/${id}/consent`, { body: input }),
+
+  sign: (id: string): Promise<ClinicalRecordDetail> =>
+    api.post<ClinicalRecordDetail>(`/clinical/records/${id}/sign`, { confirm: true }),
+
+  addAmendment: (id: string, input: CreateAmendmentInput): Promise<ClinicalRecordDetail> =>
+    api.post<ClinicalRecordDetail>(`/clinical/records/${id}/amendments`, input),
+
+  /** Deja constancia de la impresión (también la secretaría, que solo lee). */
+  registerPrint: (id: string): Promise<PrintRecordResult> =>
+    api.post<PrintRecordResult>(`/clinical/records/${id}/printed`, {}),
 };

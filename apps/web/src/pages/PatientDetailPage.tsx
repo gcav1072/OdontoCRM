@@ -10,7 +10,16 @@ import {
   CardTitle,
   Spinner,
 } from '@odontocrm/ui';
-import { ArrowLeft, Eye, FileText, IdCard, ShieldAlert, Trash2, UserRound } from 'lucide-react';
+import {
+  ArrowLeft,
+  Eye,
+  FileText,
+  IdCard,
+  ShieldAlert,
+  Stethoscope,
+  Trash2,
+  UserRound,
+} from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
@@ -147,6 +156,17 @@ export const PatientDetailPage = () => {
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {/* La historia clínica se abre desde la ficha: es el camino natural
+                del odontólogo, y la secretaría entra en solo lectura. */}
+            {hasPermission('clinical:read') && (
+              <LinkButton
+                to={`/consultorio?paciente=${paciente.id}`}
+                variant="secondary"
+                leadingIcon={<Stethoscope className="size-4" aria-hidden="true" />}
+              >
+                {t('pacientes.ficha.verHistoria')}
+              </LinkButton>
+            )}
             {hasPermission('patients:write') && (
               <LinkButton
                 to={`/registro?documento=${encodeURIComponent(paciente.document)}`}
