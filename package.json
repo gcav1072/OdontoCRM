@@ -83,6 +83,7 @@
     "reports:latencia": "node tools/reportes-latencia.mjs",
     "e2e:flujo": "node tools/e2e-flujo.mjs",
     "e2e:reportes": "node tools/e2e-reportes.mjs",
+    "e2e:clinica": "node tools/e2e-clinica.mjs",
     "check-secrets": "node tools/check-secrets.mjs",
     "db:bootstrap": "node infra/db/bootstrap.mjs",
     "db:migrate": "node tools/migrate-all.mjs",
