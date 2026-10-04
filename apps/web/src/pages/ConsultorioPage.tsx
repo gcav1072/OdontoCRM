@@ -287,6 +287,11 @@ const RecordWorkspace = ({
       ) : pestana === 'sesion' ? (
         <SessionPanel
           patientId={patientId}
+          patientName={
+            resultado.exists
+              ? (resultado.record.patient?.fullName ?? t('clinica.paciente.desconocido'))
+              : t('clinica.paciente.desconocido')
+          }
           canWrite={puedeEscribir}
           openSession={sesionAbierta}
           sessions={sesiones}

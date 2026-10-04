@@ -1,4 +1,4 @@
-import {
+﻿import {
   clinicalSessionHasContent,
   sessionProcedureText,
   type AppointmentSummary,
@@ -43,6 +43,9 @@ import { t } from '../../lib/i18n';
 import { NoticeBanner } from '../NoticeBanner';
 import { AmendSessionDialog } from './AmendSessionDialog';
 import { CloseSessionDialog } from './CloseSessionDialog';
+import { PrescriptionCard } from './PrescriptionCard';
+import { PrescriptionDialog } from './PrescriptionDialog';
+import { SessionAttachments } from './SessionAttachments';
 import { SessionForm } from './SessionForm';
 
 /**
@@ -59,6 +62,8 @@ const AUTOSAVE_MS = 1200;
 
 export interface SessionPanelProps {
   patientId: string;
+  /** Nombre del paciente, para el encabezado del récipe. */
+  patientName: string;
   /** `clinical:write`: sin permiso la sesión se lee, no se escribe. */
   canWrite: boolean;
   /** Sesión en borrador del paciente, si la hay (la comparte la pestaña hermana). */
@@ -112,6 +117,7 @@ const ClosedSessionCard = ({
 
 export const SessionPanel = ({
   patientId,
+  patientName,
   canWrite,
   openSession,
   sessions,
@@ -125,8 +131,10 @@ export const SessionPanel = ({
   const [citaElegida, setCitaElegida] = useState<string>('');
   const [guardado, setGuardado] = useState<SessionSaveState>('limpio');
   const [horaGuardado, setHoraGuardado] = useState<string | null>(null);
-  const [dialogo, setDialogo] = useState<'cerrar' | 'corregir' | null>(null);
+  const [dialogo, setDialogo] = useState<'cerrar' | 'corregir' | 'recipe' | null>(null);
   const [aCorregir, setACorregir] = useState<ClinicalSessionSummary | null>(null);
+  /** ¿Hay que abrir el récipe al terminar de cerrar la sesión? */
+  const [recipeAlCerrar, setRecipeAlCerrar] = useState(false);
 
   /** Última versión enviada al servidor: evita guardar lo que no cambió. */
   const ultimoEnviado = useRef<string>('');
@@ -136,6 +144,30 @@ export const SessionPanel = ({
     queryKey: ['clinica', 'sesion', sessionId],
     queryFn: ({ signal }) => clinicalApi.getSession(sessionId ?? '', signal),
     enabled: sessionId !== null,
+  });
+
+  /**
+   * Adjuntos y récipes de la sesión que se está viendo. Si no hay sesión abierta se
+   * enseña la **última cerrada** (en solo lectura): así lo que se subió o se recetó
+   * en la visita no desaparece de la pantalla al cerrarla.
+   */
+  const sesionVisible = openSession ?? sessions.find((item) => item.status === 'cerrada') ?? null;
+  const sesionVisibleId = sesionVisible?.id ?? null;
+  const sesionCerrada = sesionVisible !== null && sesionVisible.status === 'cerrada';
+
+  const recetasClave = ['clinica', 'recetas-sesion', sesionVisibleId] as const;
+  const recetasPacienteClave = ['clinica', 'recetas-paciente', patientId] as const;
+
+  const recetasQuery = useQuery({
+    queryKey: recetasClave,
+    queryFn: ({ signal }) => clinicalApi.prescriptionsBySession(sesionVisibleId ?? '', signal),
+    enabled: sesionVisibleId !== null,
+  });
+
+  const recetasPacienteQuery = useQuery({
+    queryKey: recetasPacienteClave,
+    queryFn: ({ signal }) => clinicalApi.prescriptionsByPatient(patientId, signal),
+    enabled: sesionVisibleId === null,
   });
 
   // Al abrir (o cambiar de) sesión, el formulario parte del documento guardado.
@@ -217,15 +249,23 @@ export const SessionPanel = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contenido, sessionId, canWrite]);
 
+  /**
+   * Cerrar la sesión. Si el doctor dijo que sí al récipe, al terminar se abre el
+   * editor: la sesión ya está cerrada (el récipe cuelga de ella y no la reabre).
+   */
   const cerrar = useMutation({
     mutationFn: (values: { closureNote: string | null }) =>
       clinicalApi.closeSession(sessionId ?? '', { confirm: true, closureNote: values.closureNote }),
     onSuccess: () => {
-      setDialogo(null);
+      setDialogo(recipeAlCerrar ? 'recipe' : null);
+      setRecipeAlCerrar(false);
       onChanged();
       exito(t('clinica.sesion.exito.cerrada'));
     },
-    onError: (fallo) => error(apiErrorMessage(fallo)),
+    onError: (fallo) => {
+      setRecipeAlCerrar(false);
+      error(apiErrorMessage(fallo));
+    },
   });
 
   const enmendar = useMutation({
@@ -266,6 +306,41 @@ export const SessionPanel = ({
       session: cerradas.find((session) => session.appointmentId === cita.id),
     }))
     .find((par) => par.session !== undefined);
+
+  /** Adjuntos y récipes de la visita que se está viendo (o del historial). */
+  const adjuntosRecetas = (
+    <>
+      {sesionVisibleId !== null && (
+        <SessionAttachments
+          sessionId={sesionVisibleId}
+          canWrite={canWrite && !sesionCerrada}
+          sessionClosed={sesionCerrada}
+        />
+      )}
+
+      {sesionVisibleId !== null ? (
+        <PrescriptionCard
+          prescriptions={recetasQuery.data?.items ?? []}
+          loading={recetasQuery.isLoading}
+          canWrite={canWrite && !sesionCerrada}
+          onNew={canWrite && !sesionCerrada ? () => setDialogo('recipe') : undefined}
+          onChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: recetasClave });
+            onChanged();
+          }}
+        />
+      ) : (
+        <PrescriptionCard
+          prescriptions={recetasPacienteQuery.data?.items ?? []}
+          loading={recetasPacienteQuery.isLoading}
+          canWrite={false}
+          onChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: recetasPacienteClave });
+          }}
+        />
+      )}
+    </>
+  );
 
   /* ── Sin sesión abierta: abrir o revisar lo hecho ────────────────────────── */
 
@@ -371,6 +446,8 @@ export const SessionPanel = ({
           </Card>
         )}
 
+        {adjuntosRecetas}
+
         <AmendSessionDialog
           open={dialogo === 'corregir'}
           session={aCorregir}
@@ -378,6 +455,21 @@ export const SessionPanel = ({
           onClose={() => setDialogo(null)}
           onConfirm={(values) => enmendar.mutate(values)}
         />
+
+        {sesionVisibleId !== null && (
+          <PrescriptionDialog
+            open={dialogo === 'recipe'}
+            sessionId={sesionVisibleId}
+            patientName={patientName}
+            prescriptions={recetasQuery.data?.items ?? []}
+            canWrite={canWrite}
+            onClose={() => setDialogo(null)}
+            onChanged={() => {
+              void queryClient.invalidateQueries({ queryKey: recetasClave });
+              onChanged();
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -472,6 +564,10 @@ export const SessionPanel = ({
         </CardContent>
       </Card>
 
+      {/* Adjuntos de la visita y récipes: van debajo del documento, que es lo que
+          se escribe primero. */}
+      {adjuntosRecetas}
+
       {/* La evolución anterior sigue a la vista: se cierra una sesión y se empieza
           otra sin perder el hilo de lo que se le hizo al paciente. */}
       {cerradas.length > 0 && (
@@ -500,8 +596,15 @@ export const SessionPanel = ({
       <CloseSessionDialog
         open={dialogo === 'cerrar'}
         loading={cerrar.isPending}
-        onClose={() => setDialogo(null)}
-        onConfirm={(values) => cerrar.mutate(values)}
+        canPrescribe={canWrite}
+        onClose={() => {
+          setRecipeAlCerrar(false);
+          setDialogo(null);
+        }}
+        onConfirm={(values) => {
+          setRecipeAlCerrar(values.conRecipe);
+          cerrar.mutate({ closureNote: values.closureNote });
+        }}
       />
 
       <AmendSessionDialog
@@ -511,6 +614,21 @@ export const SessionPanel = ({
         onClose={() => setDialogo(null)}
         onConfirm={(values) => enmendar.mutate(values)}
       />
+
+      {sesionVisibleId !== null && (
+        <PrescriptionDialog
+          open={dialogo === 'recipe'}
+          sessionId={sesionVisibleId}
+          patientName={patientName}
+          prescriptions={recetasQuery.data?.items ?? []}
+          canWrite={canWrite}
+          onClose={() => setDialogo(null)}
+          onChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: recetasClave });
+            onChanged();
+          }}
+        />
+      )}
     </div>
   );
 };

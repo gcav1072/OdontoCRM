@@ -24,6 +24,7 @@ import { ScreenConsultorioPage } from './pages/ScreenConsultorioPage';
 import { ScreenLobbyPage } from './pages/ScreenLobbyPage';
 import { SecretariaPage } from './pages/SecretariaPage';
 import { UsersPage } from './pages/UsersPage';
+import { VerifyPrescriptionPage } from './pages/VerifyPrescriptionPage';
 
 /**
  * Rutas de la SPA.
@@ -57,6 +58,11 @@ export const App = () => {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+
+      {/* El QR del récipe lo abre cualquiera con el papel en la mano (el paciente,
+          una farmacia): fuera del shell y sin sesión. Lo que muestra no lleva datos
+          clínicos (ADR 0015). */}
+      <Route path="/verificar/:code" element={<VerifyPrescriptionPage />} />
 
       {/* Kiosko: la pantalla se configura con su token y no usa la sesión del
           personal. Se monta fuera del shell para que no haya navegación. */}

@@ -1,4 +1,4 @@
-import { Alert, Button, Dialog, Field } from '@odontocrm/ui';
+import { Alert, Button, Checkbox, Dialog, Field } from '@odontocrm/ui';
 import { useState } from 'react';
 
 import { t } from '../../lib/i18n';
@@ -17,17 +17,24 @@ const TEXTAREA_CLASSES =
 export interface CloseSessionDialogProps {
   open: boolean;
   loading: boolean;
+  /**
+   * Al cerrar, ¿se abre el récipe? Es la pregunta que pide el plan
+   * («¿Desea guardar el récipe?») y solo se hace si el doctor puede escribirlo.
+   */
+  canPrescribe?: boolean;
   onClose: () => void;
-  onConfirm: (values: { closureNote: string | null }) => void;
+  onConfirm: (values: { closureNote: string | null; conRecipe: boolean }) => void;
 }
 
 export const CloseSessionDialog = ({
   open,
   loading,
+  canPrescribe = false,
   onClose,
   onConfirm,
 }: CloseSessionDialogProps) => {
   const [nota, setNota] = useState('');
+  const [conRecipe, setConRecipe] = useState(false);
 
   if (!open) return null;
 
@@ -47,7 +54,12 @@ export const CloseSessionDialog = ({
           <Button
             loading={loading}
             loadingLabel={t('comun.guardando')}
-            onClick={() => onConfirm({ closureNote: nota.trim() === '' ? null : nota.trim() })}
+            onClick={() =>
+              onConfirm({
+                closureNote: nota.trim() === '' ? null : nota.trim(),
+                conRecipe,
+              })
+            }
           >
             {t('clinica.sesion.cerrar.confirmar')}
           </Button>
@@ -56,6 +68,24 @@ export const CloseSessionDialog = ({
     >
       <div className="space-y-4">
         <Alert variant="warning">{t('clinica.sesion.cerrar.aviso')}</Alert>
+
+        {canPrescribe && (
+          <label className="flex cursor-pointer items-start gap-3 rounded-control border border-border p-3">
+            <Checkbox
+              checked={conRecipe}
+              onChange={(evento) => setConRecipe(evento.target.checked)}
+            />
+            <span>
+              <span className="block text-sm font-medium text-ink">
+                {t('clinica.sesion.cerrar.preguntaRecipe')}
+              </span>
+              <span className="block text-xs text-ink-muted">
+                {t('clinica.sesion.cerrar.preguntaRecipeAyuda')}
+              </span>
+            </span>
+          </label>
+        )}
+
         <Field label={t('clinica.sesion.cerrar.nota')} hint={t('clinica.sesion.cerrar.notaAyuda')}>
           <textarea
             className={TEXTAREA_CLASSES}

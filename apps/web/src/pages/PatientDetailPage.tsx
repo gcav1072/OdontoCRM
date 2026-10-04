@@ -33,6 +33,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { LinkButton } from '../components/LinkButton';
 import { NoticeBanner } from '../components/NoticeBanner';
 import { PatientAttachments } from '../components/patients/PatientAttachments';
+import { PatientAttachmentsCard } from '../components/clinical/SessionAttachments';
 import { PatientDeleteDialog } from '../components/patients/PatientDeleteDialog';
 import { PatientForm } from '../components/patients/PatientForm';
 import { PatientStatusDialog } from '../components/patients/PatientStatusDialog';
@@ -248,6 +249,10 @@ export const PatientDetailPage = () => {
       />
 
       <PatientAttachments patientId={paciente.id} />
+
+      {/* Fase 7B: las radiografías y fotos que se subieron en cada sesión clínica,
+          con su pieza. La subida se hace desde la sesión en la que se tomaron. */}
+      <PatientAttachmentsCard patientId={paciente.id} />
 
       <Card>
         <CardContent className="flex items-start gap-2.5 pt-5 text-sm text-ink-muted">

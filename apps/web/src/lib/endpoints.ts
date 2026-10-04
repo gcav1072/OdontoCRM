@@ -1,6 +1,7 @@
 import {
   type AcceptConsentInput,
   type AmendClinicalSessionInput,
+  type AnnulPrescriptionInput,
   type AppointmentStatus,
   type AppointmentSummary,
   type AssignAppointmentInput,
@@ -12,6 +13,9 @@ import {
   type ChangePasswordInput,
   type ChangePatientStatusInput,
   type Channel,
+  type ClinicalAttachment,
+  type ClinicalAttachmentKind,
+  type ClinicalAttachmentList,
   type ClinicalRecordDetail,
   type ClinicalRecordLookup,
   type ClinicalSectionKey,
@@ -23,6 +27,7 @@ import {
   type CreateAmendmentInput,
   type CreateClinicalSessionInput,
   type CreatePatientInput,
+  type CreatePrescriptionInput,
   type CreateRequestInput,
   type CreateUserInput,
   type DayCapacity,
@@ -36,6 +41,7 @@ import {
   type LoginInput,
   type LoginResponse,
   type MarkContactedInput,
+  type MedicationList,
   type MessageTemplate,
   type MessageTemplateInput,
   type NoShowAppointmentInput,
@@ -54,6 +60,9 @@ import {
   type PatientLookupResult,
   type PatientSummary,
   type Permission,
+  type PrescriptionDetail,
+  type PrescriptionList,
+  type PrescriptionVerificationResult,
   type RequestSummary,
   type ResetPasswordInput,
   type RescheduleAppointmentInput,
@@ -555,6 +564,21 @@ export interface PrintRecordResult {
   lastPrintedAt: string;
 }
 
+/** Constancia de impresión de un récipe (reimpresión auditada). */
+export interface PrintPrescriptionResult {
+  id: string;
+  printCount: number;
+  lastPrintedAt: string;
+}
+
+/** Adjunto de la sesión que se está subiendo. */
+export interface ClinicalAttachmentUpload {
+  file: File;
+  kind: ClinicalAttachmentKind;
+  caption?: string | undefined;
+  toothNumber?: number | null | undefined;
+}
+
 /**
  * Historia clínica (Fase 6, sesión A). Leer exige `clinical:read` (la secretaría
  * imprime) y escribir `clinical:write` (odontólogo y admin); la comprobación la
@@ -629,4 +653,97 @@ export const clinicalApi = {
 
   amendSession: (id: string, input: AmendClinicalSessionInput): Promise<ClinicalSessionDetail> =>
     api.post<ClinicalSessionDetail>(`/clinical/sessions/${id}/amend`, input),
+
+  /* ── Adjuntos de la sesión (Fase 7, sesión B) ────────────────────────────── */
+
+  attachments: (sessionId: string, signal?: AbortSignal): Promise<ClinicalAttachmentList> =>
+    api.get<ClinicalAttachmentList>(`/clinical/sessions/${sessionId}/attachments`, { signal }),
+
+  /** Todos los adjuntos del paciente (la ficha del paciente los muestra). */
+  patientAttachments: (patientId: string, signal?: AbortSignal): Promise<ClinicalAttachmentList> =>
+    api.get<ClinicalAttachmentList>(`/clinical/patients/${patientId}/attachments`, { signal }),
+
+  /** Subida en `multipart/form-data`: el navegador pone el `boundary`. */
+  uploadAttachment: (
+    sessionId: string,
+    upload: ClinicalAttachmentUpload,
+  ): Promise<ClinicalAttachment> => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', upload.file);
+    cuerpo.append('kind', upload.kind);
+    if (upload.caption !== undefined && upload.caption !== '') {
+      cuerpo.append('caption', upload.caption);
+    }
+    if (upload.toothNumber !== undefined && upload.toothNumber !== null) {
+      cuerpo.append('toothNumber', String(upload.toothNumber));
+    }
+    return api.request<ClinicalAttachment>('POST', `/clinical/sessions/${sessionId}/attachments`, {
+      rawBody: cuerpo,
+    });
+  },
+
+  /** El adjunto se sirve por endpoint autorizado: se pide con la sesión puesta. */
+  downloadAttachment: (
+    sessionId: string,
+    attachmentId: string,
+    signal?: AbortSignal,
+  ): Promise<Blob> =>
+    apiBinary('GET', `/clinical/sessions/${sessionId}/attachments/${attachmentId}`, { signal }),
+
+  deleteAttachment: (sessionId: string, attachmentId: string): Promise<void> =>
+    api.delete<void>(`/clinical/sessions/${sessionId}/attachments/${attachmentId}`),
+
+  /* ── Récipes (Fase 7, sesión B) ──────────────────────────────────────────── */
+
+  /** Catálogo de medicamentos para el autocompletado del récipe. */
+  medications: (search?: string, signal?: AbortSignal): Promise<MedicationList> =>
+    api.get<MedicationList>('/clinical/medications', {
+      query: search === undefined || search.trim() === '' ? undefined : { search: search.trim() },
+      signal,
+    }),
+
+  prescriptionsBySession: (sessionId: string, signal?: AbortSignal): Promise<PrescriptionList> =>
+    api.get<PrescriptionList>(`/clinical/sessions/${sessionId}/prescriptions`, { signal }),
+
+  prescriptionsByPatient: (patientId: string, signal?: AbortSignal): Promise<PrescriptionList> =>
+    api.get<PrescriptionList>(`/clinical/patients/${patientId}/prescriptions`, { signal }),
+
+  /** Guarda el borrador del récipe de la sesión (reemplaza el anterior). */
+  savePrescription: (
+    sessionId: string,
+    input: Omit<CreatePrescriptionInput, 'sessionId'>,
+  ): Promise<PrescriptionDetail> =>
+    api.request<PrescriptionDetail>('PUT', `/clinical/sessions/${sessionId}/prescription`, {
+      body: { ...input, sessionId },
+    }),
+
+  getPrescription: (id: string, signal?: AbortSignal): Promise<PrescriptionDetail> =>
+    api.get<PrescriptionDetail>(`/clinical/prescriptions/${id}`, { signal }),
+
+  /** Emitir: número, PDF A5 archivado y código de verificación. */
+  issuePrescription: (id: string): Promise<PrescriptionDetail> =>
+    api.post<PrescriptionDetail>(`/clinical/prescriptions/${id}/issue`, { confirm: true }),
+
+  annulPrescription: (id: string, input: AnnulPrescriptionInput): Promise<PrescriptionDetail> =>
+    api.post<PrescriptionDetail>(`/clinical/prescriptions/${id}/annul`, input),
+
+  /** Constancia de impresión o descarga (reimpresión auditada). */
+  registerPrescriptionPrint: (id: string): Promise<PrintPrescriptionResult> =>
+    api.post<PrintPrescriptionResult>(`/clinical/prescriptions/${id}/printed`, {}),
+
+  downloadPrescriptionPdf: (id: string, signal?: AbortSignal): Promise<Blob> =>
+    apiBinary('GET', `/clinical/prescriptions/${id}/pdf`, { signal }),
+
+  /**
+   * Verificación **pública** del récipe: la abre quien tiene el papel en la mano,
+   * sin sesión. Es la única llamada de este cliente que no manda token.
+   */
+  verifyPrescription: (
+    code: string,
+    signal?: AbortSignal,
+  ): Promise<PrescriptionVerificationResult> =>
+    api.get<PrescriptionVerificationResult>(`/clinical/verify/${encodeURIComponent(code)}`, {
+      anonymous: true,
+      signal,
+    }),
 };
