@@ -253,7 +253,33 @@ check(
   contacted.status === 200 && contacted.body?.contactedAt !== null,
 );
 
-// 6) Envío real (opcional): se vincula el chat indicado y se reintenta.
+// 6) El botón «Notificar» de la jornada **asegura** el aviso sin duplicarlo.
+{
+  const notificar = await call('/api/v1/agenda/notify', {
+    method: 'POST',
+    body: JSON.stringify({ appointmentIds: [appointment.body?.id] }),
+  });
+  check('el botón Notificar responde', notificar.status === 200);
+  await new Promise((resolve) => setTimeout(resolve, 2_500));
+
+  const inbox = await call(
+    `/api/v1/notifications?pageSize=20&search=${encodeURIComponent(patient.fullName)}`,
+  );
+  const deLaCita = (inbox.body?.items ?? []).filter(
+    (item) => item.appointmentId === appointment.body?.id && item.templateKey === 'cita_confirmada',
+  );
+  check(
+    'notificar a mano no duplica el aviso que ya salió',
+    deLaCita.length === 1,
+    `${String(deLaCita.length)} aviso(s) de la cita`,
+  );
+  check(
+    'el aviso de la cita sigue siendo el mismo (no se creó otro)',
+    deLaCita[0]?.id === notice?.id,
+  );
+}
+
+// 7) Envío real (opcional): se vincula el chat indicado y se reintenta.
 if (TEST_CHAT_ID !== null) {
   console.log(`\n· Probando el envío REAL al chat ${TEST_CHAT_ID}`);
   const link = await call('/api/v1/notifications/channels/link-code', {
@@ -291,7 +317,7 @@ if (TEST_CHAT_ID !== null) {
   );
 }
 
-// 7) Limpieza: se cancelan las citas y solicitudes de la prueba.
+// 8) Limpieza: se cancelan las citas y solicitudes de la prueba.
 for (const id of [appointment.body?.id]) {
   if (typeof id === 'string') {
     await call(`/api/v1/appointments/${id}/cancel`, {

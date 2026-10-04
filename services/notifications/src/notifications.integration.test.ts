@@ -13,7 +13,7 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
-import { EVENT_TOPICS, createDomainEvent } from '@odontocrm/events';
+import { EVENT_TOPICS, createDomainEvent, type DomainEvent } from '@odontocrm/events';
 import { and, eq, like, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -551,6 +551,153 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
 
     await handle.db.delete(notifications).where(eq(notifications.patientId, patientId));
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 60_000);
+
+  it('el aviso a mano del botón «Notificar» también sale al paciente', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const appointmentId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}B`;
+    await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
+
+    const appointment: AppointmentSummary = {
+      id: appointmentId,
+      requestId: null,
+      ticket: '#000321',
+      ticketNumber: 321,
+      patientId,
+      patientName: `Aviso a mano ${MARK}`,
+      patientDocument: 'V-11111111',
+      patientPhone: '+584121111111',
+      date: '2026-12-09',
+      startTime: '10:00',
+      endTime: '10:30',
+      durationMinutes: 30,
+      slotKind: 'franja',
+      status: 'notificada',
+      callCount: 0,
+      dentistId: null,
+      chairId: null,
+      checkedInAt: null,
+      startedAt: null,
+      finishedAt: null,
+      noShowReason: null,
+      forceAttendedReason: null,
+      rescheduledFromId: null,
+      rescheduledToId: null,
+      icsSequence: 0,
+      notes: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Es exactamente lo que publica `notifyBatch` de la agenda al pulsar «Notificar».
+    const avisoAMano = (reenvio: boolean): DomainEvent =>
+      createDomainEvent({
+        topic: EVENT_TOPICS.appointmentNotified,
+        aggregateId: appointmentId,
+        producer: 'scheduling',
+        payload: {
+          appointment: { id: appointmentId, date: appointment.date, status: 'notificada' },
+          notification: {
+            appointmentId,
+            patientId,
+            patientName: appointment.patientName,
+            patientPhone: appointment.patientPhone,
+            ticket: appointment.ticket,
+            date: appointment.date,
+            startTime: appointment.startTime,
+            endTime: appointment.endTime,
+            place: config.CLINIC_ADDRESS,
+            subject: 'Confirmación de tu cita',
+            body: `Hola ${appointment.patientName}: tu cita quedó confirmada.`,
+            channel: 'telegram',
+            templateKey: 'cita_confirmada',
+            icsSequence: 0,
+            reenvio,
+          },
+        },
+      });
+
+    // 1) El aviso automático de la cita ya salió (como al formalizarla).
+    const automatico = createDomainEvent({
+      topic: EVENT_TOPICS.appointmentScheduled,
+      aggregateId: appointmentId,
+      producer: 'scheduling',
+      payload: {
+        appointment: { id: appointmentId, date: appointment.date, status: 'programada' },
+        notification: {
+          appointmentId,
+          patientId,
+          patientName: appointment.patientName,
+          patientPhone: appointment.patientPhone,
+          ticket: appointment.ticket,
+          date: appointment.date,
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+          place: config.CLINIC_ADDRESS,
+          subject: 'Confirmación de tu cita',
+          body: `Hola ${appointment.patientName}: tu cita quedó confirmada.`,
+          channel: 'telegram',
+          templateKey: 'cita_confirmada',
+          icsSequence: 0,
+        },
+      },
+    });
+    expect((await handleDomainEvent(handle.db, config, automatico)).status).toBe('encolado');
+    await processQueue(handle.db, registry, config, { appointmentLoader: async () => appointment });
+
+    // 2) «Notificar» **no duplica** lo que ya se envió: el paciente no recibe dos.
+    expect((await handleDomainEvent(handle.db, config, avisoAMano(false))).status).toBe(
+      'duplicado',
+    );
+    expect((await handleDomainEvent(handle.db, config, avisoAMano(false))).status).toBe(
+      'duplicado',
+    );
+
+    const filas = await handle.db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.patientId, patientId));
+    expect(filas).toHaveLength(1);
+    expect(filas[0]?.status).toBe('sent');
+
+    // 3) Un aviso que **no llegó a salir** (falló) sí se recupera con «Notificar».
+    await handle.db
+      .update(notifications)
+      .set({ status: 'failed', lastError: 'Telegram sendMessage falló: simulado' })
+      .where(eq(notifications.patientId, patientId));
+    expect((await handleDomainEvent(handle.db, config, avisoAMano(false))).status).toBe(
+      'reintentado',
+    );
+    const recuperado = await processQueue(handle.db, registry, config, {
+      appointmentLoader: async () => appointment,
+    });
+    expect(recuperado.sent).toBe(1);
+
+    // 4) El reenvío explícito («reenviar también los ya notificados») sí manda otro.
+    expect((await handleDomainEvent(handle.db, config, avisoAMano(true))).status).toBe('encolado');
+    const reenviado = await processQueue(handle.db, registry, config, {
+      appointmentLoader: async () => appointment,
+    });
+    expect(reenviado.sent).toBe(1);
+
+    const avisos = await handle.db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.patientId, patientId));
+    expect(avisos).toHaveLength(2);
+    expect(avisos.every((aviso) => aviso.status === 'sent')).toBe(true);
+
+    // Los tres envíos llevan el `.ics` de la cita.
+    const enviados = telegram.sent.filter(
+      (message) => message.direccion === direccion && message.documento !== undefined,
+    );
+    expect(enviados.length).toBeGreaterThanOrEqual(3);
+    expect(enviados.at(-1)?.documento?.nombre).toBe('cita-000321.ics');
+
+    await handle.db.delete(notifications).where(eq(notifications.patientId, patientId));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+    await handle.db.execute(sql`delete from ics_artifacts where appointment_id = ${appointmentId}`);
   }, 60_000);
 
   it('las plantillas del catálogo existen y se pueden editar y restaurar', async () => {

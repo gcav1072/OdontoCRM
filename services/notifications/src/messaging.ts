@@ -468,6 +468,20 @@ export const getNotification = async (
   return toRecord(row);
 };
 
+/** Aviso por su clave de deduplicación: sirve para saber si ya salió o quedó a medias. */
+export const notificationByDedupe = async (
+  db: NotificationsDb,
+  dedupeKey: string,
+): Promise<NotificationRecord | null> => {
+  const rows = await db
+    .select()
+    .from(notifications)
+    .where(eq(notifications.dedupeKey, dedupeKey))
+    .limit(1);
+  const row = rows[0];
+  return row === undefined ? null : toRecord(row);
+};
+
 /** Reintento manual desde la bandeja: vuelve a la cola ahora mismo. */
 export const retryNotification = async (
   db: NotificationsDb,

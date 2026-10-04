@@ -5,7 +5,13 @@ import { createDomainEvent } from '@odontocrm/events';
 
 import type { NotificationsConfig } from './config.js';
 import type { NotificationsDb } from './db/client.js';
-import { enqueue, renderMessageFor, type EnqueueInput } from './messaging.js';
+import {
+  enqueue,
+  notificationByDedupe,
+  renderMessageFor,
+  retryNotification,
+  type EnqueueInput,
+} from './messaging.js';
 
 /** Datos que viajan en el evento de agenda para poder avisar al paciente. */
 interface NotificationPayload {
@@ -23,6 +29,8 @@ interface NotificationPayload {
   channel: 'telegram';
   templateKey: string;
   icsSequence: number;
+  /** `true` cuando la secretaría pidió reenviar a los ya notificados. */
+  reenvio?: boolean;
 }
 
 const readNotification = (event: DomainEvent): NotificationPayload | null => {
@@ -41,7 +49,12 @@ const readNotification = (event: DomainEvent): NotificationPayload | null => {
 };
 
 export interface ConsumeResult {
-  status: 'encolado' | 'duplicado' | 'ignorado';
+  /**
+   * `encolado`: aviso nuevo en la cola · `reintentado`: ya existía y no había
+   * salido, así que vuelve a la cola · `duplicado`: ya se envió, no se repite ·
+   * `ignorado`: el evento no es de los que producen avisos.
+   */
+  status: 'encolado' | 'reintentado' | 'duplicado' | 'ignorado';
   templateKey?: string;
 }
 
@@ -52,18 +65,27 @@ export interface ConsumeResult {
  * (`scheduling.appointment.scheduled`) sale el mensaje con fecha, hora, lugar y el
  * `.ics` adjunto, sin esperar a ningún recordatorio. La clave de deduplicación
  * (`cita + plantilla + secuencia`) garantiza que un evento repetido no vuelva a
- * escribirle al paciente, y si no tiene Telegram vinculado el aviso queda como
+ * escribirle al paciente, y si no tiene canal vinculado el aviso queda como
  * **manual pendiente** para que la secretaría lo llame.
+ *
+ * El **aviso a mano** del botón «Notificar» de `/programacion`
+ * (`scheduling.appointment.notified`) también llega aquí: se deduplica por **su
+ * evento**, así un reintento de la cola no repite el mensaje y un reenvío pedido a
+ * propósito (otro evento) sí sale.
  */
 export const handleDomainEvent = async (
   db: NotificationsDb,
   config: NotificationsConfig,
   event: DomainEvent,
 ): Promise<ConsumeResult> => {
-  const templatesByTopic: Partial<Record<string, { key: string; attachIcs: boolean }>> = {
+  const templatesByTopic: Partial<
+    Record<string, { key: string; attachIcs: boolean; manual?: boolean }>
+  > = {
     [EVENT_TOPICS.appointmentScheduled]: { key: 'cita_confirmada', attachIcs: true },
     [EVENT_TOPICS.appointmentRescheduled]: { key: 'cita_reprogramada', attachIcs: true },
     [EVENT_TOPICS.appointmentCancelled]: { key: 'cita_cancelada', attachIcs: false },
+    // El botón «Notificar» de /programacion: **asegura** que el aviso salga.
+    [EVENT_TOPICS.appointmentNotified]: { key: 'cita_confirmada', attachIcs: true, manual: true },
   };
 
   const template = templatesByTopic[event.eventType];
@@ -92,6 +114,12 @@ export const handleDomainEvent = async (
           ticket: payload.ticket ?? '—',
         });
 
+  /**
+   * Un reenvío pedido a propósito («reenviar también los ya notificados») es un
+   * aviso nuevo y se identifica por **su evento**, así que sale otra vez.
+   */
+  const reenvio = template.manual === true && payload.reenvio === true;
+
   const input: EnqueueInput = {
     patientId: payload.patientId,
     patientName: payload.patientName,
@@ -115,15 +143,30 @@ export const handleDomainEvent = async (
         ticket: payload.ticket ?? '—',
       },
     },
-    dedupeKey: `cita:${payload.appointmentId}:${template.key}:${String(payload.icsSequence)}`,
+    // Salvo reenvío, la clave es la de siempre (cita + plantilla + secuencia del
+    // `.ics`): así una reprogramación avisa, un reintento de la cola no repite y
+    // el botón «Notificar» **no duplica** lo que ya salió.
+    dedupeKey: reenvio
+      ? `aviso:${payload.appointmentId}:${template.key}:${event.eventId}`
+      : `cita:${payload.appointmentId}:${template.key}:${String(payload.icsSequence)}`,
     text,
     attachIcs: template.attachIcs,
   };
 
   const record = await enqueue(db, input);
-  return record === null
-    ? { status: 'duplicado', templateKey: template.key }
-    : { status: 'encolado', templateKey: template.key };
+  if (record !== null) return { status: 'encolado', templateKey: template.key };
+
+  // Ya existía. Si el botón «Notificar» lo pide y **no llegó a salir** (no había
+  // canal, o falló), se vuelve a poner en cola: es la promesa de ese botón.
+  if (template.manual === true && !reenvio) {
+    const anterior = await notificationByDedupe(db, input.dedupeKey);
+    if (anterior !== null && anterior.status !== 'sent' && anterior.status !== 'sending') {
+      await retryNotification(db, anterior.id, 'pedido de nuevo desde la programación');
+      return { status: 'reintentado', templateKey: template.key };
+    }
+  }
+
+  return { status: 'duplicado', templateKey: template.key };
 };
 
 /**

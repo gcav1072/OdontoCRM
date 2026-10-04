@@ -72,10 +72,14 @@ const main = async (): Promise<void> => {
       for (const event of events) {
         try {
           const result = await handleDomainEvent(database.db, config, event);
-          if (result.status === 'encolado') {
+          if (result.status === 'encolado' || result.status === 'reintentado') {
             app.log.info(
-              { eventType: event.eventType, plantilla: result.templateKey },
-              'Aviso encolado para el paciente',
+              {
+                eventType: event.eventType,
+                plantilla: result.templateKey,
+                resultado: result.status,
+              },
+              'Aviso preparado para el paciente',
             );
           }
         } catch (error) {

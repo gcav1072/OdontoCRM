@@ -45,7 +45,7 @@ const selectionConditions = (
 /**
  * Vista previa del lote de avisos: **exactamente** los mensajes que se enviarán,
  * con los que no saldrán y por qué. El texto se arma con la plantilla canónica del
- * contrato, así que es el mismo que usará el bot en la Fase 4.
+ * contrato, así que es el mismo que usará el servicio de notificaciones.
  */
 export const notifyPreview = async (
   db: SchedulingDb,
@@ -112,8 +112,9 @@ export const notifyPreview = async (
 
 /**
  * Marca el lote como notificado y publica un evento por cita con el mensaje ya
- * redactado. El envío real por Telegram llega en la Fase 4: aquí queda encolado,
- * trazado en `status_history` y auditado.
+ * redactado. El **envío lo hace el servicio de notificaciones** al consumir
+ * `scheduling.appointment.notified` (con reintentos y el `.ics` adjunto); aquí
+ * queda trazado en `status_history` y auditado.
  */
 export const notifyBatch = async (
   db: SchedulingDb,
@@ -199,11 +200,13 @@ export const notifyBatch = async (
               requestId: row.requestId,
             },
             // Con esto el servicio de notificaciones envía el mensaje y el .ics.
+            // `reenvio` distingue «asegura que salga» de «mándalo otra vez».
             notification: {
               ...buildAppointmentMessage(row, request, config),
               subject: item.subject,
               body: item.body,
               willSend: true,
+              reenvio: input.force,
             },
           },
         });
