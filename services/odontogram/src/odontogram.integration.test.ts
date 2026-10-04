@@ -1,0 +1,765 @@
+import type {
+  ClinicalState,
+  OdontogramDetail,
+  RecordFindingInput,
+  ToothCondition,
+  ToothSurface,
+} from '@odontocrm/contracts';
+import {
+  consumerQueueName,
+  countPendingEvents,
+  createBoss,
+  createOutboxRunner,
+  ensureDomainEventsQueue,
+  outboxEvents,
+  registerDomainEventHandler,
+  startBoss,
+  stopBoss,
+} from '@odontocrm/db';
+import { ConflictError, NotFoundError } from '@odontocrm/kernel';
+import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import type { PgBoss } from 'pg-boss';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { handleDomainEvent } from '../../identity/dist/audit/event-consumer.js';
+import { loadIdentityConfig } from '../../identity/dist/config.js';
+import { createIdentityDatabase } from '../../identity/dist/db/client.js';
+import * as identitySchema from '../../identity/dist/db/schema.js';
+import { loadOdontogramConfig } from './config.js';
+import { createOdontogramDatabase } from './db/client.js';
+import { odontograms, toothFindingHistory, toothFindings } from './db/schema.js';
+import {
+  MAX_HISTORY_LIMIT,
+  clearSurface,
+  deleteFinding,
+  getHistory,
+  getInternalSummary,
+  getOdontogramByPatient,
+  recordFinding,
+  recordFindingsBatch,
+  registerPrint,
+} from './odontogram/chart-service.js';
+
+/**
+ * Pruebas de integración de la Fase 6 (sesión B) contra PostgreSQL real:
+ *
+ *  1. se carga una boca por la vía de la **carga rápida** (lote transaccional) y se
+ *     lee bien el **patrón por excepción** (la pieza sana es la ausencia de fila);
+ *  2. cada cambio deja fila en `tooth_finding_history` (append-only) y viaja por el
+ *     outbox y la **cola compartida** hasta la auditoría de identity;
+ *  3. las reglas que el servidor no delega en la interfaz: sin cambios no se
+ *     escribe, la pieza completa manda sobre las caras (ADR 0031), la cara no
+ *     convive con una pieza completa vigente y el lote es atómico.
+ *
+ * Los módulos de identity se importan desde su `dist` compilado (es lo que corre
+ * en producción); por eso `npm run test:integration` exige `npm run build` antes.
+ */
+const odontogramUrl = process.env['TEST_ODONTOGRAM_DATABASE_URL'];
+const identityUrl = process.env['TEST_IDENTITY_DATABASE_URL'];
+const eventsUrl = process.env['TEST_EVENTS_DATABASE_URL'];
+
+const ready = odontogramUrl !== undefined && identityUrl !== undefined && eventsUrl !== undefined;
+const describeWithDatabases = ready ? describe : describe.skip;
+
+const suffix = String(Date.now()).slice(-7);
+const MARKER = `prueba-fase6b-${suffix}`;
+
+/** Cola propia de esta suite: se borra al terminar. */
+const colaDePrueba = consumerQueueName('prueba-odontogram');
+
+const actor = {
+  actorId: null,
+  actorUsername: MARKER,
+  ip: '127.0.0.1',
+  userAgent: 'vitest',
+  requestId: `req-${suffix}`,
+};
+
+/** Paciente de la boca principal y dos pacientes de borde (sin odontograma). */
+const patientId = globalThis.crypto.randomUUID();
+const pacienteTemporal = globalThis.crypto.randomUUID();
+const pacienteSinBoca = globalThis.crypto.randomUUID();
+
+const hallazgo = (input: {
+  toothNumber: number;
+  condition: ToothCondition;
+  surface?: ToothSurface | null;
+  state?: ClinicalState;
+  notes?: string | null;
+}): RecordFindingInput => ({
+  toothNumber: input.toothNumber,
+  surface: input.surface ?? null,
+  condition: input.condition,
+  state: input.state ?? 'pendiente',
+  notes: input.notes ?? null,
+  sessionId: null,
+});
+
+describeWithDatabases('odontograma FDI: patrón por excepción, histórico y auditoría', () => {
+  let handle: Awaited<ReturnType<typeof createOdontogramDatabase>>;
+  let identityHandle: Awaited<ReturnType<typeof createIdentityDatabase>>;
+  let boss: PgBoss;
+  let odontogramId = '';
+
+  const auditRows = async () =>
+    identityHandle.db
+      .select({
+        action: identitySchema.auditEvents.action,
+        actorUsername: identitySchema.auditEvents.actorUsername,
+        changedFields: identitySchema.auditEvents.changedFields,
+        summary: identitySchema.auditEvents.summary,
+        entityType: identitySchema.auditEvents.entityType,
+        entityId: identitySchema.auditEvents.entityId,
+        after: identitySchema.auditEvents.after,
+      })
+      .from(identitySchema.auditEvents)
+      .where(
+        and(
+          eq(identitySchema.auditEvents.entityType, 'odontogram'),
+          eq(identitySchema.auditEvents.entityId, odontogramId),
+        ),
+      );
+
+  /**
+   * Vacía el outbox **por completo**.
+   *
+   * Un solo ciclo reclama como mucho 50 eventos (`dispatchOutbox`), y esta suite
+   * produce más: con un único ciclo quedaban pendientes al azar según el orden en
+   * que corrieran las pruebas (el «outbox a cero» fallaba una de cada tres
+   * corridas). Se repite hasta que no quede nada reclamable, que es lo que hace el
+   * publicador real cada pocos segundos.
+   */
+  const flushOutbox = async (): Promise<void> => {
+    const runner = createOutboxRunner({ pool: handle.pool, boss, consumerQueue: colaDePrueba });
+    for (let ciclo = 0; ciclo < 10; ciclo += 1) {
+      const result = await runner.flush();
+      if (result.claimed === 0) return;
+    }
+  };
+
+  const waitForAudit = async (
+    predicate: (rows: Awaited<ReturnType<typeof auditRows>>) => boolean,
+  ): Promise<Awaited<ReturnType<typeof auditRows>>> => {
+    const deadline = Date.now() + 15_000;
+    let rows = await auditRows();
+    while (!predicate(rows) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      rows = await auditRows();
+    }
+    return rows;
+  };
+
+  const leerBoca = async (): Promise<OdontogramDetail> => {
+    const lookup = await getOdontogramByPatient(handle.db, patientId);
+    if (!lookup.exists) throw new Error('el paciente debería tener odontograma');
+    return lookup.odontogram;
+  };
+
+  const filasDePieza = async (toothNumber: number) =>
+    handle.db
+      .select()
+      .from(toothFindings)
+      .where(
+        and(
+          eq(toothFindings.odontogramId, odontogramId),
+          eq(toothFindings.toothNumber, toothNumber),
+        ),
+      );
+
+  const historial = async () =>
+    handle.db
+      .select()
+      .from(toothFindingHistory)
+      .where(eq(toothFindingHistory.odontogramId, odontogramId));
+
+  /**
+   * Resumen legible del histórico, para que un fallo diga **qué** había en la
+   * tabla en vez de solo el número: estas suites corren en paralelo con las de los
+   * demás servicios contra la misma base de la cola, y un «expected 1 to be 2» sin
+   * contexto no permite distinguir un fallo real de una interferencia.
+   */
+  const historialResumen = async (): Promise<string> => {
+    const filas = await historial();
+    return `odontograma=${odontogramId} filas=${String(filas.length)} · ${filas
+      .map((fila) => `${String(fila.toothNumber)}/${String(fila.surface)}/${fila.event}`)
+      .join(', ')}`;
+  };
+
+  beforeAll(async () => {
+    if (!ready) throw new Error('faltan las variables TEST_* de bases de datos');
+
+    handle = createOdontogramDatabase(
+      loadOdontogramConfig({
+        DATABASE_URL: odontogramUrl,
+        EVENTS_DATABASE_URL: eventsUrl,
+        LOG_LEVEL: 'silent',
+      }),
+    );
+    identityHandle = createIdentityDatabase(
+      loadIdentityConfig({
+        DATABASE_URL: identityUrl,
+        EVENTS_DATABASE_URL: eventsUrl,
+        LOG_LEVEL: 'silent',
+      }),
+    );
+
+    boss = createBoss({ connectionString: eventsUrl, applicationName: 'odontocrm-test-fase6b' });
+    await startBoss(boss);
+    await ensureDomainEventsQueue(boss);
+
+    await registerDomainEventHandler(
+      boss,
+      async (events) => {
+        for (const event of events) {
+          await handleDomainEvent(identityHandle.db, event);
+        }
+      },
+      { queue: colaDePrueba },
+    );
+  }, 30_000);
+
+  afterAll(async () => {
+    if (!ready) return;
+
+    await identityHandle.db
+      .delete(identitySchema.auditEvents)
+      .where(eq(identitySchema.auditEvents.actorUsername, MARKER));
+    await identityHandle.db
+      .delete(identitySchema.processedEvents)
+      .where(eq(identitySchema.processedEvents.producer, 'odontogram'));
+    await handle.db.delete(outboxEvents).where(eq(outboxEvents.producer, 'odontogram'));
+    // Las tablas del odontograma caen en cascada con la fila del odontograma.
+    await handle.db
+      .delete(odontograms)
+      .where(inArray(odontograms.patientId, [patientId, pacienteTemporal, pacienteSinBoca]));
+    await boss.deleteQueue(colaDePrueba).catch(() => undefined);
+    await stopBoss(boss).catch(() => undefined);
+    await handle.close();
+    await identityHandle.close();
+  });
+
+  it('carga la boca por lotes y la lee por excepción: lo que no tiene fila está sano', async () => {
+    const lote: RecordFindingInput[] = [
+      hallazgo({ toothNumber: 16, surface: 'occlusal', condition: 'caries' }),
+      hallazgo({
+        toothNumber: 16,
+        surface: 'vestibular',
+        condition: 'restauracion',
+        state: 'completado',
+      }),
+      hallazgo({ toothNumber: 26, surface: 'occlusal', condition: 'caries' }),
+      hallazgo({ toothNumber: 36, condition: 'ausente' }),
+      hallazgo({ toothNumber: 46, condition: 'corona', state: 'completado' }),
+    ];
+
+    const resultado = await recordFindingsBatch(handle.db, patientId, { findings: lote }, actor);
+    odontogramId = resultado.odontogram.id;
+
+    expect(resultado.unchanged).toBe(false);
+    expect(resultado.resolvedSurfaces).toEqual([]);
+    expect(resultado.odontogram.dentition).toBe('permanente');
+    expect(resultado.odontogram.empty).toBe(false);
+    expect(resultado.odontogram.affectedTeeth).toEqual([16, 26, 36, 46]);
+    expect(Object.keys(resultado.odontogram.findings).sort()).toEqual(['16', '26', '36', '46']);
+    // La pieza sana **no** aparece: ni la 11 ni la 21 tienen fila.
+    expect(resultado.odontogram.findings['11']).toBeUndefined();
+    expect(resultado.odontogram.findings['16']).toHaveLength(2);
+    expect(resultado.odontogram.findings['36']?.[0]).toMatchObject({
+      toothNumber: 36,
+      surface: null,
+      condition: 'ausente',
+      state: 'pendiente',
+      resolvedAt: null,
+    });
+
+    // Y al volver a leerla, el patrón se mantiene.
+    const deNuevo = await leerBoca();
+    expect(deNuevo.findings['26']).toHaveLength(1);
+
+    const resumen = await getInternalSummary(handle.db, patientId);
+    expect(resumen).toEqual({
+      patientId,
+      hasOdontogram: true,
+      affectedTeeth: 4,
+      conditionCounts: { caries: 2, restauracion: 1, ausente: 1, corona: 1 },
+      pendingCount: 3,
+      completedCount: 2,
+    });
+
+    const historialInicial = await historial();
+    expect(historialInicial.length, await historialResumen()).toBe(5);
+    expect(historialInicial.every((row) => row.event === 'registrado')).toBe(true);
+
+    await flushOutbox();
+    const rows = await waitForAudit((current) => current.length >= 5);
+    expect(rows.filter((row) => row.action === 'tooth_finding_recorded')).toHaveLength(5);
+    expect(rows.every((row) => row.actorUsername === MARKER)).toBe(true);
+    expect(rows.every((row) => row.entityType === 'odontogram')).toBe(true);
+  }, 40_000);
+
+  it('la dentición la deduce el servidor del FDI y no la mueve el cliente', async () => {
+    const primera = await recordFinding(
+      handle.db,
+      pacienteTemporal,
+      hallazgo({ toothNumber: 55, surface: 'occlusal', condition: 'caries' }),
+      actor,
+    );
+    expect(primera.odontogram.dentition).toBe('temporal');
+
+    // Un hallazgo permanente no cambia la dentición ya fijada por el primero.
+    const segunda = await recordFinding(
+      handle.db,
+      pacienteTemporal,
+      hallazgo({ toothNumber: 11, surface: 'occlusal', condition: 'caries' }),
+      actor,
+    );
+    expect(segunda.odontogram.dentition).toBe('temporal');
+
+    const sinBoca = await getOdontogramByPatient(handle.db, pacienteSinBoca);
+    expect(sinBoca).toMatchObject({ exists: false, patientId: pacienteSinBoca, patient: null });
+    expect(await getInternalSummary(handle.db, pacienteSinBoca)).toEqual({
+      patientId: pacienteSinBoca,
+      hasOdontogram: false,
+      affectedTeeth: 0,
+      conditionCounts: {},
+      pendingCount: 0,
+      completedCount: 0,
+    });
+  }, 40_000);
+
+  it('sin cambios no se escribe ni se audita (el autoguardado repite a menudo)', async () => {
+    const antesHistorial = (await historial()).length;
+    const pendientesAntes = await countPendingEvents(handle.pool);
+
+    const repetido = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 16, surface: 'occlusal', condition: 'caries' }),
+      actor,
+    );
+
+    expect(repetido.unchanged).toBe(true);
+    expect(repetido.resolvedSurfaces).toEqual([]);
+    expect((await historial()).length).toBe(antesHistorial);
+    expect(await countPendingEvents(handle.pool)).toBe(pendientesAntes);
+  }, 40_000);
+
+  it('cambiar el estado de un hallazgo queda como actualizado en el histórico y en la auditoría', async () => {
+    const resultado = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({
+        toothNumber: 16,
+        surface: 'occlusal',
+        condition: 'caries',
+        state: 'completado',
+      }),
+      actor,
+    );
+
+    expect(resultado.unchanged).toBe(false);
+    const caries = resultado.odontogram.findings['16']?.find((row) => row.condition === 'caries');
+    expect(caries?.state).toBe('completado');
+
+    const filas = (await historial()).filter((row) => row.event === 'actualizado');
+    expect(filas).toHaveLength(1);
+    expect(filas[0]).toMatchObject({
+      toothNumber: 16,
+      surface: 'occlusal',
+      condition: 'caries',
+      state: 'completado',
+      actorUsername: MARKER,
+    });
+
+    await flushOutbox();
+    const rows = await waitForAudit((current) =>
+      current.some((row) => row.action === 'tooth_finding_updated'),
+    );
+    const actualizado = rows.find((row) => row.action === 'tooth_finding_updated');
+    expect(actualizado?.changedFields).toEqual(['pieza 16', 'oclusal']);
+    expect(actualizado?.summary).toContain('caries');
+  }, 40_000);
+
+  it('`ausente` manda sobre las caras (ADR 0032) sin borrar el dato', async () => {
+    const resultado = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 16, condition: 'ausente' }),
+      actor,
+    );
+
+    // Las dos caras vigentes de la 16 (vestibular y oclusal) quedan superadas.
+    expect(resultado.resolvedSurfaces).toEqual(['vestibular', 'occlusal']);
+    expect(resultado.odontogram.findings['16']).toHaveLength(1);
+    expect(resultado.odontogram.findings['16']?.[0]?.condition).toBe('ausente');
+
+    const filas = await filasDePieza(16);
+    expect(filas).toHaveLength(3);
+    const superadas = filas.filter((row) => row.resolvedAt !== null);
+    expect(superadas.map((row) => row.surface).sort()).toEqual(['occlusal', 'vestibular']);
+    // Las filas superadas siguen en la base: el histórico las conserva.
+    expect(
+      superadas.every((row) => row.condition === 'caries' || row.condition === 'restauracion'),
+    ).toBe(true);
+
+    const superados = (await historial()).filter((row) => row.event === 'superado');
+    // El fallo tiene que decir **qué** filas de más hay: si aparece un `superado`
+    // duplicado, el mensaje trae el odontograma y las filas completas.
+    expect(
+      superados.map((row) => `${String(row.toothNumber)}/${String(row.surface)}/${row.id}`),
+      `odontograma ${odontogramId}`,
+    ).toHaveLength(2);
+    expect(superados.every((row) => row.reason?.includes('ausente'))).toBe(true);
+
+    await flushOutbox();
+    const rows = await waitForAudit((current) =>
+      current.some((row) => row.action === 'tooth_finding_superseded'),
+    );
+    expect(rows.filter((row) => row.action === 'tooth_finding_superseded')).toHaveLength(2);
+  }, 40_000);
+
+  it('un tratamiento convive con las caras: corona, conducto y obturación en la misma pieza (ADR 0032)', async () => {
+    // La 46 ya venía con «corona» del lote inicial: ahora se le añaden caries y
+    // conducto, que es la boca normal y con la regla anterior se rechazaba.
+    const caries = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 46, surface: 'occlusal', condition: 'caries' }),
+      actor,
+    );
+    expect(caries.resolvedSurfaces).toEqual([]);
+    expect(caries.odontogram.findings['46']).toHaveLength(2);
+
+    const conducto = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 46, condition: 'endodoncia' }),
+      actor,
+    );
+    // Ni la corona supera la caries ni el conducto supera a la corona.
+    expect(conducto.resolvedSurfaces).toEqual([]);
+    expect(conducto.odontogram.findings['46']?.map((row) => row.condition).sort()).toEqual([
+      'caries',
+      'corona',
+      'endodoncia',
+    ]);
+    // Y ninguna fila quedó superada: el tratamiento no toca las caras.
+    expect((await filasDePieza(46)).every((row) => row.resolvedAt === null)).toBe(true);
+
+    // En un mismo lote también: una corona con su caries es un lote válido.
+    const lote = await recordFindingsBatch(
+      handle.db,
+      patientId,
+      {
+        findings: [
+          hallazgo({ toothNumber: 47, condition: 'corona', state: 'completado' }),
+          hallazgo({ toothNumber: 47, surface: 'occlusal', condition: 'caries' }),
+        ],
+      },
+      actor,
+    );
+    expect(lote.unchanged).toBe(false);
+    expect(lote.resolvedSurfaces).toEqual([]);
+    expect(lote.odontogram.findings['47']).toHaveLength(2);
+  }, 40_000);
+
+  it('`ausente` no admite nada más y las parejas imposibles se rechazan (409)', async () => {
+    // La 16 quedó ausente: ni caries ni corona conviven con eso.
+    const sobreAusente = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 16, surface: 'occlusal', condition: 'caries' }),
+      actor,
+    ).catch((error: unknown) => error);
+    expect(sobreAusente).toBeInstanceOf(ConflictError);
+    expect((sobreAusente as ConflictError).extensions['conflictingCondition']).toBe('ausente');
+
+    // Un lote con `ausente` y cualquier otra cosa en la misma pieza se rechaza entero.
+    const loteAusente = await recordFindingsBatch(
+      handle.db,
+      patientId,
+      {
+        findings: [
+          hallazgo({ toothNumber: 21, condition: 'ausente' }),
+          hallazgo({ toothNumber: 21, condition: 'corona' }),
+        ],
+      },
+      actor,
+    ).catch((error: unknown) => error);
+    expect(loteAusente).toBeInstanceOf(ConflictError);
+
+    // Un implante no tiene raíz que endodonciar: la pareja imposible se bloquea
+    // tanto en la misma petición como en dos seguidas.
+    const loteImposible = await recordFindingsBatch(
+      handle.db,
+      patientId,
+      {
+        findings: [
+          hallazgo({ toothNumber: 22, condition: 'implante', state: 'completado' }),
+          hallazgo({ toothNumber: 22, condition: 'endodoncia' }),
+        ],
+      },
+      actor,
+    ).catch((error: unknown) => error);
+    expect(loteImposible).toBeInstanceOf(ConflictError);
+    expect((await leerBoca()).findings['22']).toBeUndefined();
+
+    const implante = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 22, condition: 'implante', state: 'completado' }),
+      actor,
+    );
+    expect(implante.odontogram.findings['22']).toHaveLength(1);
+
+    const conductoDespues = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 22, condition: 'endodoncia' }),
+      actor,
+    ).catch((error: unknown) => error);
+    expect(conductoDespues).toBeInstanceOf(ConflictError);
+    expect((conductoDespues as ConflictError).extensions['conflictingCondition']).toBe('implante');
+
+    // Sin embargo, un conducto con corona sí convive: la otra pareja real.
+    const coronaSobreConducto = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 23, condition: 'endodoncia' }),
+      actor,
+    ).then(() =>
+      recordFinding(
+        handle.db,
+        patientId,
+        hallazgo({ toothNumber: 23, condition: 'corona' }),
+        actor,
+      ),
+    );
+    expect(coronaSobreConducto.odontogram.findings['23']).toHaveLength(2);
+
+    // Y si el choque aparece a mitad de la transacción, se deshace el lote entero.
+    const atomico = await recordFindingsBatch(
+      handle.db,
+      patientId,
+      {
+        findings: [
+          hallazgo({ toothNumber: 11, surface: 'occlusal', condition: 'caries' }),
+          hallazgo({ toothNumber: 16, surface: 'vestibular', condition: 'caries' }),
+        ],
+      },
+      actor,
+    ).catch((error: unknown) => error);
+    expect(atomico).toBeInstanceOf(ConflictError);
+    expect((await leerBoca()).findings['11']).toBeUndefined();
+  }, 40_000);
+
+  it('borrar por clave natural y dejar la cara sana devuelven la pieza al estado sano', async () => {
+    const borrado = await deleteFinding(
+      handle.db,
+      patientId,
+      { toothNumber: 16, surface: null, condition: 'ausente' },
+      actor,
+    );
+    expect(borrado.unchanged).toBe(false);
+    expect((await leerBoca()).findings['16']).toBeUndefined();
+    // Las caras superadas siguen ahí, con `resolved_at`, pero ya no se leen.
+    expect(await filasDePieza(16)).toHaveLength(2);
+
+    const caraSana = await clearSurface(
+      handle.db,
+      patientId,
+      { toothNumber: 26, surface: 'occlusal' },
+      actor,
+    );
+    expect(caraSana.unchanged).toBe(false);
+    expect((await leerBoca()).findings['26']).toBeUndefined();
+    expect(await filasDePieza(26)).toHaveLength(0);
+
+    // Repetir no es un error: no había nada vigente que borrar.
+    expect(
+      (
+        await deleteFinding(
+          handle.db,
+          patientId,
+          { toothNumber: 16, surface: null, condition: 'ausente' },
+          actor,
+        )
+      ).unchanged,
+    ).toBe(true);
+    expect(
+      (await clearSurface(handle.db, patientId, { toothNumber: 26, surface: 'occlusal' }, actor))
+        .unchanged,
+    ).toBe(true);
+    expect(
+      (await clearSurface(handle.db, patientId, { toothNumber: 36, surface: 'vestibular' }, actor))
+        .unchanged,
+    ).toBe(true);
+
+    const eliminados = (await historial()).filter((row) => row.event === 'eliminado');
+    expect(eliminados.length, await historialResumen()).toBe(2);
+    expect(eliminados.map((row) => row.condition).sort()).toEqual(['ausente', 'caries']);
+    const ausente = eliminados.find((row) => row.condition === 'ausente');
+    expect(ausente).toMatchObject({ toothNumber: 16, surface: null, state: 'pendiente' });
+    expect(ausente?.reason).toContain('corrección de captura');
+
+    await flushOutbox();
+    const rows = await waitForAudit((current) =>
+      current.some((row) => row.action === 'tooth_finding_removed'),
+    );
+    expect(rows.filter((row) => row.action === 'tooth_finding_removed')).toHaveLength(2);
+  }, 40_000);
+
+  it('el histórico se lee ordenado y con su tope', async () => {
+    const completo = await getHistory(handle.db, patientId, MAX_HISTORY_LIMIT);
+    expect(completo.odontogramId).toBe(odontogramId);
+    expect(completo.patientId).toBe(patientId);
+    // 13 registros: los 5 del lote de carga rápida, `ausente` en la 16, caries y
+    // conducto en la 46, corona con caries en la 47, el implante de la 22 y
+    // conducto con corona en la 23. Más 1 actualización de estado, 2 caras
+    // superadas por `ausente` y 2 eliminaciones.
+    expect(completo.entries).toHaveLength(18);
+    const porEvento = completo.entries.reduce<Record<string, number>>((cuenta, entry) => {
+      cuenta[entry.event] = (cuenta[entry.event] ?? 0) + 1;
+      return cuenta;
+    }, {});
+    expect(porEvento).toEqual({ registrado: 13, actualizado: 1, superado: 2, eliminado: 2 });
+    expect(completo.entries[0]?.event).toBe('eliminado');
+    expect(completo.entries.at(-1)?.event).toBe('registrado');
+
+    const uno = await getHistory(handle.db, patientId, 1);
+    expect(uno.entries).toHaveLength(1);
+
+    const sinOdontograma = await getHistory(handle.db, pacienteSinBoca).catch(
+      (error: unknown) => error,
+    );
+    expect(sinOdontograma).toBeInstanceOf(NotFoundError);
+  }, 40_000);
+
+  it('la impresión deja constancia con su actor (la secretaría solo lee)', async () => {
+    const printed = await registerPrint(handle.db, patientId, actor);
+    expect(printed.id).toBe(odontogramId);
+    expect(printed.printCount).toBe(1);
+    expect(Number.isNaN(Date.parse(printed.lastPrintedAt))).toBe(false);
+
+    const boca = await leerBoca();
+    expect(boca.printCount).toBe(1);
+    expect(boca.lastPrintedAt).toBe(printed.lastPrintedAt);
+
+    await flushOutbox();
+    const rows = await waitForAudit((current) =>
+      current.some((row) => row.action === 'odontogram_printed'),
+    );
+    const impresion = rows.find((row) => row.action === 'odontogram_printed');
+    expect(impresion?.actorUsername).toBe(MARKER);
+    expect(impresion?.after).toMatchObject({ printCount: 1, patientId });
+  }, 40_000);
+
+  it('el outbox queda a cero después de publicar', async () => {
+    await flushOutbox();
+
+    // Si algo quedara pendiente, el fallo tiene que decir **qué** y **por qué**
+    // (un `last_error` de pg-boss se lee solo; un «expected 1 to be 0» no).
+    const pendientes = await handle.pool.query<{
+      event_type: string;
+      attempts: number;
+      last_error: string | null;
+    }>(
+      `select event_type, attempts, last_error
+         from outbox_events
+        where published_at is null
+        order by occurred_at`,
+    );
+    expect(
+      await countPendingEvents(handle.pool),
+      `pendientes: ${JSON.stringify(pendientes.rows)}`,
+    ).toBe(0);
+
+    const filas = await handle.db
+      .select({ id: toothFindings.id })
+      .from(toothFindings)
+      .where(and(eq(toothFindings.odontogramId, odontogramId), isNull(toothFindings.resolvedAt)));
+    // Quedan vigentes: 22 (implante), 23 (conducto + corona), 36 (ausente),
+    // 46 (corona + caries + conducto) y 47 (corona + caries) = 9 filas.
+    expect(filas).toHaveLength(9);
+    // Y 2 superadas: las caras de la 16, que `ausente` dejó fuera de lectura.
+    expect(
+      await handle.db
+        .select({ id: toothFindings.id })
+        .from(toothFindings)
+        .where(
+          and(eq(toothFindings.odontogramId, odontogramId), isNotNull(toothFindings.resolvedAt)),
+        ),
+    ).toHaveLength(2);
+  }, 40_000);
+
+  /**
+   * El caso clínico que pidió el odontólogo: el diente y su soporte protésico pasan
+   * por fases que no se pueden colapsar en un estado único.
+   *
+   * - **Fase quirúrgica:** `ausente` + `implante` — no hay corona natural y el
+   *   implante ocupa su lugar. Antes esto se rechazaba y era imposible de registrar.
+   * - **Fase rehabilitada:** `implante` + `corona` — la corona protésica ya está
+   *   puesta, así que la ausencia **se quita**: una pieza no puede estar sin corona y
+   *   con corona a la vez. El paso de una fase a otra es borrar `ausente` y marcar
+   *   `corona`, que en la hoja son dos toques.
+   */
+  it('el implante convive con la pieza ausente (fase quirúrgica) y con la corona (rehabilitada)', async () => {
+    // Fase quirúrgica: el implante colocado y la corona natural ausente, en la misma
+    // transacción y sin conflicto.
+    const quirofano = await recordFindingsBatch(
+      handle.db,
+      patientId,
+      {
+        findings: [
+          hallazgo({ toothNumber: 24, condition: 'implante', state: 'completado' }),
+          hallazgo({ toothNumber: 24, condition: 'ausente', state: 'completado' }),
+        ],
+      },
+      actor,
+    );
+    expect((quirofano.odontogram.findings['24'] ?? []).map((row) => row.condition).sort()).toEqual([
+      'ausente',
+      'implante',
+    ]);
+
+    // Poner la corona sin quitar la ausencia es contradictorio y se rechaza.
+    const coronaSobreAusente = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 24, condition: 'corona', state: 'completado' }),
+      actor,
+    ).catch((error: unknown) => error);
+    expect(coronaSobreAusente).toBeInstanceOf(ConflictError);
+    expect((coronaSobreAusente as ConflictError).extensions['conflictingCondition']).toBe(
+      'ausente',
+    );
+
+    // Fase rehabilitada: se quita la ausencia (el diente ya tiene corona protésica) y
+    // la corona convive con el implante que ya estaba.
+    await deleteFinding(
+      handle.db,
+      patientId,
+      { toothNumber: 24, surface: null, condition: 'ausente' },
+      actor,
+    );
+    const rehabilitada = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 24, condition: 'corona', state: 'completado' }),
+      actor,
+    );
+    expect(
+      (rehabilitada.odontogram.findings['24'] ?? []).map((row) => row.condition).sort(),
+    ).toEqual(['corona', 'implante']);
+
+    // Lo que sigue prohibido: un conducto en una pieza con implante (409).
+    const conducto = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 24, condition: 'endodoncia' }),
+      actor,
+    ).catch((error: unknown) => error);
+    expect(conducto).toBeInstanceOf(ConflictError);
+    expect((conducto as ConflictError).extensions['conflictingCondition']).toBe('implante');
+  });
+});
