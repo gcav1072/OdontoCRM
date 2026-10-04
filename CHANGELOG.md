@@ -6,6 +6,19 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
 ## [Corrección] — El bot no se queda callado y `db:reset` queda blindado · 2026-10-04
 
+### Añadido
+
+- **Plantilla `.env.example` en cada servicio** (identity, patients, scheduling, notifications,
+  clinical, odontogram, screens, reporting): qué claves existen, cuáles son obligatorias, cuáles
+  opcionales y su valor por defecto. Convención clara: **sin comentar = debe estar en el `.env`**
+  (lo repone `db:bootstrap`, más el token del bot); comentada = opcional. El modelo real sigue
+  estando en `services/<svc>/src/config.ts`.
+- **`npm run env:check`**: compara cada `.env` con su plantilla y dice qué claves faltan **y qué se
+  pierde** con cada una (sin imprimir valores). `npm run dev:check` lo avisa también antes de
+  arrancar. Nace de un caso real: un corte de luz dejó los ocho `.env` con el tamaño de antes y el
+  contenido a ceros; al rehacerlos, el `TELEGRAM_BOT_TOKEN` —que `db:bootstrap` no conoce— se quedó
+  por el camino y **el bot pasó a modo simulado sin que nada lo dijera** hasta que dejó de contestar.
+
 ### Cambiado
 
 - **`db:reset` siempre siembra los usuarios**, para que la aplicación quede **lista para usar**

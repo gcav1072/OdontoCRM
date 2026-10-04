@@ -27,6 +27,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pg from 'pg';
 
+import { revisarEntornos } from './lib/entorno.mjs';
 import {
   bloqueoVigente,
   limpiarBloqueo,
@@ -74,6 +75,30 @@ if (bloqueo !== null) {
     `dev:check: había un bloqueo caducado (${bloqueo.tarea}, PID ${String(bloqueo.pid)} ya no existe); se limpia.\n`,
   );
   limpiarBloqueo();
+}
+
+/* ── 2. ¿A algún .env le faltan claves de su plantilla? ────────────────────── */
+
+/**
+ * Solo avisa (no bloquea): sin el token del bot la aplicación funciona, solo que los
+ * mensajes no salen a Telegram. Pero hay que decirlo, porque el síntoma —«el bot no
+ * contesta»— aparece mucho después y en otro sitio.
+ */
+const { faltantes, consecuencia } = revisarEntornos();
+
+if (faltantes.length > 0) {
+  console.warn('dev:check: a estos .env les faltan claves que su plantilla espera:\n');
+  for (const { servicio, claves } of faltantes) {
+    console.warn(`  ⚠ services/${servicio}/.env → ${claves.join(', ')}`);
+    for (const clave of claves) {
+      if (consecuencia[clave] !== undefined)
+        console.warn(`      · ${clave}: ${consecuencia[clave]}`);
+    }
+  }
+  console.warn(
+    '\n  Copia las que falten desde services/<servicio>/.env.example.' +
+      '\n  Detalle:  npm run env:check   ·   docs/COMANDOS.md §4\n',
+  );
 }
 
 /* ── 2. Puertos ────────────────────────────────────────────────────────────── */
@@ -130,7 +155,8 @@ if (adminUrl === undefined || adminUrl === '') {
 }
 
 const admin = new Client({ connectionString: adminUrl, application_name: 'odontocrm-dev-check' });
-let faltantes = [];
+/** Bases que faltan (distinto de las claves que faltan en los `.env`, arriba). */
+let basesFaltantes = [];
 let sinServidor = false;
 
 try {
@@ -140,7 +166,7 @@ try {
     [BASES],
   );
   const existentes = new Set(rows.map((fila) => String(fila.datname)));
-  faltantes = BASES.filter((base) => !existentes.has(base));
+  basesFaltantes = BASES.filter((base) => !existentes.has(base));
 } catch (error) {
   sinServidor = true;
   console.error(
@@ -152,10 +178,10 @@ try {
   await admin.end().catch(() => undefined);
 }
 
-if (faltantes.length > 0) {
+if (basesFaltantes.length > 0) {
   console.error(
     'dev:check: faltan bases de datos y los servicios no pueden arrancar así:\n' +
-      faltantes.map((base) => `  ✖ ${base}`).join('\n') +
+      basesFaltantes.map((base) => `  ✖ ${base}`).join('\n') +
       '\n\n  Lo más probable es que `db:reset` esté a medias (o no se haya ejecutado):\n' +
       '  el bucle borra y recrea una base detrás de otra y, si arrancas la pila en medio,\n' +
       '  los servicios que apunten a una base que ya no existe se caen al conectar.\n\n' +

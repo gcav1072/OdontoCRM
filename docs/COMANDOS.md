@@ -114,6 +114,7 @@ powershell -ExecutionPolicy Bypass -File infra/windows/start-services.ps1
 | `npm run db:verify-migrations` | Desde cero: crea una base temporal por servicio, migra con el migrador real, comprueba tablas/índices y la borra | `-- --only <servicio>` |
 | `npm run db:generate:<servicio>` | Genera una migración a partir del esquema Drizzle del servicio | `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram` |
 | `npm run db:reset` | **Borra absolutamente todo** y deja el sistema **listo para usar**: las 9 bases `odonto_*` (con `with (force)`) y el contenido de `storage/`; después compila, hace `db:bootstrap`, `db:migrate` y **siembra los usuarios**. Solo consola y **exige `--yes`** | `-- --yes` (hace falta) · `-- --solo-bases` (conserva los archivos) · `-- --remoto` (permite una base que no es de esta máquina) |
+| `npm run env:check` | Compara cada `services/<svc>/.env` con su **plantilla** (`.env.example`) y dice qué claves faltan y qué se pierde con cada una. Nunca imprime valores | `-- --todo` (informa también de los `.env` ausentes) |
 | `npm run keys:generate` | Par de claves EdDSA del JWT en `services/identity/.keys/` (ignorado por Git) | `-- --force` regenera (invalida todas las sesiones) |
 
 Los generadores de migración se ejecutan **desde la raíz** (drizzle-kit resuelve las
@@ -125,6 +126,38 @@ npx drizzle-kit generate --config services/screens/drizzle.config.ts --name mi_c
 
 > `db:bootstrap` es **idempotente**: no toca lo que ya existe salvo con `--rotate`.
 > Si un `.env` de servicio se borra, `db:bootstrap --only <servicio>` lo regenera.
+
+### Los `.env` y sus plantillas
+
+Cada servicio tiene **dos** archivos de entorno:
+
+| Archivo | Qué es | ¿Va a Git? |
+| :--- | :--- | :--- |
+| `services/<svc>/.env` | El de verdad: credenciales de su base, secretos y el **token del bot**. Lo escribe `npm run db:bootstrap` (salvo lo que solo sabes tú, como el token). | No (ignorado) |
+| `services/<svc>/.env.example` | La **plantilla**: qué claves existen, cuáles son obligatorias, cuáles opcionales y su valor por defecto. El modelo real está en `services/<svc>/src/config.ts`. | Sí |
+
+**Convención de la plantilla:** las líneas **sin comentar** son claves que deben estar
+en el `.env` (las repone `db:bootstrap`, más el token del bot y su usuario); las
+**comentadas** son opcionales, con su valor por defecto entre paréntesis.
+
+```powershell
+npm run env:check        # ¿a algún .env le falta una clave de su plantilla?
+```
+
+Es lo que faltaba cuando un corte de luz dejó los ocho `.env` con el tamaño de antes y
+el contenido a ceros: al rehacerlos se perdió el `TELEGRAM_BOT_TOKEN` (no lo conoce
+`db:bootstrap`) y el bot quedó en **modo simulado** —dejó de contestar— sin que nada lo
+dijera. Ahora lo dicen `env:check` y `dev:check`. El bot también lo avisa al arrancar
+(«Sin TELEGRAM_BOT_TOKEN: el servicio arranca en modo simulado») y la bandeja
+`/notificaciones` muestra el modo.
+
+**Restaurar el token del bot** (lo da BotFather: `/mybots` → tu bot → *API Token*):
+
+```powershell
+notepad services\notifications\.env      # TELEGRAM_BOT_TOKEN=<token>  y  TELEGRAM_BOT_USERNAME=odegcrmbot
+npm run env:check                        # tiene que decir «todas las claves» ✔
+pm2 restart odontocrm-notifications      # o `npm run stack:fijo`
+```
 
 ### Empezar de cero (`db:reset`)
 

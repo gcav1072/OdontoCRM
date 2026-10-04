@@ -33,6 +33,7 @@
     "dev": "concurrently -k -n tsc,identity,patients,scheduling,notif,screens,clinical,odonto,gateway,web -c blue,green,yellow,magenta,white,gray,cyan,blue,red,blue \"npm:dev:build\" \"npm:dev:identity\" \"npm:dev:patients\" \"npm:dev:scheduling\" \"npm:dev:notifications\" \"npm:dev:screens\" \"npm:dev:clinical\" \"npm:dev:odontogram\" \"npm:dev:gateway\" \"npm:dev:web\"",
     "predev": "node tools/dev-check.mjs",
     "dev:check": "node tools/dev-check.mjs",
+    "env:check": "node tools/env-check.mjs",
     "dev:stop": "node tools/dev-stop.mjs",
     "stack:status": "node tools/stack.mjs status",
     "stack:dev": "node tools/stack.mjs dev",
