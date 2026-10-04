@@ -222,7 +222,7 @@ base de datos). Necesitan los servicios arrancados y datos sembrados.
 | `npm run smoke:auth` | Ciclo de sesión: login, refresco, permisos, cierre | 17 |
 | `npm run smoke:patients` | Registro, duplicado, edición con motivo, borrado y auditoría | 26 |
 | `npm run smoke:agenda` | Ticket, cupo, franja, sobrecupo, reprogramación y aviso en lote | 41 |
-| `npm run smoke:notifications` | Estado de canales, plantillas, vinculación con QR y aviso de cita con `.ics` | 24 |
+| `npm run smoke:notifications` | Estado de canales, plantillas, vinculación con QR, aviso de cita con `.ics` y el botón «Notificar» sin duplicar | 27 |
 | `npm run smoke:screens` | Pantalla kiosko, llamado en el lobby por SSE (mide la latencia), consultorio y baja de la pantalla | 26 |
 
 Variables opcionales (mismas en todas):

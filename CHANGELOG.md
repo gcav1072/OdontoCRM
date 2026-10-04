@@ -27,6 +27,9 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
 ### Añadido
 
+- **Pruebas del aviso a mano**: la suite de integración de notificaciones cubre los cuatro caminos
+  (aviso nuevo, ya enviado, pendiente que se recupera y reenvío explícito), y el humo comprueba que
+  pulsar «Notificar» no crea un segundo aviso (**27 comprobaciones**).
 - **`npm run dev:check`** (se ejecuta solo antes de `npm run dev`): comprueba los puertos del
   desarrollo y, si están ocupados, dice **quién** los ocupa (proceso y si es de PM2) y cómo
   liberarlos. Evita arrancar a medias.
