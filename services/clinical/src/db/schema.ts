@@ -1,4 +1,8 @@
-import { CLINICAL_SECTION_KEYS, MEDICAL_RECORD_STATUSES } from '@odontocrm/contracts';
+import {
+  CLINICAL_SECTION_KEYS,
+  CLINICAL_SESSION_STATUSES,
+  MEDICAL_RECORD_STATUSES,
+} from '@odontocrm/contracts';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -133,7 +137,68 @@ export const medicalRecordConsents = pgTable(
   (table) => [uniqueIndex('uq_medical_record_consents').on(table.recordId)],
 );
 
+/**
+ * Sesión clínica: la **evolución** del paciente (Fase 7, sesión A).
+ *
+ * Una sesión por visita, numerada por paciente (`S-000001`), con el documento del
+ * día en `content` (signos vitales, examen, procedimientos con pieza y caras,
+ * materiales, diagnóstico, indicaciones y próxima cita). Nace en `borrador` —se
+ * autoguarda mientras el paciente está sentado— y pasa a `cerrada`, que es
+ * **inmutable**: una corrección abre una sesión enmendada (`amended_from_id`) en
+ * lugar de reescribir lo que se hizo.
+ *
+ * La historia puede estar **firmada** y la evolución sigue: firmar cierra la
+ * edición de la historia, no la vida del paciente.
+ */
+export const clinicalSessions = pgTable(
+  'clinical_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    recordId: uuid('record_id')
+      .notNull()
+      .references(() => medicalRecords.id, { onDelete: 'cascade' }),
+    /** Desnormalizado a propósito: la sesión se lista por paciente sin pasar por la historia. */
+    patientId: uuid('patient_id').notNull(),
+    /** Cita que respalda la sesión; es lo que habilita el «atendido» sin motivo. */
+    appointmentId: uuid('appointment_id'),
+    /** Número de sesión del paciente (1, 2, 3…): «S-000012» se calcula al mostrar. */
+    sessionNumber: integer('session_number').notNull(),
+    status: text('status').notNull().default('borrador'),
+    content: jsonb('content').$type<Record<string, unknown>>().notNull(),
+    openedBy: uuid('opened_by'),
+    openedByUsername: text('opened_by_username'),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    closedBy: uuid('closed_by'),
+    closedByUsername: text('closed_by_username'),
+    closureNote: text('closure_note'),
+    /** Sesión cerrada que esta corrige (la original no se toca). */
+    amendedFromId: uuid('amended_from_id'),
+    amendmentReason: text('amendment_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    /** El número de sesión es único por paciente: dos visitas no comparten número. */
+    uniqueIndex('uq_clinical_sessions_patient_number').on(table.patientId, table.sessionNumber),
+    index('idx_clinical_sessions_patient').on(table.patientId, table.sessionNumber),
+    index('idx_clinical_sessions_appointment').on(table.appointmentId),
+    /**
+     * Una sola sesión **abierta** por cita: dos pestañas (o dos toques) no pueden
+     * dejar dos borradores del mismo paciente en la misma visita.
+     */
+    uniqueIndex('uq_clinical_sessions_appointment_open')
+      .on(table.appointmentId)
+      .where(sql`${table.appointmentId} is not null and ${table.status} = 'borrador'`),
+    check(
+      'chk_clinical_sessions_status',
+      sql`${table.status} in (${sqlLiteralList(CLINICAL_SESSION_STATUSES)})`,
+    ),
+    check('chk_clinical_sessions_number', sql`${table.sessionNumber} > 0`),
+  ],
+);
+
 export type MedicalRecordRow = typeof medicalRecords.$inferSelect;
 export type MedicalRecordSectionRow = typeof medicalRecordSections.$inferSelect;
 export type MedicalRecordAmendmentRow = typeof medicalRecordAmendments.$inferSelect;
 export type MedicalRecordConsentRow = typeof medicalRecordConsents.$inferSelect;
+export type ClinicalSessionRow = typeof clinicalSessions.$inferSelect;
