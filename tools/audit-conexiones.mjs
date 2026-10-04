@@ -28,8 +28,8 @@ const METODOS_HTTP = ['get', 'post', 'put', 'patch', 'delete'];
 
 /** Servicios que aún no existen: su contrato está listo y no cuentan como fallo. */
 const FASES_FUTURAS = {
-  servicios: ['odontogram', 'reporting'],
-  permisos: ['odontogram:read', 'odontogram:write', 'reports:read'],
+  servicios: ['reporting'],
+  permisos: ['reports:read'],
 };
 
 /** Variables que genera `db:bootstrap` en cada servicio (no van en la plantilla). */
@@ -126,10 +126,9 @@ const auditarEventos = () => {
         [...registro.consumidores].join(',') ||
         (auditadosPorFormaGenerica(topic) ? 'auditoría' : '—'),
       mencionado: registro.mencionado,
-      esDeFaseFutura:
-        FASES_FUTURAS.servicios.some((servicio) => topic.startsWith(`${servicio}.`)) ||
-        topic.startsWith('clinical.') ||
-        topic.startsWith('odontogram.'),
+      // La clínica (Fase 6A) y el odontograma (Fase 6B) ya existen: sus temas se
+      // publican de verdad y no se excusan como «de fase futura».
+      esDeFaseFutura: FASES_FUTURAS.servicios.some((servicio) => topic.startsWith(`${servicio}.`)),
     });
   }
 

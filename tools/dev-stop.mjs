@@ -11,7 +11,7 @@
 import { execFileSync, execSync } from 'node:child_process';
 import { createConnection } from 'node:net';
 
-const PUERTOS = [5173, 8090, 4001, 4002, 4003, 4004, 4007];
+const PUERTOS = [5173, 8090, 4001, 4002, 4003, 4004, 4005, 4006, 4007];
 const HOST = '127.0.0.1';
 
 const estaOcupado = (puerto) =>

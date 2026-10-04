@@ -24,6 +24,7 @@ const PUERTOS = [
   { puerto: 4003, servicio: 'scheduling', arranca: 'dev:scheduling' },
   { puerto: 4004, servicio: 'notifications', arranca: 'dev:notifications' },
   { puerto: 4005, servicio: 'clinical', arranca: 'dev:clinical' },
+  { puerto: 4006, servicio: 'odontogram', arranca: 'dev:odontogram' },
   { puerto: 4007, servicio: 'screens', arranca: 'dev:screens' },
 ];
 

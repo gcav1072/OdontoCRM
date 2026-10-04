@@ -44,6 +44,11 @@ const SERVICES = [
     script: 'services/clinical/dist/db/migrate.js',
     envFile: 'services/clinical/.env',
   },
+  {
+    name: 'odontogram',
+    script: 'services/odontogram/dist/db/migrate.js',
+    envFile: 'services/odontogram/.env',
+  },
 ];
 
 const args = process.argv.slice(2);

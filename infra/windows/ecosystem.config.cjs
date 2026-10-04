@@ -47,6 +47,7 @@ module.exports = {
     service('notifications', 'services/notifications/dist/index.js', 'services/notifications/.env'),
     service('screens', 'services/screens/dist/index.js', 'services/screens/.env'),
     service('clinical', 'services/clinical/dist/index.js', 'services/clinical/.env'),
-    // Fase 6 (sesión B): odontogram · Fase 9: reporting
+    service('odontogram', 'services/odontogram/dist/index.js', 'services/odontogram/.env'),
+    // Fase 9: reporting
   ],
 };

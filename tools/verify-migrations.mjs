@@ -47,6 +47,16 @@ const SERVICES = [
     migrations: 'services/screens/migrations',
     tables: ['screen_devices', 'room_state', 'call_events'],
   },
+  {
+    name: 'clinical',
+    migrations: 'services/clinical/migrations',
+    tables: ['medical_records', 'medical_record_sections', 'medical_record_amendments'],
+  },
+  {
+    name: 'odontogram',
+    migrations: 'services/odontogram/migrations',
+    tables: ['odontograms', 'tooth_findings', 'tooth_finding_history', 'odontogram_prints'],
+  },
 ];
 
 const args = process.argv.slice(2);

@@ -64,6 +64,9 @@ const extraEnv = {
   TEST_CLINICAL_DATABASE_URL:
     process.env.TEST_CLINICAL_DATABASE_URL ??
     readEnvValue('services/clinical/.env', 'DATABASE_URL'),
+  TEST_ODONTOGRAM_DATABASE_URL:
+    process.env.TEST_ODONTOGRAM_DATABASE_URL ??
+    readEnvValue('services/odontogram/.env', 'DATABASE_URL'),
 };
 
 const url = new URL(databaseUrl);

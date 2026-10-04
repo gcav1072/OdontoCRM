@@ -12,6 +12,7 @@
     { "path": "services/notifications" },
     { "path": "services/screens" },
     { "path": "services/clinical" },
+    { "path": "services/odontogram" },
     { "path": "apps/gateway" }
   ]
 }
