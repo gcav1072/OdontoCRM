@@ -41,6 +41,8 @@ export interface AuditInput {
   entityId: string;
   action: DomainAuditPayload['action'];
   summary: string;
+  /** Tipo de entidad auditada; por defecto, la historia clínica. */
+  entityType?: 'medical_record' | 'clinical_session' | 'prescription';
   changedFields?: string[];
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
@@ -54,7 +56,7 @@ export interface AuditInput {
  * rastro en `/auditoria`.
  */
 export const auditPayload = (input: AuditInput): Record<string, unknown> => ({
-  entityType: 'medical_record',
+  entityType: input.entityType ?? 'medical_record',
   entityId: input.entityId,
   action: input.action,
   summary: input.summary,

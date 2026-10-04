@@ -5,9 +5,11 @@ import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
 import { findRecordByPatient, getRecordDetail } from '../clinical/record-service.js';
+import { getSessionStatus } from '../clinical/session-service.js';
 import type { ClinicalServices } from '../services.js';
 
 const patientParamsSchema = z.object({ patientId: z.uuid() });
+const sessionParamsSchema = z.object({ id: z.uuid() });
 
 const safeEquals = (left: string, right: string): boolean => {
   const a = Buffer.from(left);
@@ -56,5 +58,15 @@ export const registerInternalRoutes = (app: FastifyInstance, services: ClinicalS
       hasRecord: true,
     };
     return reply.status(200).send(result);
+  });
+
+  /**
+   * Estado de una sesión clínica. La **agenda** lo consulta antes de dejar marcar
+   * «atendido» sin motivo: sin esta comprobación, cualquier cliente podría saltarse
+   * la regla mandando un identificador inventado.
+   */
+  app.get('/internal/v1/clinical/sessions/:id/status', async (request, reply) => {
+    const { id } = parseOrThrow(sessionParamsSchema, request.params);
+    return reply.status(200).send(await getSessionStatus(db, id));
   });
 };

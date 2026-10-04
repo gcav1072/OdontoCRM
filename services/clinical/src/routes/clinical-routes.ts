@@ -1,8 +1,12 @@
 import {
   acceptConsentSchema,
+  amendClinicalSessionSchema,
   clinicalSectionKeySchema,
+  closeClinicalSessionSchema,
   createAmendmentSchema,
+  createClinicalSessionSchema,
   saveClinicalSectionSchema,
+  saveClinicalSessionSchema,
   signMedicalRecordSchema,
   type ClinicalRecordLookup,
 } from '@odontocrm/contracts';
@@ -20,11 +24,22 @@ import {
   saveSection,
   signRecord,
 } from '../clinical/record-service.js';
+import {
+  amendSession,
+  closeSession,
+  getSessionDetail,
+  listSessionsByAppointment,
+  listSessionsByPatient,
+  openSession,
+  saveSession,
+} from '../clinical/session-service.js';
 import type { ClinicalServices } from '../services.js';
 import { actorFrom } from '../shared/context.js';
 
 const patientParamsSchema = z.object({ patientId: z.uuid() });
 const recordParamsSchema = z.object({ id: z.uuid() });
+const sessionParamsSchema = z.object({ id: z.uuid() });
+const appointmentParamsSchema = z.object({ appointmentId: z.uuid() });
 const sectionParamsSchema = z
   .object({ id: z.uuid(), sectionKey: clinicalSectionKeySchema })
   .strict();
@@ -142,5 +157,84 @@ export const registerClinicalRoutes = (app: FastifyInstance, services: ClinicalS
     const result = await registerPrint(db, id, actor);
     publicarYa();
     return reply.status(200).send(result);
+  });
+
+  /* ── Sesiones clínicas (Fase 7, sesión A) ────────────────────────────────── */
+
+  /** Evolución del paciente, de la última sesión a la primera. */
+  app.get(
+    '/api/v1/clinical/patients/:patientId/sessions',
+    { preHandler: read },
+    async (request, reply) => {
+      const { patientId } = parseOrThrow(patientParamsSchema, request.params);
+      return reply.status(200).send(await listSessionsByPatient(db, patientId));
+    },
+  );
+
+  /**
+   * Abre la sesión del día (idempotente): si ya hay un borrador, devuelve ese.
+   * Abre también la historia clínica si el paciente todavía no la tenía.
+   */
+  app.post(
+    '/api/v1/clinical/patients/:patientId/sessions',
+    { preHandler: write },
+    async (request, reply) => {
+      const actor = actorFrom(request);
+      const { patientId } = parseOrThrow(patientParamsSchema, request.params);
+      const input = parseOrThrow(createClinicalSessionSchema, request.body ?? {});
+      const patient = await patientLookup(patientId);
+      const result = await openSession(db, patientId, input, actor, patient);
+      if (result.created) publicarYa();
+      return reply.status(result.created ? 201 : 200).send(result.detail);
+    },
+  );
+
+  /**
+   * Sesiones de una cita. La usa la secretaría —que tiene `clinical:read`— para
+   * saber si el doctor ya cerró la sesión antes de marcar «atendido».
+   */
+  app.get(
+    '/api/v1/clinical/appointments/:appointmentId/sessions',
+    { preHandler: read },
+    async (request, reply) => {
+      const { appointmentId } = parseOrThrow(appointmentParamsSchema, request.params);
+      return reply.status(200).send(await listSessionsByAppointment(db, appointmentId));
+    },
+  );
+
+  app.get('/api/v1/clinical/sessions/:id', { preHandler: read }, async (request, reply) => {
+    const { id } = parseOrThrow(sessionParamsSchema, request.params);
+    return reply.status(200).send(await getSessionDetail(db, id));
+  });
+
+  /** Autoguardado del borrador: llega el documento completo de la sesión. */
+  app.put('/api/v1/clinical/sessions/:id', { preHandler: write }, async (request, reply) => {
+    const { id } = parseOrThrow(sessionParamsSchema, request.params);
+    const input = parseOrThrow(saveClinicalSessionSchema, request.body ?? {});
+    const result = await saveSession(db, id, input);
+    return reply.status(200).send(result.detail);
+  });
+
+  /** Cierre: la sesión queda inmutable y el acto clínico en la auditoría. */
+  app.post('/api/v1/clinical/sessions/:id/close', { preHandler: write }, async (request, reply) => {
+    const actor = actorFrom(request);
+    const { id } = parseOrThrow(sessionParamsSchema, request.params);
+    const input = parseOrThrow(closeClinicalSessionSchema, request.body ?? {});
+    const session = await closeSession(db, id, input, actor);
+    publicarYa();
+    return reply.status(200).send(session);
+  });
+
+  /**
+   * Enmienda de una sesión cerrada: abre una nueva en borrador con su contenido
+   * copiado y el motivo dicho. Lo cerrado no se reescribe.
+   */
+  app.post('/api/v1/clinical/sessions/:id/amend', { preHandler: write }, async (request, reply) => {
+    const actor = actorFrom(request);
+    const { id } = parseOrThrow(sessionParamsSchema, request.params);
+    const input = parseOrThrow(amendClinicalSessionSchema, request.body ?? {});
+    const session = await amendSession(db, id, input, actor);
+    publicarYa();
+    return reply.status(201).send(session);
   });
 };
