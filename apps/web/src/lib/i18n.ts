@@ -141,6 +141,9 @@ const DICCIONARIO = {
   'modulo.secretaria.descripcion': 'Calendario del día, sala de espera y acciones del flujo.',
   'modulo.consultorio.titulo': 'Consultorio',
   'modulo.consultorio.descripcion': 'Historia clínica, sesiones, odontograma y récipes.',
+  'modulo.flujo.titulo': 'Flujo del día',
+  'modulo.flujo.descripcion':
+    'La jornada completa en una pantalla: cola del día, paciente en curso y acciones del flujo.',
   'modulo.reportes.titulo': 'Reportes',
   'modulo.reportes.descripcion': 'Indicadores operativos y clínicos del consultorio.',
   'modulo.auditoria.titulo': 'Auditoría',
@@ -1290,6 +1293,18 @@ const DICCIONARIO = {
   'secretaria.historial.titulo': 'Historial de la cita',
   'secretaria.historial.texto': 'Transiciones de estado con su actor, motivo y hora.',
   'secretaria.historial.vacio': 'Sin transiciones registradas.',
+
+  // --- Fase 8: página unificada del flujo diario ---------------------------
+  'flujo.titulo': 'Flujo del día',
+  'flujo.fecha': 'Fecha de la jornada',
+  'flujo.cola.titulo': 'Cola del día',
+  'flujo.cola.vacia': 'No hay citas que mostrar',
+  'flujo.sinPaciente': 'Sin paciente en curso',
+  'flujo.sinPacienteTexto':
+    'Elige una cita en la cola del día para abrir su expediente aquí mismo.',
+  'flujo.volverCola': 'Volver a la cola del día',
+  'flujo.cerrar.sinContenido':
+    'Para cerrar la sesión hace falta el motivo, el diagnóstico o algún procedimiento.',
 
   // --- Fase 5: pantallas kiosko --------------------------------------------
   'pantalla.cargando': 'Conectando con la pantalla…',

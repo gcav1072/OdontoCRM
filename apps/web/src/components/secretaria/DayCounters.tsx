@@ -1,5 +1,5 @@
 import type { DayView } from '@odontocrm/contracts';
-import { Card } from '@odontocrm/ui';
+import { Card, cn } from '@odontocrm/ui';
 
 import { t, type TranslationKey } from '../../lib/i18n';
 
@@ -13,6 +13,12 @@ const CONTADORES: readonly { clave: keyof DayView['counts']; etiqueta: Translati
 
 export interface DayCountersProps {
   counts: DayView['counts'];
+  /**
+   * Franja estrecha y sin tarjeta propia: la usa la barra superior de `/flujo`,
+   * donde los contadores van **dentro** de la tarjeta del día. En `/secretaria`
+   * (por defecto) siguen siendo una tarjeta con su relleno.
+   */
+  dense?: boolean;
 }
 
 /**
@@ -20,18 +26,25 @@ export interface DayCountersProps {
  * de citas de cada tramo del flujo. La cifra se lee de un vistazo, sin abrir
  * ninguna cita.
  */
-export const DayCounters = ({ counts }: DayCountersProps) => (
-  <Card>
-    <dl className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-4">
+export const DayCounters = ({ counts, dense = false }: DayCountersProps) => {
+  const lista = (
+    <dl className={cn('grid grid-cols-2 gap-3 sm:grid-cols-4', dense ? 'gap-2' : 'p-5')}>
       {CONTADORES.map(({ clave, etiqueta }) => (
         <div
           key={clave}
-          className="rounded-control border border-border bg-surface-muted px-3.5 py-2.5"
+          className={cn(
+            'rounded-control border border-border bg-surface-muted',
+            dense ? 'px-2.5 py-1.5' : 'px-3.5 py-2.5',
+          )}
         >
           <dt className="text-xs font-medium text-ink-muted">{t(etiqueta)}</dt>
-          <dd className="font-mono text-xl font-semibold text-ink">{counts[clave]}</dd>
+          <dd className={cn('font-mono font-semibold text-ink', dense ? 'text-base' : 'text-xl')}>
+            {counts[clave]}
+          </dd>
         </div>
       ))}
     </dl>
-  </Card>
-);
+  );
+
+  return dense ? lista : <Card>{lista}</Card>;
+};
