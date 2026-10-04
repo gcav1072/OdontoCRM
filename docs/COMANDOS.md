@@ -129,9 +129,33 @@ npx drizzle-kit generate --config services/screens/drizzle.config.ts --name mi_c
 
 | Comando | Qué crea | Flags |
 | :--- | :--- | :--- |
-| `npm run seed:users` | `admin`, `recepcion` y `egomez` con contraseña temporal | `-- --reset` regenera las contraseñas |
+| `npm run seed:users` | `admin`, `recepcion` y `egomez` con contraseña temporal | `-- --reset` regenera las contraseñas · `-- --print` **recuerda** las claves sin tocar nada |
 | `npm run seed:demo` | Pacientes ficticios deterministas (cédulas 90.000.000+, `is_fictitious`) | `-- --count 5000`, `-- --reset` (borra **solo** lo ficticio) |
 | `npm run seed:agenda` | Solicitudes y citas de ejemplo en el próximo día de consulta | `-- --reset` (las borra) |
+
+### ¿Cuál era la clave del admin?
+
+```powershell
+npm run seed:users -- --print
+```
+
+No escribe nada: lista los tres usuarios con su **contraseña por defecto** (la que
+siembra el sistema) y, consultando la base, dice de cada una si **sigue valiendo**, si
+alguien ya la cambió o si la cuenta está **bloqueada** por intentos fallidos (con la hora
+a la que se desbloquea).
+
+| Usuario | Contraseña por defecto | Rol |
+| :--- | :--- | :--- |
+| `admin` | `admin-odontocrm-2026` | administrador (acceso total) |
+| `recepcion` | `recepcion-odontocrm-2026` | secretaria |
+| `egomez` | `consultorio-odontocrm-2026` | odontóloga |
+
+- Nacen como **temporales**: el sistema obliga a cambiarlas en el primer acceso.
+- **Las pruebas de humo cambian la del `admin`** a `prueba-e2e-odontocrm-2026`; después,
+  `npm run seed:users -- --reset` la devuelve a la temporal (y limpia bloqueos e intentos).
+- 5 intentos fallidos bloquean la cuenta 15 minutos. `--reset` también lo limpia.
+- En producción (`NODE_ENV=production`) estas claves **no existen**: hay que indicarlas en
+  `SEED_PASSWORD_ADMIN`, `SEED_PASSWORD_RECEPCION` y `SEED_PASSWORD_EGOMEZ`.
 
 Detalles que conviene saber:
 
@@ -340,8 +364,9 @@ claves de `services/identity/.keys/`. Detalle en
 | `listen EACCES` en 8090 | Es el aviso de la Fase 0: el 8080 lo ocupa Windows; el gateway usa 8090 |
 | «Falta packages/db/dist» | Falta compilar: `npm run build` (o `build:node`) |
 | Cambio código y la app no cambia | PM2 sigue con el código viejo: `npm run build:node` y `pm2 restart <proceso> --update-env` |
-| Login 401 con la contraseña sembrada | Alguien (una prueba de humo) la cambió: `npm run seed:users -- --reset` |
-| 423 «cuenta bloqueada» | 5 intentos fallidos: 15 minutos, o `npm run seed:users -- --reset` |
+| Login 401 con la contraseña sembrada | Alguien (una prueba de humo) la cambió: `npm run seed:users -- --print` te lo dice y `npm run seed:users -- --reset` la restaura |
+| 423 «cuenta bloqueada» | 5 intentos fallidos: 15 minutos, o `npm run seed:users -- --reset` (que además limpia el bloqueo) |
+| «¿Cuál era la clave del admin?» | `npm run seed:users -- --print` |
 | Las pruebas de integración se saltan | Falta `TEST_*_DATABASE_URL`: ejecútalas con `npm run test:integration`, no con `npm test` |
 | Un servicio no arranca y menciona una variable | La configuración se valida con Zod al arrancar: falta esa variable en su `.env` (míralo en `.env.example`) |
 | El bot no responde en Telegram | `409 Conflict` por dos `getUpdates`: el poller es **único**, para el otro proceso |

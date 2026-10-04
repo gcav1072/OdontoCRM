@@ -1,4 +1,4 @@
-import { hashPassword } from '@odontocrm/kernel';
+import { hashPassword, verifyPassword } from '@odontocrm/kernel';
 import { eq } from 'drizzle-orm';
 import type { Role } from '@odontocrm/contracts';
 
@@ -15,6 +15,7 @@ import { userRoles, users } from './db/schema.js';
  *   npm run build:node
  *   npm run seed:users -w @odontocrm/identity              (idempotente)
  *   npm run seed:users -w @odontocrm/identity -- --reset    (regenera contraseñas)
+ *   npm run seed:users -w @odontocrm/identity -- --print    (recuerda las claves, sin tocar nada)
  *
  * Todas las contraseñas nacen como **temporales**: el sistema obliga a cambiarlas
  * en el primer acceso. En producción (`NODE_ENV=production`) hay que indicarlas
@@ -37,6 +38,8 @@ const DEVELOPMENT_PASSWORDS = {
 } as const;
 
 const reset = process.argv.includes('--reset');
+/** `--print`: solo recuerda las credenciales y su estado; no escribe en la base. */
+const soloRecordar = process.argv.includes('--print');
 
 const config = loadIdentityConfig();
 const production = config.NODE_ENV === 'production';
@@ -82,7 +85,75 @@ const SEED_USERS: SeedUser[] = [
 
 const database = createIdentityDatabase(config);
 
+/**
+ * Recuerda las credenciales sembradas y, si se puede consultar la base, **si la
+ * contraseña por defecto sigue valiendo** (o si alguien la cambió, o si la cuenta
+ * está bloqueada por intentos fallidos). No escribe nada.
+ */
+const recordarCredenciales = async (): Promise<void> => {
+  // eslint-disable-next-line no-console -- script de línea de comandos
+  console.log('Credenciales sembradas (todas nacen como temporales):\n');
+
+  let filas: {
+    username: string;
+    passwordHash: string;
+    failedAttempts: number;
+    lockedUntil: Date | null;
+  }[] = [];
+  try {
+    filas = await database.db
+      .select({
+        username: users.username,
+        passwordHash: users.passwordHash,
+        failedAttempts: users.failedAttempts,
+        lockedUntil: users.lockedUntil,
+      })
+      .from(users);
+  } catch {
+    // Sin base de datos (o sin migrar) se recuerdan igual: es lo que se viene a buscar.
+    // eslint-disable-next-line no-console -- script de línea de comandos
+    console.log(
+      '(No se pudo consultar la base: se muestra la contraseña por defecto sin comprobarla.)\n',
+    );
+  }
+
+  for (const seedUser of SEED_USERS) {
+    const fila = filas.find((usuario) => usuario.username === seedUser.username);
+    let estado = 'no existe todavía: créalo con  npm run seed:users';
+
+    if (fila !== undefined) {
+      const bloqueada = fila.lockedUntil !== null && fila.lockedUntil.getTime() > Date.now();
+      if (bloqueada) {
+        estado = `BLOQUEADA por intentos fallidos hasta las ${fila.lockedUntil?.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}`;
+      } else if (await verifyPassword(seedUser.password, fila.passwordHash)) {
+        estado = 'la contraseña por defecto SIGUE valiendo (pedirá cambiarla al entrar)';
+      } else {
+        estado = 'la contraseña ya se cambió (usa --reset para volver a la temporal)';
+      }
+    }
+
+    // eslint-disable-next-line no-console -- credenciales temporales de desarrollo
+    console.log(
+      `  ${seedUser.username.padEnd(10)} ${seedUser.password.padEnd(26)} roles: ${seedUser.roles.join(', ')}` +
+        `\n             ${estado}\n`,
+    );
+  }
+
+  // eslint-disable-next-line no-console -- script de línea de comandos
+  console.log(
+    'Las pruebas de humo cambian la del `admin` a `prueba-e2e-odontocrm-2026`.\n' +
+      'Restaurar las tres:  npm run seed:users -- --reset\n' +
+      'Cambiarlas antes de sembrar:  SEED_PASSWORD_ADMIN, SEED_PASSWORD_RECEPCION, SEED_PASSWORD_EGOMEZ\n' +
+      'Detalle completo:  docs/COMANDOS.md §5',
+  );
+};
+
 const main = async (): Promise<void> => {
+  if (soloRecordar) {
+    await recordarCredenciales();
+    return;
+  }
+
   const created: SeedUser[] = [];
   const updated: SeedUser[] = [];
   const skipped: SeedUser[] = [];
@@ -155,7 +226,8 @@ const main = async (): Promise<void> => {
     // eslint-disable-next-line no-console -- script de línea de comandos
     console.log(
       `\nYa existían (sin cambios): ${skipped.map((user) => user.username).join(', ')}` +
-        '\nUsa --reset si quieres volver a generar sus contraseñas temporales.',
+        '\nPara ver sus claves y si siguen valiendo:  npm run seed:users -- --print' +
+        '\nPara volver a generarlas:                  npm run seed:users -- --reset',
     );
   }
 

@@ -49,6 +49,14 @@ npm run dev
 La primera vez que entres, el sistema te pedirá cambiar la contraseña temporal: hasta que lo
 hagas, ningún módulo queda habilitado (es una regla del servidor, no solo de la interfaz).
 
+Credenciales sembradas (`admin` → `admin-odontocrm-2026`, `recepcion` → `recepcion-odontocrm-2026`,
+`egomez` → `consultorio-odontocrm-2026`). ¿Se te olvidó alguna, o no sabes si sigue valiendo?
+
+```powershell
+npm run seed:users -- --print    # las recuerda y dice si sirven, si las cambiaron o si está bloqueada
+npm run seed:users -- --reset    # las devuelve a la temporal (limpia bloqueos e intentos)
+```
+
 Comprobación rápida:
 
 ```powershell
