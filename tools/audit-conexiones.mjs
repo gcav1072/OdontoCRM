@@ -28,8 +28,8 @@ const METODOS_HTTP = ['get', 'post', 'put', 'patch', 'delete'];
 
 /** Servicios que aún no existen: su contrato está listo y no cuentan como fallo. */
 const FASES_FUTURAS = {
-  servicios: ['reporting'],
-  permisos: ['reports:read'],
+  servicios: [],
+  permisos: [],
 };
 
 /** Variables que genera `db:bootstrap` en cada servicio (no van en la plantilla). */
