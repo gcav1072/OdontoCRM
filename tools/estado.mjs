@@ -27,6 +27,7 @@
  * vigilar un `systemd` timer (`infra/fedora/systemd/odontocrm-alertas.*`) sin que
  * nadie lea una tabla.
  */
+import { execFileSync } from 'node:child_process';
 import { statfs } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -351,6 +352,78 @@ const revisarReportes = async () => {
   }
 };
 
+/**
+ * Quién sirve cada puerto y qué dice `systemd` de su unidad.
+ *
+ * Existe por un fallo real del banco de pruebas (Fase 10): con una pila de
+ * desarrollo ocupando los puertos, los servicios de `systemd` quedaron en `failed`
+ * por `EADDRINUSE` **mientras `/health` respondía 200** —lo contestaba la otra
+ * pila— y el tablero daba todo por bueno. Aquí se compara el proceso que escucha
+ * con el `MainPID` de la unidad; si no coinciden, es una alerta.
+ *
+ * Solo aplica donde hay `systemd` (Fedora); en desarrollo se omite sin ruido.
+ */
+const revisarSystemd = () => {
+  const haySystemd = (() => {
+    try {
+      execFileSync('systemctl', ['--version'], { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  if (!haySystemd) return { disponible: false, unidades: [] };
+
+  const pidDelPuerto = (puerto) => {
+    try {
+      const salida = execFileSync('ss', ['-lntpH', `sport = :${String(puerto)}`], {
+        encoding: 'utf8',
+      });
+      return /pid=(\d+)/.exec(salida)?.[1] ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const unidades = PROCESOS.map((proceso) => {
+    const unidad = proceso.unidad ?? `odontocrm@${proceso.name}`;
+    let activa;
+    let pidUnidad = null;
+    let existe = true;
+    try {
+      activa = execFileSync('systemctl', ['is-active', `${unidad}.service`], {
+        encoding: 'utf8',
+      }).trim();
+    } catch (fallo) {
+      const salida = (fallo.stdout ?? '').toString().trim();
+      // `is-active` sale con código ≠ 0 cuando la unidad no está activa: el estado
+      // viene en la salida, no es un fallo de la consulta.
+      activa = salida === '' ? 'no-existe' : salida;
+    }
+    try {
+      pidUnidad =
+        execFileSync('systemctl', ['show', '-p', 'MainPID', '--value', `${unidad}.service`], {
+          encoding: 'utf8',
+        }).trim() || null;
+    } catch {
+      existe = false;
+    }
+
+    const pidPuerto = pidDelPuerto(proceso.port);
+    return {
+      name: proceso.name,
+      unidad,
+      activa,
+      existe,
+      pidUnidad,
+      pidPuerto,
+      sirveLaUnidad: pidPuerto !== null && pidUnidad !== null && pidPuerto === pidUnidad,
+    };
+  });
+
+  return { disponible: true, unidades };
+};
+
 const revisarDisco = async () => {
   try {
     const info = await statfs(resolve(ROOT));
@@ -377,6 +450,7 @@ export const tomarFoto = async () => {
     : await revisarServicios(entorno);
 
   const datos = await revisarDatos();
+  const systemd = revisarSystemd();
   const [bases, cola, envios, reportes, disco] = await Promise.all([
     revisarBases(entorno, datos),
     revisarCola(),
@@ -392,6 +466,7 @@ export const tomarFoto = async () => {
     bases,
     cola,
     outbox: datos,
+    systemd,
     envios,
     reportes,
     disco,
@@ -439,6 +514,23 @@ const tablero = (foto) => {
           `      ${color.error('✖')} ${fallo.name}: ${String(fallo.message ?? 'sin detalle')}`,
         );
       }
+    }
+  }
+
+  if (foto.systemd?.disponible === true) {
+    lineas.push('');
+    lineas.push(color.titulo('── Unidades systemd ──────────────────────────────────────────────'));
+    for (const unidad of foto.systemd.unidades) {
+      const bien =
+        unidad.activa === 'active' && (unidad.pidPuerto === null || unidad.sirveLaUnidad);
+      const marca = bien ? color.ok('✔') : color.error('✖');
+      const detalle =
+        unidad.pidPuerto === null
+          ? `${unidad.activa} (sin puerto)`
+          : unidad.sirveLaUnidad
+            ? `${unidad.activa} · sirve el puerto (PID ${String(unidad.pidUnidad)})`
+            : `${unidad.activa} · el puerto lo sirve el PID ${String(unidad.pidPuerto)} (la unidad es ${String(unidad.pidUnidad ?? '—')})`;
+      lineas.push(`  ${marca} ${unidad.unidad.padEnd(32)} ${detalle}`);
     }
   }
 

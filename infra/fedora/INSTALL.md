@@ -933,6 +933,14 @@ sudo -u odontocrm env HOME=/var/lib/odontocrm \
 | Lectura de `/etc/odontocrm/odontocrm.env` y `<servicio>.env` (`0600 root:root`) | Sí (root los inyecta) | Sí, si se ponen en `0640 root:odontocrm` (§10.4) |
 | Procesos extra | Ninguno | Demonio de PM2 |
 
+**Y una sola pila.** No basta con elegir un supervisor: si la máquina tiene además una
+pila de desarrollo (`npm run dev`, `stack:dev`) en los mismos puertos, los dos conjuntos
+de procesos se pelean por ellos y el diagnóstico se vuelve **mentiroso** —los servicios
+de `systemd` quedan en `failed` por `EADDRINUSE` mientras `/health` responde 200, porque
+lo contesta la otra pila—. Pasó en el banco de pruebas de la Fase 10. Antes de arrancar:
+`ss -lntp` sobre los puertos de la pila y `npm run stack:status`; si hay algo,
+`npm run stack:down` (§10.2).
+
 ### 10.2 Instalar las unidades `systemd`
 
 ```bash
@@ -970,6 +978,21 @@ sudo systemctl show odontocrm@identity -p EnvironmentFiles
 sudo systemctl show odontocrm-gateway -p EnvironmentFiles
 ```
 
+**Antes de arrancar: comprueba que los puertos están libres.** Si en la máquina
+quedó una pila de desarrollo (`npm run dev`, `stack:dev`) —o cualquier proceso suelto—
+los servicios de `systemd` entran en bucle con `EADDRINUSE`, agotan el límite de
+arranques y quedan en `failed`… **mientras `/health` responde 200**: lo responde la
+otra pila, y el operador cree que todo está bien. Pasó en el banco de pruebas de la
+Fase 10 y es el escenario que evita el [ADR 0037](../../docs/adr/0037-una-sola-pila-a-la-vez.md).
+
+```bash
+# ¿Hay algo escuchando en los puertos de la pila? (debe salir vacío)
+ss -lntp | grep -E ':(4001|4002|4003|4004|4005|4006|4007|4008|8090)\b'
+# En una máquina que también se usa para desarrollar:
+cd /opt/odontocrm && npm run stack:status      # quién corre y desde cuándo
+npm run stack:down                             # si hay una pila de desarrollo, se para
+```
+
 Arranque en orden (primero la base de datos, luego los servicios, el gateway al final):
 
 ```bash
@@ -981,6 +1004,20 @@ sudo systemctl enable --now odontocrm-gateway.service
 systemctl --no-pager --type=service 'odontocrm*' | cat
 systemctl status odontocrm@identity --no-pager
 ```
+
+**Y comprueba que quien escucha es la unidad**, no otro proceso: el `/health` en 200 no
+lo garantiza. Para el ejemplo de `identity` (repite cambiando servicio y puerto):
+
+```bash
+unidad=odontocrm@identity; puerto=4001
+systemctl is-active "$unidad"
+[[ "$(ss -lntpH "sport = :$puerto" | grep -oP 'pid=\K[0-9]+' | head -1)" \
+   == "$(systemctl show -p MainPID --value "$unidad")" ]] \
+  && echo "el $puerto lo sirve $unidad" || echo "¡el $puerto lo sirve OTRO proceso!"
+```
+
+Si alguno quedó en `failed`: `journalctl -u odontocrm@<servicio> -n 50 --no-pager`. Con
+`EADDRINUSE` al principio del registro, la causa es la pila de más.
 
 Operación diaria:
 
@@ -1721,6 +1758,20 @@ declare -A PORTS=(
 fallos=0
 for svc in identity patients scheduling notifications clinical odontogram screens reporting gateway; do
   p="${PORTS[$svc]}"
+  # Un /health 200 no basta: hay que comprobar que quien escucha es la UNIDAD de
+  # systemd y no otro proceso (una pila de desarrollo en los mismos puertos contesta
+  # 200 y los servicios quedan en failed por EADDRINUSE: pasó en el banco de pruebas).
+  unidad="odontocrm@${svc}"; [[ "$svc" == "gateway" ]] && unidad="odontocrm-gateway"
+  activa="$(systemctl is-active "${unidad}.service" 2>/dev/null || true)"
+  pid_unidad="$(systemctl show -p MainPID --value "${unidad}.service" 2>/dev/null || echo 0)"
+  pid_puerto="$(ss -lntpH "sport = :${p}" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)"
+  if [[ "$activa" != "active" ]]; then
+    printf '  FALLA %-14s :%-5s unidad %s\n' "$svc" "$p" "$activa"
+    (( fallos++ ))
+  elif [[ "$pid_puerto" != "$pid_unidad" ]]; then
+    printf '  FALLA %-14s :%-5s lo sirve el PID %s, no %s (PID %s)\n' "$svc" "$p" "${pid_puerto:-nadie}" "$unidad" "$pid_unidad"
+    (( fallos++ ))
+  fi
   for ruta in health ready; do
     code="$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:${p}/${ruta}" || echo 000)"
     if [[ "$code" == "200" ]]; then
@@ -1737,6 +1788,12 @@ EOF
 sudo install -m 0755 -o root -g root /tmp/verificar-odontocrm.sh /usr/local/bin/verificar-odontocrm
 /usr/local/bin/verificar-odontocrm
 ```
+
+> El verificador comprueba **tres** cosas por servicio: que la unidad esté `active`, que
+> el puerto lo sirva **su** proceso (`MainPID`) y que `/health` y `/ready` respondan 200.
+> La primera versión solo miraba el `curl` y daba verde con la pila equivocada escuchando
+> (banco de pruebas, Fase 10). `npm run estado` hace estas mismas comprobaciones cada
+> cinco minutos en producción (`odontocrm-alertas.timer`).
 
 ### 17.2 Comprobaciones de infraestructura
 

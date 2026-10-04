@@ -172,6 +172,116 @@ describe('alertas del sistema', () => {
     expect(problemas.join(' ')).toContain('disco');
   });
 
+  /**
+   * El fallo que motivó esta regla: en el banco de pruebas, una pila de desarrollo
+   * ocupaba los puertos, los servicios de systemd quedaron en `failed` por
+   * EADDRINUSE y `/health` respondía 200 —lo contestaba la otra pila—, así que el
+   * tablero daba todo por bueno.
+   */
+  it('avisa cuando el puerto lo sirve un proceso que no es la unidad de systemd', () => {
+    const conOtraPila = foto({
+      systemd: {
+        disponible: true,
+        unidades: [
+          {
+            name: 'identity',
+            unidad: 'odontocrm@identity',
+            activa: 'failed',
+            existe: true,
+            pidUnidad: null,
+            pidPuerto: '57833',
+            sirveLaUnidad: false,
+          },
+        ],
+      },
+    });
+
+    const problemas = alertasDe(conOtraPila, AHORA);
+
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toContain('lo sirve el PID 57833');
+    expect(problemas[0]).toContain('odontocrm@identity');
+    expect(problemas[0]).toContain('otra pila');
+  });
+
+  it('avisa si la unidad está activa pero el puerto lo sirve otro proceso', () => {
+    const problemas = alertasDe(
+      foto({
+        systemd: {
+          disponible: true,
+          unidades: [
+            {
+              name: 'clinical',
+              unidad: 'odontocrm@clinical',
+              activa: 'active',
+              existe: true,
+              pidUnidad: '111',
+              pidPuerto: '222',
+              sirveLaUnidad: false,
+            },
+          ],
+        },
+      }),
+      AHORA,
+    );
+
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toContain('no odontocrm@clinical');
+  });
+
+  it('una unidad en failed sin puerto también es alerta (con el comando para mirar)', () => {
+    const problemas = alertasDe(
+      foto({
+        systemd: {
+          disponible: true,
+          unidades: [
+            {
+              name: 'screens',
+              unidad: 'odontocrm@screens',
+              activa: 'failed',
+              existe: true,
+              pidUnidad: null,
+              pidPuerto: null,
+              sirveLaUnidad: false,
+            },
+          ],
+        },
+      }),
+      AHORA,
+    );
+
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toContain('journalctl -u odontocrm@screens');
+  });
+
+  it('con la unidad sirviendo su puerto no hay nada que reportar', () => {
+    const problemas = alertasDe(
+      foto({
+        systemd: {
+          disponible: true,
+          unidades: [
+            {
+              name: 'identity',
+              unidad: 'odontocrm@identity',
+              activa: 'active',
+              existe: true,
+              pidUnidad: '111',
+              pidPuerto: '111',
+              sirveLaUnidad: true,
+            },
+          ],
+        },
+      }),
+      AHORA,
+    );
+
+    expect(problemas).toEqual([]);
+  });
+
+  it('sin systemd (desarrollo) no se dice nada de unidades', () => {
+    expect(alertasDe(foto({ systemd: { disponible: false, unidades: [] } }), AHORA)).toEqual([]);
+  });
+
   it('una base inalcanzable se reporta una vez, no por cada servicio', () => {
     const problemas = alertasDe(
       foto({

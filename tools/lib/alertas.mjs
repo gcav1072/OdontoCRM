@@ -67,6 +67,24 @@ export const alertasDe = (foto, ahora = new Date(), limites = LIMITES) => {
     }
   }
 
+  // systemd: que quien escucha sea la unidad, no otra pila (banco de pruebas, Fase 10).
+  if (foto.systemd?.disponible === true) {
+    for (const unidad of foto.systemd.unidades ?? []) {
+      const hayPuerto = unidad.pidPuerto !== null && unidad.pidPuerto !== undefined;
+      if (unidad.activa !== 'active' && hayPuerto) {
+        problemas.push(
+          `el puerto de ${unidad.name} lo sirve el PID ${String(unidad.pidPuerto)} pero ${unidad.unidad} está ${String(unidad.activa)} (¿hay otra pila corriendo?)`,
+        );
+      } else if (unidad.activa === 'active' && hayPuerto && unidad.sirveLaUnidad === false) {
+        problemas.push(
+          `el puerto de ${unidad.name} lo sirve el PID ${String(unidad.pidPuerto)}, no ${unidad.unidad} (PID ${String(unidad.pidUnidad ?? '—')})`,
+        );
+      } else if (unidad.activa === 'failed') {
+        problemas.push(`${unidad.unidad} está en failed: journalctl -u ${unidad.unidad} -n 50`);
+      }
+    }
+  }
+
   if (foto.bases?.error !== undefined) {
     problemas.push(`base de datos: ${String(foto.bases.error)}`);
   }
