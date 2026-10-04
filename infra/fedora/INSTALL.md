@@ -685,7 +685,7 @@ Nombres exactos de los puertos (los del código y los de §2.2):
 | `COOKIE_SECURE=true` | `identity` | Exige HTTPS: es la razón del TLS interno (§13). |
 | `STORAGE_DRIVER`, `STORAGE_ROOT` | `patients`, `clinical` | `local` + `/var/lib/odontocrm/storage` (abstracción S3-ready). |
 | `PLAYWRIGHT_BROWSERS_PATH` | `clinical` | `/var/lib/odontocrm/ms-playwright`. |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_MODE=polling` | `notifications` | Token de BotFather, entregado por archivo (nunca por chat ni en el repo). |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_MODE=auto` | `notifications` | Token de BotFather, entregado por archivo (nunca por chat ni en el repo). El modo es **`auto` \| `real` \| `simulado`** (el modo test fuerza `simulado`); el *long polling* es el transporte, no un modo: `polling` **no** es un valor válido y el servicio no arranca con él. |
 
 **Regla de precedencia:** si una variable aparece en los dos archivos, gana la del
 archivo **propio** (es el segundo `--env-file-if-exists` / el segundo

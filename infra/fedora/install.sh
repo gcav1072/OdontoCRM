@@ -596,6 +596,27 @@ INTERNAL_SERVICE_SECRET=CAMBIAR_SECRETO_INTERNO_COMPARTIDO
 EOF
 }
 
+# Arregla valores heredados que impiden arrancar. `install.sh` nunca sobrescribe un
+# archivo existente, así que una plantilla con un valor inválido se queda para
+# siempre: aquí se corrige el único caso conocido.
+#
+# `TELEGRAM_MODE=polling` venía en la plantilla de las Fases 4-9: el esquema acepta
+# `auto | real | simulado` (el long polling es el transporte, no un modo), así que el
+# servicio de notificaciones moría con `ConfigError: valor no permitido` — y con él la
+# migración. Medido en el ensayo de la Fase 10.
+corregir_valores_obsoletos() {
+  local archivo="/etc/odontocrm/notifications.env"
+  [[ -f "$archivo" ]] || return 0
+  if grep -qE '^TELEGRAM_MODE=polling[[:space:]]*$' "$archivo"; then
+    if (( APPLY )); then
+      sed -i 's|^TELEGRAM_MODE=polling[[:space:]]*$|TELEGRAM_MODE=auto|' "$archivo"
+      ok "corregido TELEGRAM_MODE=polling → auto en $archivo (con 'polling' el servicio no arranca)"
+    else
+      printf '       %s[dry-run] sed -i s/TELEGRAM_MODE=polling/TELEGRAM_MODE=auto/ %s%s\n' "$C_DIM" "$archivo" "$C_RESET"
+    fi
+  fi
+}
+
 write_env_templates() {
   step "5/9 · Plantillas de configuración (/etc/odontocrm)"
 
@@ -639,7 +660,9 @@ EOF
 # Debe haber UN ÚNICO poller (si hay dos, Telegram responde 409 Conflict).
 TELEGRAM_BOT_TOKEN=CAMBIAR_TOKEN_BOTFATHER
 TELEGRAM_BOT_USERNAME=CAMBIAR_USUARIO_DEL_BOT
-TELEGRAM_MODE=polling
+# El modo es auto | real | simulado (el long polling es el transporte, no un modo):
+# con 'auto' el bot usa el real si hay token y el simulado si no lo hay.
+TELEGRAM_MODE=auto
 TELEGRAM_TEST_CHAT_ID=CAMBIAR_CHAT_ID_DE_PRUEBAS
 EOF
 )
@@ -956,6 +979,7 @@ main() {
   install_pm2
   create_user_and_dirs
   write_env_templates
+  corregir_valores_obsoletos
   install_logrotate
   install_systemd_units
   configure_firewall
