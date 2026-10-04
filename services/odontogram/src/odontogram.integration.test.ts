@@ -615,8 +615,13 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
     expect(ausente?.reason).toContain('corrección de captura');
 
     await flushOutbox();
-    const rows = await waitForAudit((current) =>
-      current.some((row) => row.action === 'tooth_finding_removed'),
+    /**
+     * Se espera a los **dos** borrados, no a que llegue el primero: la cola puede
+     * entregar el lote en dos tandas y la comprobación pasaba con uno solo (la
+     * suite se caía cuando el segundo evento llegaba un poco más tarde).
+     */
+    const rows = await waitForAudit(
+      (current) => current.filter((row) => row.action === 'tooth_finding_removed').length === 2,
     );
     expect(rows.filter((row) => row.action === 'tooth_finding_removed')).toHaveLength(2);
   }, 40_000);
