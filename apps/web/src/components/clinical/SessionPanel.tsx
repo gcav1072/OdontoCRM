@@ -74,6 +74,14 @@ export interface SessionPanelProps {
   onChanged: () => void;
   /** Lleva a la pestaña del odontograma: lo que se marca allí cae en esta sesión. */
   onOpenOdontogram?: (() => void) | undefined;
+  /**
+   * Contador que pide cerrar la sesión abierta: el atajo `F8` de `/flujo` lo
+   * incrementa. Cada cambio de número abre el diálogo de cierre (y si la sesión
+   * todavía no tiene contenido, avisa con `onCloseBlocked`).
+   */
+  closeRequest?: number;
+  /** La sesión no se puede cerrar todavía: el contenedor lo dice en pantalla. */
+  onCloseBlocked?: () => void;
 }
 
 /** Fecha de hoy en la zona del consultorio (la que usa la agenda). */
@@ -123,6 +131,8 @@ export const SessionPanel = ({
   sessions,
   onChanged,
   onOpenOdontogram,
+  closeRequest = 0,
+  onCloseBlocked,
 }: SessionPanelProps) => {
   const queryClient = useQueryClient();
   const { notice, exito, error, limpiar } = useNotice();
@@ -248,6 +258,27 @@ export const SessionPanel = ({
     // `guardar` es estable entre dibujados; solo interesa el contenido y la sesión.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contenido, sessionId, canWrite]);
+
+  /**
+   * El atajo `F8` de `/flujo` pide cerrar la sesión del paciente en curso: abre el
+   * mismo diálogo que el botón (con la pregunta del récipe) y, si la sesión todavía no
+   * tiene contenido, avisa en vez de abrir un cierre que el servidor rechazaría.
+   *
+   * El número se recuerda para que el pedido se atienda **una vez**: cada tecla
+   * posterior no vuelve a abrir el diálogo.
+   */
+  const ultimoPedido = useRef(0);
+  useEffect(() => {
+    if (closeRequest <= 0 || closeRequest === ultimoPedido.current) return;
+    ultimoPedido.current = closeRequest;
+
+    if (openSession === null || !canWrite) return;
+    if (!clinicalSessionHasContent(contenido)) {
+      onCloseBlocked?.();
+      return;
+    }
+    setDialogo('cerrar');
+  }, [closeRequest, openSession, canWrite, contenido, onCloseBlocked]);
 
   /**
    * Cerrar la sesión. Si el doctor dijo que sí al récipe, al terminar se abre el

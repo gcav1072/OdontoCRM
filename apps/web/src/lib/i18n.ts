@@ -1301,10 +1301,25 @@ const DICCIONARIO = {
   'flujo.cola.vacia': 'No hay citas que mostrar',
   'flujo.sinPaciente': 'Sin paciente en curso',
   'flujo.sinPacienteTexto':
-    'Elige una cita en la cola del día para abrir su expediente aquí mismo.',
+    'Elige una cita en la cola del día o busca un paciente con F2 para abrir su expediente aquí mismo.',
   'flujo.volverCola': 'Volver a la cola del día',
+  'flujo.buscar.texto': 'Escribe el nombre, el documento o el teléfono del paciente.',
+  'flujo.atajo.buscar': 'Buscar paciente',
+  'flujo.atajo.llamar': 'Llamar al paciente',
+  'flujo.atajo.cerrar': 'Cerrar la sesión',
+  'flujo.atajo.buscarAyuda': 'Abre el buscador de pacientes',
+  'flujo.atajo.llamarAyuda': 'Llama al paciente en curso (sale en la pantalla de la sala)',
+  'flujo.atajo.cerrarAyuda': 'Cierra la sesión clínica de la visita',
+  'flujo.atajos.ayuda': '{buscar} · {llamar} · {cerrar}',
+  'flujo.cerrar.sinPaciente': 'No hay ningún paciente abierto: elige su cita en la cola del día.',
   'flujo.cerrar.sinContenido':
     'Para cerrar la sesión hace falta el motivo, el diagnóstico o algún procedimiento.',
+  'flujo.llamar.sinPaciente': 'No hay ninguna cita en curso a la que llamar.',
+  'flujo.llamar.noDisponible':
+    'Esta cita no admite un llamado ahora mismo; usa «Llamar fuera de orden» si el paciente ya está aquí.',
+  'flujo.ayuda.titulo': 'Atajos de esta pantalla',
+  'flujo.ayuda.texto':
+    'Funcionan desde cualquier punto del flujo, salvo con un diálogo abierto. En la tableta están también como botones en la barra de arriba.',
 
   // --- Fase 5: pantallas kiosko --------------------------------------------
   'pantalla.cargando': 'Conectando con la pantalla…',

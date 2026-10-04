@@ -69,6 +69,11 @@ export interface PatientWorkspaceProps {
   onExit: () => void;
   /** Permite volver atrás solo cuando tiene sentido (`/consultorio`). */
   exitLabel?: string;
+  /**
+   * Contador que pide cerrar la sesión clínica abierta (atajo `F8` de `/flujo`).
+   * Cambiar el número abre el diálogo de cierre; `0` no pide nada.
+   */
+  closeSessionRequest?: number;
 }
 
 export const PatientWorkspace = ({
@@ -81,6 +86,7 @@ export const PatientWorkspace = ({
   onTabChange,
   onExit,
   exitLabel,
+  closeSessionRequest = 0,
 }: PatientWorkspaceProps) => {
   const queryClient = useQueryClient();
   const { notice, exito, error, limpiar } = useNotice();
@@ -247,6 +253,8 @@ export const PatientWorkspace = ({
           sessions={sesiones}
           onChanged={recargarSesiones}
           onOpenOdontogram={puedeVerOdontograma ? () => cambiarPestana('odontograma') : undefined}
+          closeRequest={closeSessionRequest}
+          onCloseBlocked={() => error(t('flujo.cerrar.sinContenido'))}
         />
       ) : (
         <>
