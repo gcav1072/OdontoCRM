@@ -1717,7 +1717,7 @@ const DICCIONARIO = {
   'clinica.sesion.caras': 'Caras tratadas',
   'clinica.sesion.caras.ayuda':
     'Sin caras marcadas el procedimiento se guarda sobre la pieza completa.',
-  'clinica.sesion.caras.elegidas': '{total} cara(s) marcada(s) para este procedimiento.',
+  'clinica.sesion.caras.elegidas': 'Caras marcadas: {total}',
 
   'clinica.sesion.materiales': 'Materiales e insumos',
   'clinica.sesion.material': 'Material',
