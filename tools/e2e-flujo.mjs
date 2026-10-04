@@ -478,8 +478,12 @@ try {
   await page.goto('/flujo');
   await principal.getByRole('heading', { name: 'Flujo del día' }).waitFor();
   await page.getByRole('list', { name: 'Cola del día' }).waitFor();
-  const botonAtajo = page.getByRole('button', { name: 'Buscar paciente' });
-  const botonLlamar = page.getByRole('button', { name: 'Llamar al paciente' });
+  // Los atajos viven en un grupo con nombre accesible: la pantalla vacía ofrece
+  // otro botón «Buscar paciente», así que hay que apuntar al grupo (si no,
+  // Playwright se queja —con razón— de que la búsqueda es ambigua).
+  const atajos = page.getByRole('group', { name: 'Atajos del día' });
+  const botonAtajo = atajos.getByRole('button', { name: 'Buscar paciente' });
+  const botonLlamar = atajos.getByRole('button', { name: 'Llamar al paciente' });
   check(
     'en la tableta la cola y los atajos como botón siguen a mano',
     (await botonAtajo.isVisible()) && (await botonLlamar.isVisible()),
