@@ -61,6 +61,9 @@ const extraEnv = {
     readEnvValue('services/notifications/.env', 'DATABASE_URL'),
   TEST_SCREENS_DATABASE_URL:
     process.env.TEST_SCREENS_DATABASE_URL ?? readEnvValue('services/screens/.env', 'DATABASE_URL'),
+  TEST_CLINICAL_DATABASE_URL:
+    process.env.TEST_CLINICAL_DATABASE_URL ??
+    readEnvValue('services/clinical/.env', 'DATABASE_URL'),
 };
 
 const url = new URL(databaseUrl);

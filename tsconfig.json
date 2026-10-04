@@ -11,6 +11,7 @@
     { "path": "services/scheduling" },
     { "path": "services/notifications" },
     { "path": "services/screens" },
+    { "path": "services/clinical" },
     { "path": "apps/gateway" }
   ]
 }

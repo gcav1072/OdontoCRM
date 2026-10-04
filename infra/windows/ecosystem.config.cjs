@@ -46,6 +46,7 @@ module.exports = {
     service('scheduling', 'services/scheduling/dist/index.js', 'services/scheduling/.env'),
     service('notifications', 'services/notifications/dist/index.js', 'services/notifications/.env'),
     service('screens', 'services/screens/dist/index.js', 'services/screens/.env'),
-    // Fase 4.1: canales de notifications · Fase 6: clinical y odontogram · Fase 9: reporting
+    service('clinical', 'services/clinical/dist/index.js', 'services/clinical/.env'),
+    // Fase 6 (sesión B): odontogram · Fase 9: reporting
   ],
 };

@@ -28,14 +28,8 @@ const METODOS_HTTP = ['get', 'post', 'put', 'patch', 'delete'];
 
 /** Servicios que aún no existen: su contrato está listo y no cuentan como fallo. */
 const FASES_FUTURAS = {
-  servicios: ['clinical', 'odontogram', 'reporting'],
-  permisos: [
-    'clinical:read',
-    'clinical:write',
-    'odontogram:read',
-    'odontogram:write',
-    'reports:read',
-  ],
+  servicios: ['odontogram', 'reporting'],
+  permisos: ['odontogram:read', 'odontogram:write', 'reports:read'],
 };
 
 /** Variables que genera `db:bootstrap` en cada servicio (no van en la plantilla). */
