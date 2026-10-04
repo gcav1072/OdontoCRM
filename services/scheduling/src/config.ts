@@ -38,6 +38,12 @@ export const schedulingEnvSchema = baseEnvSchema.extend({
     .default('Av. Luis del Valle García, C.E. Nueva Esparta, Planta Baja, Local 1-2'),
   CLINIC_NAME: z.string().min(1).default('Consultorio - Od. Erika Gómez'),
 
+  /**
+   * Servicio clínico (red interna). La agenda lo consulta para comprobar que la
+   * sesión clínica esté **cerrada** antes de dejar marcar «atendido» sin motivo.
+   */
+  CLINICAL_URL: z.string().min(1).default('http://127.0.0.1:4005'),
+
   /** Secreto compartido con los demás servicios para las rutas internas. */
   INTERNAL_SERVICE_SECRET: z.string().min(16).optional(),
 });

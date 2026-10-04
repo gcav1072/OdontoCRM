@@ -335,6 +335,11 @@ export const appointmentSummarySchema = z.object({
   noShowReason: z.string().nullable(),
   /** Motivo del «atendido» cuando aún no hay sesión clínica (Fase 6). */
   forceAttendedReason: z.string().nullable(),
+  /**
+   * Sesión clínica **cerrada** que respalda el «atendido» (Fase 7): si está
+   * presente, la cita se atendió con su evolución hecha y no hizo falta motivo.
+   */
+  clinicalSessionId: z.uuid().nullable(),
   rescheduledFromId: z.uuid().nullable(),
   rescheduledToId: z.uuid().nullable(),
   icsSequence: z.number().int().min(0),

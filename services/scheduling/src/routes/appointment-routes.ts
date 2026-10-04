@@ -94,8 +94,9 @@ export const registerAppointmentRoutes = (
   });
 
   /**
-   * Marcar atendido. Mientras no exista el módulo clínico (Fase 6) exige un motivo,
-   * que queda en la auditoría (el plan pide auditar el «atendido» forzado).
+   * Marcar atendido. Exige la **sesión clínica cerrada** (Fase 7): la que llega en
+   * el cuerpo se verifica contra el servicio clínico, y sin ella hace falta un
+   * motivo que queda en la auditoría (el plan pide auditar el «atendido» forzado).
    */
   app.post('/api/v1/appointments/:id/attend', { preHandler: write }, async (request, reply) => {
     const actor = actorFrom(request);
@@ -105,6 +106,7 @@ export const registerAppointmentRoutes = (
       config,
       forceReason: input.forceReason,
       clinicalSessionId: input.clinicalSessionId,
+      sessionLookup: services.sessionLookup,
     });
     publicarYa();
     return reply.status(200).send(result);

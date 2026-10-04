@@ -32,6 +32,7 @@ import {
 import { assertCapacityAvailable, slotsForDate } from '../agenda/capacity-service.js';
 import { buildAppointmentMessage } from '../agenda/message.js';
 import { assertCanTransition, toClinicInstant, type ActorContext } from '../shared/context.js';
+import type { ClinicalSessionLookup } from '../shared/clinical-client.js';
 import { auditPayload, publish } from '../shared/events.js';
 
 export interface AssignOptions {
@@ -559,20 +560,65 @@ const AUDIT_ACTIONS_BY_STATUS = {
 
 export interface TransitionOptions {
   reason?: string | undefined;
-  /** Motivo del «atendido» cuando aún no hay historia clínica (Fase 6). */
+  /** Motivo del «atendido» cuando aún no hay sesión clínica (Fase 6). */
   forceReason?: string | undefined;
   clinicalSessionId?: string | undefined;
+  /** Comprueba la sesión contra el servicio clínico (Fase 7). */
+  sessionLookup?: ClinicalSessionLookup | undefined;
   config: SchedulingConfig;
   now?: Date;
 }
+
+/**
+ * Resuelve la sesión clínica que respalda un «atendido».
+ *
+ * El identificador puede venir del cliente (la secretaría acaba de cerrar la
+ * sesión) o estar ya guardado en la cita, pero en los dos casos se **verifica
+ * contra el servicio clínico**: que exista, que sea del mismo paciente y que esté
+ * cerrada. Antes bastaba con mandar un identificador cualquiera para saltarse el
+ * motivo obligatorio.
+ */
+const verificarSesionCerrada = async (
+  current: AppointmentRow,
+  sessionId: string,
+  options: TransitionOptions,
+): Promise<string> => {
+  const session = await options.sessionLookup?.(sessionId);
+  if (session === null || session === undefined) {
+    throw new AppError({
+      status: 409,
+      code: 'clinical_session_unverified',
+      message:
+        'No se pudo comprobar la sesión clínica: ciérrala antes de marcar «atendido» o indica el motivo.',
+      extensions: { clinicalSessionId: sessionId },
+    });
+  }
+  if (session.patientId !== current.patientId) {
+    throw new AppError({
+      status: 409,
+      code: 'clinical_session_patient_mismatch',
+      message: 'La sesión clínica es de otro paciente: no puede respaldar esta cita',
+      extensions: { clinicalSessionId: sessionId },
+    });
+  }
+  if (session.status !== 'cerrada') {
+    throw new AppError({
+      status: 409,
+      code: 'clinical_session_open',
+      message: 'La sesión clínica todavía está en borrador: ciérrala antes de marcar «atendido».',
+      extensions: { clinicalSessionId: sessionId },
+    });
+  }
+  return session.sessionId;
+};
 
 /**
  * Cambia el estado de una cita aplicando la máquina de estados del contrato.
  *
  * Además de validar la transición, deja rastro en `status_history` y publica el
  * evento correspondiente. Dos reglas duras del plan: la inasistencia solo se puede
- * marcar pasado el tiempo de tolerancia, y el «atendido» sin sesión clínica exige
- * un motivo que va a la auditoría.
+ * marcar pasado el tiempo de tolerancia, y el «atendido» exige la **sesión clínica
+ * cerrada** (Fase 7); sin ella, un motivo que va a la auditoría.
  */
 export const transitionAppointment = async (
   db: SchedulingDb,
@@ -593,17 +639,24 @@ export const transitionAppointment = async (
   if (to === 'en_consulta') patch.startedAt = now;
 
   if (to === 'atendido') {
-    if (options.clinicalSessionId === undefined && (options.forceReason ?? '').length < 3) {
-      throw new AppError({
-        status: 400,
-        code: 'clinical_session_required',
-        message:
-          'Para marcar «atendido» hace falta la sesión clínica cerrada (llega en la Fase 6). Mientras tanto, indica el motivo.',
-      });
+    const sessionId = options.clinicalSessionId ?? current.clinicalSessionId ?? null;
+    if (sessionId === null) {
+      if ((options.forceReason ?? '').length < 3) {
+        throw new AppError({
+          status: 400,
+          code: 'clinical_session_required',
+          message:
+            'Para marcar «atendido» hace falta la sesión clínica cerrada. Si no la hay, indica el motivo.',
+        });
+      }
+      patch.forceAttendedReason = options.forceReason ?? null;
+      patch.clinicalSessionId = null;
+    } else {
+      patch.clinicalSessionId = await verificarSesionCerrada(current, sessionId, options);
+      // Con la sesión cerrada que lo respalda, el motivo forzado sobra.
+      patch.forceAttendedReason = null;
     }
     patch.finishedAt = now;
-    patch.forceAttendedReason =
-      options.clinicalSessionId === undefined ? (options.forceReason ?? null) : null;
   }
 
   if (to === 'no_asistio') {
@@ -666,7 +719,14 @@ export const transitionAppointment = async (
             summary: `${current.patientName}: ${from} → ${to}`,
             changedFields: ['status'],
             before: { status: from },
-            after: { status: to },
+            after:
+              to === 'atendido'
+                ? {
+                    status: to,
+                    clinicalSessionId: patch.clinicalSessionId ?? null,
+                    forceAttendedReason: patch.forceAttendedReason ?? null,
+                  }
+                : { status: to },
             reason: options.reason ?? options.forceReason ?? null,
             actor,
           }),

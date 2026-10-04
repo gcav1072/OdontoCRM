@@ -1,0 +1,1 @@
+ALTER TABLE "appointments" ADD COLUMN "clinical_session_id" uuid;

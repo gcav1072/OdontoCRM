@@ -100,6 +100,13 @@ export const appointments = pgTable(
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     noShowReason: text('no_show_reason'),
     forceAttendedReason: text('force_attended_reason'),
+    /**
+     * Sesión clínica **cerrada** que respalda el «atendido» (Fase 7): es la prueba
+     * de que la cita se atendió con su evolución hecha. El identificador se
+     * verifica contra el servicio clínico antes de aceptarlo, así que un cliente no
+     * puede saltarse la regla mandando un identificador inventado.
+     */
+    clinicalSessionId: uuid('clinical_session_id'),
     overbookAuthorized: boolean('overbook_authorized').notNull().default(false),
     overbookReason: text('overbook_reason'),
     rescheduledFromId: uuid('rescheduled_from_id').references((): AnyPgColumn => appointments.id, {

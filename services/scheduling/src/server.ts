@@ -9,6 +9,7 @@ import { registerAppointmentRoutes } from './routes/appointment-routes.js';
 import { registerInternalRoutes } from './routes/internal-routes.js';
 import { registerRequestRoutes } from './routes/request-routes.js';
 import type { SchedulingServices } from './services.js';
+import { createClinicalSessionLookup } from './shared/clinical-client.js';
 
 export interface CreateSchedulingServerOptions {
   config: SchedulingConfig;
@@ -48,6 +49,7 @@ export const createSchedulingServer = async (
     config,
     db: database.db,
     pool: database.pool,
+    sessionLookup: createClinicalSessionLookup(config),
     ...(options.kickOutbox === undefined ? {} : { kickOutbox: options.kickOutbox }),
   };
 

@@ -82,6 +82,7 @@ export const toAppointmentSummary = (
     finishedAt: row.finishedAt?.toISOString() ?? null,
     noShowReason: row.noShowReason,
     forceAttendedReason: row.forceAttendedReason,
+    clinicalSessionId: row.clinicalSessionId,
     rescheduledFromId: row.rescheduledFromId,
     rescheduledToId: options.rescheduledToId ?? null,
     icsSequence: row.icsSequence,
