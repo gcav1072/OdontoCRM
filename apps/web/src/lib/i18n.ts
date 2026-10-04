@@ -1835,6 +1835,8 @@ const DICCIONARIO = {
   'odonto.sheet.editado': 'Corregido: {detalle}.',
   'odonto.sheet.notas': 'Notas del hallazgo',
   'odonto.sheet.notasPlaceholder': 'Observación clínica (opcional)',
+  'odonto.sheet.notasAyuda':
+    'Lo que escribas aquí acompaña a lo que marques ahora y sale en la columna NOTAS del informe. Después se puede corregir con el lápiz.',
   'odonto.sheet.guardar': 'Guardar',
   'odonto.sheet.marcarCompletado': 'Marcar completado',
   'odonto.sheet.marcarPendiente': 'Marcar pendiente',

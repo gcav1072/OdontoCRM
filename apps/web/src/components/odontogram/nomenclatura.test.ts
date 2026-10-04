@@ -2,9 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import type { QuickEntryAction } from '@odontocrm/contracts';
-
-import { describeAction } from './QuickEntryBar';
+import { describeAction, type QuickEntryAction } from './QuickEntryBar';
 import { ToothFindingSheet } from './ToothFindingSheet';
 
 /**
@@ -54,6 +52,14 @@ describe('la cara de masticación se nombra según la pieza', () => {
       expect(anterior).toContain(cara);
       expect(hoja(36)).toContain(cara);
     }
+  });
+
+  it('la hoja deja escribir las notas al marcar, que es lo que sale en el informe', () => {
+    const html = hoja(36);
+    // El campo está en el formulario de marcado, no solo al editar después.
+    expect(html).toContain('Notas del hallazgo');
+    expect(html).toContain('Observación clínica (opcional)');
+    expect(html).toContain('columna NOTAS del informe');
   });
 });
 

@@ -84,6 +84,8 @@ export const ToothFindingSheet = ({
   /** Hallazgo cuya edición (estado y notas) está abierta. */
   const [editando, setEditando] = useState<string | null>(null);
   const [notas, setNotas] = useState('');
+  /** Notas que se guardan con lo que se marque ahora (la columna NOTAS del informe). */
+  const [notasNuevas, setNotasNuevas] = useState('');
 
   // Cada vez que se abre (o se cambia de pieza) la selección arranca limpia: lo
   // que hubiera marcado antes no vale para otra pieza.
@@ -94,6 +96,7 @@ export const ToothFindingSheet = ({
     setErrorLocal(null);
     setEditando(null);
     setNotas('');
+    setNotasNuevas('');
   }, [open, toothNumber]);
 
   const cambiarCara = (surface: ToothSurface): void =>
@@ -162,7 +165,13 @@ export const ToothFindingSheet = ({
       return;
     }
 
-    const entradas = findingsFromSelection(selection);
+    // Las notas acompañan a **todos** los hallazgos de esta acción: si se marcan tres
+    // caras con la misma observación, las tres la llevan.
+    const nota = notasNuevas.trim() === '' ? null : notasNuevas.trim();
+    const entradas = findingsFromSelection(selection).map((entrada) => ({
+      ...entrada,
+      notes: nota,
+    }));
     setOcupada(true);
     setErrorLocal(null);
     try {
@@ -173,6 +182,7 @@ export const ToothFindingSheet = ({
         await odontogramApi.recordFindings(patientId, { findings: entradas });
       }
       setCaras([]);
+      setNotasNuevas('');
       onApplied({
         toothNumber,
         anterior: findings,
@@ -413,11 +423,32 @@ export const ToothFindingSheet = ({
               </div>
             </section>
 
+            {/*
+              Notas: se escriben **al marcar**, no después. Es lo que sale en la
+              columna NOTAS del informe, así que pedirlas dos pasos más tarde (guardar,
+              editar, escribir, guardar) era pedirlas tarde.
+            */}
+            <section>
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+                {t('odonto.sheet.notas')}
+              </h4>
+              <textarea
+                className={`${TEXTAREA_CLASSES} mt-2`}
+                value={notasNuevas}
+                onChange={(event) => setNotasNuevas(event.target.value)}
+                rows={2}
+                maxLength={500}
+                aria-label={t('odonto.sheet.notas')}
+                placeholder={t('odonto.sheet.notasPlaceholder')}
+              />
+              <p className="mt-1.5 text-xs text-ink-subtle">{t('odonto.sheet.notasAyuda')}</p>
+            </section>
+
             {/* Condiciones: dos filas, las de cara y los tratamientos. */}
             <section>
               <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
                 {t('odonto.sheet.condicion')}
-              </h4>
+              </h4>{' '}
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {SURFACE_ACTIONS.map((condition) => (
                   <ConditionButton
