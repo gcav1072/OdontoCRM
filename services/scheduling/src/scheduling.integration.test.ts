@@ -502,7 +502,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     const request = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
     const appointment = await assignAppointment(
       schedulingHandle.db,
-      anAssignment(request.id, { date: otherDay, startTime: '12:00' }),
+      anAssignment(request.id, { date: otherDay, startTime: '15:30' }),
       admin,
       { config },
     );
@@ -548,7 +548,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     const request2 = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
     const appointment2 = await assignAppointment(
       schedulingHandle.db,
-      anAssignment(request2.id, { date: otherDay, startTime: '12:30' }),
+      anAssignment(request2.id, { date: otherDay, startTime: '16:00' }),
       admin,
       { config },
     );
@@ -566,7 +566,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     const request3 = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
     const appointment3 = await assignAppointment(
       schedulingHandle.db,
-      anAssignment(request3.id, { date: otherDay, startTime: '13:00' }),
+      anAssignment(request3.id, { date: otherDay, startTime: '16:30' }),
       admin,
       { config },
     );
@@ -587,7 +587,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
         appointment3.id,
         {
           date: otherDay,
-          startTime: '13:30',
+          startTime: '14:00',
           slotKind: 'franja',
           reason: 'la paciente pidió otra hora',
           authorizeOverbook: false,
