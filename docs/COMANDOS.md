@@ -30,10 +30,11 @@
 | Comando | Qué hace | Cuándo |
 | :--- | :--- | :--- |
 | `npm run verify` | **Puerta de calidad**: secretos → lint → formato → **tipos (Node y web)** → compilación → pruebas unitarias | Antes de cada commit importante y **siempre** antes de cerrar una fase |
-| `npm run dev` | Compila en vigilancia y arranca gateway + servicios + interfaz (Vite) | Para trabajar con la aplicación abierta |
+| `npm run stack:status` | ¿Qué pila está corriendo y quién la tiene? (una sola a la vez: `dev` con recarga o `fijo` con PM2) | Al empezar a trabajar y cuando la aplicación «no cambia» |
+| `npm run stack:dev` / `stack:fijo` / `stack:down` | Cambiar de modo sin dejar dos pilas: con recarga, con PM2 o parar todo | Al pasar de trabajar el código a dejarlo corriendo, y al revés |
 | `npm test` | Pruebas unitarias y de contrato (Vitest, sin base de datos) | Mientras se programa: `npm run test:watch` |
 | `npm run test:integration` | Las mismas suites **contra PostgreSQL real** (outbox, colas, sesiones, agenda, pantallas) | Antes de dar algo por terminado |
-| `npm run smoke:<módulo>` | Recorrido de punta a punta **contra los servicios arrancados** por el gateway | Cuando algo «funciona en las pruebas pero no en la app» (`auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`) |
+| `npm run smoke:<módulo>` | Recorrido de punta a punta **contra los servicios arrancados** por el gateway | Cuando algo «funciona en las pruebas pero no en la app» (`auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`, `prescription`) |
 
 > `npm run verify` **no** ejecuta las pruebas de integración ni las de humo: no toca
 > la base de datos ni arranca servicios. Para el DoD de una fase hay que correr
@@ -176,33 +177,54 @@ Detalles que conviene saber:
 
 ## 6. Arrancar y parar servicios
 
+### Una sola pila a la vez
+
+Los servicios, la puerta y la interfaz ocupan **puertos fijos**, así que no puede haber
+dos pilas vivas: la segunda se queda sin puerto y falla a medias (fue un caso real: una
+pila sin recarga servía la aplicación mientras `npm run dev` reintentaba en bucle y PM2
+acumulaba reinicios; nadie sabía qué estaba corriendo). Los puertos son la fuente de
+verdad y `stack:*` los cambia de modo sin dejar dos vivas:
+
+| Comando | Qué hace |
+| :--- | :--- |
+| `npm run stack:status` | **Empieza por aquí**: qué pila está corriendo, en qué puertos, quién la tiene y desde cuándo |
+| `npm run stack:dev` | Para lo que haya y arranca **todo con recarga** (`tsc -b --watch` + servicios + Vite), en primer plano |
+| `npm run stack:fijo` | Para lo que haya, compila (`tsc -b`) y arranca **todo con PM2** (servicios + interfaz): sobrevive a la terminal |
+| `npm run stack:down` | Para la pila (aplicaciones de PM2 incluidas) y deja los puertos libres |
+| `npm run stack:guard` | Comprueba si hay pila y **falla** si la hay (`--puerto 4005` para uno solo) |
+
+`stack:down` solo mata procesos de la pila (los reconoce por su línea de comandos): si
+un puerto lo ocupa un programa ajeno, avisa y lo deja en paz.
+
 ### Desarrollo (procesos sueltos, con recarga)
 
 | Comando | Arranca |
 | :--- | :--- |
 | `npm run dev` | Todo: `tsc -b --watch` + gateway + identity + patients + scheduling + notifications + screens + clinical + odontogram + web |
-| `npm run dev:web` | **Solo la interfaz** (Vite en `http://127.0.0.1:5173`): es lo que se usa cuando los servicios están en PM2 |
+| `npm run dev:web` | **Solo la interfaz** (Vite en `http://127.0.0.1:5173`) |
 | `npm run dev:<servicio>` | Un solo servicio en vigilancia: `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram`, `gateway`, `web`, `build` |
 | `npm run dev:check` | Comprueba que los puertos del desarrollo estén libres y dice quién los ocupa (se ejecuta **solo** antes de `npm run dev`) |
-| `npm run dev:stop` | Para lo que dejó vivo un `npm run dev` anterior (los procesos de PM2 no se tocan: los para `pm2 stop all`) |
+| `npm run dev:stop` | Para procesos sueltos de un `npm run dev` anterior (los de PM2 no se tocan: los para `npm run stack:down`) |
 | `npm run check:web` | Abre la interfaz con un navegador sin interfaz y verifica que **monta** y que la consola está limpia |
 
 `npm run dev` requiere haber migrado y sembrado antes; los servicios leen
 `.env` (raíz) + `services/<svc>/.env`.
 
-> **PM2 y `npm run dev` no conviven**: los dos quieren los mismos puertos. Si tienes
-> los servicios en PM2, trabaja con `npm run dev:web` (solo la web, el `/api` va por
-> el proxy de Vite al gateway del 8090) o para PM2 con `pm2 stop all` y arranca todo
-> con `npm run dev`. El preflight `dev:check` lo detecta y te lo dice antes de que
-> nada falle a medias.
+> **PM2 y `npm run dev` no conviven**: los dos quieren los mismos puertos, y el
+> preflight `dev:check` lo dice antes de que nada falle a medias. Para cambiar de modo
+> no hay que pensar en PIDs: `npm run stack:dev` (con recarga) o `npm run stack:fijo`
+> (sin ella). La **interfaz va incluida en los dos modos** (`stack:fijo` levanta Vite
+> dentro de PM2), así que no hace falta tener una terminal aparte sirviendo la web.
 
 ### Sin vigilancia (lo que corre PM2)
 
 | Comando | Arranca |
 | :--- | :--- |
+| `npm run stack:fijo` | **La pila completa** con PM2 (los 8 servicios + la interfaz), compilando antes |
 | `npm run start:<servicio>` | Un servicio desde `dist/` (`identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram`, `gateway`) |
 | `npm run build:node` | **Hay que compilar antes**: `start:*` ejecuta `dist/`, no el código fuente |
 | `npm run preview -w @odontocrm/web` | Interfaz compilada en `http://127.0.0.1:4173` |
+| `pm2 logs odontocrm-clinical` | Registros de un servicio (también en `logs/<servicio>.out.log`) |
 
 ### Puertos
 

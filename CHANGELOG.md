@@ -4,6 +4,41 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Herramientas] — Una sola pila a la vez · 2026-10-04
+
+### Añadido
+
+- **`npm run stack:status` / `stack:dev` / `stack:fijo` / `stack:down`**
+  ([ADR 0037](docs/adr/0037-una-sola-pila-a-la-vez.md)): los servicios, la puerta y la
+  interfaz ocupan puertos fijos, así que **no puede haber dos pilas vivas** y ahora hay un
+  comando que lo dice y otro que cambia de modo. Los puertos son la fuente de verdad (sin
+  archivo de candado, que se queda obsoleto cuando un proceso muere de golpe): `stack:status`
+  muestra puerto, servicio, proceso, desde cuándo, si tiene recarga y si es de PM2, y
+  `stack:down` para la pila entera (PM2 incluido) sin tocar programas ajenos.
+- **La guardia del segundo arranque**: `predev` llama a `stack:guard`, que falla con el
+  retrato de lo que está corriendo y los comandos para cambiar de modo, en vez de dejar que
+  el puerto falle a medias.
+- **La interfaz va dentro de la pila `fijo`**: PM2 levanta también Vite (lanzado como
+  `node node_modules/vite/bin/vite.js`, porque PM2 en Windows no puede lanzar `npm` sin
+  shell: `spawn EINVAL`). Antes, con los servicios en PM2 había que tener una terminal
+  aparte sirviendo la web: dos cosas vivas y ninguna lista que las vieran juntas.
+
+### Cambiado
+
+- `tools/dev-check.mjs` y `tools/dev-stop.mjs` comparten ahora **una sola tabla de puertos**
+  ([`tools/lib/stack.mjs`](tools/lib/stack.mjs)) con el gestor: antes estaba duplicada en los
+  dos, que es como empiezan a discrepar. `dev:stop` informa además del nombre del proceso y
+  deja claro que lo que decide si un proceso se paró es el puerto, no el código de salida de
+  `taskkill` (que falla también cuando el proceso ya había muerto).
+
+### Corregido
+
+- **Tres pilas peleando por los mismos puertos, en silencio**: `npm run dev` reintentaba en
+  bucle, PM2 acumulaba reinicios y ocho procesos sueltos sin recarga servían la aplicación; al
+  arreglar el récipe, la pregunta «¿es caché o hay que reiniciar?» no tenía respuesta mirando
+  el sistema. Ahora `stack:status` la responde, y «una pila sin recarga» deja de ser un
+  accidente invisible: aparece en el estado con su modo («fija, sin recarga»).
+
 ## [Fase 7, sesión B] — Adjuntos, récipes A5 y personalización · 2026-10-04
 
 ### Añadido

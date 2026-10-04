@@ -44,3 +44,4 @@ en la Fase 6 y las 0034–0035 en la Fase 7, y quedan documentadas por la misma 
 | [0034](0034-sesion-clinica-evolucion.md) | La sesión clínica es el documento de la evolución (borrador autoguardado, cierre inmutable, enmienda) | aceptada (fase 7A) |
 | [0035](0035-datos-criticos-leidos-no-empujados.md) | Los datos críticos del consultorio se leen de la historia clínica, no se empujan | aceptada (fase 7A) |
 | [0036](0036-recipe-emitido-documento-archivado.md) | El récipe emitido es un documento archivado (copia del paciente, del medicamento y del PDF) | aceptada (fase 7B) |
+| [0037](0037-una-sola-pila-a-la-vez.md) | Una sola pila a la vez, y los puertos mandan (`stack:status/dev/fijo/down`) | aceptada (herramientas) |

@@ -644,6 +644,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | Riesgo | Mitigación |
 | :--- | :--- |
 | Sobrecarga operativa de 9 servicios | Un comando de arranque, bootstrap de BD automatizado, PM2/`systemd`, health checks; camino de repliegue: fusionar pares de servicios sin cambiar contratos. |
+| Dos pilas peleando por los mismos puertos (pasó el 2026-10-04: dev reintentando, PM2 en bucle y procesos sueltos sirviendo la aplicación) | **Una sola pila a la vez** ([ADR 0037](adr/0037-una-sola-pila-a-la-vez.md)): los puertos son la fuente de verdad, `npm run stack:status` dice qué corre y `stack:dev`/`stack:fijo`/`stack:down` cambian de modo; la guardia de `predev` bloquea el segundo arranque. |
 | Chromium/Playwright en Fedora (SELinux, dependencias) | Se prueba en la Fase 7 en Windows y se valida en la Fase 10 en Fedora; alternativa de repliegue: PDF con `pdfmake` sin navegador. |
 | Doble `getUpdates` del bot (`409 Conflict`) | Poller único por diseño; si se despliegan réplicas, solo se replican workers de envío. |
 | Datos clínicos reales sin respaldo probado | Respaldos diarios + restauración probada en la Fase 10 antes de usar el sistema en la clínica. |

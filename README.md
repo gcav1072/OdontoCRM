@@ -1,4 +1,4 @@
-﻿# OdontoCRM
+# OdontoCRM
 
 CRM para un consultorio odontológico: gestión de citas, secretaría, historia clínica,
 odontograma, récipes, reportes y auditoría — construido como **microservicios Node.js +
@@ -42,8 +42,11 @@ npm run keys:generate          # claves EdDSA del JWT (una sola vez; .keys/ est�
 npm run db:migrate
 npm run seed:users             # admin, recepcion y egomez con contraseña temporal
 
-# 5. Arranca (compilación en modo vigilancia + gateway + identidad + interfaz)
-npm run dev
+# 5. Arranca (una sola pila a la vez: mira quién corre antes de arrancar)
+npm run stack:status           # ¿hay algo corriendo? ¿quién, en qué puerto y desde cuándo?
+npm run stack:dev              # todo con recarga (tsc --watch + servicios + interfaz)
+#   o bien
+npm run stack:fijo             # todo con PM2, sin recarga (sobrevive a la terminal)
 ```
 
 La primera vez que entres, el sistema te pedirá cambiar la contraseña temporal: hasta que lo
@@ -77,7 +80,8 @@ está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)**. Estos son los del día a d�
 
 | Comando | Qué hace |
 | :--- | :--- |
-| `npm run dev` | Compila en modo vigilancia y arranca gateway + servicios + interfaz (5173) |
+| `npm run stack:status` | ¿Qué pila está corriendo (dev con recarga o PM2), quién la tiene y desde cuándo? |
+| `npm run stack:dev` / `stack:fijo` / `stack:down` | Cambiar de modo sin dejar dos pilas vivas, o parar todo |
 | `npm test` | Pruebas unitarias y de contrato (Vitest) |
 | `npm run test:integration` | Suites contra PostgreSQL real (outbox, colas, sesión, pacientes, agenda, pantallas) |
 | `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`, `prescription` |
