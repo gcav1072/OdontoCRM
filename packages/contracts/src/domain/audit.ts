@@ -52,6 +52,12 @@ export const AUDIT_ACTIONS = [
   'medical_record_amended',
   'medical_record_printed',
   'medical_record_consent_accepted',
+  // Sesiones clínicas y récipes (evolución del paciente, Fase 7)
+  'clinical_session_created',
+  'clinical_session_closed',
+  'clinical_session_amended',
+  'prescription_issued',
+  'prescription_reprinted',
   // Odontograma (llegan por el outbox desde el servicio de odontograma)
   'tooth_finding_recorded',
   'tooth_finding_updated',

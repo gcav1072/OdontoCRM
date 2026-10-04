@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+import {
+  CLINICAL_ALERT_LABELS,
+  clinicalAlertFlagKind,
+  clinicalAlertSeverity,
+  type ClinicalAlert,
+} from './clinical.js';
 import { SCREEN_KINDS, type ScreenKind } from './enums.js';
 
 /**
@@ -90,6 +96,20 @@ export const criticalFlagsInputSchema = z.object({
 });
 
 export type CriticalFlagsInput = z.infer<typeof criticalFlagsInputSchema>;
+
+/**
+ * Traduce las **alertas clínicas** de la historia a los datos críticos que pinta
+ * la pantalla del consultorio: el mismo dato, con el semáforo de riesgo que el
+ * doctor lee de reojo antes de entrar. La alergia a la penicilina va en rojo y con
+ * su nombre; el texto libre del «otros» va debajo, en pequeño.
+ */
+export const criticalFlagsFromAlerts = (alerts: readonly ClinicalAlert[]): CriticalFlag[] =>
+  alerts.slice(0, 20).map((alert) => ({
+    tipo: clinicalAlertFlagKind(alert.code),
+    etiqueta: CLINICAL_ALERT_LABELS[alert.code] ?? alert.code,
+    severidad: clinicalAlertSeverity(alert.code),
+    detalle: alert.detail,
+  }));
 
 /** Un llamado en la sala: el 2.º se resalta en rojo en el displaylobby. */
 export interface CallEvent {

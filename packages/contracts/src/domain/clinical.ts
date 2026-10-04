@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { optionalDate, optionalText } from '../common/optional.js';
 import { MEDICAL_RECORD_STATUSES } from './enums.js';
 import { cleanText } from './patient.js';
 
@@ -177,17 +178,6 @@ export const TREATMENT_PRIORITIES = ['alta', 'media', 'baja'] as const;
 export const ORAL_HEALTH_STATES = ['buena', 'regular', 'deficiente', 'sin_dato'] as const;
 
 /* ── Ayudantes de validación ───────────────────────────────────────────────── */
-
-const optionalText = (max: number) =>
-  z
-    .union([z.null(), z.literal(''), z.string().overwrite(cleanText).max(max)])
-    .optional()
-    .transform((value) => (value === '' || value === null || value === undefined ? null : value));
-
-const optionalDate = z
-  .union([z.null(), z.literal(''), z.iso.date()])
-  .optional()
-  .transform((value) => (value === '' || value === null || value === undefined ? null : value));
 
 /** Selección de un catálogo tipificado: códigos + texto libre para «otros». */
 const catalogSelection = <T extends readonly [string, ...string[]]>(codes: T) =>
@@ -409,6 +399,54 @@ export const clinicalAlertSchema = z.object({
 });
 
 export type ClinicalAlert = z.infer<typeof clinicalAlertSchema>;
+
+/**
+ * Texto de cada alerta clínica. Vive aquí —y no solo en la interfaz— porque la
+ * pantalla del consultorio la pinta desde el **servidor** de pantallas, que no
+ * tiene el diccionario de la web; el código es el que manda para segmentar y el
+ * texto es el que se lee de reojo antes de entrar al consultorio.
+ */
+export const CLINICAL_ALERT_LABELS: Readonly<Record<string, string>> = {
+  alergia_penicilina: 'Alergia a la penicilina',
+  alergia_anestesico: 'Alergia a anestésicos locales',
+  alergia_latex: 'Alergia al látex',
+  alergia_otro: 'Otra alergia',
+  anticoagulante: 'Toma anticoagulantes',
+  bifosfonato: 'Toma bifosfonatos',
+  diabetes: 'Diabetes',
+  hipertension: 'Hipertensión',
+  cardiopatia: 'Cardiopatía',
+  medicamento_otro: 'Otro medicamento',
+  patologico_otro: 'Otro antecedente',
+};
+
+/** Texto legible de una alerta: el detalle del «otros» manda si lo hay. */
+export const clinicalAlertLabel = (alert: ClinicalAlert): string =>
+  alert.detail ?? CLINICAL_ALERT_LABELS[alert.code] ?? alert.code;
+
+/**
+ * Severidad de una alerta, de cara al **semáforo de riesgo** de la pantalla del
+ * consultorio: lo que obliga a parar va en rojo; lo crónico, en ámbar.
+ */
+export const clinicalAlertSeverity = (code: string): 'alto' | 'medio' | 'info' => {
+  if (code.startsWith('alergia') || code === 'anticoagulante' || code === 'bifosfonato') {
+    return 'alto';
+  }
+  if (code === 'diabetes' || code === 'hipertension' || code === 'cardiopatia') return 'medio';
+  return 'info';
+};
+
+/** Tipo de dato crítico con el que se pinta la alerta en la pantalla. */
+export const clinicalAlertFlagKind = (
+  code: string,
+): 'alergia' | 'cronico' | 'medicamento' | 'otro' => {
+  if (code.startsWith('alergia')) return 'alergia';
+  if (code === 'anticoagulante' || code === 'bifosfonato' || code === 'medicamento_otro') {
+    return 'medicamento';
+  }
+  if (code === 'diabetes' || code === 'hipertension' || code === 'cardiopatia') return 'cronico';
+  return 'otro';
+};
 
 export const clinicalAmendmentSchema = z.object({
   id: z.uuid(),
