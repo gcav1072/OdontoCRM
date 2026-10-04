@@ -123,13 +123,15 @@ decidida para la Fase 6:
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `admin` | todo | todo | todo | todo | todo |
 | `odontologo` | leer + escribir | leer + escribir | leer + escribir | leer | mostrar |
-| `secretario` | **sin acceso** | **sin acceso** | leer + escribir | leer + escribir + notificar | mostrar |
+| `secretario` | **leer** (imprime todo) | **leer** | leer + escribir | leer + escribir + notificar | mostrar |
 | `pantalla` | — | — | — | — | mostrar |
 
-> **Decisión que hay que confirmar antes de la sesión A**: el `secretario` no tiene
-> `clinical:read`. Si la secretaría debe **imprimir el récipe o el consentimiento**,
-> necesita al menos lectura; hoy no la tiene. Es una decisión de producto, no un
-> descuido (el plan §Matriz de permisos da «❌» a la secretaría en clínica).
+> **Decidido el 2026-10-04**: la secretaría **imprime todo** (récipes, consentimientos, historia y
+> odontograma), así que el rol `secretario` llevará `clinical:read` y `odontogram:read` — **solo
+> lectura**: la escritura clínica sigue siendo del odontólogo y del admin. Registrado en el plan
+> (§5.4, decisión 23 y el apartado de impresión de la Fase 6); **el cambio de código se hace al
+> abrir la Fase 6**, no antes (hoy esos dos permisos no los exige ninguna ruta porque el servicio
+> clínico no existe).
 
 ### 3.6 Configuración
 
@@ -185,7 +187,7 @@ copiar la Fase 6:
 | 2 | **~30 variables de configuración sin documentar** en `.env.example` | Baja (sorpresas al operar) | ✅ **Arreglado**: sección «Ajustes finos» con todas (hosts, pool, cookies, anti-flood, reintentos, cola, tope de archivo, rutas de claves) y su valor por defecto |
 | 3 | **Temas declarados que nadie publica**: `notifications.message.sent`, `message.failed`, `patient_channel.linked`, `patients.file.uploaded`, `identity.user.*`, `identity.session.*` | Baja (deuda de contrato) | Documentados. `message.sent/failed` conviene publicarlos en la Fase 9 (reportes y KPIs) y `file.uploaded` en la Fase 6 (adjuntos de la historia) |
 | 4 | **La vinculación de canal no queda auditada** (consecuencia del anterior) | Media-baja | Recomendado antes de la Fase 9: publicar `patient_channel.linked` con la forma genérica (`auditPayload`); la auditoría lo recogería sola |
-| 5 | **El `secretario` no tiene acceso a clínica** | Decisión de producto | Confirmar antes de la sesión A (¿la secretaría imprime récipes o consentimientos?) |
+| 5 | **El `secretario` no tenía acceso a clínica** | Decisión de producto | ✅ **Resuelto (2026-10-04)**: la secretaría **imprime todo** (récipes, consentimientos, historia y odontograma), así que llevará `clinical:read` y `odontogram:read` — solo lectura. Registrado en el plan: §5.4, decisión 23 y el apartado de impresión de la Fase 6. **No implementado todavía**: se hará al abrir la Fase 6 |
 | 6 | **Los scripts de auditoría vivían en `tmp/`** (sin versionar) | Baja | ✅ **Arreglado**: son `tools/audit-conexiones.mjs` con `npm run audit` (cuatro secciones y veredicto), documentados en la guía de comandos |
 
 ### Detalle del arreglo 1 (cola)

@@ -55,6 +55,7 @@ Todas fueron confirmadas contigo en la sesión de planificación del 2026-10-02.
 | 20 | Modo test | Variable de entorno + `npm run seed:test` / `seed:reset`, **banner MODO TEST**, cédulas ficticias en el rango reservado **90.000.000+**. |
 | 21 | Acceso remoto futuro | **VPN mesh (Tailscale/WireGuard)**: el sistema nunca se expone a internet. El diseño ya lo asume (config por variables de entorno, sin IPs fijas, TLS interno). |
 | 22 | Menú de comandos (2026-10-04) | **Menú `/` de Telegram** registrado con `setMyCommands` desde `BOT_COMMANDS` (contrato), en cada arranque y sin tocar BotFather; el botón del campo de texto muestra la lista (`setChatMenuButton`); la **ayuda** del asistente termina con la misma lista, generada del mismo catálogo, para quien no descubra el menú o use WhatsApp. Comprobación: `npm run telegram:menu`. |
+| 23 | Permisos de la secretaría en clínica (2026-10-04) | **La secretaría puede imprimir todo**: récipes, consentimientos, historia clínica y odontograma. Por tanto el rol `secretario` lleva **`clinical:read` y `odontogram:read`** (solo lectura: `clinical:write` y `odontogram:write` siguen siendo del odontólogo y del admin). Imprimir es leer; la escritura clínica no se delega. |
 
 ---
 
@@ -289,7 +290,7 @@ Reglas duras:
 | Autorizar sobrecupo en un día completo (con motivo) | ✅ | ❌ | ❌ | ❌ |
 | Llamar / pasar a consulta / no asistió | ✅ | ✅ | ✅ | ❌ |
 | Marcar atendido | ✅ | ✅ (con advertencia) | ✅ | ❌ |
-| Historia clínica, sesiones, récipes, odontograma | ✅ | ❌ | ✅ | ❌ |
+| Historia clínica, sesiones, récipes, odontograma | ✅ | **lectura** (imprime todo: récipes, consentimientos, historia y odontograma) | ✅ | ❌ |
 | Reportes y auditoría | ✅ | reportes operativos | clínicos | ❌ |
 | Displaylobby / pantalla consultorio | ✅ | ✅ | ✅ | ✅ (solo lectura) |
 
@@ -549,6 +550,8 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 **Entregables (sesión B):** `odontogram` según el doc (FDI, captura por excepción, `tooth_finding_history`, eventos) + componente SVG geométrico de §7 del doc + carga rápida por teclado (número de pieza, caries/obturación/ausente, rojo pendiente / azul completado) + vista histórica de evolución por sesión.
 
 **Criterios de aceptación:** una historia completa se llena en < 10 min y se puede firmar; al firmar no se puede editar (solo adenda con motivo); el odontograma completo se carga por teclado en < 30 s; un hallazgo nuevo se refleja en `reporting` y en auditoría; diente sano = ausencia de fila (lectura correcta del patrón «por excepción»).
+
+**Impresión y permisos (decisión 2026-10-04):** la **secretaría imprime todo** —récipes, consentimientos, historia clínica y odontograma—, así que el rol `secretario` lleva **`clinical:read` y `odontogram:read`** (ver §5.4 y la decisión 23). Imprimir es leer: `clinical:write` y `odontogram:write` siguen siendo del odontólogo y del admin, y toda impresión de un documento clínico queda en la auditoría con su actor.
 
 **Commits previstos (A):** `feat(clinical): modelo de historia clinica por secciones` · `feat(clinical): catalogos tipificados y otros` · `feat(clinical): firma, adendas y consentimiento` · `feat(web): formulario de historia clinica con aviso de primera visita` · `test(clinical): validaciones de historia` — **(B):** `feat(odontogram): dominio fdi y captura por excepcion` · `feat(odontogram): historico de hallazgos y eventos` · `feat(web): odontograma svg interactivo` · `feat(web): carga rapida por teclado` · `test(odontogram): geometria y reglas de hallazgos`.
 
