@@ -217,6 +217,46 @@ check(
 const byAge = await call('/api/v1/patients?ageMin=30&ageMax=45&pageSize=5');
 check('el filtro por rango de edad responde 200', byAge.status === 200, `status ${byAge.status}`);
 
+// 7.1) Adjuntos del paciente: la subida es `multipart`, y ahí estuvo el fallo que
+//      esta comprobación protege (los campos llegaban como objetos y el esquema los
+//      rechazaba: la ruta respondía 400 y ninguna prueba de las de antes lo veía).
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AARAAB/wD/AH8hAAAAAElFTkSuQmCC',
+  'base64',
+);
+const formulario = new FormData();
+formulario.append('file', new Blob([PNG_1X1], { type: 'image/png' }), 'radiografia.png');
+formulario.append('kind', 'radiografia');
+formulario.append('caption', 'Radiografía de la prueba de humo');
+const subida = await fetch(`${GATEWAY}/api/v1/patients/${patientId}/files`, {
+  method: 'POST',
+  headers: token === '' ? {} : { authorization: `Bearer ${token}` },
+  body: formulario,
+});
+const subidaBody = await subida.json().catch(() => ({}));
+check(
+  'la radiografía del paciente se sube (multipart bien interpretado)',
+  subida.status === 201 && subidaBody?.kind === 'radiografia',
+  `status ${subida.status}`,
+);
+
+const adjuntos = await call(`/api/v1/patients/${patientId}/files`);
+check(
+  'el adjunto aparece en la lista del paciente',
+  adjuntos.status === 200 && (adjuntos.body?.items ?? []).length === 1,
+  `total ${String(adjuntos.body?.total)}`,
+);
+
+const descarga = await fetch(
+  `${GATEWAY}/api/v1/patients/${patientId}/files/${String(subidaBody?.id)}`,
+  { headers: token === '' ? {} : { authorization: `Bearer ${token}` } },
+);
+check(
+  'el adjunto se descarga con su tipo',
+  descarga.status === 200 && descarga.headers.get('content-type') === 'image/png',
+  `status ${descarga.status}`,
+);
+
 // 8) Borrado lógico (solo admin): desaparece de listas y búsquedas y queda auditado.
 const removed = await call(`/api/v1/patients/${patientId}/delete`, {
   method: 'POST',

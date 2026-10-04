@@ -1,5 +1,5 @@
 import { ALLOWED_FILE_MIME_TYPES, PATIENT_FILE_KINDS } from '@odontocrm/contracts';
-import { AppError, parseOrThrow, requirePermission } from '@odontocrm/kernel';
+import { AppError, multipartFieldValue, parseOrThrow, requirePermission } from '@odontocrm/kernel';
 import type { MultipartFile } from '@fastify/multipart';
 import type { FastifyInstance } from 'fastify';
 import { readFile } from 'node:fs/promises';
@@ -34,8 +34,10 @@ export const registerFileRoutes = (app: FastifyInstance, services: PatientsServi
   });
 
   /**
-   * Subida de una radiografía, foto o PDF. `attachFieldsToBody` deja los campos
-   * de texto en `request.body` y el archivo en `request.body.file`.
+   * Subida de una radiografía, foto o PDF. `attachFieldsToBody` deja los campos de
+   * texto como objetos `{ value }` y el archivo como `MultipartFile`: los campos se
+   * sacan con `multipartFieldValue` antes de validarlos (mandarlos tal cual fue el
+   * fallo que tuvo esta ruta sin que ninguna prueba lo viera).
    */
   app.post('/api/v1/patients/:id/files', { preHandler: write }, async (request, reply) => {
     const actor = actorFrom(request);
@@ -54,8 +56,8 @@ export const registerFileRoutes = (app: FastifyInstance, services: PatientsServi
     }
 
     const fields = parseOrThrow(uploadFieldsSchema, {
-      kind: body?.kind,
-      ...(body?.caption === undefined ? {} : { caption: body.caption }),
+      kind: multipartFieldValue(body?.kind),
+      caption: multipartFieldValue(body?.caption),
     });
 
     const data = await file.toBuffer();
