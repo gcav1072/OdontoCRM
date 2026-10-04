@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Alert, Button, Spinner } from '@odontocrm/ui';
+import { Alert, Button, Checkbox, Spinner } from '@odontocrm/ui';
 import { Printer } from 'lucide-react';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -9,6 +9,9 @@ import { apiErrorMessage } from '../lib/api';
 import { t } from '../lib/i18n';
 import { odontogramApi } from '../lib/odontogram-api';
 
+/** Tope del histórico en el informe: el máximo que admite el servicio (500). */
+const LIMITE_HISTORIAL = 500;
+
 /**
  * Vista de impresión del odontograma: se abre en una pestaña propia (fuera del
  * shell, para que el papel no lleve navegación) y la comparte la secretaría, que
@@ -16,15 +19,25 @@ import { odontogramApi } from '../lib/odontogram-api';
  *
  * Cada impresión deja constancia en la auditoría con su actor; si esa llamada
  * falla, la impresión sale igual: primero está el papel.
+ *
+ * La casilla del historial es opt-in: el informe normal se queda corto y legible, y
+ * el que se archiva o se entrega puede llevar detrás la evolución con sus fechas.
  */
 export const OdontogramPrintPage = () => {
   const { patientId } = useParams<{ patientId: string }>();
   const [aviso, setAviso] = useState<string | null>(null);
+  const [conHistorial, setConHistorial] = useState(false);
 
   const odontogramaQuery = useQuery({
     queryKey: ['odontograma', patientId],
     queryFn: ({ signal }) => odontogramApi.byPatient(patientId ?? '', signal),
     enabled: patientId !== undefined && patientId !== '',
+  });
+
+  const historialQuery = useQuery({
+    queryKey: ['odontograma', 'historial', patientId, LIMITE_HISTORIAL],
+    queryFn: ({ signal }) => odontogramApi.history(patientId ?? '', signal, LIMITE_HISTORIAL),
+    enabled: patientId !== undefined && patientId !== '' && conHistorial,
   });
 
   const registrarImpresion = useMutation({
@@ -86,7 +99,13 @@ export const OdontogramPrintPage = () => {
           <Printer className="size-4" aria-hidden />
           <span className="text-sm">{t('odonto.imprimir.titulo')}</span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* La casilla decide si el papel lleva detrás la evolución con sus fechas. */}
+          <Checkbox
+            checked={conHistorial}
+            onChange={(event) => setConHistorial(event.target.checked)}
+            label={t('odonto.imprimir.conHistorial')}
+          />
           <Button variant="secondary" onClick={() => window.close()}>
             {t('comun.cerrar')}
           </Button>
@@ -102,7 +121,24 @@ export const OdontogramPrintPage = () => {
         </div>
       )}
 
-      <OdontogramDocument detail={resultado.odontogram} />
+      {/* Si se pidió el historial y todavía no llegó, se dice: imprimir sin él sería
+          entregar un informe distinto del que se pidió. */}
+      {conHistorial && historialQuery.isLoading && (
+        <div className="mx-auto max-w-[21cm] px-6 pb-3 print:hidden">
+          <Spinner size="sm" showLabel label={t('odonto.imprimir.historial.cargando')} />
+        </div>
+      )}
+      {conHistorial && historialQuery.isError && (
+        <div className="mx-auto max-w-[21cm] px-6 pb-3 print:hidden">
+          <Alert variant="warning">{apiErrorMessage(historialQuery.error)}</Alert>
+        </div>
+      )}
+
+      <OdontogramDocument
+        detail={resultado.odontogram}
+        history={conHistorial ? (historialQuery.data?.entries ?? []) : null}
+        historyLimit={LIMITE_HISTORIAL}
+      />
     </div>
   );
 };

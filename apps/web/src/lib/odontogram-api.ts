@@ -132,9 +132,16 @@ export const odontogramApi = {
       `/odontogram/patients/${patientId}/surfaces/${String(input.toothNumber)}/${input.surface}`,
     ),
 
-  /** Histórico append-only de cambios, para la vista de evolución. */
-  history: (patientId: string, signal?: AbortSignal): Promise<OdontogramHistoryResult> =>
-    api.get<OdontogramHistoryResult>(`/odontogram/patients/${patientId}/history`, { signal }),
+  /** Histórico append-only de cambios, para la vista de evolución y el informe. */
+  history: (
+    patientId: string,
+    signal?: AbortSignal,
+    limit?: number,
+  ): Promise<OdontogramHistoryResult> =>
+    api.get<OdontogramHistoryResult>(
+      `/odontogram/patients/${patientId}/history${limit === undefined ? '' : `?limit=${String(limit)}`}`,
+      { signal },
+    ),
 
   /** Deja constancia de la impresión (también la secretaría, que solo lee). */
   registerPrint: (patientId: string): Promise<PrintOdontogramResult> =>

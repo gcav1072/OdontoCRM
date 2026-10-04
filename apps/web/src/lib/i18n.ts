@@ -1691,6 +1691,20 @@ const DICCIONARIO = {
    */
   'odonto.imprimir.notaAusente':
     'En las piezas marcadas como ausentes, las caras que hubiera quedan sin efecto.',
+  /**
+   * Historial de cambios en el informe (casilla de la vista de impresión): la
+   * evolución del odontograma con fechas, quién y qué cambió.
+   */
+  'odonto.imprimir.conHistorial': 'Incluir el historial de cambios (con fechas)',
+  'odonto.imprimir.historial.titulo': 'Historial de cambios del odontograma',
+  'odonto.imprimir.historial.cargando': 'Cargando el historial…',
+  'odonto.imprimir.historial.rango':
+    'Del {desde} al {hasta} · {total} cambios, del más antiguo al más reciente',
+  'odonto.imprimir.historial.recortado':
+    'se muestran los {tope} más recientes; el historial completo está en la evolución',
+  'odonto.imprimir.historial.fecha': 'Fecha',
+  'odonto.imprimir.historial.cambio': 'Cambio',
+  'odonto.imprimir.historial.quien': 'Quién y por qué',
   'odonto.imprimir.notaCorona':
     'En las piezas con corona, las caras que había debajo quedan cubiertas por la corona: el dato se conserva en la historia clínica.',
   'odonto.hallazgos.ninguno':

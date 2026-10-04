@@ -5,9 +5,14 @@ import {
   surfaceLabelFor,
   supersedesSurfaces,
 } from '@odontocrm/contracts';
-import type { OdontogramDetail, ToothFindingRecord } from '@odontocrm/contracts';
+import type {
+  OdontogramDetail,
+  ToothFindingHistoryEntry,
+  ToothFindingRecord,
+} from '@odontocrm/contracts';
 
 import { formatDate, formatDateTime } from '../../lib/format';
+import { historyEventLabel } from './OdontogramHistory';
 import { t } from '../../lib/i18n';
 import { OdontogramStaticChart } from '../odontogram/OdontogramStaticChart';
 
@@ -111,11 +116,26 @@ export interface OdontogramDocumentProps {
   detail: OdontogramDetail;
   /** Membrete: genérico hasta que el configurable llegue en la Fase 7. */
   clinicName?: string;
+  /**
+   * Histórico de cambios, si el informe se pide **con** historial (la casilla de la
+   * vista de impresión). Se pinta en orden **cronológico** —lo que pasó primero
+   * arriba—, que es como se lee una evolución. 
+ull o vacío: el informe sale sin
+   * esa sección, que es el caso normal.
+   */
+  history?: readonly ToothFindingHistoryEntry[] | null;
+  /**
+   * Tope con el que se pidió el histórico: si se alcanzó, el informe lo dice. Un
+   * historial recortado en silencio se lee como si no hubiera más.
+   */
+  historyLimit?: number;
 }
 
 export const OdontogramDocument = ({
   detail,
   clinicName = t('app.nombre'),
+  history = null,
+  historyLimit,
 }: OdontogramDocumentProps) => {
   const piezas = affectedTeeth(detail);
   const pendientes = Object.values(detail.findings)
@@ -133,6 +153,15 @@ export const OdontogramDocument = ({
       .filter((hallazgo) => supersedesSurfaces(hallazgo.condition))
       .map((hallazgo) => hallazgo.condition),
   );
+
+  // El histórico se pide del más nuevo al más viejo (para la pantalla); en el papel se
+  // lee al revés, como una historia clínica: lo primero que pasó, primero.
+  const historial =
+    history === undefined || history === null
+      ? null
+      : [...history].sort(
+          (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
+        );
 
   return (
     <article className="mx-auto max-w-[21cm] bg-white px-8 py-6 text-ink print:px-0 print:py-0">
@@ -184,6 +213,78 @@ export const OdontogramDocument = ({
           <FindingsTable detail={detail} />
         </div>
       </section>
+
+      {/*
+        Historial de cambios (opcional): la evolución del odontograma con sus fechas,
+        para el informe que se archiva o se entrega. Sale **en orden cronológico** y
+        con quién hizo cada cambio, porque es lo que da valor probatorio al papel.
+      */}
+      {historial !== null && historial.length > 0 && (
+        <section className="mt-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide break-after-avoid">
+            {t('odonto.imprimir.historial.titulo')}
+          </h2>
+          <p className="mt-1 text-xs text-ink-muted break-after-avoid">
+            {t('odonto.imprimir.historial.rango', {
+              desde: formatDate(historial[0]?.occurredAt ?? detail.updatedAt),
+              hasta: formatDate(historial[historial.length - 1]?.occurredAt ?? detail.updatedAt),
+              total: historial.length,
+            })}
+            {historyLimit !== undefined && historial.length >= historyLimit
+              ? ` · ${t('odonto.imprimir.historial.recortado', { tope: historyLimit })}`
+              : ''}
+          </p>
+          <table className="mt-3 w-full border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-border text-left uppercase tracking-wide text-ink-subtle">
+                <th className="py-1 pr-2">{t('odonto.imprimir.historial.fecha')}</th>
+                <th className="py-1 pr-2">{t('odonto.hallazgos.pieza')}</th>
+                <th className="py-1 pr-2">{t('odonto.hallazgos.cara')}</th>
+                <th className="py-1 pr-2">{t('odonto.hallazgos.condicion')}</th>
+                <th className="py-1 pr-2">{t('odonto.hallazgos.estado')}</th>
+                <th className="py-1 pr-2">{t('odonto.imprimir.historial.cambio')}</th>
+                <th className="py-1">{t('odonto.imprimir.historial.quien')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historial.map((entrada) => (
+                <tr key={entrada.id} className="break-inside-avoid border-b border-border/60">
+                  <td className="py-1 pr-2 whitespace-nowrap text-ink-muted">
+                    {formatDateTime(entrada.occurredAt)}
+                  </td>
+                  <td className="py-1 pr-2 font-medium text-ink">{entrada.toothNumber}</td>
+                  <td className="py-1 pr-2 text-ink-muted">
+                    {entrada.surface === null
+                      ? t('odonto.hallazgos.piezaCompleta')
+                      : surfaceLabelFor(entrada.toothNumber, entrada.surface)}
+                  </td>
+                  <td className="py-1 pr-2 text-ink-muted">
+                    {CONDITION_LABELS[entrada.condition]}
+                  </td>
+                  <td className="py-1 pr-2">
+                    <span
+                      className="inline-flex items-center gap-1"
+                      style={{ color: CLINICAL_STATE_COLORS[entrada.state] }}
+                    >
+                      <span
+                        className="inline-block size-2 rounded-full"
+                        style={{ backgroundColor: CLINICAL_STATE_COLORS[entrada.state] }}
+                        aria-hidden
+                      />
+                      {CLINICAL_STATE_LABELS[entrada.state]}
+                    </span>
+                  </td>
+                  <td className="py-1 pr-2 text-ink-muted">{historyEventLabel(entrada.event)}</td>
+                  <td className="py-1 text-ink-muted">
+                    {entrada.actorUsername ?? t('comun.sinDato')}
+                    {entrada.reason !== null ? ` · ${entrada.reason}` : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <footer className="mt-8 border-t border-border pt-2 text-xs text-ink-subtle">
         <p>

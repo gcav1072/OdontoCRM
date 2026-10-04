@@ -2,7 +2,11 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import type { OdontogramDetail, ToothFindingRecord } from '@odontocrm/contracts';
+import type {
+  OdontogramDetail,
+  ToothFindingHistoryEntry,
+  ToothFindingRecord,
+} from '@odontocrm/contracts';
 
 import { OdontogramDocument } from './OdontogramDocument';
 import { TOOTH_LABEL_BASELINE } from './GeometricTooth';
@@ -60,6 +64,33 @@ const detalle = (findings: Record<string, ToothFindingRecord[]>): OdontogramDeta
 
 const documento = (detail: OdontogramDetail): string =>
   renderToStaticMarkup(createElement(OdontogramDocument, { detail }));
+
+/** Entrada del histórico, para el informe que se pide «con historial». */
+const cambio = (parcial: Partial<ToothFindingHistoryEntry>): ToothFindingHistoryEntry => ({
+  id: `hist-${String(parcial.occurredAt ?? 'x')}-${String(parcial.event ?? 'registrado')}`,
+  toothNumber: 16,
+  surface: 'occlusal',
+  condition: 'caries',
+  state: 'pendiente',
+  event: 'registrado',
+  reason: null,
+  notes: null,
+  actorUsername: 'egomez',
+  occurredAt: '2026-10-01T09:00:00.000Z',
+  ...parcial,
+});
+
+const conHistorial = (
+  cambios: readonly ToothFindingHistoryEntry[],
+  historyLimit?: number,
+): string =>
+  renderToStaticMarkup(
+    createElement(OdontogramDocument, {
+      detail: detalle({ '16': [hallazgo({ toothNumber: 16 })] }),
+      history: cambios,
+      ...(historyLimit === undefined ? {} : { historyLimit }),
+    }),
+  );
 
 describe('documento imprimible del odontograma', () => {
   it('pinta al paciente, las piezas con su número y el color de cada estado', () => {
@@ -278,5 +309,49 @@ describe('el documento se lee como la boca del paciente', () => {
     // Y el papel explica hacia dónde mira cada cara.
     expect(boca).toContain('vestibular arriba');
     expect(boca).toContain('lingual arriba');
+  });
+});
+
+describe('el historial de cambios en el informe (casilla de la impresión)', () => {
+  it('sin pedirlo, el informe no lleva historial', () => {
+    const boca = documento(detalle({ '16': [hallazgo({ toothNumber: 16 })] }));
+    expect(boca).not.toContain('Historial de cambios');
+  });
+
+  it('con la casilla, sale en orden cronológico con fechas, quién y qué cambió', () => {
+    const html = conHistorial([
+      // Llegan del más nuevo al más viejo, como los sirve la pantalla.
+      cambio({
+        occurredAt: '2026-10-04T10:00:00.000Z',
+        event: 'superado',
+        condition: 'restauracion',
+        reason: 'superado por «corona»',
+      }),
+      cambio({ occurredAt: '2026-10-01T09:00:00.000Z', event: 'registrado' }),
+    ]);
+
+    expect(html).toContain('Historial de cambios del odontograma');
+    expect(html).toContain('del más antiguo al más reciente');
+    // En el papel, el primero es el más viejo: es una evolución, no una bandeja.
+    expect(html.indexOf('Registrado')).toBeLessThan(html.indexOf('Superado'));
+    // Con su actor y su motivo, que es lo que da valor probatorio al documento.
+    expect(html).toContain('egomez');
+    expect(html).toContain('superado por «corona»');
+    expect(html).toContain('Oclusal');
+  });
+
+  it('la 33 se nombra con borde incisal también en el historial', () => {
+    const html = conHistorial([cambio({ toothNumber: 33, surface: 'occlusal' })]);
+    expect(html).toContain('Incisal');
+  });
+
+  it('si el historial llegó al tope, el informe lo dice', () => {
+    const dos = [
+      cambio({ occurredAt: '2026-10-01T09:00:00.000Z' }),
+      cambio({ occurredAt: '2026-10-02T09:00:00.000Z', event: 'actualizado' }),
+    ];
+    expect(conHistorial(dos, 2)).toContain('se muestran los 2 más recientes');
+    // Si no se llegó al tope, no hay nada que avisar.
+    expect(conHistorial(dos, 500)).not.toContain('se muestran los');
   });
 });
