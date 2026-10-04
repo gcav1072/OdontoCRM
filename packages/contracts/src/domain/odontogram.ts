@@ -1239,10 +1239,22 @@ export const quickEntryKey = (
   return { state, intent: { kind: 'ignored' } };
 };
 
-/** Etiqueta de la pieza activa para la barra de la carga rápida (`"1"` → `"1_"`). */
+/**
+ * Etiqueta de la pieza activa para la barra de la carga rápida (`"1"` → `"1_"`).
+ *
+ * La cara se nombra **con la pieza delante** (`surfaceLabelFor`): al elegir el 11 la
+ * barra dice «11 (Incisal)», no «11 (Oclusal)», porque la caries que se marque va al
+ * borde incisal. Es la misma regla que la tabla, la hoja de la pieza y el papel.
+ */
 export const quickEntryLabel = (state: QuickEntryState): string =>
   state.toothNumber === null
     ? state.pendingDigits === ''
       ? ''
       : `${state.pendingDigits}_`
-    : `${String(state.toothNumber)}${state.surfaces.length === 0 ? '' : ` (${state.surfaces.map((surface) => SURFACE_LABELS[surface]).join(' · ')})`}`;
+    : `${String(state.toothNumber)}${
+        state.surfaces.length === 0
+          ? ''
+          : ` (${state.surfaces
+              .map((surface) => surfaceLabelFor(state.toothNumber as number, surface))
+              .join(' · ')})`
+      }`;

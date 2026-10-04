@@ -2,7 +2,7 @@ import {
   CONDITION_LABELS,
   initialQuickEntryState,
   odontogramSummary,
-  SURFACE_LABELS,
+  surfaceLabelFor,
 } from '@odontocrm/contracts';
 import type {
   OdontogramDetail,
@@ -139,8 +139,10 @@ export const OdontogramPanel = ({ patientId, canWrite = false }: OdontogramPanel
         message: t('odonto.aviso.carasSuperadas', {
           pieza,
           condicion: CONDITION_LABELS[condicion].toLowerCase(),
+          // La cara se nombra con la pieza delante: en un incisivo o un canino la de
+          // masticación es el borde incisal, no la oclusal.
           caras: result.resolvedSurfaces
-            .map((surface) => SURFACE_LABELS[surface].toLowerCase())
+            .map((surface) => surfaceLabelFor(pieza, surface).toLowerCase())
             .join(', '),
         }),
       });

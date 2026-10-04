@@ -75,11 +75,16 @@ export const describeAction = (action: QuickEntryAction): string => {
     case 'record':
       return t('odonto.accion.hallazgo', {
         pieza: action.input.toothNumber,
-        detalle: findingLabel({
-          surface: action.input.surface,
-          condition: action.input.condition,
-          state: action.input.state,
-        }),
+        detalle: findingLabel(
+          {
+            surface: action.input.surface,
+            condition: action.input.condition,
+            state: action.input.state,
+          },
+          // La pieza va delante para que el aviso diga «caries incisal» en el 11 y no
+          // «oclusal»: es el mismo nombre que enseñan la tabla y el papel.
+          action.input.toothNumber,
+        ),
       });
     case 'delete':
       return t('odonto.accion.borrado', {
@@ -317,7 +322,15 @@ export const QuickEntryBar = ({
             {Object.entries(QUICK_SURFACE_KEYS).map(([key, surface]) => (
               <li key={key} className="flex items-center gap-1">
                 <Tecla>{key}</Tecla>
-                <span>{SURFACE_LABELS[surface]}</span>
+                {/*
+                  La tecla es la misma para la cara de masticación, pero el nombre no:
+                  en incisivos y caninos esa cara es el **borde incisal**.
+                */}
+                <span>
+                  {surface === 'occlusal'
+                    ? t('odonto.rapida.caraMasticacion')
+                    : SURFACE_LABELS[surface]}
+                </span>
               </li>
             ))}
           </ul>

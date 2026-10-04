@@ -15,6 +15,7 @@ import {
   PRIMARY_TOOTH_NUMBERS,
   parsePolygonPoints,
   quickEntryKey,
+  quickEntryLabel,
   initialQuickEntryState,
   recordFindingSchema,
   selectionIsApplicable,
@@ -512,6 +513,20 @@ describe('máquina de la carga rápida', () => {
     paso = quickEntryKey(paso.state, '6');
     expect(paso.state.toothNumber).toBe(16);
     expect(paso.state.pendingDigits).toBe('');
+  });
+
+  it('la barra nombra la cara de la pieza activa: incisal delante, oclusal detrás', () => {
+    // La tecla `n` marca la cara de masticación, y en el 11 se llama **Incisal**.
+    expect(quickEntryLabel(simular('11n').estado)).toBe('11 (Incisal)');
+    // En un molar, la misma tecla y la misma cara se llaman oclusal.
+    expect(quickEntryLabel(simular('16n').estado)).toBe('16 (Oclusal)');
+    // Y con una proximal marcada salen las dos, cada una con su nombre clínico.
+    expect(quickEntryLabel(simular('33sn').estado)).toBe('33 (Mesial · Incisal)');
+
+    // Sin cara marcada, solo el número (y los dígitos que se van tecleando).
+    expect(quickEntryLabel(simular('11').estado)).toBe('11');
+    expect(quickEntryLabel(initialQuickEntryState())).toBe('');
+    expect(quickEntryLabel(simular('1').estado)).toBe('1_');
   });
 
   it('un cuadrante imposible no atasca la máquina: el dígito pasa a ser el primero del número siguiente', () => {

@@ -1796,12 +1796,15 @@ const DICCIONARIO = {
   'odonto.rapida.placeholder': 'Haz clic aquí o en una pieza y escribe su número (p. ej. 16)',
   'odonto.rapida.condiciones': 'Condición',
   'odonto.rapida.caras': 'Caras de la pieza activa',
+  /** La misma tecla para la cara de masticación: oclusal en posteriores, incisal delante. */
+  'odonto.rapida.caraMasticacion': 'Oclusal · Incisal',
   'odonto.rapida.pendiente': 'minúscula = pendiente',
   'odonto.rapida.completado': 'MAYÚSCULA = completado',
-  'odonto.rapida.sinCaras': 'Sin caras marcadas: caries u obturación se aplican a la oclusal.',
+  'odonto.rapida.sinCaras':
+    'Sin caras marcadas: la caries o la obturación van a la cara de masticación (oclusal; en incisivos y caninos, el borde incisal).',
   'odonto.rapida.piezaSana': 'La pieza {pieza} está sana.',
   'odonto.rapida.piezaTiene': 'La pieza {pieza} tiene: {detalle}.',
-  'odonto.rapida.suprimir': 'borra la cara u oclusal',
+  'odonto.rapida.suprimir': 'borra la cara marcada o, si no hay ninguna, la de masticación',
   'odonto.rapida.soltar': 'suelta la pieza',
   'odonto.rapida.salir': 'cancela la carga rápida',
 
@@ -1837,7 +1840,7 @@ const DICCIONARIO = {
   'odonto.sheet.marcarPendiente': 'Marcar pendiente',
   'odonto.sheet.caras': 'Caras',
   'odonto.sheet.carasAyuda':
-    'Marca una o varias caras y elige la condición: se guardan todas de una vez. Sin ninguna marcada, la caries o la obturación van a la cara oclusal.',
+    'Marca una o varias caras y elige la condición: se guardan todas de una vez. Sin ninguna marcada, la caries o la obturación van a la cara de masticación (oclusal; en incisivos y caninos, el borde incisal).',
   'odonto.sheet.estado': 'Estado',
   'odonto.sheet.condicion': 'Condición',
   'odonto.sheet.invalida': 'Esa pieza no admite el cambio.',
