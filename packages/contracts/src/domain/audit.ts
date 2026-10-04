@@ -45,6 +45,13 @@ export const AUDIT_ACTIONS = [
   'appointment_overbook_authorized',
   'day_capacity_changed',
   'slot_template_changed',
+  // Historia clínica (llegan por el outbox desde el servicio clínico)
+  'medical_record_created',
+  'medical_record_updated',
+  'medical_record_signed',
+  'medical_record_amended',
+  'medical_record_printed',
+  'medical_record_consent_accepted',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
