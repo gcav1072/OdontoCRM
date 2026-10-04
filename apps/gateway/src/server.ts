@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 
 import { registerAuthGuard } from './auth-guard.js';
 import { jwtPublicKeyPath, type GatewayConfig } from './config.js';
+import { buildSystemMeta } from './meta.js';
 import { buildProxyRoutes } from './routes.js';
 
 export interface CreateGatewayServerOptions {
@@ -49,6 +50,13 @@ export const createGatewayServer = async (
     max: 600,
     timeWindow: '1 minute',
   });
+
+  /**
+   * Estado del sistema, público y propio de la puerta (no se proxya a ningún
+   * servicio): la interfaz lo pide al arrancar para saber si tiene que pintar el
+   * banner de MODO TEST, incluso en la pantalla de acceso.
+   */
+  app.get('/api/v1/meta', async () => buildSystemMeta(config));
 
   for (const route of buildProxyRoutes(config)) {
     // Cada ruta en su propio ámbito para poder declarar el mismo plugin varias
