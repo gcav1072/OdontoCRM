@@ -315,6 +315,35 @@ const run = async () => {
     archivo: 'EVENTS_DATABASE_URL en los .env de los servicios',
   });
 
+  /**
+   * El gateway no tiene base de datos, pero sus scripts de desarrollo cargan
+   * `apps/gateway/.env` con `--env-file-if-exists` y `node --watch` **falla** si el
+   * archivo no existe (medido con Node 22 en Fedora: `ENOENT … watch`). Se crea
+   * vacío con su explicación para que `npm run dev` arranque en una máquina recién
+   * clonada.
+   */
+  const gatewayEnv = resolve(ROOT, 'apps/gateway/.env');
+  if (!existsSync(gatewayEnv)) {
+    writeFileSync(
+      gatewayEnv,
+      '# Gateway — variables propias (desarrollo).\n' +
+        '#\n' +
+        '# El gateway no tiene base de datos: este archivo puede quedarse vacío. Existe\n' +
+        '# porque los scripts de desarrollo lo cargan con --env-file-if-exists y\n' +
+        '# `node --watch` falla si el archivo no está. Aquí puedes sobrescribir\n' +
+        '# cualquier variable del .env de la raíz solo para el gateway.\n',
+      { mode: 0o600 },
+    );
+    summary.push({
+      servicio: 'gateway',
+      base: '—',
+      rol: '—',
+      rolCreado: '—',
+      contrasena: '—',
+      archivo: 'apps/gateway/.env (vacío)',
+    });
+  }
+
   console.table(summary);
   console.log(
     '\nCredenciales escritas en los .env de cada servicio (ignorados por Git).\n' +
