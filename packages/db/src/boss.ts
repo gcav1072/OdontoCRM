@@ -64,14 +64,18 @@ export const consumerQueueName = (service: string): string => `${DOMAIN_EVENTS_Q
  * auditaba unos y notifications no se enteraba de otros). Cada servicio declara su
  * cola (`domain-events.<servicio>`) y aquí se publica una copia en cada una, así
  * que todos ven todos los eventos y añadir un consumidor no toca a los demás.
+ *
+ * Se publica **solo en colas de consumidor** (`domain-events.<algo>`). La cola
+ * padre `domain-events` no la trabaja nadie en este despliegue: recibía una copia
+ * por evento que se quedaba en `created` para siempre (la retención de pg-boss solo
+ * borra las completadas) y llegó a acumular más de mil trabajos muertos. Solo se
+ * usa como último recurso, cuando no hay ninguna cola de consumidor declarada.
  */
 export const enqueueDomainEvent = async (boss: PgBoss, event: DomainEvent): Promise<void> => {
   const known = (await boss.getQueues()).map((queue) => queue.name);
-  const targets = known.filter(
-    (name) => name === DOMAIN_EVENTS_QUEUE || name.startsWith(`${DOMAIN_EVENTS_QUEUE}.`),
-  );
+  const consumers = known.filter((name) => name.startsWith(`${DOMAIN_EVENTS_QUEUE}.`));
 
-  const queues = targets.length === 0 ? [DOMAIN_EVENTS_QUEUE] : targets;
+  const queues = consumers.length > 0 ? consumers : [DOMAIN_EVENTS_QUEUE];
   const results = await Promise.all(
     queues.map((queue) =>
       boss.send(queue, event as unknown as object, {

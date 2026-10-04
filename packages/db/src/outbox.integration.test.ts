@@ -3,8 +3,8 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  consumerQueueName,
   createBoss,
-  DOMAIN_EVENTS_QUEUE,
   enqueueDomainEvent,
   ensureDomainEventsQueue,
   startBoss,
@@ -27,6 +27,9 @@ const connectionString = process.env['TEST_DATABASE_URL'];
 const describeWithDatabase = connectionString === undefined ? describe.skip : describe;
 
 const marker = `prueba-${String(Date.now())}`;
+
+/** Cola propia de la prueba: los servicios también trabajan la suya. */
+const colaDePrueba = consumerQueueName('prueba');
 
 describeWithDatabase('outbox transaccional (PostgreSQL real)', () => {
   let client: pg.Client;
@@ -128,9 +131,11 @@ describeWithDatabase('cola pg-boss sobre PostgreSQL (real)', () => {
 
     try {
       await startBoss(boss);
-      await ensureDomainEventsQueue(boss);
+      // La prueba trabaja **su propia** cola de consumidor, como los servicios: la
+      // cola padre ya no recibe copias (nadie la trabaja y acumulaba basura).
+      await ensureDomainEventsQueue(boss, colaDePrueba);
 
-      workerId = await boss.work<DomainEvent, void>(DOMAIN_EVENTS_QUEUE, async (jobs) => {
+      workerId = await boss.work<DomainEvent, void>(colaDePrueba, async (jobs) => {
         for (const job of jobs) received.push(job.data);
       });
 
@@ -151,8 +156,11 @@ describeWithDatabase('cola pg-boss sobre PostgreSQL (real)', () => {
       expect(received.map((item) => item.eventId)).toContain(event.eventId);
     } finally {
       if (workerId !== undefined) {
-        await boss.offWork(DOMAIN_EVENTS_QUEUE).catch(() => undefined);
+        await boss.offWork(colaDePrueba).catch(() => undefined);
       }
+      // La cola se borra al terminar: mientras exista, el publicador de los
+      // servicios reales le manda copias que nadie recoge entre corridas.
+      await boss.deleteQueue(colaDePrueba).catch(() => undefined);
       await stopBoss(boss).catch(() => undefined);
     }
   }, 40_000);

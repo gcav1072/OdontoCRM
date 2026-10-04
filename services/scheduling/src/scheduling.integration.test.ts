@@ -6,6 +6,7 @@ import {
   type RequestFilters,
 } from '@odontocrm/contracts';
 import {
+  consumerQueueName,
   createBoss,
   createOutboxRunner,
   ensureDomainEventsQueue,
@@ -64,6 +65,9 @@ const describeWithDatabases = ready ? describe : describe.skip;
 const suffix = String(Date.now()).slice(-6);
 const MARKER = `prueba-fase3-${suffix}`;
 const MARK = `PRUEBA-F3-${suffix}`;
+
+/** Cola propia de esta suite: se borra al terminar (ver el comentario al usarla). */
+const colaDePrueba = consumerQueueName('prueba-agenda');
 
 /** Un día de consulta lejos de los datos de la demo (lunes a viernes). */
 const workingDayFrom = (offsetDays: number): string => {
@@ -162,8 +166,10 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
         for (const event of events) await handleDomainEvent(identityHandle.db, event);
       },
       // Cola propia de la prueba: los servicios reales tienen la suya, así que
-      // todos reciben los eventos (reparto por consumidor) sin pisarse.
-      { queue: 'domain-events.prueba' },
+      // todos reciben los eventos (reparto por consumidor) sin pisarse. Cada suite
+      // usa un nombre distinto y la borra al terminar: mientras exista, el
+      // publicador de los servicios reales le manda copias que nadie recoge.
+      { queue: colaDePrueba },
     );
   }, 30_000);
 
@@ -187,6 +193,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     await schedulingHandle.db.execute(
       sql`delete from day_capacities where date in (${day}, ${otherDay})`,
     );
+    await boss.deleteQueue(colaDePrueba).catch(() => undefined);
     await stopBoss(boss).catch(() => undefined);
     await schedulingHandle.close();
     await identityHandle.close();

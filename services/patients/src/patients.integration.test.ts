@@ -7,6 +7,7 @@ import {
   type PatientFilters,
 } from '@odontocrm/contracts';
 import {
+  consumerQueueName,
   createBoss,
   createOutboxRunner,
   ensureDomainEventsQueue,
@@ -55,6 +56,9 @@ const describeWithDatabases = ready ? describe : describe.skip;
 
 const suffix = String(Date.now()).slice(-7);
 const MARKER = `prueba-fase2-${suffix}`;
+
+/** Cola propia de esta suite: se borra al terminar (ver el comentario al usarla). */
+const colaDePrueba = consumerQueueName('prueba-pacientes');
 
 const actor = {
   actorId: null,
@@ -177,8 +181,10 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
         }
       },
       // Cola propia de la prueba: los servicios reales tienen la suya, así que
-      // todos reciben los eventos (reparto por consumidor) sin pisarse.
-      { queue: 'domain-events.prueba' },
+      // todos reciben los eventos (reparto por consumidor) sin pisarse. Cada suite
+      // usa un nombre distinto y la borra al terminar: mientras exista, el
+      // publicador de los servicios reales le manda copias que nadie recoge.
+      { queue: colaDePrueba },
     );
   }, 30_000);
 
@@ -191,6 +197,7 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
       .where(eq(identitySchema.auditEvents.actorUsername, MARKER));
     await identityHandle.db.delete(identitySchema.processedEvents);
     await patientsHandle.db.delete(patients).where(like(patients.fullName, `%${suffix}%`));
+    await boss.deleteQueue(colaDePrueba).catch(() => undefined);
     await stopBoss(boss).catch(() => undefined);
     await patientsHandle.close();
     await identityHandle.close();
