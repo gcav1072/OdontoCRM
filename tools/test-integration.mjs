@@ -190,4 +190,34 @@ if (reportes.temporal !== undefined) {
   }
 }
 
+/**
+ * Las colas de prueba (`domain-events.prueba-*`) se borran al terminar: cada suite
+ * declara la suya para no ensuciar las de los servicios, pero si se quedan, el
+ * tablero de estado (`npm run estado`) las ve como colas con trabajos pendientes
+ * para siempre y las alertas se vuelven ruido.
+ */
+const limpiarColasDePrueba = async () => {
+  const eventsUrl = extraEnv.TEST_EVENTS_DATABASE_URL;
+  if (eventsUrl === undefined) return;
+  const { default: pg } = await import('pg');
+  const client = new pg.Client({
+    connectionString: eventsUrl,
+    application_name: 'odontocrm-test-colas',
+  });
+  try {
+    await client.connect();
+    const { rowCount } = await client.query(
+      `delete from pgboss.queue where name like 'domain-events.prueba-%'`,
+    );
+    await client.query(`delete from pgboss.job where name like 'domain-events.prueba-%'`);
+    if ((rowCount ?? 0) > 0) console.log(`· Colas de prueba borradas: ${String(rowCount)}.`);
+  } catch {
+    console.warn('· No se pudieron borrar las colas de prueba (no afecta al resultado).');
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+};
+
+await limpiarColasDePrueba();
+
 process.exit(result.status ?? 1);

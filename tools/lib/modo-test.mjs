@@ -8,48 +8,19 @@
  * eventos en el outbox, calcular huellas— vive aquí para que los tres no puedan
  * discrepar.
  */
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isAbsolute, resolve } from 'node:path';
 
 import { resolveTestMode } from '@odontocrm/contracts';
 import { toOutboxInsert } from '@odontocrm/db';
 import { createDiskBlobStore } from '@odontocrm/storage';
 import { fingerprint } from '@odontocrm/testing';
 
-export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+import { entornoRaiz, leerEnv, ROOT, rutaEnvDe, SERVICIOS } from './servicios.mjs';
 
-/** Servicios con base de datos propia y su archivo de entorno. */
-export const SERVICIOS = [
-  { name: 'patients', database: 'odonto_patients', env: 'services/patients/.env' },
-  { name: 'scheduling', database: 'odonto_scheduling', env: 'services/scheduling/.env' },
-  { name: 'clinical', database: 'odonto_clinical', env: 'services/clinical/.env' },
-  { name: 'odontogram', database: 'odonto_odontogram', env: 'services/odontogram/.env' },
-  { name: 'notifications', database: 'odonto_notifications', env: 'services/notifications/.env' },
-  { name: 'screens', database: 'odonto_screens', env: 'services/screens/.env' },
-  { name: 'identity', database: 'odonto_identity', env: 'services/identity/.env' },
-  { name: 'reporting', database: 'odonto_reporting', env: 'services/reporting/.env' },
-];
-
-/** Lee un archivo `.env` sin imprimir jamás sus valores en un mensaje de error. */
-export const leerEnv = (ruta) => {
-  const absoluta = isAbsolute(ruta) ? ruta : resolve(ROOT, ruta);
-  if (!existsSync(absoluta)) return {};
-
-  const valores = {};
-  for (const linea of readFileSync(absoluta, 'utf8').split(/\r?\n/)) {
-    const limpia = linea.trim();
-    if (limpia === '' || limpia.startsWith('#')) continue;
-    const separador = limpia.indexOf('=');
-    if (separador <= 0) continue;
-    const clave = limpia.slice(0, separador).trim();
-    const valor = limpia.slice(separador + 1).trim();
-    valores[clave] = valor.replace(/^['"]|['"]$/g, '');
-  }
-  return valores;
-};
-
-export const entornoRaiz = () => leerEnv('.env');
+// Las herramientas del modo test importan estas piezas de aquí desde la Fase 10;
+// ahora viven en `servicios.mjs` (las comparte el tablero de estado) y se
+// reexportan para no tocar a quien ya las usaba.
+export { entornoRaiz, leerEnv, ROOT, SERVICIOS };
 
 /**
  * ¿Está permitido el modo test en esta instalación? Usa **la misma función** que
@@ -84,10 +55,11 @@ export const conexionDe = (servicio, pg) => {
   const definicion = SERVICIOS.find((item) => item.name === servicio);
   if (definicion === undefined) throw new Error(`Servicio desconocido: ${servicio}`);
 
-  const entorno = leerEnv(definicion.env);
+  const archivo = rutaEnvDe(definicion);
+  const entorno = leerEnv(archivo);
   if (!entorno.DATABASE_URL) {
     throw new Error(
-      `Falta DATABASE_URL en ${definicion.env}. Ejecuta "npm run db:bootstrap" y "npm run db:migrate" primero.`,
+      `Falta DATABASE_URL en ${archivo}. Ejecuta "npm run db:bootstrap" y "npm run db:migrate" primero.`,
     );
   }
   const client = new pg.Client({ connectionString: entorno.DATABASE_URL });
