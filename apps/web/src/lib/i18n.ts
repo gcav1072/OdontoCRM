@@ -30,6 +30,13 @@ const DICCIONARIO = {
   'app.lema': 'Gestión del consultorio odontológico',
   'app.pie': 'Sistema interno del consultorio · Acceso restringido',
 
+  // --- Modo test (ADR 0020) ------------------------------------------------
+  // El banner tiene que decir de un vistazo qué pasa y qué no hacer.
+  'modoTest.titulo': 'MODO TEST',
+  'modoTest.detalle':
+    'Datos ficticios y envíos simulados: no uses esta instalación con pacientes reales.',
+  'modoTest.semilla': 'Semilla {semilla}',
+
   // --- Comunes -------------------------------------------------------------
   'comun.cargando': 'Cargando…',
   'comun.guardando': 'Guardando…',
@@ -1216,6 +1223,9 @@ const DICCIONARIO = {
     'El bot de Telegram tiene token configurado, pero ahora mismo no está conectado: los envíos quedan en cola hasta que vuelva la conexión.',
   'notificaciones.bot.simulado.texto':
     'No hay token configurado: los mensajes quedan registrados en la bandeja, pero no se envían. Configura el token del bot para activar los envíos reales.',
+  'notificaciones.bot.modoTest.titulo': 'MODO TEST: los envíos están bloqueados',
+  'notificaciones.bot.modoTest.texto':
+    'Aunque el bot tenga token, en modo test ningún mensaje sale a un paciente: se registran como simulados en la bandeja.',
   'notificaciones.bot.canales': 'Canales',
   'notificaciones.bot.canal.sinConfigurar': 'sin configurar',
   'notificaciones.bot.conectado': 'Conectado',
