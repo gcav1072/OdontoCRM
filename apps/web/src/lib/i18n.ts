@@ -1271,6 +1271,10 @@ const DICCIONARIO = {
   'secretaria.atendido.motivoPlaceholder':
     'Por ejemplo: consulta de valoración sin sesión en el sistema',
   'secretaria.atendido.confirmar': 'Marcar atendido',
+  /** Con la sesión clínica cerrada (Fase 7) el «atendido» no pide motivo. */
+  'secretaria.atendido.conSesion.titulo': 'La sesión clínica de esta cita está cerrada',
+  'secretaria.atendido.conSesion.texto':
+    'El doctor ya cerró la sesión: {resumen}. Solo hay que confirmar la visita.',
   'secretaria.noAsistio.titulo': 'Marcar inasistencia',
   'secretaria.noAsistio.texto': 'Se marcará que {paciente} no asistió a su cita.',
   'secretaria.noAsistio.motivo': 'Motivo (opcional)',
