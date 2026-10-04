@@ -187,8 +187,16 @@ copiar la Fase 6:
 | 2 | **~30 variables de configuración sin documentar** en `.env.example` | Baja (sorpresas al operar) | ✅ **Arreglado**: sección «Ajustes finos» con todas (hosts, pool, cookies, anti-flood, reintentos, cola, tope de archivo, rutas de claves) y su valor por defecto |
 | 3 | **Temas declarados que nadie publica**: `notifications.message.sent`, `message.failed`, `patient_channel.linked`, `patients.file.uploaded`, `identity.user.*`, `identity.session.*` | Baja (deuda de contrato) | Documentados. `message.sent/failed` conviene publicarlos en la Fase 9 (reportes y KPIs) y `file.uploaded` en la Fase 6 (adjuntos de la historia) |
 | 4 | **La vinculación de canal no queda auditada** (consecuencia del anterior) | Media-baja | Recomendado antes de la Fase 9: publicar `patient_channel.linked` con la forma genérica (`auditPayload`); la auditoría lo recogería sola |
-| 5 | **El `secretario` no tenía acceso a clínica** | Decisión de producto | ✅ **Resuelto (2026-10-04)**: la secretaría **imprime todo** (récipes, consentimientos, historia y odontograma), así que llevará `clinical:read` y `odontogram:read` — solo lectura. Registrado en el plan: §5.4, decisión 23 y el apartado de impresión de la Fase 6. **No implementado todavía**: se hará al abrir la Fase 6 |
+| 5 | **El `secretario` no tenía acceso a clínica** | Decisión de producto | ✅ **Resuelto (2026-10-04)**: la secretaría **imprime todo** (récipes, consentimientos, historia y odontograma), así que lleva `clinical:read` y `odontogram:read` — solo lectura. Registrado en el plan: §5.4, decisión 23 y el apartado de impresión de la Fase 6. **Implementado en la Fase 6**: la historia (sesión A) y el odontograma (sesión B) ya exigen `clinical:read`/`odontogram:read` para leer e imprimir y `*:write` para escribir, y la prueba de humo del odontograma lo comprueba contra el gateway |
 | 6 | **Los scripts de auditoría vivían en `tmp/`** (sin versionar) | Baja | ✅ **Arreglado**: son `tools/audit-conexiones.mjs` con `npm run audit` (cuatro secciones y veredicto), documentados en la guía de comandos |
+
+> **Cierre de la Fase 6 (2026-10-04):** los temas `odontogram.*` ya se publican (`produce: odontogram
+> · consume: auditoría`) y los permisos `odontogram:read/write` ya se exigen en rutas reales, así que
+> salieron de la lista de «fases futuras» de `tools/audit-conexiones.mjs`. Al hacerlo, los temas de
+> `clinical.*` (sesión A) dejaron de estar exentos y aparecen como **deuda anotada**: `session.*` y
+> `prescription.*` son de la Fase 7 y no bloquean nada. Deuda vigente tras la sesión B: 14 temas
+> declarados sin publicar (6 de `identity`, 4 de `clinical` de la Fase 7, y los de notificaciones y
+> pacientes ya documentados en el hallazgo 3).
 
 ### Detalle del arreglo 1 (cola)
 

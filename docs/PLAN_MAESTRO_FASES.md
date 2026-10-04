@@ -598,11 +598,11 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 
 **Objetivo:** entregar el sistema listo para la clínica y reproducible en producción.
 
-**Entregables:** seed determinista completo + `seed:reset` + `seed:verify` + banner MODO TEST y bloqueo de envíos reales · `infra/fedora/` completa y **probada**: instalación de PostgreSQL 18, usuario de sistema, `systemd`/PM2, firewall (`firewalld`), SELinux, TLS interno, Tailscale, respaldo diario con `pg_dump` + rotación + **prueba de restauración documentada** · observabilidad (logs con rotación, `/health` y `/ready` de los 9 servicios, tablero de estado, alertas básicas de servicio caído y de cola de envíos atascada) · runbook (arranque, parada, respaldo, restauración, alta de usuarios, recuperación de contraseña, rotación del token del bot) · pruebas end-to-end del flujo completo (solicitud por bot → programación → notificación con `.ics` → secretaría → consultorio → historia/sesión/récipe → reportes → auditoría) · revisión de seguridad final · `README` de operación para la clínica.
+**Entregables:** seed determinista completo + `seed:reset` + `seed:verify` + banner MODO TEST y bloqueo de envíos reales · `infra/fedora/` completa y **probada**: instalación de PostgreSQL 18, usuario de sistema, `systemd`/PM2, firewall (`firewalld`), SELinux, TLS interno, Tailscale, respaldo diario con `pg_dump` + rotación + **prueba de restauración documentada** · **acceso desde los equipos de la clínica** (tablet del consultorio y puestos de secretaría) por la red local: el reverse proxy sirve la SPA compilada y proxya `/api` con TLS interno, `firewalld` abre **solo** ese puerto y los 9 servicios siguen escuchando en loopback · observabilidad (logs con rotación, `/health` y `/ready` de los 9 servicios, tablero de estado, alertas básicas de servicio caído y de cola de envíos atascada) · runbook (arranque, parada, respaldo, restauración, alta de usuarios, recuperación de contraseña, rotación del token del bot) · pruebas end-to-end del flujo completo (solicitud por bot → programación → notificación con `.ics` → secretaría → consultorio → historia/sesión/récipe → reportes → auditoría) · revisión de seguridad final · `README` de operación para la clínica.
 
-**Criterios de aceptación:** instalación desde cero en Fedora siguiendo solo `infra/fedora/INSTALL.md`; tras reiniciar la máquina los 9 servicios vuelven solos; un respaldo se restaura en una BD limpia con datos íntegros; la prueba E2E completa pasa; apagar el servidor no corrompe datos; el modo test no puede activarse en producción.
+**Criterios de aceptación:** instalación desde cero en Fedora siguiendo solo `infra/fedora/INSTALL.md`; tras reiniciar la máquina los 9 servicios vuelven solos; un respaldo se restaura en una BD limpia con datos íntegros; la prueba E2E completa pasa; **una tablet de la red local entra por HTTPS, inicia sesión y carga el odontograma con el dedo** (la interfaz táctil de la Fase 6B ya está lista: solo falta publicarla con TLS; hoy todo escucha en `127.0.0.1` y `COOKIE_SECURE=false` es obligatorio sobre HTTP, por lo que el acceso en claro **no** vale para datos clínicos); apagar el servidor no corrompe datos; el modo test no puede activarse en producción.
 
-**Commits previstos:** `feat(seed): datos de prueba deterministicos y reset` · `feat(web): banner y bloqueo de modo test` · `feat(infra): instalacion fedora con systemd y firewall` · `feat(infra): respaldos automatizados y restauracion` · `feat(obs): health, logs y alertas` · `test(e2e): flujo completo de la clinica` · `docs(runbook): operacion y recuperacion`.
+**Commits previstos:** `feat(seed): datos de prueba deterministicos y reset` · `feat(web): banner y bloqueo de modo test` · `feat(infra): instalacion fedora con systemd y firewall` · `feat(infra): tls interno y reverse proxy para la lan` · `feat(infra): respaldos automatizados y restauracion` · `feat(obs): health, logs y alertas` · `test(e2e): flujo completo de la clinica` · `docs(runbook): operacion y recuperacion`.
 
 ---
 
@@ -691,8 +691,8 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | **4** | ✅ **completada** (2026-10-03) | 9 commits · `npm run verify` en verde con **165 pruebas** (+46 de integración: **211 en total**) · `notifications` con bot de Telegram **conectado** (@odegcrmbot, long polling único), asistente de **7 pasos** que valida y crea paciente + solicitud con ticket, `/estado`, `/cancelar`, `/mi_ticket`, vinculación por deep link y **QR**, anti-flood (10 mensajes/min) e **idempotencia por `update_id`**, 19 plantillas editables, cola con reintentos y retroceso exponencial, **aviso inmediato al formalizar la cita con el `.ics` adjunto**, «aviso manual pendiente» cuando el paciente no tiene Telegram, y `ics_artifacts` · **reparto de eventos por servicio** (cada consumidor tiene su cola: los eventos llegan a todos) · bandeja `/notificaciones` con estado del bot, envíos, reintento manual, plantillas y vinculación · **prueba de humo** (`npm run smoke:notifications`) en verde · 29 ADRs |
 | **4.1** | ✅ **completada** (2026-10-03) | 7 commits · `npm run verify` en verde con **198 pruebas** (+51 de integración: **249 en total**) · **núcleo conversacional y adaptadores de canal** ([ADR 0029](adr/0029-nucleo-conversacional-y-adaptadores.md)): el asistente trabaja sobre `InboundMessage` y envía por el adaptador, con **intenciones** (no comandos) y **opciones numeradas guardadas en la conversación**; migraciones `0001` (`direccion` + `canal` + `opciones` + `evento_id text` para el `wamid`) y `0002` (plantillas sin comandos), verificadas desde cero en base limpia; **webhook público** de WhatsApp con firma obligatoria y su **excepción en el gateway**; **kit de conformidad** con el mismo juego de 24 pruebas contra Telegram, WhatsApp y simulado · **prueba de humo** (`npm run smoke:notifications`) con **24 comprobaciones** en verde y el webhook verificado contra un doble de la Graph API (verificación → 401 sin firma → 200 con firma → respuesta enviada) |
 | 5 | ✅ **completada** (2026-10-03) | 8 commits · `npm run verify` en verde con **206 pruebas** (+60 de integración: **266**, **267** tras el aviso a mano del botón «Notificar») · **`services/screens`** (nuevo, puerto 4007, [ADR 0030](adr/0030-pantallas-kiosko-y-sse.md)): proyección de la sala por eventos, histórico de llamados idempotente, dispositivos con ajustes y latido, y **flujo SSE** con estado completo; **login de pantalla kiosko** (token de dispositivo → JWT de rol `pantalla`); **`/secretaría`** con las acciones del flujo (registrar llegada, llamar —segundo llamado—, pasar a consulta, atendido con motivo, inasistencia y **llamada fuera de orden**); **displaylobby** con turno, nombre abreviado, 2.º llamado en rojo y **voz en español**; **pantalla de consultorio** con motivo y datos críticos en semáforo; **`/pantallas`** para registrar televisores y desactivarlos · **prueba de humo** (`npm run smoke:screens`) con **26 comprobaciones** en verde, con el llamado llegando al lobby en **882 ms** (después, 303-443 ms con el índice y el aviso sin espera) · se corrigió el **orden de los eventos del lote** (pg-boss no lo garantiza) · 30 ADRs |
-| 6 | ⏭ **siguiente** | Historia clínica y odontograma (dos sesiones) |
-| 4–10 | ⏳ pendientes | Ver §13 |
+| 6 | ✅ **completada** (2026-10-04, en dos sesiones) | **Sesión A — historia clínica**: contrato de las **11 secciones** de [`formato_historia.md`](formato_historia.md) con catálogos tipificados + «otros», estados `borrador → firmada`, firma (exige secciones obligatorias y consentimiento), adendas con motivo, consentimiento con quién acepta y ante quién, constancia de impresión; **`services/clinical`** (nuevo, puerto 4005) con 4 pruebas de integración contra PostgreSQL real; **`/consultorio`** con aviso obligatorio de primera visita, formulario por pasos con autoguardado, alertas clínicas resaltadas y vista de impresión A4; la secretaría gana `clinical:read` (imprime, no escribe). **Sesión B — odontograma**: contrato FDI (52 piezas, dentición deducida del número, geometría de §7 y máquina de teclado de la carga rápida); **`services/odontogram`** (nuevo, puerto 4006) con odontograma uno por paciente, **captura por excepción**, histórico append-only `tooth_finding_history`, evento y auditoría por outbox, constancia de impresión y ruta interna de resumen; **interfaz** con pestañas Historia/Odontograma, SVG interactivo, carga rápida por teclado, **hoja táctil de botones grandes** para tableta, deshacer, evolución y impresión A4; **ADRs 0031 y 0032** (superación de caras y convivencia de tratamientos) · 32 ADRs |
+| 7–10 | ⏳ pendientes | Ver §13 |
 
 ### Lo que quedó funcionando
 
@@ -705,12 +705,15 @@ npm run db:verify-migrations    # comprueba que migran desde cero en una base li
 npm run seed:users              # admin, recepcion y egomez con contraseña temporal
 npm run seed:demo -- --count 5000   # pacientes ficticios deterministas (--reset los borra)
 npm run seed:agenda             # solicitudes y citas de ejemplo para la jornada (--reset las borra)
-npm run dev                     # compilación vigilada + gateway + identity + patients + scheduling + interfaz (5173)
-npm test                        # 145 pruebas unitarias y de contrato
-npm run test:integration        # 181 pruebas contra PostgreSQL real (outbox, cola, sesión, pacientes, agenda y rendimiento)
+npm run dev                     # compilación vigilada + gateway + identity + patients + scheduling + notifications + screens + clinical + odontogram + interfaz (5173)
+npm test                        # pruebas unitarias y de contrato
+npm run test:integration        # pruebas contra PostgreSQL real (outbox, cola, sesión, pacientes, agenda, historia clínica y odontograma)
 npm run smoke:auth              # recorre el ciclo de sesión por el gateway real
 npm run smoke:patients          # registro, duplicado, edición y borrado con motivo y auditoría por el gateway real
 npm run smoke:agenda            # ticket, cupo, franja, sobrecupo, reprogramación y aviso en lote por el gateway real
+npm run smoke:notifications     # asistente del bot, vinculación y aviso con .ics por el gateway real
+npm run smoke:screens           # llamado en el lobby por SSE y pantalla de consultorio por el gateway real
+npm run db:generate:odontogram  # drizzle-kit: genera la migración del odontograma
 npm run verify                  # secretos + lint + formato + compilación + pruebas
 pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.ps1
 ```
@@ -925,20 +928,83 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    `queryKey`/petición = valor diferido, y medirlo con un navegador (el retardo de red no era
    el problema: la API responde en 1-38 ms).
 
+### Hallazgos de la Fase 6 que cambian supuestos
+
+1. **La pieza completa y las caras no pueden convivir** ([ADR 0031](adr/0031-odontograma-pieza-completa-sobre-caras.md),
+   **corregido por el [ADR 0032](adr/0032-convivencia-de-tratamientos-con-las-caras.md)**): el modelo
+   del documento mezcla condiciones por cara (caries, obturación) con condiciones guardadas por pieza
+   completa (`ausente`, extracción indicada, corona, implante, endodoncia). Registrarlas juntas deja
+   una lectura contradictoria («ausente y con caries»). Se resolvió **superando** las caras (se
+   conservan con `resolved_at`, dejan de leerse) en la misma transacción.
+   **La primera versión se aplicó de más**: metió los tratamientos en el mismo saco y obligaba a
+   borrar la obturación para poder marcar una corona, que es la boca normal. El ADR 0032 lo corrige
+   con una regla **declarativa por condición** (`WHOLE_TOOTH_RULES`): solo `ausente` supera las caras;
+   los tratamientos conviven con ellas; se bloquean solo las parejas imposibles (`ausente` con
+   cualquier otra, `implante` con `endodoncia`). Lección: **«se guarda igual» no es «significa lo
+   mismo»**; cuando cinco cosas comparten forma pero no semántica, la regla va por condición y en
+   datos, no en un `if` compartido.
+2. **La dentición se deduce, no se pregunta.** Ofrecer un selector permanente/temporal permitía
+   contradecir el propio número FDI (un 16 «temporal»). Ahora el 1.º dígito manda
+   (`dentitionOfTooth`) y el servidor la fija él mismo; la arcada temporal no dibuja los molares que
+   no existen en vez de pintarlos como permanentes.
+3. **Las teclas de la carga rápida se pisan entre sí.** `o` era «obturación» y también la inicial
+   natural de «oclusal»; `Delete`/`Backspace` llegaban en minúsculas por la normalización y no
+   coincidían con la tecla. La máquina de teclado vive en el **contrato** (pura y probada) y no en
+   el componente: así la regla es una sola para la pantalla y para las pruebas
+   (`quickEntryKey`), con `n` para la cara oclusal y las teclas especiales comparadas sin
+   normalizar.
+4. **La captura por excepción obliga a pensar en «sin cambios».** El autoguardado y la carga rápida
+   repiten la misma petición a menudo: sin la detección de «no cambia nada» cada pulsación de más
+   dejaba una fila de histórico y una entrada de auditoría que no correspondían a ningún cambio
+   clínico. Ahora la mutación responde `unchanged: true` y no escribe ni audita.
+5. **El histórico no es la auditoría, y hacen falta los dos.** La auditoría (`identity`) responde
+   «quién cambió qué y cuándo» con fines legales; el histórico del odontograma
+   (`tooth_finding_history`, append-only) es la **evolución clínica** que se muestra por día y por
+   pieza, e incluye los cambios que una pieza completa provoca en sus caras (`superado`). Se
+   escriben en la misma transacción que el dato.
+6. **Un lienzo de 100×100 por pieza no se toca con el dedo.** El gráfico geométrico del doc §7
+   funciona con ratón (una cara son ~12 px y se acierta), pero en la tableta del consultorio no: el
+   toque abre una **hoja de la pieza** con botones de ≥44 px y el gráfico se ensancha para que cada
+   pieza pase de ese tamaño. La hoja **no tiene reglas propias**: construye el mismo modelo de
+   selección que la carga rápida por teclado (`findingsFromSelection`) y manda un lote, así que
+   marcar tres caras deja tres hallazgos en una transacción. Lección: cuando la entrada depende del
+   dispositivo, lo que se comparte es el **modelo**, no los manejadores de eventos.
+7. **Las pruebas de tipos y de API no ven el SVG.** El gráfico se dibujaba con **todas las piezas en
+   la misma x** —un literal de plantilla mal escrito (`translate($String(tooth.x)},0)`, sin llaves)
+   dejó el `transform` sin interpolar—: los 16 números de cada arcada se superponían en un amasijo y
+   pulsar una pieza *parecía* no cambiar nada, porque siempre se seleccionaba la misma. Pasó el
+   `tsc`, el `eslint`, el build, las 300 y pico pruebas y el humo del gateway: nada de eso mira
+   coordenadas. Se arregló con una **prueba de posición** (`chart.test.ts`: 32 piezas, x distintas y
+   espaciadas por el paso del contrato, el resalte en el grupo de la pieza activa) y con la vista
+   puesta en una captura real. Lección para lo que venga: **lo que se pinta se comprueba pintándolo**
+   —una captura con Chromium sin interfaz cuesta segundos—; la lógica pura no cubre el marcado.
+8. **Mirar la captura destapó tres cosas más, todas del papel.** En la vista de impresión los
+   números de la mandíbula salían **espejados** (el `<text>` llevaba el volteo compensado del diente,
+   que invertía los dígitos: el 48 se leía «8t»), las 16 piezas de cada arcada se leían como una fila
+   continua **sin línea media** y no había forma de saber hacia dónde mira cada cara (una caries
+   «lingual» en la 36 es el trapecio de arriba). Se corrigió el volteo, se añadió `MIDLINE_GAP` al
+   reparto de la arcada y cada arcada lleva su nota de orientación, en pantalla y en el papel. Y el
+   repaso de la simbología dejó una decisión: los tratamientos se dibujan **con halo** (el trazo dos
+   veces) en vez de sobre un panel opaco, para que se vean como marca **sin tapar** las caras que
+   conviven con ellos. Nota de método: la mitad de estos detalles no se ven leyendo el código; salen
+   mirando el documento renderizado.
+
 ### Próximo paso
 
-Arrancar la **Fase 6** en una sesión nueva (son dos): **historia clínica** con las 11
-secciones de [`formato_historia.md`](formato_historia.md), catálogos tipificados + «otros»,
-estados `BORRADOR → FIRMADA` y adendas; y el **odontograma FDI** con captura por excepción,
-histórico de hallazgos y el componente SVG con carga por teclado.
+Arrancar la **Fase 7** (sesiones clínicas, adjuntos y récipes A5, también en dos sesiones): el
+formulario de sesión con signos vitales, procedimientos desde catálogo y cierre inmutable, enlazado
+con la cita (que es lo que habilita el «atendido» sin motivo); y después adjuntos con visor,
+recetas estructuradas y el **PDF A5** con membrete, numeración `RX-000001` y QR de verificación.
 
-Dos ganchos ya están puestos para esa fase:
+Tres ganchos ya están puestos para esa fase:
 - `POST /internal/v1/screens/room/critical-flags` recibe alergias y crónicos y los pinta la
   pantalla del consultorio con semáforo de riesgo (hoy avisa de que aún no hay datos).
 - `POST /api/v1/appointments/:id/attend` acepta `clinicalSessionId`: cuando exista la sesión
   cerrada, el «atendido» deja de pedir motivo (hoy lo exige y lo deja en la auditoría).
+- El odontograma ya guarda `recorded_in_session_id` y el histórico `session_id`: la evolución se
+  agrupará por sesión sin migrar nada.
 
-Misma regla: `npm run verify` en verde, commits atómicos y tag `fase-6`.
+Misma regla: `npm run verify` en verde, commits atómicos y tag `fase-7`.
 
 > Este documento es la referencia viva del proyecto: cualquier cambio de alcance se refleja aquí
 > **antes** de escribir código, y cada decisión relevante se registra como ADR en

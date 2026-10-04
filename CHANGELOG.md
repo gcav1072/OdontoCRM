@@ -4,6 +4,129 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 6, sesión B] — Odontograma FDI · 2026-10-04
+
+### Añadido
+
+- **`packages/contracts`**: contrato del odontograma — nomenclatura **FDI** de dos dígitos
+  (permanentes 11–48 y temporales 51–85, con la dentición **deducida del propio número**, sin que
+  el cliente pueda contradecirla), el **dominio geométrico** de §7 del documento (los cinco
+  polígonos de una pieza en un lienzo de 100×100, el reparto de cuadrantes 18→28 y 48→38 y qué
+  cara hay bajo un punto: `surfaceAtPoint`), la **máquina de teclado** de la carga rápida
+  (`quickEntryKey`: número de pieza + tecla de condición, con la minúscula en rojo «pendiente» y la
+  mayúscula en azul «completado») y las reglas de la **captura por excepción**. 24 pruebas nuevas.
+- **`services/odontogram`** (nuevo, puerto 4006, base `odonto_odontogram`): odontograma **uno por
+  paciente** con hallazgos **por excepción** (una fila por pieza/cara/condición: la pieza sana es la
+  ausencia de fila), **histórico append-only** `tooth_finding_history` (`registrado`, `actualizado`,
+  `eliminado`, `superado`), motivo y actor en cada cambio, constancia de impresión con su actor y
+  catálogo de eventos `odontogram.finding.*` con auditoría por outbox
+  (`entityType: 'odontogram'`). Ruta interna de resumen para los reportes de la Fase 9.
+  4 pruebas de integración contra PostgreSQL real.
+- **Interfaz**: pestañas **«Historia clínica» / «Odontograma»** en `/consultorio`, con el
+  odontograma **SVG geométrico** interactivo (se pulsa la cara, no un botón: `surfaceAtPoint`
+  resuelve qué cara se tocó, con la mandíbula volteada), **carga rápida por teclado** («16» + `c`
+  marca caries oclusal pendiente; `C` la marca completada; `a` ausente, `x` extracción indicada…),
+  aviso cuando una pieza completa da por superadas sus caras, **deshacer**, **vista de evolución**
+  por día y pieza en `/consultorio/:patientId/odontograma/historial` y **vista de impresión A4** en
+  `/consultorio/:patientId/odontograma/imprimir`, que la secretaría comparte en solo lectura.
+
+### Cambiado
+
+- **La pieza completa manda sobre las caras** ([ADR 0031](docs/adr/0031-odontograma-pieza-completa-sobre-caras.md),
+  **corregido por el [ADR 0032](docs/adr/0032-convivencia-de-tratamientos-con-las-caras.md)**):
+  registrar `ausente` **supera** las caras de esa pieza (`resolved_at`) en la misma transacción —no
+  las borra: siguen en el histórico— y en sentido contrario la API responde `409` con un mensaje que
+  dice qué quitar primero. La invariante está también en la base (`chk_tooth_findings_scope`).
+- **Los tratamientos ya no borran las caras** (ADR 0032, corrección de la regla anterior): `corona`,
+  `endodoncia`, `implante` y `extraccion_indicada` **conviven** con la caries y la obturación, que es
+  la boca normal —una corona sobre un diente obturado, un conducto con su restauración—. Antes había
+  que borrar la obturación para poder marcar la corona. Solo se siguen bloqueando las parejas
+  imposibles: `ausente` con cualquier otra cosa, e `implante` con `endodoncia`. La regla es
+  **declarativa** (`WHOLE_TOOTH_RULES` en el contrato), con dos preguntas distintas: `conditionsConflict`
+  (simétrica, para validar un lote) y `recordingConflicts` (direccional, para decidir si se puede
+  registrar), y es la misma que aplican la interfaz —que desactiva el botón y explica por qué— y el
+  servidor, que no se fía. Sin migración: los `CHECK` no cambian.
+
+### Añadido
+
+- **El odontograma se maneja con el dedo.** En una tableta nadie acierta una cara de 12 px, así que
+  con puntero grueso (`pointer: coarse`, hook `useCoarsePointer`) el toque sobre una pieza **abre la
+  hoja de la pieza** ([`ToothFindingSheet`](apps/web/src/components/odontogram/ToothFindingSheet.tsx)):
+  las cinco caras, las condiciones, el estado (rojo/azul) y el borrado, todo con áreas de ≥44 px y
+  en el mismo lenguaje que el teclado (la hoja construye el mismo `FindingSelection` y lo convierte
+  con `findingsFromSelection`, así que **marcar tres caras deja tres hallazgos en una sola
+  transacción**). Con ratón se sigue pulsando la cara exacta, y hay un botón «Marcar con botones»
+  para quien no quiera teclado. Además: `touch-action: manipulation` en cada pieza (sin retardo de
+  300 ms ni zoom por doble toque), arcadas con ancho mínimo mayor para que cada pieza pase de 44 px
+  —se desplazan en horizontal si no caben— y marcadores múltiples en el dibujo (`markerSlots`):
+  una pieza con corona y conducto enseña los dos símbolos, encogidos para que no se tapen.
+
+### Corregido
+
+- **Las piezas de la derecha del paciente tenían mesial y distal cambiados.** La arcada se dibuja como dos filas con la línea media en el centro, así que en el 16 la cara mesial mira a la **derecha** de la pantalla (hacia el 15, su vecino real); sin espejar, el dibujo llamaba «mesial» a la cara que toca el 17 —el vecino equivocado— y se registraba la caries donde no era. `archLayout` marca ahora cada pieza con `mirrorX` (cuadrantes 1 y 4, y 5 y 8 en la temporal) y la transformación y su inversa viven en el contrato (`toothGroupTransform` / `unscreenPoint`), de modo que el dibujo de pantalla, el del papel y el `hit-test` del clic aplican exactamente lo mismo ([ADR 0033](docs/adr/0033-odontograma-en-posicion-anatomica.md)). La prueba que lo protege es clínica, no geométrica: en el 16 la mesial está a la derecha, en el 26 a la izquierda y en el 46, además, la vestibular abajo.
+- **Los dientes anteriores decían «Oclusal» donde va el borde incisal.** Del canino al incisivo central la cara de masticación es el **borde incisal**: `surfaceLabelFor` nombra `Incisal` en las posiciones 1–3 del cuadrante (en la hoja de la pieza, en la barra de carga rápida, en la tabla impresa, en la evolución y en las etiquetas accesibles). El dato guardado sigue siendo `occlusal` —mismo polígono, sin migración—: lo que cambia es el nombre clínico.
+- **El gráfico del odontograma dibujaba las 32 piezas en el mismo sitio.** Un literal de plantilla
+  mal escrito en [`OdontogramChart`](apps/web/src/components/odontogram/OdontogramChart.tsx)
+  (`translate($String(tooth.x)},0)`, sin las llaves de la interpolación) dejaba el `transform` sin
+  sustituir: los 16 números de cada arcada se superponían en un amasijo y pulsar una pieza *parecía*
+  no cambiar nada, porque siempre se seleccionaba la misma. No lo veía ninguna prueba —tipos, lint,
+  compilación, cientos de pruebas y el humo del gateway pasaban— porque **ninguna miraba
+  coordenadas**. Ahora hay una prueba de posición
+  ([`chart.test.ts`](apps/web/src/components/odontogram/chart.test.ts)): 32 piezas, cada una en su x,
+  espaciadas por el paso del contrato, con los números en orden y el resalte en el grupo de la pieza
+  activa. Verificado además con una captura real del gráfico.
+- **El diagrama va primero.** En `/consultorio` la arcada se pinta **arriba** y la barra de carga
+  rápida debajo: el gesto empieza en el dibujo (pulsar una cara o el número de la pieza) y ese clic
+  cambia la pieza activa, que es la que la barra tiene cargada.
+- **Los números de la arcada inferior salían espejados en la impresión.** El `<text>` del número
+  llevaba el volteo compensado de la mandíbula (`scale(1,-1) translate(0,-248)`): el número volvía a
+  su sitio pero los dígitos se invertían, así que el 48 se leía «8t». El número está **fuera** del
+  grupo volteado, así que no necesita compensación ninguna; ahora una prueba lo vigila (ningún
+  `<text>` con `transform`) y otra comprueba que cada hallazgo cae en la casilla de **su** número
+  (implante en la 42, corona en la 44).
+- **La línea media separa los cuadrantes.** `archLayout` deja un hueco (`MIDLINE_GAP`) entre el 11 y
+  el 21, y entre el 41 y el 31: sin él las 16 piezas se leen como una fila continua y hay que contar
+  casillas a ojo para saber dónde empieza cada cuadrante.
+- **Cada arcada dice hacia dónde mira cada cara.** «Maxilar · vestibular arriba · palatino abajo» y
+  «Mandíbula · lingual arriba · vestibular abajo», en pantalla y en el papel: era la duda clásica al
+  leer un odontograma (una caries «lingual» en la 36 es el trapecio de arriba, y sin la nota parece
+  un error).
+- **Los tratamientos se dibujan con halo, no encima de las caras.** El símbolo (corona, implante,
+  conducto, extracción indicada, y también el aspa de ausente) se pinta dos veces: primero un trazo
+  del color de la superficie y encima la marca. Se ve como una marca sobre la pieza —antes el
+  tornillo del implante se confundía con la anatomía— y **no tapa** las caras que conviven con el
+  tratamiento (ADR 0032).
+- **El número de cada pieza respira.** La línea base estaba a 24 unidades del borde del cuadro y con
+  una tipografía de 26–30 el alto de las cifras se comía el hueco: el dibujo se leía como un amasijo
+  de cuadros con números pegados. Ahora son 38 unidades y el alto de la arcada crece con ella, en
+  **pantalla y en el papel** (la constante es la misma: lo que se ve y lo que se imprime coinciden).
+  Dos pruebas lo vigilan: el aire mínimo y que el número entre entero en el lienzo.
+
+- **El publicador del outbox se atascaba cuando una cola desaparecía entre la consulta y el
+  envío.** `enqueueDomainEvent` pedía la lista de colas de consumidores, publicaba una copia en cada
+  una y, si entre esas dos cosas alguien borraba una cola (en las pruebas, cada suite borra la suya
+  al terminar mientras otra sigue publicando), el `insert` de pg-boss violaba la clave foránea
+  contra `queue` y **el evento quedaba en reintento con retroceso**: se publicaba 60 s después. Ahora
+  el fallo se interpreta como «la foto de colas está caducada»: se vuelve a pedir la lista y se
+  reintenta una vez; si el fallo no era ese, se propaga para que el outbox reintente como siempre.
+  Dos pruebas nuevas en `packages/db/src/outbox.test.ts` lo cubren.
+- **Dos suites de integración daban falsos negativos por lotes de outbox.** `flushOutbox()` hacía
+  **un solo** ciclo, y un ciclo reclama como mucho 50 eventos: la suite del odontograma produce más,
+  así que dejaba eventos pendientes al azar (el «outbox a cero» fallaba una de cada tres corridas) y
+  la de clínica perdía alguna fila de auditoría. Ahora el vaciado se repite hasta que no queda nada
+  reclamable, como hace el publicador real. Verificado con **8 corridas seguidas de la suite
+  completa** (389 pruebas) en verde.
+- **Las suites de integración ensuciaban la cola compartida.** Publicaban a **todas** las colas de
+  consumidores y en una corrida de pruebas los servicios no están escuchando, así que cada evento
+  dejaba una copia en `created` que pg-boss no borra nunca: una tanda de corridas instrumentadas
+  acumuló **17.184** trabajos muertos y la auditoría de conexiones lo denunció (con razón) como
+  problema estructural. `createOutboxRunner` acepta ahora `consumerQueue` y las suites publican solo
+  en la suya (`prueba-<servicio>`), la que su propio consumidor vacía y borra al terminar. Los
+  trabajos acumulados se limpiaron y quedan **0**: verificado con tres corridas seguidas (0 trabajos
+  nuevos en `created`).
+
+---
+
 ## [Fase 6, sesión A] — Historia clínica · 2026-10-04
 
 ### Añadido

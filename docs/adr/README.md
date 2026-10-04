@@ -38,3 +38,6 @@ documentadas por la misma razón.
 | [0028](0028-cancelar-devuelve-el-ticket.md) | Cancelar una cita devuelve el ticket a la cola | aceptada |
 | [0029](0029-nucleo-conversacional-y-adaptadores.md) | Núcleo conversacional y adaptadores de canal (Telegram, WhatsApp) | aceptada (fase 4.1) |
 | [0030](0030-pantallas-kiosko-y-sse.md) | Pantallas kiosko con token de dispositivo y SSE | aceptada (fase 5) |
+| [0031](0031-odontograma-pieza-completa-sobre-caras.md) | La pieza completa manda sobre las caras del odontograma | **corregida por la 0032** |
+| [0032](0032-convivencia-de-tratamientos-con-las-caras.md) | Los tratamientos conviven con las caras; solo `ausente` las supera | aceptada (fase 6B) |
+| [0033](0033-odontograma-en-posicion-anatomica.md) | El odontograma se dibuja en posición anatómica (espejo por cuadrante y borde incisal) | aceptada (fase 6B) |

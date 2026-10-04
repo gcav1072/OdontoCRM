@@ -116,7 +116,7 @@ docs                  Plan maestro, formato de historia clínica y ADRs
 | scheduling | 4003 | ✅ Fase 3 |
 | notifications | 4004 | ✅ Fase 4 (Telegram) · Fase 4.1 (multicanal + webhook) |
 | clinical | 4005 | ✅ Fase 6, sesión A (historia clínica) |
-| odontogram | 4006 | Fase 6 |
+| odontogram | 4006 | ✅ Fase 6, sesión B (odontograma FDI) |
 | screens | 4007 | ✅ Fase 5 (secretaría y pantallas con SSE) |
 | reporting | 4008 | Fase 9 |
 
@@ -315,6 +315,55 @@ reportes de la Fase 9.
   `POST /internal/v1/screens/room/critical-flags`, pero todavía **nadie los envía**; el servicio
   clínico ya expone las alertas calculadas en su ruta interna y el envío se conecta al abrir la
   sesión clínica (Fase 7), que es cuando la cita está en la sala.
+
+---
+
+## API de la Fase 6B (odontograma)
+
+El odontograma implementa
+[`docs/implementation_plan_odontogram_microservice.md`](docs/implementation_plan_odontogram_microservice.md):
+nomenclatura **FDI** de dos dígitos, **captura por excepción** —la pieza sana es la **ausencia de
+fila**— y motor geométrico SVG sin dependencias. La dentición (permanente 11–48 o temporal 51–85)
+**se deduce del propio número**: el cliente no puede contradecirla.
+
+| Método y ruta | Qué hace | Permiso |
+| :--- | :--- | :--- |
+| `GET /api/v1/odontogram/patients/:patientId` | Odontograma del paciente o `exists: false` (boca sana, sin filas) | `odontogram:read` |
+| `PUT /api/v1/odontogram/patients/:patientId/findings` | Registra o actualiza un hallazgo (crea el odontograma si es el primero) | `odontogram:write` |
+| `POST /api/v1/odontogram/patients/:patientId/findings/batch` | Varios hallazgos en **una** transacción (carga rápida) | `odontogram:write` |
+| `DELETE /api/v1/odontogram/patients/:patientId/findings` | Borra una clave natural `(pieza, cara, condición)`: la pieza vuelve a estar sana | `odontogram:write` |
+| `DELETE /api/v1/odontogram/patients/:patientId/surfaces/:toothNumber/:surface` | Deja la cara sana limpiando todas sus condiciones | `odontogram:write` |
+| `GET /api/v1/odontogram/patients/:patientId/history` | Histórico append-only de cambios (vista de evolución) | `odontogram:read` |
+| `POST /api/v1/odontogram/patients/:patientId/printed` | Deja constancia de la impresión (también la secretaría) | `odontogram:read` |
+| `GET /internal/v1/odontogram/patients/:patientId/summary` | Resumen (piezas afectadas, pendientes/completadas) para los reportes | secreto interno |
+
+- **Una cara admite caries u obturación por estado**: `pendiente` se pinta en rojo y `completado`
+  en azul (doc §7.2). **Solo `ausente` manda sobre las caras**: al registrarlo, las caras de esa
+  pieza quedan *superadas* (`resolved_at`) en la misma transacción y dejan de leerse, pero **no se
+  borran** —el histórico las conserva—. Los **tratamientos** (`corona`, `endodoncia`, `implante`) y
+  la `extraccion_indicada` **conviven** con ellas, que es la boca normal: una corona sobre un diente
+  obturado o un conducto con su restauración. Se bloquean solo las parejas imposibles (`ausente` con
+  cualquier otra cosa, `implante` con `endodoncia`) y el servidor responde `409` explicando cuál
+  sobra ([ADR 0032](docs/adr/0032-convivencia-de-tratamientos-con-las-caras.md), que corrige el
+  [ADR 0031](docs/adr/0031-odontograma-pieza-completa-sobre-caras.md)). La regla es declarativa
+  (`WHOLE_TOOTH_RULES`) y la comparten la interfaz —que desactiva el botón y dice por qué— y el
+  servidor.
+- **Cada cambio deja rastro por partida doble**: la fila del histórico (`tooth_finding_history`) y
+  el outbox → auditoría de identity (`entityType: odontogram`), con `before`/`after`, autor y
+  motivo. Los temas `odontogram.finding.recorded/removed` llevan el payload que alimentará
+  `fact_clinical_event` y `mv_oral_health` en la Fase 9.
+- **La interfaz** vive en `/consultorio` (pestañas **Historia clínica / Odontograma**): gráfico
+  interactivo (se pulsa la cara, no un botón), **carga rápida por teclado** —«16» + `c` marca
+  caries oclusal pendiente, `C` la marca completada; `a` ausente, `x` extracción indicada, `r`
+  corona, `i` implante, `e` endodoncia; `v l n s d` eligen cara y `Supr` deja la cara sana—,
+  deshacer, **evolución** en `/consultorio/:patientId/odontograma/historial` e **impresión A4** en
+  `/consultorio/:patientId/odontograma/imprimir` (que la secretaría comparte en solo lectura).
+- **Se dibuja en posición anatómica** ([ADR 0033](docs/adr/0033-odontograma-en-posicion-anatomica.md)): dos filas con la **línea media** en el centro, la cara vestibular arriba en el maxilar y abajo en la mandíbula, y las piezas de la **derecha del paciente** (cuadrantes 1 y 4, y 5 y 8 temporales) **espejadas**, para que la cara mesial mire siempre a la línea media —es decir, al vecino que de verdad toca—. El número de pieza se lee siempre derecho y cada arcada lleva su nota de orientación. En incisivos y caninos (posiciones 1–3) la cara de masticación se llama **borde incisal** en toda la interfaz, aunque se guarde como `occlusal` (mismo polígono, sin migración).
+- **Se maneja con el dedo**: en una tableta (`pointer: coarse`) el toque sobre una pieza abre la
+  **hoja de la pieza** con caras, condición, estado y borrado en botones de ≥44 px, y el gráfico
+  crece hasta que cada pieza pasa de 44 px (con desplazamiento horizontal si no cabe). La hoja usa
+  el mismo modelo de selección que el teclado: marcar tres caras deja tres hallazgos en una sola
+  transacción. Con ratón se sigue pulsando la cara exacta.
 
 ---
 
