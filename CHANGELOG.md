@@ -19,6 +19,69 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   tropezar: `dnf provides '*/<comando>'` dice a qué paquete pertenece una herramienta antes de darla
   por perdida.
 
+## [Fase 10] — Modo test, observabilidad y endurecimiento · en curso
+
+### Añadido
+
+- **Modo test (ADR 0020)**: `TEST_MODE` + `ALLOW_TEST_MODE` en el contrato, con las
+  reglas en un solo sitio (`resolveTestMode`). Se activa pidiéndolo **y**
+  permitiéndolo, y queda **bloqueado con `NODE_ENV=production`** aunque las dos
+  banderas estén en `true`. `GET /api/v1/meta` publica el estado del sistema sin
+  sesión, la SPA pinta el **banner rojo «MODO TEST»** en toda la interfaz (acceso y
+  pantallas kiosko incluidas) y el servicio de notificaciones pasa a **simulado**
+  aunque tenga token: en modo test **ningún mensaje sale a un paciente**.
+- **Seed determinista del mundo de prueba**: `npm run seed:test`, `seed:reset` y
+  `seed:verify` ([ADR 0042](docs/adr/0042-el-seed-escribe-filas-y-eventos.md)). Un
+  mundo puro (`packages/testing/src/test-world`) genera 40 pacientes ficticios
+  (cédulas 90.000.000+), 46 solicitudes con ticket, 42 citas (27 atendidas, 4
+  inasistencias, cancelada, reprogramada y la jornada de hoy con sala y consultorio),
+  22 historias firmadas, 27 sesiones cerradas, 22 récipes y 156 hallazgos — **y los
+  593 eventos** que el sistema habría publicado, con fecha histórica. Con eso el
+  **read model de reportes se llena por el camino real** (la deuda que dejó anotada la
+  Fase 9), la auditoría tiene el recorrido completo y `seed:verify` comprueba por
+  huellas que lo sembrado es el mundo. Repetirlo no duplica nada; los consecutivos
+  van al rango reservado 900.000+ y las secuencias quedan apuntando al último número
+  real.
+- **Observabilidad**: `npm run estado`, el tablero que mira los 9 servicios (con
+  `/health` y `/ready` y el detalle del chequeo que falla), las 9 bases, la cola por
+  cola, el outbox de cada servicio, los envíos atascados y el disco. Con `--alertas`
+  no imprime nada y sale 0 cuando todo va bien: eso es lo que vigila
+  `odontocrm-alertas.timer` en Fedora cada cinco minutos (el servicio queda en
+  `failed` si algo falla). El `/ready` del gateway ahora **pregunta a sus servicios**
+  y responde 503 con el nombre del que no contesta. Rotación de logs con
+  `infra/fedora/logrotate/odontocrm` (diaria, 30 días, comprimida).
+- **Aceptación del flujo completo**: `npm run e2e:clinica` encadena las once pruebas
+  del día de la clínica —acceso, bot, agenda, pantallas, pacientes, historia y sesión,
+  odontograma, récipes, reportes y auditoría, y las dos de navegador— y da un solo
+  veredicto. Con `--sin-bot` la parte del bot se marca como **pendiente** en lugar de
+  fallar (para una máquina sin token); sin esa bandera, no tenerlo es un fallo.
+- **Runbook de operación** ([`infra/fedora/RUNBOOK.md`](infra/fedora/RUNBOOK.md)) y
+  **guía para el consultorio** ([`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md)).
+
+### Corregido
+
+- **Buscar en la cola de `/flujo` dejaba la pantalla sin paciente en curso** y, con
+  él, sin las acciones de la barra: el filtro se aplicaba a la jornada entera antes de
+  resolver qué cita estaba en curso. Ahora el filtro es de la lista y la selección se
+  resuelve sobre la jornada completa (lo destapó la aceptación con una jornada
+  sembrada de verdad).
+- **Los eventos publicados mientras otro servicio arrancaba se perdían.** La lista de
+  colas es una foto y el publicador entregaba solo donde ya había cola: con la pila
+  recién levantada, 10 altas de paciente y 30 hallazgos se quedaron sin proyectar en
+  reportes (y el mismo agujero alcanzaba a la auditoría y a las pantallas). Ahora el
+  publicador declara las colas de los consumidores conocidos **antes** de su primer
+  envío, y la lista es la de los cinco servicios que de verdad consumen (una prueba la
+  compara con el código).
+- **El número del récipe viajaba como entero** en los eventos del seed y el
+  consumidor de reportes lo descartaba como carga inválida: el reporte de recetas
+  quedaba en cero. Ahora viaja formateado (`RX-900001`), como lo publica el servicio.
+- **El gateway moría al arrancar** si faltaba `apps/gateway/.env`: `node --watch` no
+  tolera un `--env-file-if-exists` inexistente (medido con Node 22 en Fedora). El
+  bootstrap lo crea vacío.
+- **`/secretaría` no mostraba el nombre abreviado** del paciente cuando su segundo
+  nombre empieza en minúscula («Alexander de Jesús Peña» → «Alexander D.»): la prueba
+  de humo replicaba mal la regla real (`abbreviateName`).
+
 ## [Fase 9] — Reportes, KPIs y auditoría · 2026-10-04 · tag `fase-9`
 
 ### Añadido
