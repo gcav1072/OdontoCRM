@@ -16,6 +16,7 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
+import { TEST_WAIT_MS } from '@odontocrm/testing';
 import { EVENT_TOPICS, createDomainEvent, type DomainEvent } from '@odontocrm/events';
 import { and, eq, like } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
@@ -140,7 +141,7 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
     predicate: (rows: Awaited<ReturnType<typeof auditRows>>) => boolean,
     paraId: string = patientId,
   ): Promise<Awaited<ReturnType<typeof auditRows>>> => {
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + TEST_WAIT_MS;
     let rows = await auditRows(paraId);
     while (!predicate(rows) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 250));

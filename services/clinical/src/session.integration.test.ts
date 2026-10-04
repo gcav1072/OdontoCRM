@@ -1,3 +1,4 @@
+import { TEST_WAIT_MS } from '@odontocrm/testing';
 import { clinicalSessionContentSchema, type ClinicalSessionContent } from '@odontocrm/contracts';
 import {
   consumerQueueName,
@@ -114,7 +115,7 @@ describeWithDatabases('sesiones clínicas: numeración, autoguardado y cierre', 
   const waitForAudit = async (
     predicate: (rows: Awaited<ReturnType<typeof auditRows>>) => boolean,
   ): Promise<Awaited<ReturnType<typeof auditRows>>> => {
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + TEST_WAIT_MS;
     let rows = await auditRows();
     while (!predicate(rows) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 250));

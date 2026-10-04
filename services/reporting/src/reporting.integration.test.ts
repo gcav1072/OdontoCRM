@@ -1,3 +1,4 @@
+import { TEST_WAIT_MS } from '@odontocrm/testing';
 import { reportFiltersSchema, reportToCsv, shiftIsoDate } from '@odontocrm/contracts';
 import {
   consumerQueueName,
@@ -387,7 +388,7 @@ describeConBases('reporting: read model por eventos, reportes y exportación', (
 
   /** Espera a que el consumidor haya aplicado los eventos (la cola es asíncrona). */
   const esperarA = async (condicion: () => Promise<boolean>, que: string): Promise<void> => {
-    const limite = Date.now() + 15_000;
+    const limite = Date.now() + TEST_WAIT_MS;
     while (Date.now() < limite) {
       if (await condicion()) return;
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -410,7 +411,7 @@ describeConBases('reporting: read model por eventos, reportes y exportación', (
     cuadra: (valor: T) => boolean,
     que: string,
   ): Promise<T> => {
-    const limite = Date.now() + 15_000;
+    const limite = Date.now() + TEST_WAIT_MS;
     let ultimo = await leer();
     while (Date.now() < limite && !cuadra(ultimo)) {
       await new Promise((resolve) => setTimeout(resolve, 250));
