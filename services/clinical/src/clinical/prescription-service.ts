@@ -369,6 +369,8 @@ export const issuePrescription = async (
     patientName: patient.fullName,
     patientDocument: patient.document,
     patientBirthDate: patient.birthDate === '' ? null : patient.birthDate,
+    // El sexo decide la concordancia de «nacido / nacida» en el papel.
+    patientSex: patient.sex === '' ? null : patient.sex,
     patientAge: patient.age,
     dentist: clinicDentistFor(actor.actorUsername),
     items,
@@ -399,6 +401,7 @@ export const issuePrescription = async (
             fullName: patient.fullName,
             document: patient.document,
             birthDate: patient.birthDate,
+            sex: patient.sex,
             age: patient.age,
           },
           updatedAt: new Date(),

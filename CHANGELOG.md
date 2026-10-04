@@ -62,6 +62,12 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
 ### Corregido
 
+- **El récipe le decía «nacido» a una paciente** (visto en la revisión del impreso: «María … 38 años
+  · nacido el 1988-04-12»). Ahora la línea del paciente usa el **sexo** para concordar —«nacida el
+  12/04/1988»— y, cuando no consta o es «otro», la forma que sirve para cualquiera: «nació el …»,
+  sin suponer. La fecha se imprime como se lee aquí (`12/04/1988`) en vez de en ISO, el sexo entra en
+  la copia de los datos del paciente que guarda el récipe emitido, y una prueba del texto lo fija
+  para los tres casos.
 - **La subida de archivos del paciente nunca funcionó por HTTP** (encontrado al probar los adjuntos
   de la sesión): con `attachFieldsToBody`, `@fastify/multipart` deja **cada campo de texto como un
   objeto** (`{ fieldname, value }`) y la ruta los pasaba tal cual al esquema de Zod, así que

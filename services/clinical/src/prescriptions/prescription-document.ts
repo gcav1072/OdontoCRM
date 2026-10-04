@@ -38,6 +38,8 @@ export interface PrescriptionDocumentInput {
   patientName: string;
   patientDocument: string;
   patientBirthDate: string | null;
+  /** `M` / `F` / `O` (o `null`): decide la concordancia de «nacido / nacida». */
+  patientSex: string | null;
   patientAge: number | null;
   dentist: ClinicDentist | null;
   items: readonly PrescriptionDocumentItem[];
@@ -47,6 +49,28 @@ export interface PrescriptionDocumentInput {
   /** Ruta del logo relativa a la raíz del repositorio. */
   logoPath: string | null;
 }
+
+/** Fecha como se lee en el papel: `1988-04-12` → `12/04/1988`. */
+const shortDate = (value: string): string => {
+  const partes = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  return partes === null ? value : `${partes[3] ?? ''}/${partes[2] ?? ''}/${partes[1] ?? ''}`;
+};
+
+/**
+ * Línea del nacimiento: «nacida el 12/04/1988».
+ *
+ * El sexo del paciente decide la concordancia. El récipe lo firma una persona real y
+ * lo lee el paciente: decirle «nacido» a una paciente es un error que se ve en el
+ * papel. Si el sexo no consta (o es «otro»), se usa la forma que sirve para
+ * cualquiera —«nació el …»— en vez de suponer.
+ */
+export const birthLine = (birthDate: string | null, sex: string | null): string | null => {
+  if (birthDate === null || birthDate.trim() === '') return null;
+  const fecha = `el ${shortDate(birthDate)}`;
+  if (sex === 'F') return `nacida ${fecha}`;
+  if (sex === 'M') return `nacido ${fecha}`;
+  return `nació ${fecha}`;
+};
 
 /** Escapa el texto que va al HTML: el nombre del paciente lo escribe una persona. */
 const escapeHtml = (value: string): string =>
@@ -134,7 +158,7 @@ export const prescriptionHtml = async (input: PrescriptionDocumentInput): Promis
 
   const paciente = [
     input.patientAge === null ? null : `${String(input.patientAge)} años`,
-    input.patientBirthDate === null ? null : `nacido el ${input.patientBirthDate}`,
+    birthLine(input.patientBirthDate, input.patientSex),
   ]
     .filter((line): line is string => line !== null)
     .join(' · ');
