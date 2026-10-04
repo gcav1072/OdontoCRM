@@ -130,9 +130,18 @@ describeWithDatabases('historia clínica: auditoría por outbox y reglas de firm
         ),
       );
 
+  /**
+   * Vacía el outbox **por completo**: un solo ciclo reclama como mucho 50 eventos
+   * (`dispatchOutbox`) y esta suite produce más, así que un único ciclo dejaba
+   * eventos pendientes al azar y la auditoría aparecía incompleta. Se repite hasta
+   * que no quede nada reclamable, como hace el publicador real cada pocos segundos.
+   */
   const flushOutbox = async (): Promise<void> => {
-    const runner = createOutboxRunner({ pool: handle.pool, boss });
-    await runner.flush();
+    const runner = createOutboxRunner({ pool: handle.pool, boss, consumerQueue: colaDePrueba });
+    for (let ciclo = 0; ciclo < 10; ciclo += 1) {
+      const result = await runner.flush();
+      if (result.claimed === 0) return;
+    }
   };
 
   const waitForAudit = async (

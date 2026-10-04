@@ -56,6 +56,12 @@ export const ensureDomainEventsQueue = async (
 /** Cola propia de un consumidor concreto (`domain-events.<servicio>`). */
 export const consumerQueueName = (service: string): string => `${DOMAIN_EVENTS_QUEUE}.${service}`;
 
+/** Lo mínimo que necesita el publicador: así se puede probar con un doble. */
+export interface DomainEventQueueClient {
+  getQueues(): Promise<{ name: string }[]>;
+  send(name: string, data: object, options?: { singletonKey?: string }): Promise<string | null>;
+}
+
 /**
  * Entrega un evento a **todas** las colas de consumidores (usado por el outbox).
  *
@@ -70,20 +76,51 @@ export const consumerQueueName = (service: string): string => `${DOMAIN_EVENTS_Q
  * por evento que se quedaba en `created` para siempre (la retención de pg-boss solo
  * borra las completadas) y llegó a acumular más de mil trabajos muertos. Solo se
  * usa como último recurso, cuando no hay ninguna cola de consumidor declarada.
+ *
+ * ⚠️ **La lista de colas es una foto, y las colas pueden desaparecer después.**
+ * Entre `getQueues()` y `send()` cabe una eliminación (en las pruebas, cada suite
+ * borra su cola al terminar mientras otra sigue publicando; en operación, un
+ * `deleteQueue` a mano), y el `insert` de pg-boss revienta con una violación de
+ * clave foránea contra `queue`. Cuando eso pasa, la foto está caducada: se vuelve a
+ * pedir la lista y se reintenta **una vez**, así el evento no se queda atascado ni
+ * pierde su intento por una cola que ya no existe.
  */
-export const enqueueDomainEvent = async (boss: PgBoss, event: DomainEvent): Promise<void> => {
-  const known = (await boss.getQueues()).map((queue) => queue.name);
-  const consumers = known.filter((name) => name.startsWith(`${DOMAIN_EVENTS_QUEUE}.`));
+export const enqueueDomainEvent = async (
+  boss: DomainEventQueueClient,
+  event: DomainEvent,
+  /** Cola concreta (una suite de pruebas con su propia cola); si falta, todas. */
+  onlyQueue?: string,
+): Promise<void> => {
+  const consumersOf = async (): Promise<string[]> =>
+    onlyQueue === undefined
+      ? (await boss.getQueues())
+          .map((queue) => queue.name)
+          .filter((name) => name.startsWith(`${DOMAIN_EVENTS_QUEUE}.`))
+      : [onlyQueue];
 
-  const queues = consumers.length > 0 ? consumers : [DOMAIN_EVENTS_QUEUE];
-  const results = await Promise.all(
-    queues.map((queue) =>
-      boss.send(queue, event as unknown as object, {
-        // La misma clave en cada cola: si el outbox reintenta, no se duplica.
-        singletonKey: event.eventId,
-      }),
-    ),
-  );
+  const publishTo = async (queues: readonly string[]): Promise<(string | null)[]> => {
+    const objetivo = queues.length > 0 ? queues : [DOMAIN_EVENTS_QUEUE];
+    return Promise.all(
+      objetivo.map((queue) =>
+        boss.send(queue, event as unknown as object, {
+          // La misma clave en cada cola: si el outbox reintenta, no se duplica.
+          singletonKey: event.eventId,
+        }),
+      ),
+    );
+  };
+
+  const first = await consumersOf();
+  let results: (string | null)[];
+  try {
+    results = await publishTo(first);
+  } catch (error) {
+    // Foto caducada: se descarta y se reintenta con la lista de colas de ahora.
+    const refreshed = await consumersOf();
+    const descartadas = first.filter((queue) => !refreshed.includes(queue));
+    if (descartadas.length === 0) throw error;
+    results = await publishTo(refreshed);
+  }
 
   if (results.every((jobId) => jobId === null)) {
     throw new Error(`Ninguna cola aceptó el evento ${event.eventId}`);

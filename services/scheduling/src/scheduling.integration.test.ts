@@ -132,7 +132,11 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
    * eventos pendientes hay que repetir hasta que no quede ninguno.
    */
   const flush = async (): Promise<void> => {
-    const runner = createOutboxRunner({ pool: schedulingHandle.pool, boss });
+    const runner = createOutboxRunner({
+      pool: schedulingHandle.pool,
+      boss,
+      consumerQueue: colaDePrueba,
+    });
     for (let round = 0; round < 10; round += 1) {
       const result = await runner.flush();
       if (result.claimed === 0) return;

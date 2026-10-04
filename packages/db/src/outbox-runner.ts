@@ -11,6 +11,16 @@ export interface OutboxRunnerOptions {
   intervalMs?: number;
   /** Tamaño del lote por ciclo. */
   batchSize?: number;
+  /**
+   * Publica **solo** en esta cola en vez de en todas las de consumidores.
+   *
+   * Lo usan las pruebas de integración: cada suite tiene su propia cola y su
+   * consumidor, así que sus eventos se entregan ahí y no dejan copias sin
+   * consumir en las colas de los servicios reales (que en una corrida de pruebas
+   * no están escuchando: esas copias se acumulaban en `created` y ensuciaban la
+   * auditoría de conexiones). En producción va sin esto: cada evento llega a todos.
+   */
+  consumerQueue?: string;
   onError?: (error: unknown) => void;
   /** Se llama después de cada ciclo con el resultado (para logs o métricas). */
   onCycle?: (result: DispatchOutboxResult) => void;
@@ -48,7 +58,7 @@ export const createOutboxRunner = (options: OutboxRunnerOptions): OutboxRunner =
     try {
       return await dispatchOutbox({
         client,
-        enqueue: (event) => enqueueDomainEvent(options.boss, event),
+        enqueue: (event) => enqueueDomainEvent(options.boss, event, options.consumerQueue),
         ...(options.batchSize === undefined ? {} : { batchSize: options.batchSize }),
       });
     } finally {

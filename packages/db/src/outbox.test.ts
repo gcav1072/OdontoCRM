@@ -1,6 +1,7 @@
 import { createDomainEvent, EVENT_TOPICS } from '@odontocrm/events';
 import { describe, expect, it } from 'vitest';
 
+import { DOMAIN_EVENTS_QUEUE, enqueueDomainEvent, type DomainEventQueueClient } from './boss.js';
 import { backoffSeconds, OUTBOX_MAX_ATTEMPTS } from './outbox.js';
 
 describe('reintentos del outbox', () => {
@@ -36,5 +37,108 @@ describe('sobre de evento del outbox', () => {
       eventType: 'patients.patient.created',
       producer: 'patients',
     });
+  });
+});
+
+/**
+ * Un publicador de prueba: `getQueues` devuelve lo que le digan y `send` puede
+ * fallar la primera vez que toca una cola concreta, como hace pg-boss cuando la
+ * cola se ha borrado entre la consulta y el `insert` (violación de clave foránea
+ * contra `queue`).
+ */
+const publicadorFalso = (options: {
+  fotos: string[][];
+  fallaEn?: { cola: string; veces: number };
+}) => {
+  let indice = 0;
+  const enviados: string[] = [];
+  const fallos = new Map<string, number>();
+
+  const boss: DomainEventQueueClient = {
+    getQueues: async () => {
+      const foto = options.fotos[Math.min(indice, options.fotos.length - 1)] ?? [];
+      indice += 1;
+      return foto.map((name) => ({ name }));
+    },
+    send: async (name) => {
+      const pendientes = fallos.get(name) ?? 0;
+      if (options.fallaEn?.cola === name && pendientes < options.fallaEn.veces) {
+        fallos.set(name, pendientes + 1);
+        throw new Error(
+          'inserción o actualización en la tabla «job_common» viola la llave foránea «q_fkey»',
+        );
+      }
+      enviados.push(name);
+      return `job-${name}`;
+    },
+  };
+
+  return { boss, enviados };
+};
+
+describe('publicación en las colas de consumidores', () => {
+  const evento = () =>
+    createDomainEvent({
+      topic: EVENT_TOPICS.toothFindingRecorded,
+      aggregateId: globalThis.crypto.randomUUID(),
+      producer: 'odontogram',
+    });
+
+  it('publica una copia por cola de consumidor', async () => {
+    const { boss, enviados } = publicadorFalso({
+      fotos: [[`${DOMAIN_EVENTS_QUEUE}.identity`, `${DOMAIN_EVENTS_QUEUE}.odontogram`]],
+    });
+
+    await enqueueDomainEvent(boss, evento());
+
+    expect(enviados.sort()).toEqual([
+      `${DOMAIN_EVENTS_QUEUE}.identity`,
+      `${DOMAIN_EVENTS_QUEUE}.odontogram`,
+    ]);
+  });
+
+  it('si una cola desaparece entre la foto y el envío, reintenta con la lista nueva', async () => {
+    // Primera foto: la suite de otro servicio aún no ha borrado su cola. El envío
+    // a esa cola falla; la segunda foto ya no la trae y el evento sale igual.
+    const { boss, enviados } = publicadorFalso({
+      fotos: [
+        [`${DOMAIN_EVENTS_QUEUE}.identity`, `${DOMAIN_EVENTS_QUEUE}.prueba`],
+        [`${DOMAIN_EVENTS_QUEUE}.identity`],
+      ],
+      fallaEn: { cola: `${DOMAIN_EVENTS_QUEUE}.prueba`, veces: 1 },
+    });
+
+    await enqueueDomainEvent(boss, evento());
+
+    expect(enviados).toContain(`${DOMAIN_EVENTS_QUEUE}.identity`);
+    expect(enviados).not.toContain(`${DOMAIN_EVENTS_QUEUE}.prueba`);
+  });
+
+  it('si el fallo no es una cola que desapareció, se propaga para que el outbox reintente', async () => {
+    const { boss } = publicadorFalso({
+      // La cola sigue en la segunda foto: no es una foto caducada, es un fallo real.
+      fotos: [[`${DOMAIN_EVENTS_QUEUE}.identity`], [`${DOMAIN_EVENTS_QUEUE}.identity`]],
+      fallaEn: { cola: `${DOMAIN_EVENTS_QUEUE}.identity`, veces: 5 },
+    });
+
+    await expect(enqueueDomainEvent(boss, evento())).rejects.toThrow(/job_common/);
+  });
+
+  it('sin ninguna cola de consumidor usa la padre como último recurso', async () => {
+    const { boss, enviados } = publicadorFalso({ fotos: [[]] });
+
+    await enqueueDomainEvent(boss, evento());
+
+    expect(enviados).toEqual([DOMAIN_EVENTS_QUEUE]);
+  });
+
+  it('con una cola concreta publica solo ahí (las pruebas no ensucian las de los servicios)', async () => {
+    const { boss, enviados } = publicadorFalso({
+      fotos: [[`${DOMAIN_EVENTS_QUEUE}.identity`, `${DOMAIN_EVENTS_QUEUE}.odontogram`]],
+    });
+
+    await enqueueDomainEvent(boss, evento(), `${DOMAIN_EVENTS_QUEUE}.prueba`);
+
+    expect(enviados).toEqual([`${DOMAIN_EVENTS_QUEUE}.prueba`]);
   });
 });

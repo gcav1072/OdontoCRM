@@ -210,7 +210,11 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
     });
     patientId = created.id;
 
-    const runner = createOutboxRunner({ pool: patientsHandle.pool, boss });
+    const runner = createOutboxRunner({
+      pool: patientsHandle.pool,
+      boss,
+      consumerQueue: colaDePrueba,
+    });
     const result = await runner.flush();
     expect(result.published).toBeGreaterThanOrEqual(1);
 
@@ -236,7 +240,11 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
       actor,
     );
 
-    const runner = createOutboxRunner({ pool: patientsHandle.pool, boss });
+    const runner = createOutboxRunner({
+      pool: patientsHandle.pool,
+      boss,
+      consumerQueue: colaDePrueba,
+    });
     await runner.flush();
 
     const rows = await waitForAudit((current) =>
@@ -366,7 +374,11 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
     // entrega el sobre directamente al consumidor de identity en vez de esperar a
     // la cola: así la prueba mide lo que comprueba (la proyección y su rastro) y no
     // cuánto tarda el sondeo del trabajador.
-    const runner = createOutboxRunner({ pool: patientsHandle.pool, boss });
+    const runner = createOutboxRunner({
+      pool: patientsHandle.pool,
+      boss,
+      consumerQueue: colaDePrueba,
+    });
     const publicado = await runner.flush();
     expect(publicado.published).toBeGreaterThanOrEqual(1);
 
@@ -451,7 +463,11 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
     expect(reingresado.id).not.toBe(patientId);
 
     // Y el borrado llega a la auditoría con su motivo (acción propia).
-    const runner = createOutboxRunner({ pool: patientsHandle.pool, boss });
+    const runner = createOutboxRunner({
+      pool: patientsHandle.pool,
+      boss,
+      consumerQueue: colaDePrueba,
+    });
     await runner.flush();
     const filas = await waitForAudit((actuales) =>
       actuales.some((item) => item.action === 'patient_deleted'),
