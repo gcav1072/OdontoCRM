@@ -52,6 +52,12 @@ export const AUDIT_ACTIONS = [
   'medical_record_amended',
   'medical_record_printed',
   'medical_record_consent_accepted',
+  // Odontograma (llegan por el outbox desde el servicio de odontograma)
+  'tooth_finding_recorded',
+  'tooth_finding_updated',
+  'tooth_finding_removed',
+  'tooth_finding_superseded',
+  'odontogram_printed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
