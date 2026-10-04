@@ -59,6 +59,8 @@
 | [`install.sh`](install.sh) | Aprovisionamiento idempotente: paquetes, usuario de sistema, directorios, plantillas de `/etc/odontocrm`, PM2 y arranque automático. **Por defecto solo simula** (`--dry-run`); con `--apply` ejecuta. |
 | [`systemd/odontocrm@.service`](systemd/odontocrm@.service) | Unidad plantilla para los 8 servicios internos (`odontocrm@identity`, `odontocrm@clinical`, …). Carga `/etc/odontocrm/odontocrm.env` + `/etc/odontocrm/%i.env` y arranca `services/%i/dist/index.js`. |
 | [`systemd/odontocrm-gateway.service`](systemd/odontocrm-gateway.service) | Unidad del gateway (puerto 8090, sin base de datos). Carga `/etc/odontocrm/odontocrm.env` + `/etc/odontocrm/gateway.env` y arranca `apps/gateway/dist/index.js`. |
+| [`systemd/odontocrm-alertas.service`](systemd/odontocrm-alertas.service) + [`systemd/odontocrm-alertas.timer`](systemd/odontocrm-alertas.timer) | **Observabilidad (Fase 10)**: cada 5 minutos corre `node tools/estado.mjs --alertas` y deja el servicio en `failed` si algo no responde, el outbox se atasca, la cola tiene fallidos o queda poco disco. Ver §10.6. |
+| [`logrotate/odontocrm`](logrotate/odontocrm) | Rotación diaria (30 días, comprimida) de `/var/log/odontocrm/*.log`. Con `systemd` los servicios van al journal, que rota solo; esto cubre los logs de operación y los de PM2 si se elige ese supervisor. |
 | [`ecosystem.config.cjs`](ecosystem.config.cjs) | **Alternativa a `systemd`**: procesos de PM2 para Fedora, con rutas absolutas (`/opt/odontocrm/...`) y los mismos dos `--env-file-if-exists=/etc/odontocrm/...`. Nunca los dos supervisores a la vez (§10.1 y §10.4). |
 | [`backup/odontocrm-backup.sh`](backup/odontocrm-backup.sh) | Respaldo diario de las 8 bases (`pg_dump -Fc`), verificación de integridad, retención configurable y copias opcionales. |
 | [`backup/odontocrm-restore.sh`](backup/odontocrm-restore.sh) | Restauración de una base o de todas, con paso previo por una base temporal de verificación. |
@@ -891,9 +893,13 @@ sudo -u odontocrm env HOME=/var/lib/odontocrm \
 cd /opt/odontocrm
 sudo install -m 0644 -o root -g root infra/fedora/systemd/odontocrm@.service /etc/systemd/system/
 sudo install -m 0644 -o root -g root infra/fedora/systemd/odontocrm-gateway.service /etc/systemd/system/
+# Observabilidad (Fase 10): alertas cada 5 minutos (§10.6)
+sudo install -m 0644 -o root -g root infra/fedora/systemd/odontocrm-alertas.service /etc/systemd/system/
+sudo install -m 0644 -o root -g root infra/fedora/systemd/odontocrm-alertas.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemd-analyze verify /etc/systemd/system/odontocrm@.service \
-                            /etc/systemd/system/odontocrm-gateway.service
+                            /etc/systemd/system/odontocrm-gateway.service \
+                            /etc/systemd/system/odontocrm-alertas.service
 ```
 
 Las unidades cargan **los dos archivos de entorno** en el mismo orden que
@@ -1040,11 +1046,77 @@ sudo systemctl reboot
 # Al volver:
 systemctl --no-pager --type=service 'odontocrm*' | cat     # todos «running»
 curl -fsS http://127.0.0.1:8090/health                     # gateway OK
+npm run estado                                             # tablero: los 9 en verde
 ```
 
 > PENDIENTE FASE 10: (P-16) ejecutar esta prueba y anotar fecha y resultado en §20.
 > Es un criterio de aceptación explícito («tras reiniciar la máquina los 9 servicios
 > vuelven solos», plan §13 Fase 10).
+
+### 10.6 Observabilidad: tablero, alertas y rotación de logs
+
+Tres piezas, ninguna nueva que instalar:
+
+**1. El tablero de estado** (`npm run estado`, Fase 10). Una foto de todo lo que
+puede caerse en silencio: los 9 servicios con su `/health` y su `/ready` (con el
+detalle del chequeo que falla), las 9 bases con su tamaño y conexiones, la cola de
+eventos por cola (pendientes, fallidos, completados), el outbox de cada servicio
+(eventos sin publicar y con reintentos) y los envíos atascados de notificaciones.
+
+```bash
+cd /opt/odontocrm
+npm run estado                      # una foto
+npm run estado -- --sin-servicios   # sin preguntar por HTTP (pila parada)
+npm run estado -- --json            # para una máquina
+```
+
+En producción lee los entornos de `/etc/odontocrm` (con `ODONTOCRM_ENV_DIR`, que la
+unidad de alertas ya pone) y **no necesita `PG_ADMIN_URL`**: cada rol de servicio
+informa del tamaño de su propia base. Por eso puede correr sin superusuario de base
+de datos.
+
+**2. Las alertas** (`odontocrm-alertas.timer`): el mismo tablero en modo
+`--alertas`, cada cinco minutos. No imprime nada y sale con 0 cuando todo está bien;
+si algo falla, sale con 1 y el servicio queda en estado `failed`:
+
+```bash
+sudo install -m 0644 -o root -g root \
+  infra/fedora/systemd/odontocrm-alertas.service \
+  infra/fedora/systemd/odontocrm-alertas.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now odontocrm-alertas.timer
+
+systemctl list-timers odontocrm-alertas.timer      # cuándo toca la próxima
+systemctl status odontocrm-alertas.service         # cómo fue la última
+journalctl -u odontocrm-alertas -n 50 --no-pager   # el detalle del problema
+systemctl --failed                                 # aquí aparece si algo va mal
+```
+
+Qué vigila, con sus umbrales (ajustables por entorno en la unidad):
+`ESTADO_OUTBOX_MINUTOS` (5) eventos sin publicar, `ESTADO_COLA_MINUTOS` (10) cola
+con pendientes viejos, `ESTADO_ENVIO_MINUTOS` (15) envíos atascados y
+`ESTADO_DISCO_LIBRE` (10 %) de disco libre.
+
+> Si quieres que además avise por fuera (correo, Telegram del administrador), añade
+> `OnFailure=` a la unidad apuntando a tu notificador. No se incluye uno propio a
+> propósito: el sistema no debe depender de un servicio de mensajería para avisar
+> de que está caído.
+
+**3. La rotación de los logs.** Con `systemd` los servicios escriben al **journal**,
+que ya rota solo; los archivos de `/var/log/odontocrm` (`backup.log`, `restore.log`
+y, si eliges PM2, sus logs) los rota `logrotate` con la configuración del repositorio
+—diario, 30 días, comprimido— que `install.sh --apply` deja en
+`/etc/logrotate.d/odontocrm`:
+
+```bash
+sudo install -m 0644 -o root -g root infra/fedora/logrotate/odontocrm /etc/logrotate.d/odontocrm
+sudo logrotate --debug /etc/logrotate.d/odontocrm      # comprobar sin rotar
+sudo journalctl --disk-usage                           # el journal, por su lado
+```
+
+> PENDIENTE FASE 10: (P-27) validar en el Fedora real que las alertas saltan de
+> verdad (parar un servicio y ver el `failed`), que el tablero funciona con los
+> entornos de `/etc/odontocrm` y que `logrotate --debug` no se queja.
 
 ---
 
@@ -1633,7 +1705,15 @@ ss -lntp | grep -E ':(4001|4002|4003|4004|4005|4006|4007|4008|8090|5432)\b'
 
 # Servicios y timers
 systemctl --no-pager --type=service 'odontocrm*' | cat
-systemctl list-timers odontocrm-backup.timer
+systemctl list-timers odontocrm-backup.timer odontocrm-alertas.timer
+
+# Tablero de estado (los 9 servicios, las bases, la cola y el outbox)
+cd /opt/odontocrm
+npm run estado
+
+# Alertas: sin salida y con código 0 significa «todo bien»
+npm run estado -- --alertas; echo "código: $?"
+systemctl --failed
 
 # Reverse proxy y TLS
 curl -sS -o /dev/null -w 'SPA: %{http_code}\n' https://odontocrm.local/
@@ -1666,6 +1746,8 @@ df -h / /var/lib/odontocrm /var/backups/odontocrm
 | 11 | Claves EdDSA generadas y con permisos `0640 root:odontocrm` | `ls -l /etc/odontocrm/keys` | ☐ |
 | 12 | Código desplegado y compilado en `/opt/odontocrm` | `npm ci && npm run build` | ☐ |
 | 13 | Migraciones aplicadas en las 8 bases | §9.3 | ☐ |
+| 13-bis | **Observabilidad**: tablero en verde y alertas programadas | `npm run estado` · `systemctl list-timers odontocrm-alertas.timer` (§10.6) | ☐ |
+| 13-ter | **Rotación de logs** instalada | `logrotate --debug /etc/logrotate.d/odontocrm` (§10.6) | ☐ |
 | 14 | SPA compilada y servida por el proxy | `curl -I https://odontocrm.local/` | ☐ |
 | 15 | Chromium de Playwright instalado y localizable | §9.5 | ☐ |
 | 16 | Los 9 servicios activos y habilitados | `systemctl --type=service 'odontocrm*'` | ☐ |

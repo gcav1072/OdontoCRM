@@ -80,6 +80,22 @@ npm run verify           # check-secrets + lint + formato + tipos + build + 580 
 Si algo se tuerce, `npm run db:reset -- --yes` borra las 9 bases y `storage/` y lo deja migrado y
 sembrado (solo desde consola, y fuera de la máquina de la clínica).
 
+**El mundo de prueba del modo test (Fase 10)** es el camino completo y reproducible: 40 pacientes
+ficticios con su agenda, sus historias firmadas, sesiones, odontogramas y récipes, **y los eventos**
+que llenan el read model de reportes, la auditoría y las pantallas.
+
+```bash
+# En el .env de la raíz: TEST_MODE=true y ALLOW_TEST_MODE=true
+npm run seed:test                    # siembra (repetirlo no duplica)
+npm run seed:verify                  # comprueba por huellas que lo sembrado es el mundo
+npm run seed:verify -- --con-proyeccion   # además, el read model de reportes (pila arriba)
+npm run seed:reset                   # borra solo lo ficticio de este mundo
+```
+
+Con `NODE_ENV=production` los tres comandos se niegan a correr. Detalle en
+[`docs/COMANDOS.md` §5](../../docs/COMANDOS.md) y en el
+[ADR 0042](../../docs/adr/0042-el-seed-escribe-filas-y-eventos.md).
+
 ---
 
 ## 4. La pila
@@ -111,6 +127,7 @@ npm run stack:down       # parar todo y liberar los puertos
 | `npm run e2e:flujo` | pila + Chromium | El día completo en `/flujo` |
 | `npm run e2e:reportes` | pila + Chromium | `/reportes` y `/auditoria` (deja captura en `tmp/`) |
 | `npm run reports:latencia` | pila | Los seis reportes con 10.000 citas (< 2 s cada uno) |
+| `npm run estado` | pila (opcional) | Tablero: los 9 servicios, las bases, la cola y el outbox. Con `-- --alertas` sale 1 si algo va mal |
 | `npm run telegram:menu` | token del bot | El menú de comandos registrado en Telegram |
 
 > Las pruebas de humo y los e2e **cambian contraseñas sembradas**: al terminar, `npm run seed:users --
@@ -161,6 +178,8 @@ La instalación oficial en la tercera PC se hace **repitiendo este mismo recorri
 ## 8. Qué traer de vuelta
 
 - Salida de `npm run verify`, `npm run test:integration`, `npm run db:verify-migrations` y `npm run audit`.
+- Salida de `npm run seed:verify -- --con-proyeccion` (mundo ↔ bases ↔ read model) y una foto de
+  `npm run estado` con los 9 servicios en verde.
 - Evidencia de `systemd` tras reiniciar, `firewall-cmd --list-all`, SELinux (`getenforce` + `ausearch`)
   y TLS (curl + captura).
 - La prueba de restauración: base limpia, `\dt`, y el conteo de una tabla con datos (`patients`, `audit_events`).
