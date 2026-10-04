@@ -130,7 +130,7 @@ npx drizzle-kit generate --config services/screens/drizzle.config.ts --name mi_c
 
 | Comando | Qué crea | Flags |
 | :--- | :--- | :--- |
-| `npm run seed:users` | `admin`, `recepcion` y `egomez` con contraseña temporal | `-- --reset` regenera las contraseñas · `-- --print` **recuerda** las claves sin tocar nada |
+| `npm run seed:users` | `admin`, `recepcion` y **un odontólogo por cada uno de `CLINIC.dentists`** (`packages/contracts/src/clinic.ts`) con contraseña temporal | `-- --reset` regenera las contraseñas · `-- --print` **recuerda** las claves sin tocar nada |
 | `npm run seed:demo` | Pacientes ficticios deterministas (cédulas 90.000.000+, `is_fictitious`) | `-- --count 5000`, `-- --reset` (borra **solo** lo ficticio) |
 | `npm run seed:agenda` | Solicitudes y citas de ejemplo en el próximo día de consulta | `-- --reset` (las borra) |
 
@@ -150,6 +150,12 @@ a la que se desbloquea).
 | `admin` | `admin-odontocrm-2026` | administrador (acceso total) |
 | `recepcion` | `recepcion-odontocrm-2026` | secretaria |
 | `egomez` | `consultorio-odontocrm-2026` | odontóloga |
+
+> **Otro odontólogo:** las cuentas de odontólogo salen de `CLINIC.dentists` en
+> [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) —nombre, usuario y MPPS—;
+> cambia esa sección (o añade otra entrada a la lista) y `npm run seed:users` crea su cuenta con la
+> misma contraseña temporal. Ver «Poner el sistema con otro odontólogo» en el
+> [`README`](../README.md#poner-el-sistema-con-otro-odontólogo).
 
 - Nacen como **temporales**: el sistema obliga a cambiarlas en el primer acceso.
 - **Las pruebas de humo cambian la del `admin`** a `prueba-e2e-odontocrm-2026`; después,

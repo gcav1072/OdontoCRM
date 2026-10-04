@@ -670,7 +670,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | Impresión | Récipe en **A5**; historia clínica y consentimiento en **A4**. |
 | Copia del récipe al paciente | Descarga/impresión desde el historial; envío por Telegram queda para fase posterior. |
 | Numeración de historia | `HC-000001` por paciente, secuencia global. |
-| Membrete | Genérico hasta que envíes logo, RIF, teléfonos y datos del odontólogo (MPPS, especialidad). Te los pediré al construir el PDF de la Fase 7. |
+| Membrete | Genérico hasta que envíes logo, RIF, teléfonos y datos del odontólogo (MPPS, especialidad): se editan en **una sola sección del código**, [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts), que ya leen todos los servicios y la interfaz (decisión del 2026-10-04, al empezar la sesión B). Lo que falte no se imprime y `letterheadMissingFields()` lo enumera. |
 | Nombre del bot | Nombre visible «Consultorio - Od. Erika Gómez» (se cambia cuando quieras). El `@usuario` es único: cambiarlo rompe los enlaces `t.me/...` ya compartidos. El token se entrega por `.env`, nunca por chat ni en el repo. |
 | Aviso al formalizar la cita | **Al quedar formalizada la cita** (no solo como recordatorio), el bot envía al paciente la notificación con **fecha, hora y lugar**, e **incrusta el `.ics`** para que la agregue a su calendario. Es un envío disparado por el evento `scheduling.appointment.scheduled`, con reintentos e idempotencia; la plantilla y el `.ics` se construyen en la Fase 4. |
 | Tema claro/oscuro/sistema | Preferencia **por equipo** (clave `odontocrm:tema`), no por usuario: en un consultorio con puestos compartidos el tema es del puesto y la pantalla de login ya lo respeta. |

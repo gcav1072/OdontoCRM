@@ -93,7 +93,8 @@ Antes de cerrar cualquier fase, `npm run verify` debe pasar en verde, además de
 ```
 apps/gateway          API Gateway: proxy por recurso, CORS, límite de peticiones
 apps/web              SPA de React (Fase 1)
-packages/contracts    Enums, estados, DTOs, utilidades puras (ticket, máquina de estados)
+assets/clinic         Logo del consultorio para el membrete (opcional)
+packages/contracts    Enums, estados, DTOs, utilidades puras y **los datos del consultorio**
 packages/events       Catálogo de eventos de dominio y sobre validado con Zod
 packages/db           Pool PostgreSQL, Drizzle, migraciones, outbox y pg-boss
 packages/kernel       Config validada, logger censurado, errores RFC 7807, /health y /ready
@@ -105,6 +106,33 @@ infra/fedora          Guía y scripts de producción en Fedora
 tools                 Scripts de apoyo (verificación de secretos, migraciones)
 docs                  Plan maestro, formato de historia clínica y ADRs
 ```
+
+### Poner el sistema con otro odontólogo
+
+**Un solo archivo:** [`packages/contracts/src/clinic.ts`](packages/contracts/src/clinic.ts). Ahí están el
+nombre del consultorio, la dirección, la ciudad, los teléfonos, el RIF, el correo, el sitio web, el
+logo y **los odontólogos que firman** (usuario, nombre, MPPS, especialidad, colegiatura y correo).
+Lo que se deje en `null` simplemente **no se imprime**.
+
+| Qué cambia | Dónde se nota |
+| :--- | :--- |
+| `name`, `address`, `city` | Avisos del bot, `.ics`, pantallas y membrete del récipe |
+| `phones`, `email`, `rif`, `website` | Membrete del récipe |
+| `logoPath` (por defecto `assets/clinic/logo.png`) | Logo del membrete; si el archivo no está, sale sin logo |
+| `dentists[]` | Quién firma los récipes (con su MPPS) y **las cuentas que crea `npm run seed:users`** |
+
+Después: `npm run build` (los servicios y la web lo compilan dentro) y, si se añadió o cambió un
+odontólogo, `npm run seed:users`. El logo se deja en [`assets/clinic/`](assets/clinic/README.md).
+
+- **¿Por qué en el código y no en un `.env` o en una pantalla de ajustes?** Porque el paquete de
+  contratos **ya lo importan los ocho servicios y la interfaz**: leerlo no añade cableado (ni rutas,
+  ni endpoints, ni migración, ni permisos), no hay que repetir el mismo dato en tres `.env` y no se
+  puede olvidar uno. Un dato que cambia una vez cada varios años no justifica una tabla.
+- **¿Y si una instalación concreta necesita otro valor sin recompilar?** Las variables
+  `CLINIC_NAME`, `CLINIC_ADDRESS` y `CLINIC_EMAIL` del `.env` siguen mandando sobre estos valores
+  (están en [`.env.example`](.env.example)).
+- Lo que falte para un membrete completo se enumera solo con `letterheadMissingFields()` (por
+  ejemplo «MPPS del odontólogo»), así que el récipe avisa en vez de inventar un número.
 
 ### Puertos (todos en `127.0.0.1`; la red local entra solo por el gateway)
 

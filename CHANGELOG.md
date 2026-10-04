@@ -4,6 +4,27 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 7, sesión B] — Adjuntos, récipes A5 y personalización · 2026-10-04
+
+### Añadido
+
+- **El consultorio se pone con otro odontólogo editando un solo archivo**
+  ([`packages/contracts/src/clinic.ts`](packages/contracts/src/clinic.ts), decisión del 2026-10-04):
+  nombre, razón social, dirección, ciudad, teléfonos, correo, RIF, sitio web, logo y **los
+  odontólogos que firman** (usuario, nombre, MPPS, especialidad, colegiatura). Vive en
+  `@odontocrm/contracts` —el paquete que ya importan los ocho servicios y la interfaz— para no mover
+  cableado: no hay rutas nuevas, ni endpoints, ni migración, ni pantalla de ajustes, y el mismo dato
+  no se repite en tres `.env`. Lo que quede en `null` **no se imprime**, y
+  `letterheadMissingFields()` enumera lo que falta para un membrete completo.
+  - Los valores por defecto de agenda, notificaciones y pantallas (`CLINIC_NAME`, `CLINIC_ADDRESS`
+    y `CLINIC_EMAIL`) salen de esa sección; las variables del `.env` siguen mandando cuando existen.
+  - **Las cuentas de odontólogo las genera `npm run seed:users` desde `CLINIC.dentists`**: añadir un
+    odontólogo a la lista (o cambiar el titular) es todo lo que hay que hacer para que exista su
+    cuenta con su nombre y su MPPS.
+  - [`assets/clinic/`](assets/clinic/README.md) es donde se deja el logo del membrete.
+  - 15 pruebas nuevas: la sección completa, los usuarios sin repetir, el odontólogo que firma según
+    el usuario y que los tres servicios leen de ahí (no de un literal).
+
 ## [Fase 7, sesión A] — Sesiones clínicas · 2026-10-04
 
 ### Añadido
