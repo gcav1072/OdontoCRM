@@ -1,4 +1,8 @@
-import type { ClinicalRecordDetail, PatientSummary } from '@odontocrm/contracts';
+import {
+  formatSessionNumber,
+  type ClinicalRecordDetail,
+  type PatientSummary,
+} from '@odontocrm/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -21,6 +25,7 @@ import { AmendmentDialog } from '../components/clinical/AmendmentDialog';
 import { ClinicalAlerts } from '../components/clinical/ClinicalAlerts';
 import { ConsentDialog } from '../components/clinical/ConsentDialog';
 import { MedicalRecordForm } from '../components/clinical/MedicalRecordForm';
+import { SessionPanel } from '../components/clinical/SessionPanel';
 import { SignRecordDialog } from '../components/clinical/SignRecordDialog';
 import { OdontogramPanel } from '../components/odontogram/OdontogramPanel';
 import { NoticeBanner } from '../components/NoticeBanner';
@@ -30,7 +35,7 @@ import { apiErrorMessage } from '../lib/api';
 import { clinicalSectionLabel, clinicalStatusLabel } from '../lib/clinical';
 import { clinicalApi, patientsApi } from '../lib/endpoints';
 import { formatDate } from '../lib/format';
-import { SEX_LABELS, t } from '../lib/i18n';
+import { SEX_LABELS, t, type TranslationKey } from '../lib/i18n';
 import { useAuth } from '../providers/AuthProvider';
 
 const parseSex = (value: string): string =>
@@ -130,8 +135,14 @@ interface RecordWorkspaceProps {
   onExit: () => void;
 }
 
-/** Pestañas del área del paciente: historia clínica y odontograma (Fase 6). */
-type PatientTab = 'historia' | 'odontograma';
+/** Pestañas del área del paciente: historia, sesión y odontograma (Fases 6 y 7). */
+type PatientTab = 'historia' | 'sesion' | 'odontograma';
+
+const TABS: readonly { key: PatientTab; labelKey: TranslationKey }[] = [
+  { key: 'historia', labelKey: 'odonto.pestana.historia' },
+  { key: 'sesion', labelKey: 'clinica.sesion.pestana' },
+  { key: 'odontograma', labelKey: 'odonto.pestana.odontograma' },
+];
 
 const RecordWorkspace = ({
   patientId,
@@ -147,11 +158,29 @@ const RecordWorkspace = ({
   const [pestana, setPestana] = useState<PatientTab>(initialTab);
 
   const queryKey = ['clinica', 'paciente', patientId] as const;
+  const sesionesKey = ['clinica', 'sesiones', patientId] as const;
 
   const registroQuery = useQuery({
     queryKey,
     queryFn: ({ signal }) => clinicalApi.recordByPatient(patientId, signal),
   });
+
+  /**
+   * Las sesiones del paciente se leen **una vez** y las comparten la pestaña de la
+   * sesión (que retoma el borrador) y el odontograma (que marca cada hallazgo con
+   * la sesión en la que se registró).
+   */
+  const sesionesQuery = useQuery({
+    queryKey: sesionesKey,
+    queryFn: ({ signal }) => clinicalApi.sessions(patientId, signal),
+  });
+
+  const sesiones = sesionesQuery.data?.items ?? [];
+  const sesionAbierta = sesiones.find((session) => session.status === 'borrador') ?? null;
+
+  const recargarSesiones = (): void => {
+    void queryClient.invalidateQueries({ queryKey: sesionesKey });
+  };
 
   const abrir = useMutation({
     mutationFn: () => clinicalApi.openRecord(patientId),
@@ -221,41 +250,49 @@ const RecordWorkspace = ({
         </CardHeader>
       </Card>
 
-      {/* Pestañas del área del paciente: la historia clínica (Fase 6A) y el
-          odontograma (Fase 6B) comparten contexto y se alternan sin salir. */}
+      {/* Pestañas del área del paciente: la historia clínica (Fase 6A), la sesión
+          del día (Fase 7A) y el odontograma (Fase 6B) comparten contexto. */}
       {puedeVerOdontograma && (
         <div className="flex flex-wrap gap-1 border-b border-border" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={pestana === 'historia'}
-            onClick={() => setPestana('historia')}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              pestana === 'historia'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-ink-muted hover:text-ink'
-            }`}
-          >
-            {t('odonto.pestana.historia')}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={pestana === 'odontograma'}
-            onClick={() => setPestana('odontograma')}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              pestana === 'odontograma'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-ink-muted hover:text-ink'
-            }`}
-          >
-            {t('odonto.pestana.odontograma')}
-          </button>
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={pestana === tab.key}
+              onClick={() => setPestana(tab.key)}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                pestana === tab.key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-ink-muted hover:text-ink'
+              }`}
+            >
+              {t(tab.labelKey)}
+              {tab.key === 'sesion' && sesionAbierta !== null && (
+                <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 text-xs text-primary">
+                  {formatSessionNumber(sesionAbierta.sessionNumber)}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       )}
 
       {pestana === 'odontograma' && puedeVerOdontograma ? (
-        <OdontogramPanel patientId={patientId} canWrite={puedeEditarOdontograma} />
+        <OdontogramPanel
+          patientId={patientId}
+          canWrite={puedeEditarOdontograma}
+          sessionId={sesionAbierta?.id ?? null}
+        />
+      ) : pestana === 'sesion' ? (
+        <SessionPanel
+          patientId={patientId}
+          canWrite={puedeEscribir}
+          openSession={sesionAbierta}
+          sessions={sesiones}
+          onChanged={recargarSesiones}
+          onOpenOdontogram={puedeVerOdontograma ? () => setPestana('odontograma') : undefined}
+        />
       ) : (
         <>
           {resultado.exists === false && (
@@ -407,20 +444,24 @@ const RecordWorkspace = ({
 };
 
 /**
- * `/consultorio`: la historia clínica del paciente.
+ * `/consultorio`: la historia clínica, la sesión del día y el odontograma.
  *
  * Muestra el aviso obligatorio cuando el paciente no tiene historia («primera
  * visita»), el formulario por pasos con guardado de borrador y, ya firmada, el
- * bloqueo con adendas. La escritura exige `clinical:write`; leer e imprimir
- * basta con `clinical:read` (la secretaría imprime la historia).
+ * bloqueo con adendas; la pestaña de **sesión** (Fase 7A) escribe la evolución de
+ * la visita y el odontograma se marca dentro de ella. La escritura exige
+ * `clinical:write`; leer e imprimir basta con `clinical:read` (la secretaría
+ * imprime la historia y el odontograma).
  */
 export const ConsultorioPage = () => {
   const { hasPermission } = useAuth();
   const [params, setParams] = useSearchParams();
   const patientId = params.get('paciente');
-  // La ficha del paciente enlaza directo a la pestaña del odontograma.
+  // La ficha del paciente enlaza directo a la pestaña del odontograma y la
+  // secretaría, a la sesión.
+  const vista = params.get('vista');
   const vistaInicial: PatientTab =
-    params.get('vista') === 'odontograma' ? 'odontograma' : 'historia';
+    vista === 'odontograma' ? 'odontograma' : vista === 'sesion' ? 'sesion' : 'historia';
 
   return (
     <div className="space-y-5">

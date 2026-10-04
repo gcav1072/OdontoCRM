@@ -1,5 +1,6 @@
 import {
   type AcceptConsentInput,
+  type AmendClinicalSessionInput,
   type AppointmentStatus,
   type AppointmentSummary,
   type AssignAppointmentInput,
@@ -14,8 +15,13 @@ import {
   type ClinicalRecordDetail,
   type ClinicalRecordLookup,
   type ClinicalSectionKey,
+  type ClinicalSessionContent,
+  type ClinicalSessionDetail,
+  type ClinicalSessionList,
+  type CloseClinicalSessionInput,
   type ConsultationState,
   type CreateAmendmentInput,
+  type CreateClinicalSessionInput,
   type CreatePatientInput,
   type CreateRequestInput,
   type CreateUserInput,
@@ -587,4 +593,40 @@ export const clinicalApi = {
   /** Deja constancia de la impresión (también la secretaría, que solo lee). */
   registerPrint: (id: string): Promise<PrintRecordResult> =>
     api.post<PrintRecordResult>(`/clinical/records/${id}/printed`, {}),
+
+  /* ── Sesiones clínicas (Fase 7, sesión A) ────────────────────────────────── */
+
+  /** Evolución del paciente, de la última sesión a la primera. */
+  sessions: (patientId: string, signal?: AbortSignal): Promise<ClinicalSessionList> =>
+    api.get<ClinicalSessionList>(`/clinical/patients/${patientId}/sessions`, { signal }),
+
+  /**
+   * Abre la sesión del día. Es idempotente: si ya había un borrador, devuelve ese
+   * (el doctor no pierde lo que estaba escribiendo).
+   */
+  openSession: (
+    patientId: string,
+    input: CreateClinicalSessionInput,
+  ): Promise<ClinicalSessionDetail> =>
+    api.post<ClinicalSessionDetail>(`/clinical/patients/${patientId}/sessions`, input),
+
+  /** Sesiones de una cita: la secretaría lo usa para el «atendido» sin motivo. */
+  sessionsByAppointment: (
+    appointmentId: string,
+    signal?: AbortSignal,
+  ): Promise<ClinicalSessionList> =>
+    api.get<ClinicalSessionList>(`/clinical/appointments/${appointmentId}/sessions`, { signal }),
+
+  getSession: (id: string, signal?: AbortSignal): Promise<ClinicalSessionDetail> =>
+    api.get<ClinicalSessionDetail>(`/clinical/sessions/${id}`, { signal }),
+
+  /** Autoguardado del borrador: se manda el documento completo de la sesión. */
+  saveSession: (id: string, content: ClinicalSessionContent): Promise<ClinicalSessionDetail> =>
+    api.request<ClinicalSessionDetail>('PUT', `/clinical/sessions/${id}`, { body: { content } }),
+
+  closeSession: (id: string, input: CloseClinicalSessionInput): Promise<ClinicalSessionDetail> =>
+    api.post<ClinicalSessionDetail>(`/clinical/sessions/${id}/close`, input),
+
+  amendSession: (id: string, input: AmendClinicalSessionInput): Promise<ClinicalSessionDetail> =>
+    api.post<ClinicalSessionDetail>(`/clinical/sessions/${id}/amend`, input),
 };

@@ -1661,6 +1661,120 @@ const DICCIONARIO = {
   'clinica.exito.firmada': 'Historia clínica firmada.',
   'clinica.exito.adenda': 'Adenda registrada.',
 
+  // ── Fase 7A · sesión clínica: la evolución del paciente (Lead) ─────────────
+  'clinica.sesion.pestana': 'Sesión clínica',
+  'clinica.sesion.titulo': 'Sesión {numero}',
+  'clinica.sesion.abierta': 'Abierta el {fecha}',
+  'clinica.sesion.conCita': 'enlazada a la cita del día',
+  'clinica.sesion.sinCita': 'sin cita (registro libre)',
+  'clinica.sesion.enmendada': 'Corrige una sesión anterior: {motivo}',
+  'clinica.sesion.estado.borrador': 'En borrador',
+  'clinica.sesion.estado.cerrada': 'Cerrada',
+
+  'clinica.sesion.abrir.titulo': 'Empezar la sesión de hoy',
+  'clinica.sesion.abrir.texto':
+    'La sesión guarda lo que se hace en la visita: signos vitales, examen, procedimientos, materiales, diagnóstico e indicaciones. Se guarda sola mientras se escribe.',
+  'clinica.sesion.abrir.cita': 'Cita que respalda la sesión',
+  'clinica.sesion.abrir.citaAyuda':
+    'Al cerrar la sesión, esa cita se puede pasar a «atendida» sin pedir motivo.',
+  'clinica.sesion.abrir.sinCita': 'Sin cita (el paciente vino sin cita)',
+  'clinica.sesion.abrir.citaOpcion': 'Cita de las {hora} · {estado}',
+  'clinica.sesion.abrir.accion': 'Abrir sesión',
+
+  'clinica.sesion.vitales': 'Signos vitales',
+  'clinica.sesion.vitales.ayuda': 'Deja en blanco lo que no se tomó: vacío es «sin dato».',
+  'clinica.sesion.vital.taSistolica': 'Tensión sistólica',
+  'clinica.sesion.vital.taDiastolica': 'Tensión diastólica',
+  'clinica.sesion.vital.fc': 'Frecuencia cardíaca',
+  'clinica.sesion.vital.temperatura': 'Temperatura',
+  'clinica.sesion.vital.spo2': 'Saturación de oxígeno',
+  'clinica.sesion.vital.peso': 'Peso',
+
+  'clinica.sesion.examen': 'Examen del día (intraoral y periodontal)',
+  'clinica.sesion.sinDato': 'Sin dato',
+  'clinica.sesion.campo.tejidosBlandos': 'Tejidos blandos',
+  'clinica.sesion.campo.encias': 'Encías',
+  'clinica.sesion.campo.oclusion': 'Oclusión',
+  'clinica.sesion.campo.higiene': 'Higiene oral',
+  'clinica.sesion.campo.sondaje': 'Sondaje periodontal',
+  'clinica.sesion.campo.sondajePlaceholder': '16: 3 mm, 26: 5 mm',
+  'clinica.sesion.campo.hallazgos': 'Hallazgos del examen',
+
+  'clinica.sesion.procedimientos': 'Procedimientos realizados',
+  'clinica.sesion.procedimientos.ayuda':
+    'Del catálogo, con la pieza y las caras cuando correspondan: es lo que después cuenta en los reportes.',
+  'clinica.sesion.procedimiento': 'Procedimiento',
+  'clinica.sesion.pieza': 'Pieza (FDI)',
+  'clinica.sesion.notasProcedimiento': 'Nota del procedimiento',
+  'clinica.sesion.quitarProcedimiento': 'Quitar procedimiento',
+  'clinica.sesion.agregarProcedimiento': 'Agregar procedimiento',
+  'clinica.sesion.detalle': '¿Cuál?',
+  'clinica.sesion.detallePlaceholder': 'Descríbelo tal como se hizo',
+  'clinica.sesion.caras': 'Caras tratadas',
+  'clinica.sesion.caras.ayuda':
+    'Sin caras marcadas el procedimiento se guarda sobre la pieza completa.',
+  'clinica.sesion.caras.elegidas': '{total} cara(s) marcada(s) para este procedimiento.',
+
+  'clinica.sesion.materiales': 'Materiales e insumos',
+  'clinica.sesion.material': 'Material',
+  'clinica.sesion.cantidad': 'Cantidad',
+  'clinica.sesion.cantidadPlaceholder': '1 cartucho',
+  'clinica.sesion.quitarMaterial': 'Quitar material',
+  'clinica.sesion.agregarMaterial': 'Agregar material',
+
+  'clinica.sesion.campo.motivo': 'Motivo de la visita',
+  'clinica.sesion.campo.motivoPlaceholder': 'Qué trae hoy al paciente',
+  'clinica.sesion.campo.anamnesis': 'Anamnesis breve y cambios relevantes',
+  'clinica.sesion.campo.diagnostico': 'Diagnóstico de la sesión',
+  'clinica.sesion.campo.indicaciones': 'Indicaciones postoperatorias',
+  'clinica.sesion.campo.proximaCitaFecha': 'Próxima cita sugerida',
+  'clinica.sesion.campo.proximaCitaNota': 'Para qué la próxima cita',
+  'clinica.sesion.campo.notasInternas': 'Notas internas (no se imprimen)',
+
+  'clinica.sesion.guardado.limpio': 'Sin cambios',
+  'clinica.sesion.guardado.pendiente': 'Sin guardar…',
+  'clinica.sesion.guardado.guardando': 'Guardando…',
+  'clinica.sesion.guardado.hecho': 'Guardado a las {hora}',
+  'clinica.sesion.guardado.error': 'No se pudo guardar',
+  'clinica.sesion.resumen': 'Lo registrado',
+  'clinica.sesion.irOdontograma': 'Marcar en el odontograma',
+
+  'clinica.sesion.cerrar.accion': 'Cerrar sesión',
+  'clinica.sesion.cerrar.faltaContenido':
+    'Para cerrar la sesión escribe al menos el motivo, un procedimiento o el diagnóstico.',
+  'clinica.sesion.cerrar.titulo': 'Cerrar la sesión',
+  'clinica.sesion.cerrar.texto': 'La sesión cerrada queda como documento del día.',
+  'clinica.sesion.cerrar.aviso':
+    'Una sesión cerrada no se puede editar: si hay que corregirla, se abre una sesión enmendada con su motivo y la original se conserva.',
+  'clinica.sesion.cerrar.nota': 'Nota de cierre (opcional)',
+  'clinica.sesion.cerrar.notaAyuda': 'Cómo salió el paciente o qué quedó pendiente.',
+  'clinica.sesion.cerrar.confirmar': 'Cerrar la sesión',
+
+  'clinica.sesion.corregir': 'Corregir',
+  'clinica.sesion.corregir.titulo': 'Corregir la sesión {numero}',
+  'clinica.sesion.corregir.texto': 'Se abre una sesión nueva en borrador con lo que tenía.',
+  'clinica.sesion.corregir.aviso':
+    'La sesión original se conserva tal como quedó: la corrección es una sesión nueva enlazada a ella.',
+  'clinica.sesion.corregir.motivo': 'Por qué se corrige',
+  'clinica.sesion.corregir.motivoAyuda': 'Queda en la auditoría y en la sesión nueva.',
+  'clinica.sesion.corregir.motivoCorto': 'Escribe el motivo de la corrección',
+  'clinica.sesion.corregir.confirmar': 'Abrir sesión corregida',
+
+  'clinica.sesion.historial': 'Evolución del paciente',
+  'clinica.sesion.historialTexto': 'Lo que se hizo en cada visita, de la última a la primera.',
+  'clinica.sesion.sinSesiones': 'Sin sesiones',
+  'clinica.sesion.sinSesionesTexto':
+    'Todavía no hay visitas registradas: la primera sesión se abre desde aquí.',
+
+  'clinica.sesion.atender.titulo': 'La cita se puede cerrar como atendida',
+  'clinica.sesion.atender.texto':
+    'La cita de las {hora} tiene su sesión clínica cerrada: marcar «atendida» ya no pide motivo.',
+  'clinica.sesion.marcarAtendida': 'Marcar la cita como atendida',
+
+  'clinica.sesion.exito.abierta': 'Sesión clínica abierta.',
+  'clinica.sesion.exito.cerrada': 'Sesión clínica cerrada.',
+  'clinica.sesion.exito.enmendada': 'Sesión corregida: tienes el borrador abierto.',
+  'clinica.sesion.exito.atendida': 'Cita marcada como atendida.',
   // ── Fase 6B · odontograma: pestaña, impresión A4 y accesos (Lead) ──────────
   'odonto.pestana.historia': 'Historia clínica',
   'odonto.pestana.odontograma': 'Odontograma',
