@@ -390,7 +390,9 @@ check(
   `status ${coronaSobreAusente.status} · ${JSON.stringify(coronaSobreAusente.body)}`,
 );
 
-// El lote que manda la hoja táctil: corona con su caries, en una transacción.
+// El lote que manda la hoja táctil: corona con la caries que tenía debajo, en una
+// transacción. La corona **recubre el muñón**, así que las caras quedan cubiertas (el
+// gráfico enseña la corona sola) pero el dato sigue en la base y en el histórico.
 const loteTactil = await call(`/api/v1/odontogram/patients/${patientId}/findings/batch`, {
   method: 'POST',
   body: JSON.stringify({
@@ -402,9 +404,34 @@ const loteTactil = await call(`/api/v1/odontogram/patients/${patientId}/findings
   }),
 });
 check(
-  'el lote táctil guarda el tratamiento y sus caras de una vez',
-  loteTactil.status === 200 && loteTactil.body?.odontogram?.findings?.['46']?.length === 3,
-  `status ${loteTactil.status} · filas ${String(loteTactil.body?.odontogram?.findings?.['46']?.length)}`,
+  'el lote táctil guarda la corona y cubre las caras de una vez',
+  loteTactil.status === 200 &&
+    loteTactil.body?.odontogram?.findings?.['46']?.length === 1 &&
+    loteTactil.body?.odontogram?.findings?.['46']?.[0]?.condition === 'corona',
+  `status ${loteTactil.status} · filas ${JSON.stringify(loteTactil.body?.odontogram?.findings?.['46']?.map((fila) => fila.condition))}`,
+);
+check(
+  'y las caras cubiertas vuelven en la respuesta como superadas',
+  Array.isArray(loteTactil.body?.resolvedSurfaces) && loteTactil.body.resolvedSurfaces.length === 2,
+  `caras superadas: ${JSON.stringify(loteTactil.body?.resolvedSurfaces)}`,
+);
+
+// La caries que aparece **después** de la corona (filtración marginal) sí se ve.
+const recurrente = await call(`/api/v1/odontogram/patients/${patientId}/findings`, {
+  method: 'PUT',
+  body: JSON.stringify({
+    toothNumber: 46,
+    surface: 'vestibular',
+    condition: 'caries',
+    state: 'pendiente',
+  }),
+});
+check(
+  'la caries recurrente sobre la corona se registra encima',
+  recurrente.status === 200 &&
+    recurrente.body?.odontogram?.findings?.['46']?.length === 2 &&
+    recurrente.body.resolvedSurfaces.length === 0,
+  `status ${recurrente.status} · filas ${String(recurrente.body?.odontogram?.findings?.['46']?.length)}`,
 );
 
 // 11) El histórico append-only conserva todo lo que pasó, incluido lo superado.
