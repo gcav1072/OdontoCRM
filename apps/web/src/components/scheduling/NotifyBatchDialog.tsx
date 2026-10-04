@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Alert, Badge, Button, Checkbox, Dialog, Spinner } from '@odontocrm/ui';
 import { BellRing, Send } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { apiErrorMessage } from '../../lib/api';
 import { agendaApi } from '../../lib/endpoints';
@@ -21,8 +22,9 @@ export interface NotifyBatchDialogProps {
  * Aviso al paciente con vista previa exacta: se pide a
  * `POST /agenda/notify/preview` lo que se preparará (asunto y cuerpo ya
  * renderizados, con `willSend` y `skipReason`) y solo al confirmar se llama a
- * `POST /agenda/notify`. En esta fase el aviso queda registrado y encolado: el
- * envío real por Telegram llega en la Fase 4 y la interfaz lo dice.
+ * `POST /agenda/notify`, que publica el evento con el que el servicio de
+ * notificaciones envía el mensaje y el `.ics`. El estado de cada envío se sigue en
+ * la bandeja (`/notificaciones`), que es lo que enlaza el aviso del diálogo.
  */
 export const NotifyBatchDialog = ({
   date,
@@ -106,11 +108,20 @@ export const NotifyBatchDialog = ({
       }
     >
       <div className="space-y-4">
-        {/* La promesa de la Fase 3 es «registrado y encolado», no «enviado». */}
+        {/* El aviso se envía de verdad (el servicio de notificaciones consume el
+            evento) y su estado se sigue en la bandeja. */}
         <Alert variant="info" hideIcon>
           <p className="flex items-start gap-2">
             <BellRing className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            {t('programacion.notificar.fase4')}
+            <span>
+              {t('programacion.notificar.envio')}{' '}
+              <Link
+                to="/notificaciones"
+                className="font-medium whitespace-nowrap text-primary underline underline-offset-2"
+              >
+                {t('programacion.notificar.verBandeja')}
+              </Link>
+            </span>
           </p>
         </Alert>
 

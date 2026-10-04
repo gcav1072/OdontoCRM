@@ -13,7 +13,7 @@ import { Bot, RefreshCw } from 'lucide-react';
 
 import { apiErrorMessage } from '../../lib/api';
 import { formatDateTime, formatRelative, formatNumber } from '../../lib/format';
-import { t } from '../../lib/i18n';
+import { CHANNEL_LABELS, t } from '../../lib/i18n';
 import { BOT_STATUS_REFRESH_MS } from '../../lib/notifications';
 import { useNow } from '../../hooks/useNow';
 
@@ -176,6 +176,22 @@ export const BotStatusCard = ({
           <Alert variant="danger" title={t('notificaciones.detalle.error')}>
             {status.lastError}
           </Alert>
+        )}
+
+        {/* Los canales activos: desde la Fase 4.1 el asistente no es solo Telegram. */}
+        {status.canales.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium tracking-wide text-ink-subtle uppercase">
+              {t('notificaciones.bot.canales')}
+            </span>
+            {status.canales.map((canal) => (
+              <Badge key={canal.canal} variant={canal.conectado ? 'success' : 'neutral'} dot>
+                {CHANNEL_LABELS[canal.canal]}
+                {' · '}
+                {canal.usuario ?? t('notificaciones.bot.canal.sinConfigurar')}
+              </Badge>
+            ))}
+          </div>
         )}
 
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">

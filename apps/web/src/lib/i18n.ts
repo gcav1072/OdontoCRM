@@ -188,7 +188,7 @@ const DICCIONARIO = {
   'inicio.puedesHacer': 'Lo que puedes hacer',
   'inicio.sinPermisos': 'Tu rol todavía no tiene permisos asignados.',
   'inicio.modulos': 'Módulos disponibles',
-  'inicio.sinModulos': 'Tu rol no tiene módulos adicionales en esta fase del plan.',
+  'inicio.sinModulos': 'Tu rol no tiene módulos adicionales por ahora.',
   'inicio.abrir': 'Abrir',
   'inicio.estado': 'Estado del sistema',
   'inicio.estado.servidor': 'Servidor',
@@ -199,7 +199,7 @@ const DICCIONARIO = {
     'La interfaz consulta la API en {ruta} bajo el mismo origen, con la cookie de refresco httpOnly.',
   'inicio.estado.revisar': 'Volver a comprobar',
   'inicio.pantallaNota':
-    'Esta cuenta es para las pantallas de la sala de espera: el kiosko se habilita en la Fase 5.',
+    'Esta cuenta es para las pantallas de la clínica: abre el enlace del kiosko que el administrador genera en el módulo Pantallas (/pantalla/lobby o /pantalla/consultorio) en el equipo del televisor. Aquí no hay módulos que mostrar.',
   'inicio.debeCambiar':
     'Estás usando una contraseña temporal. Cámbiala para dejar de ver este aviso.',
   'inicio.cambiarAhora': 'Cambiar la contraseña',
@@ -861,7 +861,7 @@ const DICCIONARIO = {
   'programacion.atendido.titulo': 'Marcar atendido a {paciente}',
   'programacion.atendido.texto':
     'La historia clínica y las sesiones llegan en la Fase 6. Mientras tanto, marcar «atendido» exige un motivo que queda registrado en la auditoría; cuando exista la sesión clínica cerrada, se enlazará sola.',
-  'programacion.atendido.motivo': 'Motivo (obligatorio en esta fase)',
+  'programacion.atendido.motivo': 'Motivo (obligatorio mientras no haya historia clínica)',
   'programacion.atendido.motivoCorto': 'Escribe el motivo (mínimo 3 caracteres)',
   'programacion.atendido.motivoAyuda':
     'Por ejemplo: sesión clínica en papel, control de ortodoncia.',
@@ -933,8 +933,9 @@ const DICCIONARIO = {
   'programacion.notificar.individual': 'Aviso de {paciente}',
   'programacion.notificar.individualTexto':
     'Se prepara solo el aviso de esta cita; el resto quedan como están.',
-  'programacion.notificar.fase4':
-    'En esta fase el aviso queda registrado y encolado: el envío real por Telegram llega en la Fase 4. No se puede afirmar que el paciente ya lo recibió.',
+  'programacion.notificar.envio':
+    'El aviso sale por el canal del paciente (Telegram o WhatsApp) con el calendario adjunto. Si no tiene canal vinculado, queda en la bandeja como aviso manual para llamarlo por teléfono.',
+  'programacion.notificar.verBandeja': 'Ver la bandeja de notificaciones',
   'programacion.notificar.cargando': 'Preparando la vista previa…',
   'programacion.notificar.error': 'No se pudo preparar la vista previa de los avisos.',
   'programacion.notificar.vacio': 'No hay citas notificables en esta fecha.',
@@ -974,23 +975,25 @@ const DICCIONARIO = {
   // --- Notificaciones y bot (Fase 4) ---------------------------------------
   'notificaciones.titulo': 'Notificaciones',
   'notificaciones.descripcion':
-    'Bandeja de los envíos del bot de Telegram: qué salió, qué falló, quién espera un aviso manual, las conversaciones a medio camino y los textos que se envían.',
+    'Bandeja de los envíos del asistente (Telegram y WhatsApp): qué salió, qué falló, quién espera un aviso manual, las conversaciones a medio camino y los textos que se envían.',
 
   // Estado del bot
-  'notificaciones.bot.titulo': 'Estado del bot',
+  'notificaciones.bot.titulo': 'Estado del asistente y los canales',
   'notificaciones.bot.actualizado': 'Actualizado {cuando}',
-  'notificaciones.bot.cargando': 'Consultando el estado del bot…',
-  'notificaciones.bot.error': 'No se pudo consultar el estado del bot.',
+  'notificaciones.bot.cargando': 'Consultando el estado del asistente…',
+  'notificaciones.bot.error': 'No se pudo consultar el estado del asistente.',
   'notificaciones.bot.recargar': 'Actualizar el estado',
   'notificaciones.bot.sinUsuario': 'Sin @usuario configurado',
   'notificaciones.bot.modo.real': 'Modo real',
   'notificaciones.bot.modo.simulado': 'Modo simulado',
   'notificaciones.bot.real.texto':
-    'El bot tiene token configurado y está conectado: los mensajes salen por Telegram.',
+    'El bot de Telegram tiene token configurado y está conectado: los mensajes salen por los canales del paciente (Telegram o WhatsApp).',
   'notificaciones.bot.real.sinConexion':
-    'El bot tiene token configurado, pero ahora mismo no está conectado: los envíos quedan en cola hasta que vuelva la conexión.',
+    'El bot de Telegram tiene token configurado, pero ahora mismo no está conectado: los envíos quedan en cola hasta que vuelva la conexión.',
   'notificaciones.bot.simulado.texto':
     'No hay token configurado: los mensajes quedan registrados en la bandeja, pero no se envían. Configura el token del bot para activar los envíos reales.',
+  'notificaciones.bot.canales': 'Canales',
+  'notificaciones.bot.canal.sinConfigurar': 'sin configurar',
   'notificaciones.bot.conectado': 'Conectado',
   'notificaciones.bot.desconectado': 'Sin conexión',
   'notificaciones.bot.pendientes': 'Actualizaciones por procesar',
@@ -1064,7 +1067,7 @@ const DICCIONARIO = {
   'notificaciones.estado.failed': 'Falló',
   'notificaciones.estado.skipped_no_channel': 'Aviso manual pendiente',
   'notificaciones.estado.avisoManual':
-    'El paciente no tiene Telegram vinculado: hay que llamarlo y marcar el contacto como hecho.',
+    'El paciente no tiene ningún canal vinculado (Telegram o WhatsApp): hay que llamarlo y marcar el contacto como hecho.',
 
   // Reintento y contacto
   'notificaciones.reintento.titulo': 'Reintentar el envío',
@@ -1107,7 +1110,7 @@ const DICCIONARIO = {
   // Plantillas
   'notificaciones.plantillas.titulo': 'Plantillas de los mensajes',
   'notificaciones.plantillas.descripcion':
-    'Los textos que envía el bot. Se envían tal cual por Telegram: no se admite HTML, solo texto y saltos de línea.',
+    'Los textos que envía el asistente. Se envían tal cual por el canal del paciente: no se admite HTML, solo texto y saltos de línea.',
   'notificaciones.plantillas.cargando': 'Cargando las plantillas…',
   'notificaciones.plantillas.error': 'No se pudieron cargar las plantillas.',
   'notificaciones.plantillas.vacio': 'Todavía no hay plantillas configuradas.',
@@ -1143,7 +1146,7 @@ const DICCIONARIO = {
     'El texto vuelve al que trae el sistema de fábrica y se pierde el que está guardado. La operación queda registrada.',
   'notificaciones.plantillas.restaurada': 'Plantilla restaurada al texto por defecto.',
   'notificaciones.plantillas.avisoHtml':
-    'Telegram recibe el texto tal cual: no se admite HTML ni formatos, solo texto y saltos de línea.',
+    'El canal recibe el texto tal cual: no se admite HTML ni formatos, solo texto y saltos de línea.',
   'notificaciones.plantillas.activa': 'Plantilla activa',
   'notificaciones.plantillas.activaAyuda':
     'Si la desactivas, el bot no encuentra texto para ese paso y avisa por el registro.',
@@ -1199,11 +1202,11 @@ const DICCIONARIO = {
     'Chats que ya están vinculados a un paciente. El identificador se muestra enmascarado.',
   'notificaciones.canales.cargando': 'Cargando los canales vinculados…',
   'notificaciones.canales.errorLista': 'No se pudieron cargar los canales vinculados.',
-  'notificaciones.canales.vacio': 'Todavía no hay ningún paciente con Telegram vinculado.',
+  'notificaciones.canales.vacio': 'Todavía no hay ningún paciente con un canal vinculado.',
   'notificaciones.canales.total': '{total} vínculo(s)',
   'notificaciones.canales.columna.paciente': 'Paciente',
-  'notificaciones.canales.columna.chat': 'Chat',
-  'notificaciones.canales.columna.usuario': 'Usuario de Telegram',
+  'notificaciones.canales.columna.chat': 'Dirección',
+  'notificaciones.canales.columna.usuario': 'Usuario del canal',
   'notificaciones.canales.columna.vinculado': 'Vinculado',
   'notificaciones.canales.columna.acciones': 'Acciones',
   'notificaciones.canales.bloqueado': 'Bloqueado',

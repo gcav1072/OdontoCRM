@@ -112,7 +112,7 @@ export const ScreenLobbyPage = () => {
       ...KIOSK_VOICE_DEFAULT,
       ...(ajustes === null ? {} : { volumen: ajustes.volumen }),
     }),
-    [ajustes?.volumen],
+    [ajustes],
   );
   const resalteSegundos = ajustes?.resalteSegundos ?? RESALTE_SEGUNDOS_DEFECTO;
   const vozActiva = ajustes?.voz !== false;

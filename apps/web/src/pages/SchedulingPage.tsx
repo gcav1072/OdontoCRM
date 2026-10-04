@@ -9,6 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Card, CardContent, Spinner } from '@odontocrm/ui';
 import { CalendarClock, ClipboardList } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { NoticeBanner } from '../components/NoticeBanner';
 import { AppointmentActionDialog } from '../components/scheduling/AppointmentActionDialog';
@@ -289,7 +290,15 @@ export const SchedulingPage = () => {
               <Card>
                 <CardContent className="flex items-start gap-2.5 pt-5 text-sm text-ink-muted">
                   <ClipboardList className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                  {t('programacion.notificar.fase4')}
+                  <span>
+                    {t('programacion.notificar.envio')}{' '}
+                    <Link
+                      to="/notificaciones"
+                      className="font-medium whitespace-nowrap text-primary underline underline-offset-2"
+                    >
+                      {t('programacion.notificar.verBandeja')}
+                    </Link>
+                  </span>
                 </CardContent>
               </Card>
             </>
