@@ -22,6 +22,7 @@ import { ClinicalAlerts } from '../components/clinical/ClinicalAlerts';
 import { ConsentDialog } from '../components/clinical/ConsentDialog';
 import { MedicalRecordForm } from '../components/clinical/MedicalRecordForm';
 import { SignRecordDialog } from '../components/clinical/SignRecordDialog';
+import { OdontogramPanel } from '../components/odontogram/OdontogramPanel';
 import { NoticeBanner } from '../components/NoticeBanner';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useNotice } from '../hooks/useNotice';
@@ -120,13 +121,30 @@ const PatientPicker = ({ onSelect }: { onSelect: (patientId: string) => void }) 
 interface RecordWorkspaceProps {
   patientId: string;
   puedeEscribir: boolean;
+  /** `odontogram:read`: la secretaría imprime el odontograma, no lo edita. */
+  puedeVerOdontograma: boolean;
+  /** `odontogram:write`: solo el odontólogo y el admin marcan hallazgos. */
+  puedeEditarOdontograma: boolean;
+  /** Pestaña de entrada (`/consultorio?paciente=…&vista=odontograma`). */
+  initialTab?: PatientTab;
   onExit: () => void;
 }
 
-const RecordWorkspace = ({ patientId, puedeEscribir, onExit }: RecordWorkspaceProps) => {
+/** Pestañas del área del paciente: historia clínica y odontograma (Fase 6). */
+type PatientTab = 'historia' | 'odontograma';
+
+const RecordWorkspace = ({
+  patientId,
+  puedeEscribir,
+  puedeVerOdontograma,
+  puedeEditarOdontograma,
+  initialTab = 'historia',
+  onExit,
+}: RecordWorkspaceProps) => {
   const queryClient = useQueryClient();
   const { notice, exito, error, limpiar } = useNotice();
   const [dialogo, setDialogo] = useState<'consentimiento' | 'firma' | 'adenda' | null>(null);
+  const [pestana, setPestana] = useState<PatientTab>(initialTab);
 
   const queryKey = ['clinica', 'paciente', patientId] as const;
 
@@ -164,6 +182,8 @@ const RecordWorkspace = ({ patientId, puedeEscribir, onExit }: RecordWorkspacePr
     <div className="space-y-5">
       <NoticeBanner notice={notice} onClose={limpiar} className="mb-0" />
 
+      {/* Encabezado del paciente: quién es, si su historia está firmada y el
+          camino de vuelta al selector. */}
       <Card>
         <CardHeader className="flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
@@ -201,139 +221,185 @@ const RecordWorkspace = ({ patientId, puedeEscribir, onExit }: RecordWorkspacePr
         </CardHeader>
       </Card>
 
-      {resultado.exists === false && (
-        <Alert variant="warning" title={t('clinica.primeraVisita.titulo')}>
-          <p>{t('clinica.primeraVisita.texto')}</p>
-          {puedeEscribir && (
-            <div className="mt-3">
-              <Button
-                loading={abrir.isPending}
-                onClick={() => abrir.mutate()}
-                leadingIcon={<PenLine className="size-4" aria-hidden />}
-              >
-                {t('clinica.primeraVisita.abrir')}
-              </Button>
-            </div>
-          )}
-        </Alert>
+      {/* Pestañas del área del paciente: la historia clínica (Fase 6A) y el
+          odontograma (Fase 6B) comparten contexto y se alternan sin salir. */}
+      {puedeVerOdontograma && (
+        <div className="flex flex-wrap gap-1 border-b border-border" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={pestana === 'historia'}
+            onClick={() => setPestana('historia')}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              pestana === 'historia'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-ink-muted hover:text-ink'
+            }`}
+          >
+            {t('odonto.pestana.historia')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={pestana === 'odontograma'}
+            onClick={() => setPestana('odontograma')}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              pestana === 'odontograma'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-ink-muted hover:text-ink'
+            }`}
+          >
+            {t('odonto.pestana.odontograma')}
+          </button>
+        </div>
       )}
 
-      {registro !== null && (
+      {pestana === 'odontograma' && puedeVerOdontograma ? (
+        <OdontogramPanel patientId={patientId} canWrite={puedeEditarOdontograma} />
+      ) : (
         <>
-          <ClinicalAlerts alerts={registro.alerts} />
-
-          <div className="flex flex-wrap items-center gap-2">
-            {puedeEscribir && registro.status === 'borrador' && (
-              <Button
-                variant="secondary"
-                onClick={() => setDialogo('consentimiento')}
-                leadingIcon={<ShieldCheck className="size-4" aria-hidden />}
-              >
-                {registro.consentAccepted
-                  ? t('clinica.consentimiento.registrado')
-                  : t('clinica.consentimiento.registrar')}
-              </Button>
-            )}
-            {puedeEscribir && registro.status === 'borrador' && (
-              <Button
-                onClick={() => setDialogo('firma')}
-                leadingIcon={<PenLine className="size-4" aria-hidden />}
-              >
-                {t('clinica.firma.firmar')}
-              </Button>
-            )}
-            {puedeEscribir && registro.status === 'firmada' && (
-              <Button
-                variant="secondary"
-                onClick={() => setDialogo('adenda')}
-                leadingIcon={<PenLine className="size-4" aria-hidden />}
-              >
-                {t('clinica.adenda.agregar')}
-              </Button>
-            )}
-            <a
-              className={buttonClasses({ variant: 'secondary' })}
-              href={`/consultorio/${registro.id}/imprimir`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <Printer className="size-4" aria-hidden />
-              <span className="truncate">{t('clinica.imprimir.accion')}</span>
-            </a>
-          </div>
-
-          {registro.consent && (
-            <p className="text-sm text-ink-muted">
-              {t('clinica.consentimiento.aceptadoPor', {
-                nombre: registro.consent.acceptedByName ?? '',
-                relacion: registro.consent.relationship ?? '',
-              })}
-              {registro.consent.acceptedAt ? ` · ${formatDate(registro.consent.acceptedAt)}` : ''}
-            </p>
+          {resultado.exists === false && (
+            <Alert variant="warning" title={t('clinica.primeraVisita.titulo')}>
+              <p>{t('clinica.primeraVisita.texto')}</p>
+              {puedeEscribir && (
+                <div className="mt-3">
+                  <Button
+                    loading={abrir.isPending}
+                    onClick={() => abrir.mutate()}
+                    leadingIcon={<PenLine className="size-4" aria-hidden />}
+                  >
+                    {t('clinica.primeraVisita.abrir')}
+                  </Button>
+                </div>
+              )}
+            </Alert>
           )}
 
-          <MedicalRecordForm
-            record={registro}
-            canWrite={puedeEscribir}
-            onSaved={aplicarDetalle}
-            onError={(fallo) => error(apiErrorMessage(fallo))}
-          />
+          {registro !== null && (
+            <div className="space-y-5">
+              <ClinicalAlerts alerts={registro.alerts} />
 
-          {registro.amendments.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('clinica.adenda.titulo')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-3">
-                  {registro.amendments.map((adenda) => (
-                    <li key={adenda.id} className="rounded-control border border-border p-3">
-                      <p className="text-sm font-medium text-ink">
-                        {formatDate(adenda.createdAt)} ·{' '}
-                        {adenda.sectionKey === null
-                          ? t('clinica.adenda.general')
-                          : clinicalSectionLabel(adenda.sectionKey)}
-                      </p>
-                      <p className="mt-1 text-sm text-ink-muted">{adenda.content}</p>
-                      <p className="mt-1 text-xs text-ink-subtle">
-                        {t('clinica.adenda.motivo')}: {adenda.reason}
-                        {adenda.authorUsername ? ` · ${adenda.authorUsername}` : ''}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
+              <div className="flex flex-wrap items-center gap-2">
+                {puedeEscribir && registro.status === 'borrador' && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => setDialogo('consentimiento')}
+                    leadingIcon={<ShieldCheck className="size-4" aria-hidden />}
+                  >
+                    {registro.consentAccepted
+                      ? t('clinica.consentimiento.registrado')
+                      : t('clinica.consentimiento.registrar')}
+                  </Button>
+                )}
+                {puedeEscribir && registro.status === 'borrador' && (
+                  <Button
+                    onClick={() => setDialogo('firma')}
+                    leadingIcon={<PenLine className="size-4" aria-hidden />}
+                  >
+                    {t('clinica.firma.firmar')}
+                  </Button>
+                )}
+                {puedeEscribir && registro.status === 'firmada' && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => setDialogo('adenda')}
+                    leadingIcon={<PenLine className="size-4" aria-hidden />}
+                  >
+                    {t('clinica.adenda.agregar')}
+                  </Button>
+                )}
+                <a
+                  className={buttonClasses({ variant: 'secondary' })}
+                  href={`/consultorio/${registro.id}/imprimir`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Printer className="size-4" aria-hidden />
+                  <span className="truncate">{t('clinica.imprimir.accion')}</span>
+                </a>
+              </div>
+
+              {registro.consent && (
+                <p className="text-sm text-ink-muted">
+                  {t('clinica.consentimiento.aceptadoPor', {
+                    nombre: registro.consent.acceptedByName ?? '',
+                    relacion: registro.consent.relationship ?? '',
+                  })}
+                  {registro.consent.acceptedAt
+                    ? ` · ${formatDate(registro.consent.acceptedAt)}`
+                    : ''}
+                </p>
+              )}
+
+              <MedicalRecordForm
+                record={registro}
+                canWrite={puedeEscribir}
+                onSaved={aplicarDetalle}
+                onError={(fallo) => error(apiErrorMessage(fallo))}
+              />
+
+              {registro.amendments.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{t('clinica.adenda.titulo')}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-3">
+                      {registro.amendments.map((adenda) => (
+                        <li key={adenda.id} className="rounded-control border border-border p-3">
+                          <p className="text-sm font-medium text-ink">
+                            {formatDate(adenda.createdAt)} ·{' '}
+                            {adenda.sectionKey === null
+                              ? t('clinica.adenda.general')
+                              : clinicalSectionLabel(adenda.sectionKey)}
+                          </p>
+                          <p className="mt-1 text-sm text-ink-muted">{adenda.content}</p>
+                          <p className="mt-1 text-xs text-ink-subtle">
+                            {t('clinica.adenda.motivo')}: {adenda.reason}
+                            {adenda.authorUsername ? ` · ${adenda.authorUsername}` : ''}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           )}
 
-          <ConsentDialog
-            open={dialogo === 'consentimiento'}
-            recordId={registro.id}
-            patient={registro.patient}
-            onClose={() => setDialogo(null)}
-            onDone={() => {
-              void registroQuery.refetch();
-              exito(t('clinica.exito.consentimiento'));
-            }}
-          />
-          <SignRecordDialog
-            open={dialogo === 'firma'}
-            record={registro}
-            onClose={() => setDialogo(null)}
-            onSigned={(detail) => {
-              aplicarDetalle(detail);
-              exito(t('clinica.exito.firmada'));
-            }}
-          />
-          <AmendmentDialog
-            open={dialogo === 'adenda'}
-            recordId={registro.id}
-            onClose={() => setDialogo(null)}
-            onDone={() => {
-              void registroQuery.refetch();
-              exito(t('clinica.exito.adenda'));
-            }}
-          />
+          {/* Los diálogos de la historia solo viven en su pestaña. */}
+          {registro !== null && (
+            <>
+              <ConsentDialog
+                open={dialogo === 'consentimiento'}
+                recordId={registro.id}
+                patient={registro.patient}
+                onClose={() => setDialogo(null)}
+                onDone={() => {
+                  void registroQuery.refetch();
+                  exito(t('clinica.exito.consentimiento'));
+                }}
+              />
+              <SignRecordDialog
+                open={dialogo === 'firma'}
+                record={registro}
+                onClose={() => setDialogo(null)}
+                onSigned={(detail) => {
+                  aplicarDetalle(detail);
+                  exito(t('clinica.exito.firmada'));
+                }}
+              />
+              <AmendmentDialog
+                open={dialogo === 'adenda'}
+                recordId={registro.id}
+                onClose={() => setDialogo(null)}
+                onDone={() => {
+                  void registroQuery.refetch();
+                  exito(t('clinica.exito.adenda'));
+                }}
+              />
+            </>
+          )}
         </>
       )}
     </div>
@@ -352,6 +418,9 @@ export const ConsultorioPage = () => {
   const { hasPermission } = useAuth();
   const [params, setParams] = useSearchParams();
   const patientId = params.get('paciente');
+  // La ficha del paciente enlaza directo a la pestaña del odontograma.
+  const vistaInicial: PatientTab =
+    params.get('vista') === 'odontograma' ? 'odontograma' : 'historia';
 
   return (
     <div className="space-y-5">
@@ -366,6 +435,9 @@ export const ConsultorioPage = () => {
         <RecordWorkspace
           patientId={patientId}
           puedeEscribir={hasPermission('clinical:write')}
+          puedeVerOdontograma={hasPermission('odontogram:read')}
+          puedeEditarOdontograma={hasPermission('odontogram:write')}
+          initialTab={vistaInicial}
           onExit={() => setParams({})}
         />
       )}

@@ -13,6 +13,8 @@ import { MedicalRecordPrintPage } from './pages/MedicalRecordPrintPage';
 import { ModulePlaceholder } from './pages/ModulePlaceholder';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { NotificationsPage } from './pages/NotificationsPage';
+import { OdontogramHistoryPage } from './pages/OdontogramHistoryPage';
+import { OdontogramPrintPage } from './pages/OdontogramPrintPage';
 import { PatientDetailPage } from './pages/PatientDetailPage';
 import { PatientRegistryPage } from './pages/PatientRegistryPage';
 import { PatientsPage } from './pages/PatientsPage';
@@ -78,6 +80,20 @@ export const App = () => {
           <RequireAuth>
             <RequirePermission permission="clinical:read">
               <MedicalRecordPrintPage />
+            </RequirePermission>
+          </RequireAuth>
+        }
+      />
+
+      {/* Fase 6B: la impresión del odontograma también sale del shell y la
+          comparte la secretaría (`odontogram:read`, decisión 23: imprimir es
+          leer; `odontogram:write` sigue siendo del odontólogo y del admin). */}
+      <Route
+        path="/consultorio/:patientId/odontograma/imprimir"
+        element={
+          <RequireAuth>
+            <RequirePermission permission="odontogram:read">
+              <OdontogramPrintPage />
             </RequirePermission>
           </RequireAuth>
         }
@@ -186,6 +202,17 @@ export const App = () => {
           element={
             <RequirePermission permission="clinical:read">
               <ConsultorioPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* Fase 6B: evolución del odontograma del paciente (histórico
+            append-only). Se entra con `odontogram:read`. */}
+        <Route
+          path="consultorio/:patientId/odontograma/historial"
+          element={
+            <RequirePermission permission="odontogram:read">
+              <OdontogramHistoryPage />
             </RequirePermission>
           }
         />

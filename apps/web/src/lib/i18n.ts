@@ -1660,6 +1660,188 @@ const DICCIONARIO = {
   'clinica.exito.consentimiento': 'Consentimiento informado registrado.',
   'clinica.exito.firmada': 'Historia clínica firmada.',
   'clinica.exito.adenda': 'Adenda registrada.',
+
+  // ── Fase 6B · odontograma: pestaña, impresión A4 y accesos (Lead) ──────────
+  'odonto.pestana.historia': 'Historia clínica',
+  'odonto.pestana.odontograma': 'Odontograma',
+  'odonto.titulo': 'Odontograma',
+  'odonto.descripcion':
+    'Estado de cada pieza en nomenclatura FDI: la pieza sin hallazgo está sana.',
+  'odonto.imprimir.titulo': 'Impresión del odontograma',
+  'odonto.imprimir.accion': 'Imprimir odontograma',
+  'odonto.imprimir.documento': 'Odontograma',
+  'odonto.imprimir.pie': 'Documento generado por OdontoCRM',
+  'odonto.imprimir.impreso': 'Impreso el {fecha} por {usuario}',
+  'odonto.imprimir.veces': 'Impresiones: {veces}',
+  'odonto.historial.titulo': 'Evolución del odontograma',
+  'odonto.historial.accion': 'Ver evolución',
+  'odonto.hallazgos.titulo': 'Hallazgos registrados',
+  'odonto.hallazgos.pieza': 'Pieza',
+  'odonto.hallazgos.cara': 'Cara',
+  'odonto.hallazgos.condicion': 'Condición',
+  'odonto.hallazgos.estado': 'Estado',
+  'odonto.hallazgos.piezaCompleta': 'Pieza completa',
+  'odonto.hallazgos.notas': 'Notas',
+  /** Celda vacía en el informe: se escribe que se miró, no se deja en blanco. */
+  'odonto.hallazgos.sinNotas': 'Sin observaciones',
+  'odonto.hallazgos.ninguno':
+    'Todavía no hay hallazgos: la boca se lee como sana (captura por excepción).',
+  'odonto.afectadas': 'Piezas afectadas: {total}',
+  'odonto.pendientes': 'Pendientes: {total}',
+  'odonto.completadas': 'Completadas: {total}',
+  'odonto.error.titulo': 'No se pudo cargar el odontograma',
+  'odonto.error.sinPaciente': 'Falta el paciente del odontograma.',
+  'odonto.paciente.desconocido': 'Paciente',
+  'odonto.paciente.sinFicha':
+    'No se pudo leer la ficha del paciente; el odontograma se muestra igual.',
+  'odonto.volver': 'Volver al odontograma',
+  // ── Fase 6B · evolución del odontograma ───────────────────────────────────
+  // El título y el botón de vuelta de la vista histórica (`odonto.historial.*` y
+  // `odonto.volver`) ya están en el bloque del odontograma de arriba.
+  'odontograma.historial.descripcion':
+    'Todo lo que ha cambiado en el odontograma, de lo más reciente a lo más antiguo.',
+  'odontograma.historial.cardTitulo': 'Cambios registrados',
+  'odontograma.historial.cardTexto':
+    'Cada fila es un cambio del histórico: no se edita, se consulta.',
+  'odontograma.historial.cargando': 'Cargando la evolución del odontograma…',
+  'odontograma.historial.total': 'Cambios: {total}',
+  'odontograma.historial.timeline': 'Línea de tiempo de los cambios',
+  'odontograma.historial.vacio': 'Todavía no hay cambios en el odontograma',
+  'odontograma.historial.vacioTexto':
+    'Cuando se registre un hallazgo aparecerá aquí, con la fecha, el cambio y quién lo hizo.',
+  'odontograma.historial.filtroVacio': 'Ningún cambio coincide con los filtros',
+  'odontograma.historial.filtroVacioTexto': 'Prueba con otra pieza o con otro tipo de cambio.',
+  'odontograma.historial.limpiarFiltros': 'Limpiar filtros',
+  'odontograma.historial.filtro.pieza': 'Pieza (FDI)',
+  'odontograma.historial.filtro.piezaAyuda': 'Del 11 al 48 o del 51 al 85.',
+  'odontograma.historial.filtro.piezaEjemplo': '16',
+  'odontograma.historial.filtro.piezaInvalida': 'Número de pieza FDI inválido (11–48 o 51–85)',
+  'odontograma.historial.filtro.evento': 'Tipo de cambio',
+  'odontograma.historial.filtro.todos': 'Todos',
+  'odontograma.historial.piezaFdi': 'Pieza {numero}',
+  'odontograma.historial.piezaCompleta': 'Pieza completa',
+  'odontograma.historial.autorDesconocido': 'Usuario no disponible',
+  'odontograma.historial.motivo': 'Motivo',
+  'odontograma.historial.sesion': 'Sesión {sesion}',
+  'odontograma.historial.pacienteRequerido': 'Falta el paciente en la dirección de la página.',
+  'odontograma.historial.sinPermiso': 'No tienes permiso para consultar el odontograma',
+  'odontograma.historial.sinPermisoTexto':
+    'Pide al administrador el permiso «Consultar el odontograma» para ver la evolución.',
+  'odontograma.historial.sinOdontograma.titulo': 'El paciente todavía no tiene odontograma',
+  'odontograma.historial.sinOdontograma.texto':
+    'Cuando el odontólogo registre el primer hallazgo, aquí aparecerá su evolución.',
+  'odontograma.historial.evento.registrado': 'Registrado',
+  'odontograma.historial.evento.actualizado': 'Actualizado',
+  'odontograma.historial.evento.eliminado': 'Eliminado',
+  'odontograma.historial.evento.superado': 'Superado',
+  // ── Fase 6B · odontograma (gráfico y carga rápida) ─────────────────────────
+  'odonto.soloLectura': 'Solo lectura: necesitas permiso para modificar el odontograma.',
+  'odonto.actualizado': 'Actualizado el {fecha}',
+  'odonto.ultimaImpresion': 'Última impresión: {fecha}',
+  'odonto.denticion.permanente': 'Dentición permanente',
+  'odonto.denticion.temporal': 'Dentición temporal',
+
+  // La boca sin odontograma no es un error: el patrón por excepción la lee sana.
+  'odonto.sana.titulo': 'Boca sana por defecto',
+  'odonto.sana.texto':
+    'Este paciente todavía no tiene ningún hallazgo. En la captura por excepción la pieza sana no se guarda: no se creará nada hasta el primer hallazgo.',
+  'odonto.sana.empezar': 'Empezar a registrar',
+
+  'odonto.leyenda.titulo': 'Leyenda',
+  'odonto.leyenda.pendiente': 'pendiente (rojo)',
+  'odonto.leyenda.completado': 'completado (azul)',
+  'odonto.leyenda.sano': 'Sano (sin hallazgo)',
+  /**
+   * El color no decora: dice en qué punto está el tratamiento. Rojo = hallazgo activo
+   * o tratamiento indicado/pendiente; azul = preexistente o ya realizado.
+   */
+  'odonto.leyenda.rojo': 'Rojo: caries, obturación o tratamiento indicado (por hacer)',
+  'odonto.leyenda.azul': 'Azul: tratamiento ya realizado o completado',
+  /** Un mismo símbolo significa «indicado» o «realizado» según su color. */
+  'odonto.leyenda.tratamiento': '{condicion}: rojo indicado · azul realizado',
+  'odonto.leyenda.caras':
+    'Las caras se leen de fuera hacia dentro: vestibular arriba (abajo en la mandíbula), lingual o palatino enfrente, y proximales a los lados (mesial hacia la línea media). En incisivos y caninos la cara de masticación es el borde incisal. Los tratamientos (corona, implante, endodoncia) y la extracción indicada conviven con las caras; «ausente» las deja sin efecto, salvo con un implante, que puede sostener la pieza.',
+  'odonto.arcada.superior': 'Arcada superior (18–28)',
+  'odonto.arcada.inferior': 'Arcada inferior (48–38)',
+  /**
+   * Orientación de las caras, que es la duda clásica al leer un odontograma: en el
+   * maxilar la cara externa (vestibular) mira hacia arriba y la interna es el
+   * palatino; en la mandíbula se invierte, así que arriba queda el lingual.
+   */
+  'odonto.arcada.superior.orientacion':
+    'Maxilar · vestibular arriba · palatino abajo · mesial hacia la línea media',
+  'odonto.arcada.inferior.orientacion':
+    'Mandíbula · lingual arriba · vestibular abajo · mesial hacia la línea media',
+
+  // Texto accesible de una pieza: «Pieza 16, caries oclusal pendiente».
+  'odonto.pieza.sana': 'Pieza {pieza} sana',
+  'odonto.pieza.hallazgos': 'Pieza {pieza}, {hallazgos}',
+  'odonto.pieza.condicionCara': '{condicion} {cara}',
+  'odonto.pieza.condicionEntera': '{condicion} (pieza completa)',
+  'odonto.pieza.hallazgoEstado': '{detalle} {estado}',
+
+  // Carga rápida por teclado.
+  'odonto.rapida.titulo': 'Carga rápida por teclado',
+  'odonto.rapida.ayuda':
+    'Pulsa una pieza (o escribe su número) y marca el hallazgo con una tecla: la minúscula queda pendiente y la MAYÚSCULA, completado.',
+  'odonto.rapida.placeholder': 'Haz clic aquí o en una pieza y escribe su número (p. ej. 16)',
+  'odonto.rapida.condiciones': 'Condición',
+  'odonto.rapida.caras': 'Caras de la pieza activa',
+  'odonto.rapida.pendiente': 'minúscula = pendiente',
+  'odonto.rapida.completado': 'MAYÚSCULA = completado',
+  'odonto.rapida.sinCaras': 'Sin caras marcadas: caries u obturación se aplican a la oclusal.',
+  'odonto.rapida.piezaSana': 'La pieza {pieza} está sana.',
+  'odonto.rapida.piezaTiene': 'La pieza {pieza} tiene: {detalle}.',
+  'odonto.rapida.suprimir': 'borra la cara u oclusal',
+  'odonto.rapida.soltar': 'suelta la pieza',
+  'odonto.rapida.salir': 'cancela la carga rápida',
+
+  // Deshacer: el panel guarda la pieza entera antes de cada cambio.
+  'odonto.accion.hallazgo': '{detalle} en la pieza {pieza}',
+  'odonto.accion.borrado': 'el borrado de {detalle} en la pieza {pieza}',
+  'odonto.accion.limpieza': 'la limpieza de la cara {cara} de la pieza {pieza}',
+  'odonto.deshacer.accion': 'Deshacer',
+  'odonto.deshacer.ultima': 'Deshacer: {accion}',
+  'odonto.exito.cambiado': 'Cambio aplicado: {accion}.',
+  'odonto.exito.deshacer': 'Se deshizo el último cambio de la pieza {pieza}.',
+
+  'odonto.aviso.sinCambios': 'Sin cambios: la pieza {pieza} ya estaba así.',
+  'odonto.aviso.carasSuperadas.titulo': 'Caras superadas por la pieza completa',
+  'odonto.aviso.carasSuperadas':
+    'Las caras marcadas de la pieza {pieza} se dieron por superadas por «{condicion}»: {caras}.',
+
+  // ── Fase 6B · hoja táctil de la pieza (botones grandes) ────────────────────
+  'odonto.sheet.titulo': 'Pieza {pieza}',
+  'odonto.sheet.cuenta': '{total} hallazgo(s)',
+  'odonto.sheet.actuales': 'Lo que tiene ahora',
+  'odonto.sheet.sana':
+    'Nada registrado: en este odontograma la pieza sana es la que no tiene filas.',
+  'odonto.sheet.quitar': 'Quitar',
+  'odonto.sheet.quitarAria': 'Quitar {detalle} de esta pieza',
+  'odonto.sheet.editar': 'Editar',
+  'odonto.sheet.editarAria': 'Editar el estado y las notas de {detalle}',
+  'odonto.sheet.editado': 'Corregido: {detalle}.',
+  'odonto.sheet.notas': 'Notas del hallazgo',
+  'odonto.sheet.notasPlaceholder': 'Observación clínica (opcional)',
+  'odonto.sheet.guardar': 'Guardar',
+  'odonto.sheet.marcarCompletado': 'Marcar completado',
+  'odonto.sheet.marcarPendiente': 'Marcar pendiente',
+  'odonto.sheet.caras': 'Caras',
+  'odonto.sheet.carasAyuda':
+    'Marca una o varias caras y elige la condición: se guardan todas de una vez. Sin ninguna marcada, la caries o la obturación van a la cara oclusal.',
+  'odonto.sheet.estado': 'Estado',
+  'odonto.sheet.condicion': 'Condición',
+  'odonto.sheet.invalida': 'Esa pieza no admite el cambio.',
+  'odonto.sheet.choca': 'No se puede: la pieza ya tiene «{condicion}» y no convive con «{nueva}».',
+  'odonto.sheet.abrir': 'Marcar con botones',
+  'odonto.activa.ninguna': 'Ninguna pieza elegida: pulsa una en el diagrama.',
+  'odonto.activa.pieza': 'Pieza {pieza} elegida.',
+  'odonto.tactil.ayuda':
+    'Toca una pieza para marcarla con botones grandes. También puedes usar el teclado.',
+  'odonto.tactil.raton':
+    'Pulsa una cara para marcarla, o el número de la pieza para elegirla y teclear.',
+  'odonto.aviso.piezaEntera':
+    '«{condicion}» es un tratamiento de la pieza completa: no supera las caras, que se quedan como estaban.',
 } as const;
 
 export type TranslationKey = keyof typeof DICCIONARIO;

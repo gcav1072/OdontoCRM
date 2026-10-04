@@ -16,6 +16,7 @@ import {
   FileText,
   IdCard,
   ShieldAlert,
+  Smile,
   Stethoscope,
   Trash2,
   UserRound,
@@ -165,6 +166,16 @@ export const PatientDetailPage = () => {
                 leadingIcon={<Stethoscope className="size-4" aria-hidden="true" />}
               >
                 {t('pacientes.ficha.verHistoria')}
+              </LinkButton>
+            )}
+            {/* El odontograma del paciente, directo a su pestaña (Fase 6B). */}
+            {hasPermission('odontogram:read') && (
+              <LinkButton
+                to={`/consultorio?paciente=${paciente.id}&vista=odontograma`}
+                variant="secondary"
+                leadingIcon={<Smile className="size-4" aria-hidden="true" />}
+              >
+                {t('odonto.titulo')}
               </LinkButton>
             )}
             {hasPermission('patients:write') && (

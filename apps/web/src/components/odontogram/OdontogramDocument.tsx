@@ -1,0 +1,203 @@
+import {
+  CLINICAL_STATE_COLORS,
+  CLINICAL_STATE_LABELS,
+  CONDITION_LABELS,
+  surfaceLabelFor,
+  supersedesSurfaces,
+} from '@odontocrm/contracts';
+import type { OdontogramDetail, ToothFindingRecord } from '@odontocrm/contracts';
+
+import { formatDate, formatDateTime } from '../../lib/format';
+import { t } from '../../lib/i18n';
+import { OdontogramStaticChart } from '../odontogram/OdontogramStaticChart';
+
+/**
+ * Documento imprimible del odontograma (A4).
+ *
+ * La secretaría **imprime el odontograma** (decisión 23), así que el documento se
+ * lee sin ninguna interacción y sin depender de permisos de escritura: solo pinta
+ * el estado de la boca y deja el pie con la constancia de impresión.
+ */
+
+/** Todos los hallazgos vigentes, ordenados por pieza y cara. */
+const orderedFindings = (detail: OdontogramDetail): ToothFindingRecord[] =>
+  Object.values(detail.findings)
+    .flat()
+    .sort((a, b) => {
+      if (a.toothNumber !== b.toothNumber) return a.toothNumber - b.toothNumber;
+      const caraA = a.surface ?? '';
+      const caraB = b.surface ?? '';
+      return caraA.localeCompare(caraB);
+    });
+
+/** Piezas distintas con al menos un hallazgo (lo que no está aquí está sano). */
+const affectedTeeth = (detail: OdontogramDetail): number[] =>
+  [
+    ...new Set(
+      Object.values(detail.findings)
+        .flat()
+        .map((finding) => finding.toothNumber),
+    ),
+  ].sort((a, b) => a - b);
+
+const FindingsTable = ({ detail }: { detail: OdontogramDetail }) => {
+  const hallazgos = orderedFindings(detail);
+  if (hallazgos.length === 0) {
+    return <p className="text-sm text-ink-muted">{t('odonto.hallazgos.ninguno')}</p>;
+  }
+
+  return (
+    <table className="w-full border-collapse text-sm">
+      <thead>
+        <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-ink-subtle">
+          <th className="py-1.5 pr-3">{t('odonto.hallazgos.pieza')}</th>
+          <th className="py-1.5 pr-3">{t('odonto.hallazgos.cara')}</th>
+          <th className="py-1.5 pr-3">{t('odonto.hallazgos.condicion')}</th>
+          <th className="py-1.5 pr-3">{t('odonto.hallazgos.estado')}</th>
+          <th className="py-1.5">{t('odonto.hallazgos.notas')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {hallazgos.map((hallazgo) => (
+          <tr key={hallazgo.id} className="border-b border-border/60 align-top">
+            <td className="py-1.5 pr-3 font-medium text-ink">{hallazgo.toothNumber}</td>
+            <td className="py-1.5 pr-3 text-ink-muted">
+              {hallazgo.surface === null
+                ? t('odonto.hallazgos.piezaCompleta')
+                : surfaceLabelFor(hallazgo.toothNumber, hallazgo.surface)}
+            </td>
+            <td className="py-1.5 pr-3 text-ink-muted">{CONDITION_LABELS[hallazgo.condition]}</td>
+            <td className="py-1.5 pr-3">
+              <span
+                className="inline-flex items-center gap-1.5"
+                style={{
+                  color:
+                    hallazgo.state === 'pendiente'
+                      ? CLINICAL_STATE_COLORS.pendiente
+                      : CLINICAL_STATE_COLORS.completado,
+                }}
+              >
+                <span
+                  className="inline-block size-2.5 rounded-full"
+                  style={{
+                    backgroundColor:
+                      hallazgo.state === 'pendiente'
+                        ? CLINICAL_STATE_COLORS.pendiente
+                        : CLINICAL_STATE_COLORS.completado,
+                  }}
+                  aria-hidden
+                />
+                {CLINICAL_STATE_LABELS[hallazgo.state]}
+              </span>
+            </td>
+            {/*
+              Una celda vacía se lee como un olvido de captura —y en un informe que
+              puede acabar en manos de una aseguradora, como una omisión—: se escribe
+              «Sin observaciones» para que se vea que **se miró** y no había nada.
+            */}
+            <td className="py-1.5 text-ink-subtle">
+              {hallazgo.notes === null || hallazgo.notes.trim() === ''
+                ? t('odonto.hallazgos.sinNotas')
+                : hallazgo.notes}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+};
+
+export interface OdontogramDocumentProps {
+  detail: OdontogramDetail;
+  /** Membrete: genérico hasta que el configurable llegue en la Fase 7. */
+  clinicName?: string;
+}
+
+export const OdontogramDocument = ({
+  detail,
+  clinicName = t('app.nombre'),
+}: OdontogramDocumentProps) => {
+  const piezas = affectedTeeth(detail);
+  const pendientes = Object.values(detail.findings)
+    .flat()
+    .filter((hallazgo) => hallazgo.state === 'pendiente').length;
+  const completadas = Object.values(detail.findings)
+    .flat()
+    .filter((hallazgo) => hallazgo.state === 'completado').length;
+  const paciente = detail.patient;
+
+  return (
+    <article className="mx-auto max-w-[21cm] bg-white px-8 py-6 text-ink print:px-0 print:py-0">
+      <header className="border-b-2 border-ink pb-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h1 className="text-lg font-semibold">{clinicName}</h1>
+          <p className="text-sm font-medium uppercase tracking-wide">
+            {t('odonto.imprimir.documento')}
+          </p>
+        </div>
+        <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
+          <div>
+            <dt className="text-xs uppercase tracking-wide text-ink-subtle">Paciente</dt>
+            <dd className="font-medium">
+              {paciente?.fullName ?? t('odonto.paciente.desconocido')}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase tracking-wide text-ink-subtle">Documento</dt>
+            <dd>{paciente?.document ?? t('comun.sinDato')}</dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase tracking-wide text-ink-subtle">Edad</dt>
+            <dd>{paciente === null ? t('comun.sinDato') : `${String(paciente.age)} años`}</dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase tracking-wide text-ink-subtle">
+              {detail.dentition === 'temporal' ? 'Dentición temporal' : 'Dentición permanente'}
+            </dt>
+            <dd>{formatDate(detail.updatedAt)}</dd>
+          </div>
+        </dl>
+      </header>
+
+      <section className="mt-5">
+        <OdontogramStaticChart detail={detail} dentition={detail.dentition} />
+      </section>
+
+      <section className="mt-5">
+        <h2 className="text-sm font-semibold uppercase tracking-wide">
+          {t('odonto.hallazgos.titulo')}
+        </h2>
+        <p className="mt-1 text-xs text-ink-muted">
+          {t('odonto.afectadas', { total: piezas.length })} ·{' '}
+          {t('odonto.pendientes', { total: pendientes })} ·{' '}
+          {t('odonto.completadas', { total: completadas })}
+        </p>
+        <div className="mt-3">
+          <FindingsTable detail={detail} />
+        </div>
+      </section>
+
+      <footer className="mt-8 border-t border-border pt-2 text-xs text-ink-subtle">
+        <p>
+          {t('odonto.imprimir.pie')} ·{' '}
+          {t('odonto.imprimir.impreso', {
+            fecha: formatDateTime(detail.lastPrintedAt ?? detail.updatedAt),
+            usuario: detail.recordedByUsername ?? t('comun.sinDato'),
+          })}
+          {detail.printCount > 0
+            ? ` · ${t('odonto.imprimir.veces', { veces: detail.printCount })}`
+            : ''}
+        </p>
+        {/* Qué manda sobre qué, en el papel: solo `ausente` deja sin efecto las
+            caras; los tratamientos conviven con ellas (ADR 0032). */}
+        {Object.values(detail.findings)
+          .flat()
+          .some((hallazgo) => supersedesSurfaces(hallazgo.condition)) && (
+          <p className="mt-1">
+            En las piezas marcadas como ausentes, las caras que hubiera quedan sin efecto.
+          </p>
+        )}
+      </footer>
+    </article>
+  );
+};
