@@ -4,6 +4,43 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 6, sesión A] — Historia clínica · 2026-10-04
+
+### Añadido
+
+- **`packages/contracts`**: contrato de la historia clínica — las **11 secciones** de
+  [`docs/formato_historia.md`](docs/formato_historia.md) con su esquema propio, **catálogos
+  tipificados con «otros» inputable** (alergias, patológicos, medicamentos, cirugías, familiares,
+  hábitos, antecedentes odontológicos y estudios), estados `borrador → firmada`, firma, adendas con
+  motivo y consentimiento informado; más las reglas compartidas (contenido mínimo por sección,
+  secciones obligatorias para firmar y alertas clínicas derivadas de la anamnesis). 15 pruebas
+  nuevas.
+- **`services/clinical`** (nuevo, puerto 4005, base `odonto_clinical`): historia **una por
+  paciente** y **por secciones** (bloques JSON validados), guardado idempotente de secciones con
+  opción de «sin cambios», **consentimiento** con quién acepta y ante quién, **firma** que bloquea
+  la edición (exige secciones obligatorias y consentimiento), **adendas** sobre la historia firmada
+  y **constancia de impresión**; catálogo de eventos `clinical.record.*` con auditoría por outbox
+  (forma genérica, `entityType: medical_record`) y ruta interna de alertas clínicas para el
+  consultorio. 4 pruebas de integración contra PostgreSQL real.
+- **Interfaz** — **`/consultorio`**: aviso obligatorio de **«Primera visita del paciente, se debe
+  llenar su historia clínica»**, selector de paciente, formulario **por pasos con autoguardado** de
+  borrador, **alertas clínicas resaltadas** (la alergia a la penicilina en rojo), firma bloqueada
+  mientras falten secciones o consentimiento, adendas y **vista de impresión A4** en
+  `/consultorio/:id/imprimir` (fuera del shell, con firma de paciente y odontólogo). Desde la ficha
+  del paciente se entra a su historia con un clic.
+- **`npm run db:generate:clinical`**, `services/clinical` en `db:migrate`, `dev`/`start`,
+  `dev:check`, `test:integration` y en la auditoría de conexiones (que ya no lo trata como fase
+  futura).
+
+### Cambiado
+
+- **El rol `secretario` gana `clinical:read` (y `odontogram:read`)**: la secretaría **imprime
+  todo** —récipes, consentimientos, historia y odontograma—, pero la escritura clínica sigue siendo
+  del odontólogo y del admin (decisión 23). Imprimir es leer y cada impresión queda en la auditoría
+  con su actor.
+
+---
+
 ## [Sin publicar] — Correcciones posteriores a la Fase 5 · 2026-10-03
 
 ### Auditoría previa a la Fase 6

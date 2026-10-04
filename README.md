@@ -115,7 +115,7 @@ docs                  Plan maestro, formato de historia clínica y ADRs
 | patients | 4002 | ✅ Fase 2 |
 | scheduling | 4003 | ✅ Fase 3 |
 | notifications | 4004 | ✅ Fase 4 (Telegram) · Fase 4.1 (multicanal + webhook) |
-| clinical | 4005 | Fase 6 |
+| clinical | 4005 | ✅ Fase 6, sesión A (historia clínica) |
 | odontogram | 4006 | Fase 6 |
 | screens | 4007 | ✅ Fase 5 (secretaría y pantallas con SSE) |
 | reporting | 4008 | Fase 9 |
@@ -276,6 +276,45 @@ canjean por un JWT de rol `pantalla`, y se actualizan por **SSE**.
   `attend`, `no-show`); la llamada fuera de orden registra llegada y llamado para que las
   dos transiciones queden en el historial y en la auditoría.
 - `npm run smoke:screens` comprueba todo el camino contra el gateway real (26 comprobaciones).
+
+---
+
+## API de la Fase 6 (historia clínica)
+
+La historia clínica sigue las 11 secciones de
+[`docs/formato_historia.md`](docs/formato_historia.md). Se guarda **por secciones** (bloques
+JSON validados), de modo que se llena como borrador y cada transición queda en la auditoría
+por el outbox (forma genérica, `entityType: medical_record`). Los antecedentes se registran en
+**catálogos tipificados con «otros» inputable**, que es lo que permite segmentar en los
+reportes de la Fase 9.
+
+| Método y ruta | Qué hace | Permiso |
+| :--- | :--- | :--- |
+| `GET /api/v1/clinical/patients/:patientId/record` | Historia del paciente o `exists: false` (primera visita) | `clinical:read` |
+| `POST /api/v1/clinical/patients/:patientId/record` | Abre la historia (idempotente) | `clinical:write` |
+| `GET /api/v1/clinical/records/:id` | Historia completa con secciones, adendas y consentimiento | `clinical:read` |
+| `PUT /api/v1/clinical/records/:id/sections/:sectionKey` | Guarda una sección (solo en borrador) | `clinical:write` |
+| `PUT /api/v1/clinical/records/:id/consent` | Registra la aceptación del consentimiento informado | `clinical:write` |
+| `POST /api/v1/clinical/records/:id/sign` | Firma: bloquea la edición (exige secciones y consentimiento) | `clinical:write` |
+| `POST /api/v1/clinical/records/:id/amendments` | Adenda con motivo sobre una historia firmada | `clinical:write` |
+| `POST /api/v1/clinical/records/:id/printed` | Deja constancia de la impresión (también la secretaría) | `clinical:read` |
+| `GET /internal/v1/clinical/patients/:patientId/alerts` | Alertas clínicas (alergias, crónicos) del paciente | secreto interno |
+
+- **La secretaría imprime todo**: el rol `secretario` lleva `clinical:read` (y `odontogram:read`
+  desde la sesión B), pero **no** `clinical:write` (decisión 23, 2026-10-04). Imprimir es leer,
+  y cada impresión deja su actor en la auditoría.
+- **No se firma sin datos**: el servidor bloquea la firma si faltan las secciones obligatorias
+  (motivo de consulta, anamnesis, exámenes extraoral e intraoral, diagnóstico y plan) o si no
+  hay consentimiento aceptado, y lo explica con la lista de lo que falta.
+- **La historia firmada es inmutable**: cualquier corrección pasa por una adenda con motivo,
+  fechada y firmada por su autor.
+- La interfaz vive en `/consultorio` (aviso obligatorio de **primera visita**, formulario por
+  pasos con autoguardado, alertas clínicas resaltadas y vista de impresión A4 en
+  `/consultorio/:id/imprimir`).
+- **Pendiente de la sesión B**: la pantalla del consultorio ya recibe datos críticos por
+  `POST /internal/v1/screens/room/critical-flags`, pero todavía **nadie los envía**; el servicio
+  clínico ya expone las alertas calculadas en su ruta interna y el envío se conecta al abrir la
+  sesión clínica (Fase 7), que es cuando la cita está en la sala.
 
 ---
 

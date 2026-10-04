@@ -111,7 +111,7 @@ powershell -ExecutionPolicy Bypass -File infra/windows/start-services.ps1
 | `npm run db:bootstrap` | Crea las 8 bases, un rol por servicio con privilegios solo sobre la suya, las extensiones (`pgcrypto`, `pg_trgm`), la cola compartida `odonto_events` y escribe las credenciales en cada `services/<svc>/.env` | `-- --rotate` (contraseñas nuevas), `-- --only <servicio>` |
 | `npm run db:migrate` | Aplica las migraciones de todos los servicios implementados | `-- --only <servicio>` |
 | `npm run db:verify-migrations` | Desde cero: crea una base temporal por servicio, migra con el migrador real, comprueba tablas/índices y la borra | `-- --only <servicio>` |
-| `npm run db:generate:<servicio>` | Genera una migración a partir del esquema Drizzle del servicio | `identity`, `patients`, `scheduling`, `notifications`, `screens` |
+| `npm run db:generate:<servicio>` | Genera una migración a partir del esquema Drizzle del servicio | `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical` |
 | `npm run keys:generate` | Par de claves EdDSA del JWT en `services/identity/.keys/` (ignorado por Git) | `-- --force` regenera (invalida todas las sesiones) |
 
 Los generadores de migración se ejecutan **desde la raíz** (drizzle-kit resuelve las
@@ -174,9 +174,9 @@ Detalles que conviene saber:
 
 | Comando | Arranca |
 | :--- | :--- |
-| `npm run dev` | Todo: `tsc -b --watch` + gateway + identity + patients + scheduling + notifications + screens + web |
+| `npm run dev` | Todo: `tsc -b --watch` + gateway + identity + patients + scheduling + notifications + screens + clinical + web |
 | `npm run dev:web` | **Solo la interfaz** (Vite en `http://127.0.0.1:5173`): es lo que se usa cuando los servicios están en PM2 |
-| `npm run dev:<servicio>` | Un solo servicio en vigilancia: `identity`, `patients`, `scheduling`, `notifications`, `screens`, `gateway`, `web`, `build` |
+| `npm run dev:<servicio>` | Un solo servicio en vigilancia: `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `gateway`, `web`, `build` |
 | `npm run dev:check` | Comprueba que los puertos del desarrollo estén libres y dice quién los ocupa (se ejecuta **solo** antes de `npm run dev`) |
 | `npm run dev:stop` | Para lo que dejó vivo un `npm run dev` anterior (los procesos de PM2 no se tocan: los para `pm2 stop all`) |
 | `npm run check:web` | Abre la interfaz con un navegador sin interfaz y verifica que **monta** y que la consola está limpia |
@@ -194,7 +194,7 @@ Detalles que conviene saber:
 
 | Comando | Arranca |
 | :--- | :--- |
-| `npm run start:<servicio>` | Un servicio desde `dist/` (`identity`, `patients`, `scheduling`, `notifications`, `screens`, `gateway`) |
+| `npm run start:<servicio>` | Un servicio desde `dist/` (`identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `gateway`) |
 | `npm run build:node` | **Hay que compilar antes**: `start:*` ejecuta `dist/`, no el código fuente |
 | `npm run preview -w @odontocrm/web` | Interfaz compilada en `http://127.0.0.1:4173` |
 
@@ -207,6 +207,7 @@ Detalles que conviene saber:
 | patients | 4002 | | PostgreSQL | 5432 |
 | scheduling | 4003 | | | |
 | notifications | 4004 | | | |
+| clinical | 4005 | | | |
 | screens | 4007 | | | |
 
 Todos los servicios escuchan en `127.0.0.1`: se entra **solo** por el gateway.
