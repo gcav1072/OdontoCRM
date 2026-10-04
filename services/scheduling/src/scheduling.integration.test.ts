@@ -498,6 +498,60 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     ]);
   }, 60_000);
 
+  it('«atendido» solo acepta una sesión clínica cerrada y del mismo paciente', async () => {
+    const request = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
+    const appointment = await assignAppointment(
+      schedulingHandle.db,
+      anAssignment(request.id, { date: otherDay, startTime: '10:30' }),
+      admin,
+      { config },
+    );
+    for (const to of ['en_sala_espera', 'llamado', 'en_consulta'] as const) {
+      await transitionAppointment(schedulingHandle.db, appointment.id, to, secretary, { config });
+    }
+
+    const sessionId = globalThis.crypto.randomUUID();
+    const cerrada = {
+      sessionId,
+      patientId: appointment.patientId,
+      appointmentId: appointment.id,
+      status: 'cerrada' as const,
+      closedAt: new Date().toISOString(),
+    };
+    const attend = (options: Partial<Parameters<typeof transitionAppointment>[4]>) =>
+      transitionAppointment(schedulingHandle.db, appointment.id, 'atendido', secretary, {
+        config,
+        clinicalSessionId: sessionId,
+        ...options,
+      });
+
+    // Una sesión de otro paciente no respalda esta cita.
+    await expect(
+      attend({
+        sessionLookup: async () => ({ ...cerrada, patientId: globalThis.crypto.randomUUID() }),
+      }),
+    ).rejects.toMatchObject({ status: 409, code: 'clinical_session_patient_mismatch' });
+
+    // Una sesión todavía en borrador tampoco: primero se cierra.
+    await expect(
+      attend({ sessionLookup: async () => ({ ...cerrada, status: 'borrador' }) }),
+    ).rejects.toMatchObject({ status: 409, code: 'clinical_session_open' });
+
+    // Y un identificador que el servicio clínico no reconoce no vale como llave.
+    await expect(attend({ sessionLookup: async () => null })).rejects.toMatchObject({
+      status: 409,
+      code: 'clinical_session_unverified',
+    });
+
+    // Con la sesión cerrada del paciente, el «atendido» no pide motivo y la deja trazada.
+    const attended = await attend({
+      sessionLookup: async (id) => (id === sessionId ? cerrada : null),
+    });
+    expect(attended.status).toBe('atendido');
+    expect(attended.clinicalSessionId).toBe(sessionId);
+    expect(attended.forceAttendedReason).toBeNull();
+  }, 60_000);
+
   it('cancelar una cita devuelve el ticket a la cola', async () => {
     const request = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
     const appointment = await assignAppointment(
