@@ -581,6 +581,9 @@ const eventosDeClinica = (world: TestWorld): TestWorldEvent[] => {
 
   for (const prescription of world.prescriptions) {
     const session = world.sessions.find((item) => item.id === prescription.sessionId);
+    // El servicio publica el número ya formateado (`RX-000123`): el consumidor lo
+    // espera como texto.
+    const numeroFormateado = `RX-${String(prescription.number).padStart(6, '0')}`;
     events.push(
       evento({
         key: `clinical.prescription.issued:${prescription.id}`,
@@ -593,12 +596,12 @@ const eventosDeClinica = (world: TestWorld): TestWorldEvent[] => {
             entityType: 'prescription',
             entityId: prescription.id,
             action: 'prescription_issued',
-            summary: `Récipe RX-${String(prescription.number).padStart(6, '0')} emitido: ${String(prescription.items.length)} medicamento(s)`,
+            summary: `Récipe ${numeroFormateado} emitido: ${String(prescription.items.length)} medicamento(s)`,
             changedFields: ['status'],
             before: { status: 'borrador' },
             after: {
               status: 'emitida',
-              number: prescription.number,
+              number: numeroFormateado,
               sessionId: prescription.sessionId,
               sessionNumber: session?.sessionNumber ?? 1,
               patientId: prescription.patientId,
@@ -608,7 +611,7 @@ const eventosDeClinica = (world: TestWorld): TestWorldEvent[] => {
           }),
           prescription: {
             id: prescription.id,
-            number: prescription.number,
+            number: numeroFormateado,
             sessionId: prescription.sessionId,
             patientId: prescription.patientId,
             issuedAt: prescription.issuedAt,

@@ -245,6 +245,10 @@ const sembrarAgenda = async (client) => {
     ['request', ids.solicitudes],
   );
 
+  // Una solicitud puede tener dos citas (la reprogramada y la nueva): su historial
+  // se escribe una sola vez, con la primera programación.
+  const solicitudesHistoriadas = new Set();
+
   for (const appointment of world.appointments) {
     await client.query(
       `insert into appointments (
@@ -373,16 +377,19 @@ const sembrarAgenda = async (client) => {
       );
     }
 
-    await client.query(
-      `insert into status_history (id, entity_type, entity_id, from_status, to_status, reason, actor_id, actor_username, occurred_at)
-       values ($1,'request',$2,null,'programada',$3,null,'seed-test',$4)`,
-      [
-        deterministicUuid('status_history', `${appointment.requestId}:programada`),
-        appointment.requestId,
-        'MODO TEST: cita programada por el seed',
-        appointment.scheduledAt,
-      ],
-    );
+    if (!solicitudesHistoriadas.has(appointment.requestId)) {
+      solicitudesHistoriadas.add(appointment.requestId);
+      await client.query(
+        `insert into status_history (id, entity_type, entity_id, from_status, to_status, reason, actor_id, actor_username, occurred_at)
+         values ($1,'request',$2,null,'programada',$3,null,'seed-test',$4)`,
+        [
+          deterministicUuid('status_history', `${appointment.requestId}:programada`),
+          appointment.requestId,
+          'MODO TEST: cita programada por el seed',
+          appointment.scheduledAt,
+        ],
+      );
+    }
   }
 
   await ajustarSecuencia(client, 'ticket_seq', 'appointment_requests', 'ticket_number');
@@ -550,7 +557,8 @@ const sembrarOdontograma = async (client) => {
 
     await client.query(
       `insert into tooth_finding_history (id, odontogram_id, finding_id, patient_id, tooth_number, surface, condition, state, event, reason, notes, actor_id, actor_username, session_id, occurred_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,'registrado','MODO TEST: hallazgo ficticio',null,null,'seed-test',$9,$10)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,'registrado','MODO TEST: hallazgo ficticio',null,null,'seed-test',$9,$10)
+       on conflict (id) do nothing`,
       [
         deterministicUuid('finding_history', finding.id),
         finding.odontogramId,
@@ -716,8 +724,10 @@ const borrarAuditoria = async (client) => {
   const porActor = await client.query(
     "delete from audit_events where actor_username = 'seed-test'",
   );
+  // `audit_events.entity_id` es texto (la auditoría guarda entidades de varios
+  // servicios): se compara como texto.
   const porEntidad = await client.query(
-    'delete from audit_events where entity_id = any($1::uuid[])',
+    'delete from audit_events where entity_id = any($1::text[])',
     [ids.entidades],
   );
   await client.query('delete from processed_events where event_id = any($1::uuid[])', [
@@ -853,15 +863,16 @@ const borrar = async () => {
   ];
 
   for (const [servicio, tarea] of orden) {
-    const client = conectar(servicio);
-    await client.connect();
+    let client;
     try {
+      client = conectar(servicio);
+      await client.connect();
       resultado[servicio] = await tarea(client);
     } catch (fallo) {
       aviso(`${servicio}: ${fallo instanceof Error ? fallo.message : String(fallo)}`);
       resultado[servicio] = 0;
     } finally {
-      await client.end();
+      if (client !== undefined) await client.end();
     }
   }
 

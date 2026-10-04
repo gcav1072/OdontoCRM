@@ -409,6 +409,17 @@ describe('eventos', () => {
     );
   });
 
+  it('el número del récipe viaja formateado, como lo publica el servicio', () => {
+    const receta = events.find((event) => event.topic === 'clinical.prescription.issued');
+    const bloque = receta?.payload['prescription'] as { number?: unknown } | undefined;
+
+    // El consumidor de reportes espera `RX-000123` (texto), no el entero: con el
+    // número crudo el evento se descarta como carga inválida y el reporte de
+    // recetas queda en cero. Pasó en la primera corrida real del seed.
+    expect(typeof bloque?.number).toBe('string');
+    expect(String(bloque?.number)).toMatch(/^RX-\d{6}$/);
+  });
+
   it('cada hallazgo y cada visita tienen su evento', () => {
     const world = mundo();
     const eventos = buildTestWorldEvents(world);

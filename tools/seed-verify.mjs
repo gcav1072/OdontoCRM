@@ -110,7 +110,7 @@ const verificarPacientes = async () => {
 
   comparar(
     'patients.patients',
-    huellas.patients,
+    fingerprint(esperado),
     fingerprint(filas),
     `${String(filas.length)} de ${String(esperado.length)} filas`,
   );
@@ -160,7 +160,7 @@ const verificarAgenda = async () => {
 
   const citas = await consultar(
     'scheduling',
-    `select id, request_id as "requestId", patient_id as "patientId", appointment_date as "date",
+    `select id, request_id as "requestId", patient_id as "patientId", to_char(appointment_date, 'YYYY-MM-DD') as "date",
             to_char(start_time, 'HH24:MI') as "startTime", to_char(end_time, 'HH24:MI') as "endTime",
             status, call_count as "callCount",
             to_char(checked_in_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "checkedInAt",
@@ -359,21 +359,19 @@ const verificarOdontograma = async () => {
     `select id, odontogram_id as "odontogramId", patient_id as "patientId", tooth_number as "toothNumber",
             surface, condition, state, recorded_in_session_id as "sessionId", resolved_at as "resolvedAt",
             to_char(recorded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "recordedAt"
-       from tooth_findings where patient_id = any($1::uuid[]) order by patient_id, tooth_number, condition, surface`,
+       from tooth_findings where patient_id = any($1::uuid[]) order by patient_id, tooth_number, condition, surface nulls last`,
     [ids.pacientes],
   );
   const esperado = [...world.findings]
-    .sort((left, right) =>
-      left.patientId === right.patientId
-        ? left.toothNumber === right.toothNumber
-          ? left.condition < right.condition
-            ? -1
-            : 1
-          : left.toothNumber - right.toothNumber
-        : left.patientId < right.patientId
-          ? -1
-          : 1,
-    )
+    .sort((left, right) => {
+      if (left.patientId !== right.patientId) return left.patientId < right.patientId ? -1 : 1;
+      if (left.toothNumber !== right.toothNumber) return left.toothNumber - right.toothNumber;
+      if (left.condition !== right.condition) return left.condition < right.condition ? -1 : 1;
+      // En Postgres los NULL van al final (`surface nulls last`).
+      const cara = left.surface ?? '\uffff';
+      const otra = right.surface ?? '\uffff';
+      return cara < otra ? -1 : cara > otra ? 1 : 0;
+    })
     .map((finding) => ({
       id: finding.id,
       odontogramId: finding.odontogramId,
