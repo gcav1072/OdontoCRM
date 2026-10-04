@@ -43,6 +43,13 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     'scheduling:notify',
     'screens:display',
     'reports:read',
+    /**
+     * La secretaría **imprime todo** (récipes, consentimientos, historia clínica
+     * y odontograma), así que tiene lectura clínica; la escritura sigue siendo del
+     * odontólogo y del admin (decisión 23, 2026-10-04).
+     */
+    'clinical:read',
+    'odontogram:read',
   ],
   /**
    * El odontólogo registra y edita pacientes (decisión del 2026-10-03): en un
