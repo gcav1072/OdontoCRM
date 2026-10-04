@@ -1,5 +1,5 @@
 import type { DeviceTokenCreated, ScreenDevice } from '@odontocrm/contracts';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Alert,
   Badge,
@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from '@odontocrm/ui';
-import { Ban, HelpCircle, Plus, Settings2, Tv } from 'lucide-react';
+import { Ban, HelpCircle, Link2, Plus, Settings2, Tv } from 'lucide-react';
 import { useState } from 'react';
 
 import { NoticeBanner } from '../components/NoticeBanner';
@@ -27,7 +27,7 @@ import { ScreenSettingsDialog } from '../components/screens/ScreenSettingsDialog
 import { ScreenTokenDialog } from '../components/screens/ScreenTokenDialog';
 import { useNotice } from '../hooks/useNotice';
 import { apiErrorMessage } from '../lib/api';
-import { screensApi } from '../lib/endpoints';
+import { devicesApi, screensApi } from '../lib/endpoints';
 import { formatDateTime, formatRelative } from '../lib/format';
 import { t } from '../lib/i18n';
 import { kioskUrl, screenKeys } from '../lib/screens';
@@ -46,9 +46,9 @@ type DialogoState =
  *
  * Se registra cada pantalla (nombre y tipo), se ajusta su voz y su tiempo de
  * resalte, se desactiva cuando se retira y se ve cuáles están conectadas ahora
- * mismo. El **token de dispositivo se muestra una sola vez**, al registrar la
- * pantalla: el servidor solo guarda su hash, así que si se pierde hay que
- * registrar la pantalla de nuevo (el diálogo lo avisa).
+ * mismo. El **token de dispositivo se muestra una sola vez** (en el servidor queda
+ * su hash), así que si se pierde el enlace se **reemite** desde la fila: se emite
+ * uno nuevo y el anterior deja de valer.
  */
 export const ScreensPage = () => {
   const { notice, mostrar, exito, limpiar } = useNotice();
@@ -76,6 +76,48 @@ export const ScreensPage = () => {
     void conectadasQuery.refetch();
     exito(`${nombre}: ${mensaje}`);
   };
+
+  /**
+   * **Reemitir el enlace** de una pantalla que ya existe.
+   *
+   * Del token de dispositivo el servidor guarda solo su hash, así que el enlace no
+   * se puede volver a mostrar: se emite uno **nuevo** y la pantalla pasa a reconocer
+   * ese (el viejo deja de valer). Son los mismos dos pasos que el alta —identity
+   * emite, screens apunta— con la limpieza en los dos sentidos:
+   *
+   *  - si el paso 2 falla, se revoca el token nuevo (si no, quedaría huérfano);
+   *  - si todo va bien, se revoca el viejo, que ya no sirve para nada.
+   */
+  const reemitir = useMutation({
+    mutationFn: async (
+      pantalla: ScreenDevice,
+    ): Promise<{ label: string; token: DeviceTokenCreated }> => {
+      const token = await devicesApi.create({ label: pantalla.label, kind: pantalla.kind });
+      try {
+        await screensApi.updateDevice(pantalla.id, { tokenId: token.id });
+      } catch (fallo) {
+        await devicesApi.revoke(token.id).catch(() => undefined);
+        throw fallo;
+      }
+
+      if (pantalla.tokenId !== null) {
+        await devicesApi.revoke(pantalla.tokenId).catch(() => undefined);
+      }
+      return { label: pantalla.label, token };
+    },
+    onSuccess: ({ label, token }) => {
+      void pantallasQuery.refetch();
+      void conectadasQuery.refetch();
+      mostrar({
+        variant: 'success',
+        message: t('pantallas.enlace.hecho', { pantalla: label }),
+      });
+      setDialogo({ tipo: 'token', label, token });
+    },
+    onError: (fallo) => {
+      mostrar({ variant: 'danger', message: apiErrorMessage(fallo) });
+    },
+  });
 
   return (
     <div className="space-y-5">
@@ -188,6 +230,23 @@ export const ScreensPage = () => {
                           onClick={() => setDialogo({ tipo: 'ajustes', pantalla })}
                           leadingIcon={<Settings2 className="size-4" aria-hidden="true" />}
                         />
+                        {/* Reemitir el enlace: del token solo se guarda el hash, así
+                            que la única forma de volver a configurar el equipo (o
+                            configurar otro) es emitir uno nuevo. No se ofrece en una
+                            pantalla desactivada: esa se retiró y su token está
+                            revocado (hay que registrarla de nuevo). */}
+                        {pantalla.isActive && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title={t('pantallas.enlace.accion', { pantalla: pantalla.label })}
+                            aria-label={t('pantallas.enlace.accion', { pantalla: pantalla.label })}
+                            loading={reemitir.isPending && reemitir.variables?.id === pantalla.id}
+                            disabled={reemitir.isPending}
+                            onClick={() => reemitir.mutate(pantalla)}
+                            leadingIcon={<Link2 className="size-4" aria-hidden="true" />}
+                          />
+                        )}
                         {/* Una pantalla ya desactivada no se vuelve a activar
                             desde aquí: su token está revocado y hay que
                             registrarla de nuevo (lo dice `pantallas.ayuda`). */}

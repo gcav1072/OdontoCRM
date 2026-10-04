@@ -1400,11 +1400,14 @@ const DICCIONARIO = {
   'pantallas.desactivar.confirmar': 'Desactivar',
   'pantallas.desactivada': 'Pantalla desactivada.',
   'pantallas.creada': 'Pantalla «{pantalla}» registrada.',
+  'pantallas.enlace.accion': 'Reemitir el enlace de {pantalla}',
+  'pantallas.enlace.hecho':
+    'Enlace nuevo de «{pantalla}»: el anterior deja de funcionar. Cópialo y ábrelo en el equipo del televisor.',
   'pantallas.errorCrear': 'No se pudo registrar la pantalla.',
   'pantallas.errorAccion': 'No se pudo completar la acción.',
   'pantallas.ayuda.titulo': 'Cómo se pone en marcha una pantalla',
   'pantallas.ayuda.texto':
-    'Registra la pantalla aquí, abre el enlace en el equipo del televisor (una sola vez), ponlo a pantalla completa y listo: se reconecta solo si se reinicia.',
+    'Registra la pantalla aquí, abre el enlace en el equipo del televisor (una sola vez), ponlo a pantalla completa y listo: se reconecta solo si se reinicia. ¿Perdiste el enlace o quieres configurar otro equipo? Pulsa el botón del enlace en la fila: emite uno nuevo y el anterior deja de servir.',
   'pantallas.riesgo.alto': 'Riesgo alto',
   'pantallas.riesgo.medio': 'Atención',
   'pantallas.riesgo.info': 'Nota',

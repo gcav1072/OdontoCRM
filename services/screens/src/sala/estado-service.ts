@@ -89,6 +89,13 @@ export const updateDevice = async (
     .set({
       ...(input.label === undefined ? {} : { label: input.label }),
       ...(input.isActive === undefined ? {} : { isActive: input.isActive }),
+      /**
+       * Reemitir el enlace: la pantalla pasa a reconocer **otro** token de
+       * dispositivo (el que acaba de emitir identity). El anterior deja de
+       * resolver aquí, así que el enlace viejo muere en el acto; la sesión que ya
+       * tuviera abierta caduca sola con su JWT de 15 minutos.
+       */
+      ...(input.tokenId === undefined ? {} : { tokenId: input.tokenId }),
       settings: { ...settings },
       updatedAt: new Date(),
     })

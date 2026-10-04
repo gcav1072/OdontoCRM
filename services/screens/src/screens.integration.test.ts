@@ -541,6 +541,80 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
     }
   }, 40_000);
 
+  it('reemitir el enlace apunta la pantalla al token nuevo y el viejo deja de ver la sala', async () => {
+    const tokenViejo = globalThis.crypto.randomUUID();
+    const filas = await handle.db
+      .insert(screenDevices)
+      .values({ label: `Lobby enlace ${MARK}`, kind: 'lobby', tokenId: tokenViejo })
+      .returning({ id: screenDevices.id });
+    const pantallaId = filas[0]?.id;
+    expect(pantallaId).toBeDefined();
+
+    const server = await createScreensServer({ config, database: handle, services });
+    const baseUrl = await server.listen({ port: 0, host: '127.0.0.1' });
+
+    const comoPantalla = (id: string) => ({
+      'x-user-id': id,
+      'x-user-username': 'Pantalla',
+      'x-user-roles': 'pantalla',
+      'x-user-permissions': 'screens:display',
+      'x-user-must-change-password': 'false',
+      'x-session-id': globalThis.crypto.randomUUID(),
+    });
+
+    /** Quien administra las pantallas (`screens:manage`). */
+    const comoAdmin = {
+      'x-user-id': globalThis.crypto.randomUUID(),
+      'x-user-username': 'admin',
+      'x-user-roles': 'admin',
+      'x-user-permissions': 'screens:manage',
+      'x-user-must-change-password': 'false',
+      'x-session-id': globalThis.crypto.randomUUID(),
+      'content-type': 'application/json',
+    };
+
+    try {
+      // Con el token viejo la pantalla ve la sala.
+      const antes = await fetch(`${baseUrl}/api/v1/screens/lobby`, {
+        headers: comoPantalla(tokenViejo),
+      });
+      expect(antes.status).toBe(200);
+
+      // Reemitir: la pantalla pasa a reconocer otro token de dispositivo.
+      const tokenNuevo = globalThis.crypto.randomUUID();
+      const patch = await fetch(`${baseUrl}/api/v1/screens/devices/${pantallaId ?? ''}`, {
+        method: 'PATCH',
+        headers: comoAdmin,
+        body: JSON.stringify({ tokenId: tokenNuevo }),
+      });
+      expect(patch.status).toBe(200);
+      const actualizada = (await patch.json()) as { tokenId: string };
+      expect(actualizada.tokenId).toBe(tokenNuevo);
+
+      // El enlace viejo muere en el acto…
+      const conViejo = await fetch(`${baseUrl}/api/v1/screens/lobby`, {
+        headers: comoPantalla(tokenViejo),
+      });
+      expect(conViejo.status).toBe(403);
+
+      // …y el nuevo funciona sin tocar nada más.
+      const conNuevo = await fetch(`${baseUrl}/api/v1/screens/lobby`, {
+        headers: comoPantalla(tokenNuevo),
+      });
+      expect(conNuevo.status).toBe(200);
+
+      // Sin permiso de administración no se puede reemitir.
+      const sinPermiso = await fetch(`${baseUrl}/api/v1/screens/devices/${pantallaId ?? ''}`, {
+        method: 'PATCH',
+        headers: { ...comoPantalla(tokenNuevo), 'content-type': 'application/json' },
+        body: JSON.stringify({ tokenId: globalThis.crypto.randomUUID() }),
+      });
+      expect(sinPermiso.status).toBe(403);
+    } finally {
+      await server.close();
+    }
+  }, 40_000);
+
   it('los llamados caducan: un llamado viejo sale del lobby', async () => {
     const appointmentId = globalThis.crypto.randomUUID();
     await aplicar(appointmentEvent({ topic: EVENT_TOPICS.appointmentCheckedIn, appointmentId }));

@@ -52,6 +52,13 @@ export const screenDeviceUpdateSchema = z.object({
   label: z.string().trim().min(3).max(60).optional(),
   settings: screenSettingsSchema.partial().optional(),
   isActive: z.boolean().optional(),
+  /**
+   * **Reemitir el enlace**: apunta la pantalla a un token de dispositivo nuevo
+   * (`POST /api/v1/devices`) y deja de reconocer el anterior. Es la única forma de
+   * volver a dar el enlace, porque del token solo se guarda el hash: quien lo perdió
+   * (o quiere configurar otro equipo) pide uno nuevo desde la interfaz.
+   */
+  tokenId: z.uuid().optional(),
 });
 
 export type ScreenDeviceUpdate = z.infer<typeof screenDeviceUpdateSchema>;

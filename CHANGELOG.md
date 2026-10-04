@@ -4,6 +4,24 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Pantallas] — Reemitir el enlace de una pantalla · 2026-10-04
+
+### Añadido
+
+- **Botón «reemitir el enlace» en `/pantallas`**: del token de dispositivo el servidor guarda solo su
+  hash, así que el enlace **no se puede volver a mostrar** —el diálogo lo avisa y hasta ahora la única
+  salida era registrar la pantalla otra vez—. Ahora, en la fila de cada pantalla activa hay un botón
+  que emite un token nuevo en identity, apunta la pantalla a ese token y **revoca el anterior**: el
+  enlace viejo muere en el acto y el nuevo se enseña una vez, con los botones **Copiar enlace** y
+  **Abrir la pantalla** de siempre. La sesión que ya estuviera abierta en el televisor caduca sola con
+  su JWT de 15 minutos.
+  - El `PATCH /api/v1/screens/devices/:id` acepta `tokenId` (`screens:manage`); es el único cambio de
+    contrato. Si el segundo paso falla, se revoca el token recién emitido para no dejar uno huérfano
+    (mismo patrón que el alta).
+  - Casos de uso: se perdió el enlace, o hay que configurar un segundo equipo con la misma pantalla.
+- Prueba de integración: tras reemitir, el token viejo recibe **403** al pedir la sala, el nuevo
+  responde **200**, y sin `screens:manage` no se puede reemitir.
+
 ## [Corrección] — El bot no se queda callado y `db:reset` queda blindado · 2026-10-04
 
 ### Añadido

@@ -294,7 +294,7 @@ canjean por un JWT de rol `pantalla`, y se actualizan por **SSE**.
 | Método y ruta | Qué hace | Permiso |
 | :--- | :--- | :--- |
 | `POST /api/v1/auth/device` | Canjea el token de la pantalla por un JWT (15 min, rol `pantalla`) | **público** |
-| `GET /api/v1/screens/devices` · `POST` · `PATCH /:id` · `DELETE /:id` | Registrar pantallas, ajustar su voz y volumen, y desactivarlas | `screens:manage` |
+| `GET /api/v1/screens/devices` · `POST` · `PATCH /:id` · `DELETE /:id` | Registrar pantallas, ajustar su voz y volumen, desactivarlas y **reemitir su enlace** (el `PATCH` con `tokenId`) | `screens:manage` |
 | `GET /api/v1/screens/conectadas` | Cuántas pantallas están conectadas en vivo | `screens:manage` |
 | `GET /api/v1/screens/device` | Ficha de **esta** pantalla, con sus ajustes | `screens:display` |
 | `GET /api/v1/screens/lobby` · `GET /api/v1/screens/consultorio` | Estado de la sala y del consultorio | `screens:display` |
@@ -308,6 +308,11 @@ canjean por un JWT de rol `pantalla`, y se actualizan por **SSE**.
   (~0,8 s peor caso), y **nada de eso crece con el volumen de datos** (todas las consultas del
   camino van por índice).
 - **Una pantalla desactivada deja de ver la sala**, aunque su token siga vigente.
+- **El enlace de una pantalla se puede reemitir** desde `/pantallas` (el botón del enlace, en la fila):
+  del token de dispositivo el servidor guarda solo su hash, así que volver a mostrar el mismo es
+  imposible —se emite uno nuevo, la pantalla pasa a reconocerlo y **el enlace anterior muere en el
+  acto**—. Sirve para cuando se pierde el enlace o para configurar un segundo equipo. La sesión que ya
+  estuviera abierta en el televisor caduca sola con su JWT de 15 minutos.
 - La **secretaría** usa las rutas de agenda ya existentes (`check-in`, `call`, `start`,
   `attend`, `no-show`); la llamada fuera de orden registra llegada y llamado para que las
   dos transiciones queden en el historial y en la auditoría.
