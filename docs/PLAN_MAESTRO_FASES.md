@@ -42,7 +42,7 @@ Todas fueron confirmadas contigo en la sesión de planificación del 2026-10-02.
 | 7 | Identificación | **V, E y P** + **menores sin cédula** con marcador temporal `SC-<código>`. Normalización a `V-12345678`; único por `(tipo, número)`. |
 | 8 | Telegram | **Un único bot para siempre** (BotFather), **long polling** (funciona 100 % en LAN, sin exponer nada a internet), asistente paso a paso, **vinculación por deep link** `t.me/<bot>?start=<ticket>` y estado `notificación manual pendiente` si el paciente no tiene Telegram. |
 | 9 | Programación | **Cupo diario editable** + **plantilla de franjas horarias** (duración, pausas) + **edición manual de la hora** por paciente. |
-| 10 | Confirmaciones | Asignar deja la cita en `PROGRAMADA`/`pendiente de notificar`; botón **«Notificar»** envía **en lote con vista previa** y permite **reenviar individual**. |
+| 10 | Confirmaciones | Asignar deja la cita en `PROGRAMADA` y el aviso sale **solo** al formalizarla; el botón **«Notificar»** de la jornada **asegura** el aviso del lote (no repite el que ya salió, recupera el que quedó pendiente o fallido) y la casilla «reenviar también los ya notificados» **sí** vuelve a enviar. |
 | 11 | Ticket | `#000123` con **secuencia global de PostgreSQL**; al superar 999999 salta a `A-000001` (y luego `B-…`). |
 | 12 | Estados | Máquina de estados de §5 **aprobada**. |
 | 13 | Frontend | **Vite + React + TS + Tailwind + shadcn/ui + TanStack Query/Table + React Hook Form + Zod**. |
@@ -889,6 +889,14 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    preflight de puertos (`npm run dev:check`, automático antes de `dev`), parada de restos
    (`npm run dev:stop`), comprobación de que la SPA monta (`npm run check:web`) y una
    reserva visible en la página para que el fallo nunca sea un negro mudo.
+10. **Un evento publicado no es un aviso enviado.** El botón «Notificar» de la programación
+   publicaba `scheduling.appointment.notified` desde la Fase 3, pero el consumidor de la
+   Fase 4 solo escuchaba tres temas: **42 eventos publicados y ni un solo aviso**. La cita
+   quedaba como `notificada` sin que el paciente recibiera nada, y el texto que lo advertía
+   en la interfaz se leía como «obsoleto» (hablaba de la Fase 4) cuando estaba describiendo
+   un hueco real. Lección para las fases siguientes: **cada tema del catálogo necesita un
+   consumidor o una prueba que falle si no lo tiene** (el humo de notificaciones ya lo cubre);
+   y un texto de la interfaz que promete algo debe caducar con la funcionalidad, no antes.
 
 ### Próximo paso
 

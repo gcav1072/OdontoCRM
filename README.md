@@ -189,7 +189,7 @@ Reglas que aplica el servidor (no solo la interfaz):
 | `PUT /api/v1/agenda/capacity` | Cupo del día, editable a cualquier hora; **bajarlo por debajo de lo asignado avisa y no borra citas** | `scheduling:write` |
 | `GET/POST/PATCH/DELETE /api/v1/agenda/templates` | Plantillas de franjas por día de la semana (jornada y pausas) | `scheduling:read` / `scheduling:write` |
 | `POST /api/v1/agenda/notify/preview` | **Vista previa exacta** del lote: los mensajes que se enviarán y por qué no los demás | `scheduling:read` |
-| `POST /api/v1/agenda/notify` | Marca el lote como notificado y publica el evento que enviará la Fase 4 | `scheduling:notify` |
+| `POST /api/v1/agenda/notify` | Notifica el lote: **asegura** el aviso (no repite el que ya salió y recupera el que quedó pendiente o fallido); con `force` reenvía también a los ya notificados | `scheduling:notify` |
 | `POST /api/v1/appointments` | Asigna una solicitud a una franja (o cita directa con hora manual) | `scheduling:write` |
 | `GET /api/v1/appointments[/:id[/history]]` | Citas por fecha, estado o paciente, y su historial de estados | `scheduling:read` |
 | `POST /api/v1/appointments/:id/(check-in\|call\|start\|attend\|no-show\|cancel)` | Ciclo de vida según la máquina de estados; «atendido» pide motivo mientras no exista historia clínica | `scheduling:write` |

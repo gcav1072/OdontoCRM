@@ -4,7 +4,7 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
-## [Sin publicar] — Endurecimiento del arranque de la interfaz · 2026-10-03
+## [Sin publicar] — Correcciones posteriores a la Fase 5 · 2026-10-03
 
 ### Corregido
 
@@ -13,6 +13,17 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   no podía tomarlo (`strictPort`) y `concurrently -k` mataba el resto, así que el navegador seguía
   mirando el servidor viejo sin ningún mensaje. Se comprobó con Chromium sin interfaz: ese servidor
   dejaba `#root` vacío, mientras que uno recién arrancado y la app compilada montan bien.
+- **El botón «Notificar» de la programación no enviaba nada.** Publicaba
+  `scheduling.appointment.notified` y **ningún servicio lo consumía**: la cita quedaba como
+  `notificada` sin que al paciente le llegara nada (comprobado en la base: 42 eventos publicados y
+  cero avisos producidos por ellos). El mensaje que lo advertía en la interfaz hablaba de la
+  «Fase 4» y parecía obsoleto; no lo era. Ahora el servicio de notificaciones consume el evento y
+  aplica la política acordada: **asegura sin duplicar** — no repite el aviso que ya salió, recupera
+  el que quedó en manual pendiente o falló, y solo la casilla «reenviar también los ya notificados»
+  (`force`) vuelve a enviar, identificando el reenvío por su evento.
+- **Textos que habían envejecido con el multicanal (Fase 4.1)**: la bandeja, las plantillas, el
+  catálogo de canales y el aviso de la programación hablaban solo de Telegram; ahora nombran el
+  canal del paciente, y la tarjeta de estado muestra los canales activos con su identidad.
 
 ### Añadido
 
