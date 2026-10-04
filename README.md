@@ -229,6 +229,12 @@ de 7 pasos, la cola de envíos, las plantillas y el `.ics` son los mismos para t
 
 - **El núcleo habla de intenciones, no de comandos**: Telegram traduce `/nueva` y WhatsApp
   «cita» o «quiero una cita» a la misma intención; añadir un canal es escribir un adaptador.
+- **Menú de comandos en Telegram**: al pulsar `/` (o el botón junto al campo de texto) el
+  paciente ve la lista, sin tener que saberse nada: `/start`, `/nueva`, `/estado`, `/mi_ticket`,
+  `/cancelar` y `/ayuda`. Se registra con `setMyCommands` **desde el catálogo del contrato** en
+  cada arranque (no hay que tocar BotFather), y la respuesta de la ayuda termina con esa misma
+  lista, así que también la ve quien use WhatsApp, que no tiene menú. Lo que hay registrado se
+  comprueba con `npm run telegram:menu` (y `-- --set` lo vuelve a registrar).
 - **Adaptación por capacidades**: donde no hay botones, las opciones van **numeradas** dentro del
   texto y se guardan en la conversación, así que responder «2» vale como pulsar el botón.
 - **La identidad es `(canal, dirección)`**, no un `chat_id`: la misma persona puede hablar por

@@ -41,6 +41,14 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
 ### Añadido
 
+- **Menú de comandos en Telegram**: al pulsar `/` (o el botón junto al campo de texto) el
+  paciente ve `/start`, `/nueva`, `/estado`, `/mi_ticket`, `/cancelar` y `/ayuda` con su
+  descripción, sin saberse nada de memoria — pensado para quien no es técnico. Se registra con
+  `setMyCommands` **desde `BOT_COMMANDS`** (el catálogo del contrato) en cada arranque, así que
+  el menú y el asistente no se separan y no hay que tocar BotFather; el botón del menú muestra la
+  lista. La respuesta de la ayuda termina con esa misma lista, generada del catálogo, para quien
+  no descubra el menú o use WhatsApp (que no tiene comandos). Comprobación:
+  `npm run telegram:menu` (y `-- --set` para volver a registrarlo).
 - **Pruebas de la proyección del paciente**: la suite de `patients` cubre la promoción a
   `activo`, su idempotencia, que no toca temas ajenos y que **no resucita a un `inactivo`**; el
   humo de agenda crea un paciente nuevo y comprueba que pasa a `activo` al asignársele la cita

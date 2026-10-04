@@ -54,6 +54,7 @@ Todas fueron confirmadas contigo en la sesión de planificación del 2026-10-02.
 | 19 | Reportes | Embudo/tasa de inasistencia, salud bucal desde odontograma, demografía (edad/sexo), recetas por medicamento, **perfil clínico/crónicos** (viene de tu pedido original), exportación CSV/PDF. |
 | 20 | Modo test | Variable de entorno + `npm run seed:test` / `seed:reset`, **banner MODO TEST**, cédulas ficticias en el rango reservado **90.000.000+**. |
 | 21 | Acceso remoto futuro | **VPN mesh (Tailscale/WireGuard)**: el sistema nunca se expone a internet. El diseño ya lo asume (config por variables de entorno, sin IPs fijas, TLS interno). |
+| 22 | Menú de comandos (2026-10-04) | **Menú `/` de Telegram** registrado con `setMyCommands` desde `BOT_COMMANDS` (contrato), en cada arranque y sin tocar BotFather; el botón del campo de texto muestra la lista (`setChatMenuButton`); la **ayuda** del asistente termina con la misma lista, generada del mismo catálogo, para quien no descubra el menú o use WhatsApp. Comprobación: `npm run telegram:menu`. |
 
 ---
 

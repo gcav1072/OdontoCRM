@@ -219,6 +219,7 @@ base de datos). Necesitan los servicios arrancados y datos sembrados.
 
 | Comando | Qué recorre | Comprobaciones |
 | :--- | :--- | :--- |
+| `npm run telegram:menu` | El **menú de comandos** que Telegram tiene registrado para el bot, comparado con el catálogo del contrato | 1 (con `-- --set` lo vuelve a registrar) |
 | `npm run smoke:auth` | Ciclo de sesión: login, refresco, permisos, cierre | 17 |
 | `npm run smoke:patients` | Registro, duplicado, edición con motivo, borrado y auditoría | 26 |
 | `npm run smoke:agenda` | Ticket, cupo, franja, sobrecupo, reprogramación y aviso en lote | 41 |
@@ -371,6 +372,7 @@ claves de `services/identity/.keys/`. Detalle en
 | Las pruebas de integración se saltan | Falta `TEST_*_DATABASE_URL`: ejecútalas con `npm run test:integration`, no con `npm test` |
 | Un servicio no arranca y menciona una variable | La configuración se valida con Zod al arrancar: falta esa variable en su `.env` (míralo en `.env.example`) |
 | El bot no responde en Telegram | `409 Conflict` por dos `getUpdates`: el poller es **único**, para el otro proceso |
+| Al paciente no le sale el menú `/` en Telegram | Comprueba el registro con `npm run telegram:menu` (y `npm run telegram:menu -- --set` si no coincide). Si ahí aparece y en el móvil no, cierra y abre la aplicación de Telegram: cachea la lista |
 | `git status` con `.env` o `*.pem` | Nunca deben versionarse: revisa `.gitignore` y corre `npm run check-secrets` |
 
 ---
