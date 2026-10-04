@@ -725,6 +725,7 @@ npm run db:bootstrap            # 8 bases + 8 roles + la cola de eventos (idempo
 npm run build                   # tsc -b (servicios) + vite build (interfaz)
 npm run keys:generate           # claves EdDSA del JWT (una sola vez; .keys/ está ignorado)
 npm run db:migrate              # migraciones de todos los servicios
+npm run db:reset -- --yes       # borra TODO (9 bases + storage/) y lo deja migrado y sembrado
 npm run db:verify-migrations    # comprueba que migran desde cero en una base limpia
 npm run seed:users              # admin, recepcion y egomez con contraseña temporal
 npm run seed:demo -- --count 5000   # pacientes ficticios deterministas (--reset los borra)

@@ -4,6 +4,28 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Herramientas] — Empezar de cero: `npm run db:reset` · 2026-10-04
+
+### Añadido
+
+- **`npm run db:reset`** ([`tools/db-reset.mjs`](tools/db-reset.mjs)): **borra absolutamente todo**
+  y deja el sistema recién migrado y con los usuarios sembrados. Hacía falta porque los seeds
+  `--reset` solo quitan lo ficticio: la historia clínica, las sesiones, los récipes y el odontograma
+  **no se pueden borrar** por diseño (son documentos inmutables,
+  [ADR 0034](docs/adr/0034-sesion-clinica-evolucion.md),
+  [ADR 0036](docs/adr/0036-recipe-emitido-documento-archivado.md)), así que no había forma de dejar
+  la base limpia para probar desde cero.
+  - Borra las **9 bases** `odonto_*` (los 8 servicios y la cola `pg-boss`) con
+    `drop database … with (force)` y el **contenido de `storage/`** (adjuntos de fichas y sesiones,
+    y los PDF de los récipes).
+  - Después reconstruye solo: `build:node` → `db:bootstrap` → `db:migrate` → `seed:users`.
+  - **Solo consola y solo con `--yes`**: sin el flag explica lo que haría y sale con código 1;
+    ningún servicio, ruta ni botón la llama. Se niega a correr con la pila en marcha (los servicios
+    caerían en bucle contra una base que ya no existe) y con `NODE_ENV=production`.
+  - **No toca** los roles de PostgreSQL, los `.env`, las claves del JWT ni la configuración; la lista
+    de bases es cerrada (nunca se construye con datos del usuario) y la ruta de `storage/` se
+    comprueba antes de borrar. Flags: `--solo-bases` (conserva los archivos) y `--sin-sembrar`.
+
 ## [Fase 8] — La página unificada del flujo diario · 2026-10-04
 
 ### Añadido

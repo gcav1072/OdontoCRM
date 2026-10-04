@@ -78,6 +78,7 @@
     "check-secrets": "node tools/check-secrets.mjs",
     "db:bootstrap": "node infra/db/bootstrap.mjs",
     "db:migrate": "node tools/migrate-all.mjs",
+    "db:reset": "node tools/db-reset.mjs",
     "db:verify-migrations": "node --env-file-if-exists=.env tools/verify-migrations.mjs",
     "db:generate:identity": "drizzle-kit generate --config services/identity/drizzle.config.ts",
     "db:generate:patients": "drizzle-kit generate --config services/patients/drizzle.config.ts",

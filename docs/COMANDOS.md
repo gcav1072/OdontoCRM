@@ -113,6 +113,7 @@ powershell -ExecutionPolicy Bypass -File infra/windows/start-services.ps1
 | `npm run db:migrate` | Aplica las migraciones de todos los servicios implementados | `-- --only <servicio>` |
 | `npm run db:verify-migrations` | Desde cero: crea una base temporal por servicio, migra con el migrador real, comprueba tablas/índices y la borra | `-- --only <servicio>` |
 | `npm run db:generate:<servicio>` | Genera una migración a partir del esquema Drizzle del servicio | `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram` |
+| `npm run db:reset` | **Borra absolutamente todo** y deja el sistema recién migrado: las 9 bases `odonto_*` (con `with (force)`) y el contenido de `storage/`; después compila, hace `db:bootstrap`, `db:migrate` y `seed:users`. Solo consola y **exige `--yes`** | `-- --yes` (hace falta) · `-- --solo-bases` (conserva los archivos) · `-- --sin-sembrar` (sin usuarios) |
 | `npm run keys:generate` | Par de claves EdDSA del JWT en `services/identity/.keys/` (ignorado por Git) | `-- --force` regenera (invalida todas las sesiones) |
 
 Los generadores de migración se ejecutan **desde la raíz** (drizzle-kit resuelve las
@@ -125,6 +126,28 @@ npx drizzle-kit generate --config services/screens/drizzle.config.ts --name mi_c
 > `db:bootstrap` es **idempotente**: no toca lo que ya existe salvo con `--rotate`.
 > Si un `.env` de servicio se borra, `db:bootstrap --only <servicio>` lo regenera.
 
+### Empezar de cero (`db:reset`)
+
+Los seeds **no** dejan la base limpia: solo quitan lo ficticio, y la historia clínica, las
+sesiones, los récipes y el odontograma **no se pueden borrar** por diseño (son documentos
+inmutables: [ADR 0034](adr/0034-sesion-clinica-evolucion.md),
+[ADR 0036](adr/0036-recipe-emitido-documento-archivado.md)). Para empezar de cero de verdad:
+
+```powershell
+npm run stack:down                  # el comando se niega a borrar con la pila en marcha
+npm run db:reset -- --yes           # borra todo y reconstruye
+npm run stack:fijo                  # (o stack:dev) y a probar
+```
+
+- Es una herramienta **de consola y solo de consola**: ningún servicio, ruta ni botón la llama,
+  y sin `--yes` no borra nada (explica lo que haría y sale con código 1).
+- **No toca** los roles de PostgreSQL, los `.env`, las claves del JWT (`.keys/`) ni la
+  configuración. Se niega a correr con `NODE_ENV=production`.
+- Al terminar hay que **volver a iniciar sesión** (las sesiones y los refrescos viven en la base).
+- Lo que sí queda sembrado, porque sale de las migraciones y del arranque: los **3 usuarios**
+  (contraseña temporal), las **10 franjas** de la plantilla de jornada, los **25 medicamentos**
+  del catálogo y las **19 plantillas** de mensajes (estas al arrancar `notifications`).
+
 ---
 
 ## 5. Datos de prueba (seeds)
@@ -134,6 +157,10 @@ npx drizzle-kit generate --config services/screens/drizzle.config.ts --name mi_c
 | `npm run seed:users` | `admin`, `recepcion` y **un odontólogo por cada uno de `CLINIC.dentists`** (`packages/contracts/src/clinic.ts`) con contraseña temporal | `-- --reset` regenera las contraseñas · `-- --print` **recuerda** las claves sin tocar nada |
 | `npm run seed:demo` | Pacientes ficticios deterministas (cédulas 90.000.000+, `is_fictitious`) | `-- --count 5000`, `-- --reset` (borra **solo** lo ficticio) |
 | `npm run seed:agenda` | Solicitudes y citas de ejemplo en el próximo día de consulta | `-- --reset` (las borra) |
+
+> Los tres `--reset` quitan **solo datos de prueba**: pacientes ficticios, sus citas y las
+> contraseñas. La clínica (historias, sesiones, récipes, odontogramas) y la auditoría se quedan.
+> Para una base limpia de verdad: [`npm run db:reset`](#empezar-de-cero-dbreset).
 
 ### ¿Cuál era la clave del admin?
 

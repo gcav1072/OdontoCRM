@@ -87,6 +87,7 @@ está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)**. Estos son los del día a d�
 | `npm run test:integration` | Suites contra PostgreSQL real (outbox, colas, sesión, pacientes, agenda, pantallas) |
 | `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`, `prescription` |
 | `npm run e2e:flujo` | **El día completo en un navegador de verdad**: `/flujo` con Chromium (Fase 8) |
+| `npm run db:reset -- --yes` | **Empezar de cero**: borra las 9 bases y `storage/`, y deja todo migrado y sembrado (solo consola; sin `--yes` no borra nada) |
 | **`npm run verify`** | **Puerta de calidad: secretos + lint + formato + compilación + pruebas unitarias** |
 
 Antes de cerrar cualquier fase, `npm run verify` debe pasar en verde, además de
