@@ -295,6 +295,21 @@ interface WriteOutboxInput {
   after: Record<string, unknown> | null;
   reason: string | null;
   actor: ActorContext;
+  /**
+   * Ficha del paciente para el **read model de reportes** (Fase 9).
+   *
+   * Los campos auditables (`fullName`, `docNumber`, `birthDate`…) ya viajan en
+   * `after`, pero la demografía necesita **sexo** y **estado**, que no son datos
+   * sensibles y por eso no estaban en el diff. Se publican aquí cuando el
+   * servicio tiene la fila a mano (alta y edición); los cambios de estado se
+   * proyectan desde `after.status`, que ya viajaba.
+   */
+  snapshot?: {
+    sex: string;
+    birthDate: string;
+    status: string;
+    isFictitious: boolean;
+  };
 }
 
 const outboxRow = (input: WriteOutboxInput, tx: Pick<PatientsDb, 'insert'>): Promise<unknown> =>
@@ -320,6 +335,19 @@ const outboxRow = (input: WriteOutboxInput, tx: Pick<PatientsDb, 'insert'>): Pro
           ip: input.actor.ip,
           userAgent: input.actor.userAgent,
           requestId: input.actor.requestId,
+          ...(input.snapshot === undefined
+            ? {}
+            : {
+                patient: {
+                  patientId: input.patientId,
+                  document: input.document,
+                  fullName: input.fullName,
+                  sex: input.snapshot.sex,
+                  birthDate: input.snapshot.birthDate,
+                  status: input.snapshot.status,
+                  isFictitious: input.snapshot.isFictitious,
+                },
+              }),
         },
       }),
     ),
@@ -437,6 +465,12 @@ export const createPatient = async (
         after: sensitiveSnapshot(row),
         reason: actor.reason ?? 'alta de paciente',
         actor,
+        snapshot: {
+          sex: row.sex,
+          birthDate: row.birthDate,
+          status: row.status,
+          isFictitious: row.isFictitious,
+        },
       },
       tx,
     );
@@ -542,6 +576,14 @@ export const updatePatient = async (
           after: diff.after,
           reason: input.reason,
           actor,
+          // El sexo, el estado y la fecha de nacimiento **de después** del
+          // cambio: es lo que necesita el reporte demográfico (Fase 9).
+          snapshot: {
+            sex: input.sex ?? current.sex,
+            birthDate: (afterSnapshot.birthDate as string | null) ?? current.birthDate,
+            status: input.status ?? current.status,
+            isFictitious: current.isFictitious,
+          },
         },
         tx,
       );

@@ -228,21 +228,33 @@ export const openSession = async (
           topic: EVENT_TOPICS.sessionCreated,
           aggregateId: creada.id,
           actor,
-          payload: auditPayload({
-            entityId: creada.id,
-            action: 'clinical_session_created',
-            entityType: 'clinical_session',
-            summary: `Sesión clínica ${String(creada.sessionNumber)} abierta`,
-            changedFields: ['status'],
-            after: {
+          payload: {
+            ...auditPayload({
+              entityId: creada.id,
+              action: 'clinical_session_created',
+              entityType: 'clinical_session',
+              summary: `Sesión clínica ${String(creada.sessionNumber)} abierta`,
+              changedFields: ['status'],
+              after: {
+                patientId,
+                appointmentId: input.appointmentId,
+                sessionNumber: creada.sessionNumber,
+                status: 'borrador',
+              },
+              reason: null,
+              actor,
+            }),
+            // Bloque limpio para el read model de reportes (Fase 9): la sesión
+            // en curso también cuenta como movimiento del día.
+            session: {
+              sessionId: creada.id,
               patientId,
               appointmentId: input.appointmentId,
               sessionNumber: creada.sessionNumber,
               status: 'borrador',
+              openedAt: creada.createdAt.toISOString(),
             },
-            reason: null,
-            actor,
-          }),
+          },
         });
 
         return creada;
@@ -374,24 +386,40 @@ export const closeSession = async (
       topic: EVENT_TOPICS.sessionClosed,
       aggregateId: id,
       actor,
-      payload: auditPayload({
-        entityId: id,
-        action: 'clinical_session_closed',
-        entityType: 'clinical_session',
-        summary: `Sesión clínica ${String(fila.sessionNumber)} cerrada. ${clinicalSessionSummaryText(content)}`,
-        changedFields: ['status'],
-        before: { status: 'borrador' },
-        after: {
-          status: 'cerrada',
-          sessionNumber: fila.sessionNumber,
+      payload: {
+        ...auditPayload({
+          entityId: id,
+          action: 'clinical_session_closed',
+          entityType: 'clinical_session',
+          summary: `Sesión clínica ${String(fila.sessionNumber)} cerrada. ${clinicalSessionSummaryText(content)}`,
+          changedFields: ['status'],
+          before: { status: 'borrador' },
+          after: {
+            status: 'cerrada',
+            sessionNumber: fila.sessionNumber,
+            patientId: fila.patientId,
+            appointmentId: fila.appointmentId,
+            diagnostico: content.diagnostico,
+            procedimientos: content.procedimientos.slice(0, 10).map(sessionProcedureText),
+          },
+          reason: input.closureNote,
+          actor,
+        }),
+        // Lo que el read model de reportes cuenta (Fase 9): la sesión cerrada,
+        // con sus procedimientos **en código** (no en texto ni recortados a 10),
+        // para poder agregar por tipo de tratamiento.
+        session: {
+          sessionId: id,
           patientId: fila.patientId,
           appointmentId: fila.appointmentId,
-          diagnostico: content.diagnostico,
-          procedimientos: content.procedimientos.slice(0, 10).map(sessionProcedureText),
+          sessionNumber: fila.sessionNumber,
+          status: 'cerrada',
+          openedAt: fila.createdAt.toISOString(),
+          closedAt: new Date().toISOString(),
+          procedureCodes: content.procedimientos.map((procedimiento) => procedimiento.code),
+          procedureCount: content.procedimientos.length,
         },
-        reason: input.closureNote,
-        actor,
-      }),
+      },
     });
 
     return fila;

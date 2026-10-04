@@ -13,6 +13,12 @@ import { Sidebar } from './Sidebar';
  *
  * El atajo `Ctrl + J` alterna el panel desde cualquier pantalla del shell, y el
  * estado abierto/cerrado se recuerda en `localStorage`.
+ *
+ * **Al imprimir** (Fase 9: el botón «Imprimir» de `/reportes`) el armazón
+ * desaparece —menú, cabecera y panel— para que el papel lleve el documento y no
+ * la navegación; los rellenos pensados para el panel fijo se anulan porque en
+ * papel no hay nada que tapar. Las vistas de impresión que viven **fuera** del
+ * shell (historia, odontograma) no necesitan nada de esto.
  */
 export const AppShell = () => {
   const [menuColapsado, setMenuColapsado] = useState(
@@ -48,18 +54,22 @@ export const AppShell = () => {
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader />
         {/* El relleno inferior deja sitio al panel fijo: sin él, el final de las
-            tablas quedaría tapado cuando el panel está desplegado. */}
+            tablas quedaría tapado cuando el panel está desplegado. En papel no
+            hay panel, así que el relleno se anula con `print:pb-0`. */}
         <main
           className={cn(
-            'mx-auto w-full max-w-7xl flex-1 px-4 py-6 lg:px-8',
+            'mx-auto w-full max-w-7xl flex-1 px-4 py-6 lg:px-8 print:max-w-none print:px-0 print:py-0',
             panelAbierto ? 'pb-[32rem] sm:pb-[24rem] lg:pb-[20rem]' : 'pb-20',
+            'print:pb-0',
           )}
         >
           <Outlet />
         </main>
       </div>
 
-      <BottomPanel open={panelAbierto} onToggle={() => setPanelAbierto((valor) => !valor)} />
+      <div className="print:hidden">
+        <BottomPanel open={panelAbierto} onToggle={() => setPanelAbierto((valor) => !valor)} />
+      </div>
     </div>
   );
 };

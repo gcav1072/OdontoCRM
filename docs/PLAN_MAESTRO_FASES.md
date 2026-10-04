@@ -236,7 +236,7 @@ Se implementa el esquema de `implementation_plan_odontogram_microservice.md` §4
 - `room_state` (proyección del estado de la sala: `appointment_id` como clave, paciente y su nombre abreviado, motivo, `patient_birth_date`/`patient_sex` para calcular la edad, `estado` (`en_sala_espera|llamado|en_consulta`), `chair_label`, `critical_flags jsonb` —los envía la historia clínica—, `since` y **`left_at`** como lápida: quien salió de la sala no vuelve por un evento tardío).
 
 ### 4.8 `reporting`
-Read model propio (nada de consultar BDs ajenas): `dim_patient` (edad calculada, sexo, estado, crónicos/alergias), `fact_appointment` (fecha, hora, estado, canal, tiempos de espera), `fact_clinical_event` (sesiones, procedimientos, recetas, hallazgos del odontograma), más vistas materializadas `mv_daily_kpis`, `mv_funnel`, `mv_oral_health`, `mv_demographics`, `mv_prescriptions` refrescadas por eventos y por un job nocturno. Toda consulta pesada sirve desde aquí.
+Read model propio (nada de consultar BDs ajenas), todo en `odonto_reporting`: `dim_patient` (edad calculada, sexo, estado, `profile_alerts` con los códigos de alerta clínica y `record_status`), `fact_request` (solicitudes y canal), `fact_appointment` (fecha, hora, estado, canal, ticket y **todas las marcas de tiempo** del ciclo: pedida, programada, notificada, llegada, llamada, inicio, fin, inasistencia, cancelación y reprogramación), `fact_clinical_session` (sesión cerrada con sus procedimientos **en código**), `fact_prescription` + `fact_prescription_item` (recetas y sus medicamentos), `fact_tooth_finding` (hallazgos vigentes por pieza, superficie y condición, con clave natural) y `dim_day_capacity` (cupo por día). Más las vistas materializadas `mv_daily_kpis`, `mv_funnel`, `mv_oral_health`, `mv_demographics` y `mv_prescriptions`, **refrescadas al cerrar cada lote de eventos y por un job nocturno** ([ADR 0040](adr/0040-refresco-del-read-model-de-reportes.md)), con `report_refreshes` como bitácora de cada refresco. Toda consulta pesada sirve desde aquí, y el read model no se rellena con lecturas a otros servicios: los eventos llevan los bloques `patient`, `profile` y `session` que la proyección necesita ([ADR 0041](adr/0041-el-evento-lleva-lo-que-el-consumidor-necesita.md)).
 
 ---
 
@@ -292,7 +292,7 @@ Reglas duras:
 | Marcar atendido | ✅ | ✅ (con advertencia) | ✅ | ❌ |
 | Cancelar y reprogramar una cita | ✅ | ✅ | ❌ (409: es del mostrador) | ❌ |
 | Historia clínica, sesiones, récipes, odontograma | ✅ | **lectura** (imprime todo: récipes, consentimientos, historia y odontograma) | ✅ | ❌ |
-| Reportes y auditoría | ✅ | reportes operativos | clínicos | ❌ |
+| Reportes y auditoría | ✅ | reportes operativos (`reports:read`) | clínicos (`reports:clinical`) | ❌ |
 | Displaylobby / pantalla consultorio | ✅ | ✅ | ✅ | ✅ (solo lectura) |
 
 > **Odontólogo y agenda (Fase 8, [ADR 0038](adr/0038-permisos-del-odontologo-en-el-flujo.md)):** el
@@ -314,7 +314,7 @@ Un solo origen para el frontend: `http(s)://<host>:8090/api/v1/**`.
 | :--- | :--- | :--- |
 | `/api/v1/auth/**` | identity | `POST /login`, `POST /refresh`, `POST /logout`, `POST /password/change` |
 | `/api/v1/users/**` | identity | CRUD de usuarios, roles, reset de contraseña |
-| `/api/v1/audit/**` | identity | `GET /events?from&to&userId&entityType&field` |
+| `/api/v1/audit/**` | identity | `GET /events?from&to&actorId&action&entityType&entityId&field`, `GET /events/export.csv` |
 | `/api/v1/patients/**` | patients | `GET /by-doc?type=V&number=12345678`, `POST /`, `PATCH /:id` (exige `reason`), `GET /search`, `POST /:id/files` |
 | `/api/v1/requests/**` | scheduling | `POST /` (crea ticket), `GET /?status=en_espera_cita`, `GET /tickets/:display` |
 | `/api/v1/agenda/**` | scheduling | `GET /day?date=`, `PUT /capacity`, `GET /slot-templates`, `POST /assign`, `POST /:id/reschedule`, `POST /:id/no-show` |
@@ -322,7 +322,7 @@ Un solo origen para el frontend: `http(s)://<host>:8090/api/v1/**`.
 | `/api/v1/clinical/**` | clinical | historia, sesiones, récipes, PDF, adjuntos |
 | `/api/v1/odontogram/**` | odontogram | `GET /patients/:id`, `POST /patients/:id/findings`, `DELETE /patients/:id/findings` |
 | `/api/v1/screens/**` | screens | `POST /devices`, `GET /device`, `GET /lobby`, `GET /lobby/stream` (SSE), `GET /consultorio/stream` (SSE) · `POST /api/v1/auth/device` canjea el token de la pantalla |
-| `/api/v1/reports/**` | reporting | `GET /funnel`, `GET /demographics`, `GET /oral-health`, `GET /prescriptions`, `GET /:key/export.csv` |
+| `/api/v1/reports/**` | reporting | `GET /summary`, `GET /funnel`, `GET /capacity`, `GET /demographics`, `GET /clinical-profile`, `GET /oral-health`, `GET /prescriptions`, `GET /:key/export.csv`, `GET /:key/export.pdf` |
 | `/internal/v1/**` | todos | solo red interna + service JWT (`upsert-by-cedula`, `patients/:id/summary`, …) |
 
 Errores uniformes (RFC 7807): `{ type, title, status, detail, errors[], requestId }`.
@@ -351,6 +351,8 @@ Envelope: `{ eventId, eventType, version, occurredAt, aggregateId, actorId, corr
 | `clinical.session.created/closed/amended` | clinical | scheduling (habilita `ATENDIDO`), screens, reporting |
 | `clinical.prescription.issued/reprinted` | clinical | reporting, **auditoría** |
 | `odontogram.finding.recorded/removed` | odontogram | clinical, reporting, **auditoría** |
+
+> **Los eventos llevan, además de la carga de auditoría, los bloques que su consumidor necesita** ([ADR 0041](adr/0041-el-evento-lleva-lo-que-el-consumidor-necesita.md)): `patients.patient.*` publica `patient` (sexo, estado, fecha de nacimiento), `clinical.record.*` publica `profile` (códigos de alerta clínica calculados con la misma función que usa el consultorio) y `clinical.session.*` publica `session` (procedimientos en código). Es **aditivo**: quien no lo conozca lo ignora, y evita que el read model de reportes tenga que leer bases ajenas.
 
 ---
 
@@ -606,6 +608,10 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 
 **Commits previstos:** `feat(reporting): read model y proyecciones por evento` · `feat(reporting): embudo e inasistencia` · `feat(reporting): demografia y perfil clinico` · `feat(reporting): salud bucal desde odontograma` · `feat(reporting): recetas y exportacion csv/pdf` · `feat(web): modulo de reportes con graficas` · `feat(web): modulo de auditoria con diff` · `test(reporting): coherencia de kpis`.
 
+**Lo que se construyó (2026-10-04):** `services/reporting` (nuevo, puerto 4008) con su **read model propio** —ocho tablas `dim_*`/`fact_*`, cinco **vistas materializadas** refrescadas al cerrar cada lote y por un job nocturno, y una tabla de paso para el perfil clínico que hizo falta al descubrir que los eventos de dos servicios llegan desordenados—, los **seis reportes** del [ADR 0019](adr/0019-reportes-y-kpis.md) con filtros de fecha, edad, sexo y estado, **exportación CSV** (BOM, `;`, coma decimal: abre en Excel) y **PDF A4 por Chromium** con el membrete, los módulos **`/reportes`** (Recharts, seis pestañas, impresión) y **`/auditoria`** (filtros por fecha/usuario/acción/entidad/campo, diff antes/después, exportación CSV), el permiso **`reports:clinical`** ([ADR 0039](adr/0039-reportes-clinicos-con-permiso-propio.md)) y los tres bloques nuevos de los eventos ([ADR 0041](adr/0041-el-evento-lleva-lo-que-el-consumidor-necesita.md)). Aceptación: `npm run verify` con **580 pruebas**, `npm run test:integration` con **695 pruebas en verde** (68 suites, reproducible en tres corridas), `npm run smoke:reporting` con **81 comprobaciones**, `npm run e2e:reportes` con **37** en Chromium, migraciones desde cero en base limpia para los **8 servicios** con migraciones (reporting: 11 tablas, 3 migraciones), **latencia medida con 10.000 citas: 3–8 ms por reporte** (el criterio pedía < 2 s) y los humos de regresión repetidos en verde (agenda 39, clínica 31, récipes 32, pacientes 29, pantallas 27, odontograma 41, notificaciones 27, acceso 17, `/flujo` 27). Tres fallos reales los destapó la aceptación, no la lectura del código: **el perfil clínico se perdía cuando el alta del paciente llegaba después de la historia** (dos outbox, sin orden), **una migración a mano podía quedar invisible** para el migrador (`when` menor que la anterior) y **un `snapshot.json` con BOM** rompía `db:generate`.
+
+**Commits reales:** `feat(contracts): el contrato de reportes, kpis y exportacion csv` · `feat(events): el evento lleva lo que el consumidor necesita` · `feat(tools): el noveno servicio entra en la pila y en las herramientas` · `feat(reporting): read model por eventos, vistas materializadas y los seis reportes` · `feat(web): las pantallas de reportes y auditoria` · `feat(identity): la auditoria busca por dia venezolano y se exporta en csv` · `test(e2e): humo de reportes, e2e de las pantallas y latencia de los kpis` · `test(e2e): la prueba del flujo apunta al grupo de atajos` · `docs: la fase 9 al dia con reportes, kpis y auditoria`. Los ocho previstos se reorganizaron en nueve: los contratos primero (congelan la interfaz), el enriquecimiento de eventos aparte —es un cambio de contrato de los eventos, no del read model—, la plomería del noveno servicio, el read model con sus reportes, las dos pantallas juntas, la auditoría del lado del servidor, las pruebas de aceptación y la documentación.
+
 ---
 
 ### Fase 10 — Modo test, endurecimiento y despliegue Fedora
@@ -716,7 +722,8 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | 6 | ✅ **completada** (2026-10-04, en dos sesiones) | **Sesión A — historia clínica**: contrato de las **11 secciones** de [`formato_historia.md`](formato_historia.md) con catálogos tipificados + «otros», estados `borrador → firmada`, firma (exige secciones obligatorias y consentimiento), adendas con motivo, consentimiento con quién acepta y ante quién, constancia de impresión; **`services/clinical`** (nuevo, puerto 4005) con 4 pruebas de integración contra PostgreSQL real; **`/consultorio`** con aviso obligatorio de primera visita, formulario por pasos con autoguardado, alertas clínicas resaltadas y vista de impresión A4; la secretaría gana `clinical:read` (imprime, no escribe). **Sesión B — odontograma**: contrato FDI (52 piezas, dentición deducida del número, geometría de §7 y máquina de teclado de la carga rápida); **`services/odontogram`** (nuevo, puerto 4006) con odontograma uno por paciente, **captura por excepción**, histórico append-only `tooth_finding_history`, evento y auditoría por outbox, constancia de impresión y ruta interna de resumen; **interfaz** con pestañas Historia/Odontograma, SVG interactivo, carga rápida por teclado, **hoja táctil de botones grandes** para tableta, deshacer, evolución y impresión A4; **ADRs 0031, 0032 y 0033** (superación de caras, convivencia de tratamientos con las fases del implante, y posición anatómica del odontograma). **Revisión del odontólogo (2026-10-04)**: se corrigieron los números espejados de la mandíbula en el papel, el hueco de la **línea media**, la orientación de las caras en cada arcada, el **borde incisal** en incisivos y caninos, el espejo **mesial/distal** de la derecha del paciente, la leyenda **bicolor** de los tratamientos, el orden determinista de la tabla, las celdas de notas vacías y la edición de hallazgos; se añadió la **fase quirúrgica** del implante (`ausente` + `implante`); la **corona cubre** las caras que había debajo (el dato queda en la historia) y la **caries recurrente** se registra encima; `superar` y `excluir` las caras quedaron como dos reglas distintas. Cuatro capturas reales del gráfico y del informe revisadas a ojo. **Hoja táctil validada en tableta por el odontólogo** (2026-10-04): marcar con botones queda perfecto, así que el diseño táctil ya no tiene comprobaciones pendientes — lo que falta para el uso con el dedo en el consultorio es publicar el acceso por TLS en la LAN (Fase 10). **Añadido tras el cierre (2026-10-04)**, pedido por el odontólogo: el informe impreso puede incluir el **historial de cambios con fechas** mediante una casilla, y las **notas se escriben al marcar** (antes había que guardar y editar). 33 ADRs ·
 | 7 | ✅ **completada** (2026-10-04, en dos sesiones) · tag `fase-7` | **Sesión A — sesiones clínicas**: contrato del **documento del día** (signos vitales con rangos, examen intraoral y periodontal, **28 procedimientos y 16 materiales** de catálogo con «otros», diagnóstico, indicaciones, próxima cita y notas internas) y **`clinical_sessions`** con `content jsonb`, numeración por paciente `S-000001`, estados `borrador → cerrada` y `amended_from_id` ([ADR 0034](adr/0034-sesion-clinica-evolucion.md)); **autoguardado** sin evento ni auditoría (el acto clínico nace al **cerrar**, que exige contenido mínimo), **cierre inmutable** y **enmienda** que abre una sesión nueva con el motivo; **«atendido» con respaldo verificado**: la agenda pregunta al servicio clínico si la sesión existe, es del mismo paciente y está cerrada antes de aceptarla sin motivo (`appointments.clinical_session_id`, migración `0003`) —antes un UUID inventado bastaba—; **el odontograma marca dentro de la sesión** (`recordedInSessionId`); **pantalla del consultorio con los datos críticos de verdad** (leídos de la historia, [ADR 0035](adr/0035-datos-criticos-leidos-no-empujados.md)); pestaña **Sesión clínica** en `/consultorio` con autoguardado, cierre, corrección y la evolución a la vista; **prueba de humo** (`npm run smoke:clinical`) con **30 comprobaciones** en verde, repetible; se corrigió el `CHECK` del canal `whatsapp` que faltaba desde la Fase 4.1 (migración `0002` de scheduling). **Sesión B — adjuntos y récipes A5**: `clinical_session_files` (radiografía, foto clínica, documento u otro, con pie y pieza FDI) con cuadrícula de miniaturas, **visor con zoom** y borrado solo en sesión borrador; **catálogo de 25 medicamentos** sembrado en la migración; **récipe** borrador → **emitido** (número `RX-000001` de una secuencia, **PDF A5 con Chromium** desde la plantilla del membrete, archivado con su `sha256` y código de verificación) → **anulado con motivo** (nunca se borra) → **reimpresión contada y auditada** ([ADR 0036](adr/0036-recipe-emitido-documento-archivado.md)); **verificación pública sin sesión** en `/verificar/<código>` (sin datos clínicos), con el QR comprobado **de ida y vuelta** con un decodificador real; el consultorio se personaliza en una **sección editable** (`packages/contracts/src/clinic.ts`); **`packages/storage`** extraído para compartir el almacén de binarios; se corrigió la **subida de archivos del paciente, que nunca funcionó por HTTP** desde la Fase 2 (hallazgo 9). 504 pruebas de integración y 406 unitarias en verde · `npm run smoke:prescription` (**32 comprobaciones**) · 36 ADRs |
 | 8 | ✅ **completada** (2026-10-04) · tag `fase-8` | 9 commits · `npm run verify` en verde con **432 pruebas** (+**99** de integración: **531 en total**, 48 suites) · **`/flujo`**, la jornada en una pantalla: **cola del día** a la izquierda (selector de fecha, buscador, contadores y estado por fila), **paciente en curso** en el centro con el mismo expediente de `/consultorio` (`PatientWorkspace`: historia, sesión —con adjuntos y récipe— y odontograma) y las **cinco acciones de secretaría** en la barra superior (llegada, llamar, pasar a consulta, atendido e inasistencia) más el **llamado fuera de orden** y el historial de la cita; los llamados salen al lobby por el mismo evento de siempre · **atajos** `F2` buscar paciente, `F4` llamar y `F8` cerrar la sesión clínica —también como botones, porque en la tableta no hay teclado— y **modo tableta** comprobado a 820 px · **`npm run e2e:flujo`**: el día completo en Chromium sobre la pila real con **24 comprobaciones** en verde (la doctora registra al paciente, le da cita, registra la llegada, llama con `F4`, lo pasa a consulta, escribe y cierra la sesión con `F8` y marca la cita atendida, **sin salir de `/flujo`**, con la URL vigilada en cada paso) y **15 pruebas nuevas** de las piezas puras (cita en curso, cola y atajos) · **el rol `odontologo` gana `scheduling:write`** y la máquina de estados le abre la inasistencia ([ADR 0038](adr/0038-permisos-del-odontologo-en-el-flujo.md)); notificar, sobrecupo, cancelar y reprogramar siguen fuera de su alcance, con una prueba de integración que lo fija · humos de agenda (41), clínica (30) y pantallas (26) repetidos en verde · hallazgos: **la sesión nacía sin la cita que la respalda** y **dos pestañas a la vez revocan la sesión** (ver los hallazgos de la Fase 8) |
-| 9–10 | ⏳ pendientes | Ver §13 |
+| 9 | ✅ **completada** (2026-10-04) · tag `fase-9` | **Reportes, KPIs y auditoría**: `services/reporting` (nuevo, puerto 4008, base `odonto_reporting`) con **read model por eventos** (8 tablas `dim_*`/`fact_*`, idempotente por `eventId`, estado de cita «solo hacia adelante») y **5 vistas materializadas** refrescadas al cerrar cada lote y por un **job nocturno** ([ADR 0040](adr/0040-refresco-del-read-model-de-reportes.md)); los **seis reportes** del ADR 0019 (embudo e inasistencia, ocupación con horas pico, demografía, perfil clínico, salud bucal por pieza y recetas por medicamento) con filtros combinables de fecha/edad/sexo/estado y **exportación CSV** (BOM, `;`, coma decimal) y **PDF A4 con Chromium**; **`/reportes`** con Recharts, seis pestañas, descargas e impresión y **`/auditoria`** con búsqueda por fecha —día completo en Venezuela—, usuario, acción, entidad y campo, **diff antes/después**, motivo y exportación CSV; permiso **`reports:clinical`** ([ADR 0039](adr/0039-reportes-clinicos-con-permiso-propio.md)) y los bloques `patient`/`profile`/`session` en los eventos ([ADR 0041](adr/0041-el-evento-lleva-lo-que-el-consumidor-necesita.md)) · **`npm run verify`** con **580 pruebas** · **`npm run test:integration`** con **695 pruebas** en verde (68 suites, tras darle a la suite de reportes **base temporal propia** y limitar el runner a 4 workers) · **`npm run smoke:reporting`** con **81 comprobaciones** y **`npm run e2e:reportes`** con **37** en Chromium · **`npm run reports:latencia`**: **3–8 ms por reporte con 10.000 citas** (el criterio pedía < 2 s) · migraciones desde cero verificadas en los 8 servicios (reporting: 11 tablas, 3 migraciones) · hallazgos: **el perfil clínico se perdía si el alta llegaba después de la historia** (dos outbox sin orden), **una migración a mano podía quedar invisible** para el migrador y **un `snapshot.json` con BOM** rompía `db:generate` |
+| 10 | ⏳ pendiente | Ver §13 |
 
 ### Lo que quedó funcionando
 
@@ -740,7 +747,10 @@ npm run smoke:notifications     # asistente del bot, vinculación y aviso con .i
 npm run smoke:screens           # llamado en el lobby por SSE y pantalla de consultorio por el gateway real
 npm run smoke:odontogram        # boca por teclado, superación de caras y auditoría por el gateway real
 npm run smoke:clinical          # sesión clínica: abrir, autoguardar, cerrar, enmendar y «atendido» con respaldo
+npm run smoke:reporting         # Fase 9: el recorrido que alimenta los reportes, los seis reportes, CSV/PDF, permisos y auditoría
+npm run reports:latencia        # Fase 9: 10.000 citas sintéticas y el tiempo de cada reporte (criterio: < 2 s)
 npm run e2e:flujo               # el día completo en Chromium sobre `/flujo` (Fase 8), con la pila real
+npm run e2e:reportes            # Fase 9: `/reportes` y `/auditoria` en Chromium, con captura final
 npm run db:generate:odontogram  # drizzle-kit: genera la migración del odontograma
 npm run verify                  # secretos + lint + formato + compilación + pruebas
 pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.ps1
@@ -1142,12 +1152,82 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
     de entrar no quede ninguna petición en rojo: un e2e que se queja del 401 inicial se vuelve ruido y
     se acaba ignorando.
 
+### Hallazgos de la Fase 9 que cambian supuestos
+
+21. **Dos outbox no tienen orden, y el read model no puede suponerlo.** El alta de un paciente la
+    publica `patients` y el guardado de su anamnesis lo publica `clinical`, cada uno con su publicador
+    de outbox. En una corrida medida con el humo, el alta llegó a procesarse **un segundo después** de
+    la firma de la historia: el `UPDATE` del perfil clínico no encontró fila, las alertas (diabetes,
+    alergia a la penicilina) se perdieron **en silencio** y el reporte de crónicos contaba cero. La
+    proyección ahora escribe el perfil en una tabla de paso (`patient_profiles`) y lo aplica cuando la
+    ficha aparece, llegue cuando llegue; hay una prueba que emite los dos eventos **al revés** a
+    propósito. Lección: **una proyección por eventos no puede depender del orden de llegada entre
+    servicios**; si un dato necesita dos eventos, se guarda aparte y se compone.
+22. **Una migración escrita a mano puede quedar invisible.** El migrador de Drizzle aplica solo las
+    migraciones cuyo `when` del `_journal.json` es **mayor** que el `created_at` de la última aplicada.
+    La migración de las vistas materializadas se escribió con una marca redonda (mayor que la real) y
+    la siguiente —generada por `drizzle-kit` con la hora de verdad— quedó por debajo: `db:migrate`
+    decía «aplicadas correctamente» y **la tabla nueva no existía**. Se arregló dejando las marcas
+    crecientes. Lección: al escribir una migración a mano, **la marca de tiempo no es decorativa**.
+23. **Un `snapshot.json` con BOM rompe `drizzle-kit`.** El archivo se generó desde PowerShell y salió
+    con la marca de orden de bytes; `npm run db:generate:reporting` moría con «Unexpected token» al
+    leer la carpeta `meta/`. Los `.json` se escriben **sin BOM** (y el error, si vuelve, se busca ahí
+    primero).
+24. **El seed de demostración no alimenta el read model, y eso es una decisión, no un olvido.**
+    `seed:demo` y `seed:agenda` insertan por SQL directo (sin eventos) justamente para **no llenar la
+    auditoría de ruido de demostración**; el precio es que el read model de reportes nace vacío y solo
+    se llena con lo que se hace en la aplicación. El **seed determinista completo de la Fase 10** (§12:
+    historias, sesiones, odontogramas y récipes) es el sitio donde se decide cómo se puebla y cómo se
+    prueba que **se reconstruye desde cero** (ADR 0019). Mientras tanto, la aceptación de esta fase se
+    hizo con datos **reales creados por la API** (`npm run smoke:reporting`), que es una prueba más
+    fuerte que un seed.
+25. **Una suite que afirma cifras absolutas necesita su propia base.** La de reportes comparte base
+    con el entorno de desarrollo, y con la pila en marcha el servicio real proyecta ahí lo que publican
+    las demás suites y el humo: las cifras cambiaban según lo que estuviera corriendo. Ahora
+    `npm run test:integration` le **crea una base temporal** (migrada al vuelo y borrada al terminar) y
+    la suite **solo proyecta los eventos que ella misma publica** —el publicador reparte cada evento a
+    todas las colas `domain-events.*`, incluida la de prueba, y sin ese filtro se colaban los ajenos—.
+    Además, el runner corre con **4 workers**: 68 archivos en paralelo contra los 9 servicios hacían
+    que fallara una suite distinta en cada corrida (las que **esperan a que identity audite** sus
+    eventos por el outbox). Con eso, 695 pruebas en verde **y reproducibles**.
+26. **Una vista materializada va un lote por detrás.** El refresco ocurre al cerrar el lote, así que
+    afirmar contra la vista justo después de emitir es una carrera: la suite fallaba en una prueba
+    distinta cada vez (embudo, salud bucal, recetas, CSV). La aserción ahora **espera a que cuadre**,
+    con el mismo tope que el resto de esperas. Lección para cualquier consumidor: **la foto agregada
+    es eventual, el hecho no**.
+27. **Dos botones con el mismo nombre accesible rompen una prueba de punta a punta, y el arreglo es
+    del producto.** En `/flujo` había dos botones «Buscar paciente» (el atajo de teclado y el de la
+    pantalla «sin paciente»): Playwright —con razón— se niega a elegir. Se le puso **nombre accesible al
+    grupo de atajos** («Atajos del día»), que además es lo correcto para un lector de pantalla, y la
+    prueba apunta al grupo. Lección: **la ambigüedad de nombre es un defecto de accesibilidad**, no un
+    problema del test.
+28. **El cupo efectivo de la agenda no viaja en ningún evento.** El que ve el usuario sale de las
+    plantillas de franjas o del valor por defecto, y eso vive solo en `scheduling`: el tablero de
+    reportes conoce el cupo **explícito** (el que alguien fijó a mano) y usa como suelo las citas
+    asignadas para no decir «cupo 0» en un día con pacientes. Se anota para la Fase 10: publicar el
+    cupo resuelto en los eventos de cita.
+
 ### Próximo paso
 
-**Fase 9 — Reportes, KPIs y auditoría UI**, con la Fase 8 cerrada (tag `fase-8`) y su documentación al
-día. El servicio `reporting` (puerto 4008) con su read model por eventos, los reportes de embudo,
-demografía, salud bucal y perfil clínico con sus filtros y exportación, y el módulo `/auditoria` con
-el diff antes/después.
+**Fase 10 — Modo test, endurecimiento y despliegue Fedora**, con la Fase 9 cerrada (tag `fase-9`).
+
+Lo que la Fase 10 recibe ya resuelto: el **read model de reportes** con su refresco por lote y
+nocturno, la **suite de integración reproducible** (base temporal para reportes y runner con 4
+workers), el **grupo de atajos con nombre accesible** en `/flujo` y el permiso `reports:clinical`
+en el contrato.
+
+Lo que la Fase 10 tiene que recoger de esta fase (está en los hallazgos y en el `CHANGELOG`):
+
+- **El seed determinista completo** (§12): hoy `seed:demo` y `seed:agenda` insertan por SQL y **no
+  emiten eventos** —a propósito, para no llenar la auditoría de ruido de demostración—, así que el
+  read model de reportes nace vacío y se llena con lo que se hace en la aplicación. El seed de la
+  Fase 10 (historias, sesiones cerradas, odontogramas y récipes incluidos) es el sitio natural para
+  decidir cómo se puebla el read model y probar que **se reconstruye desde cero** (ADR 0019).
+- **El cupo efectivo de la agenda** (el que sale de las plantillas de franjas o del valor por
+  defecto) no viaja en ningún evento: el tablero usa como suelo las citas asignadas. Publicarlo en
+  los eventos de cita, o como `scheduling.capacity.resolved`, quita esa nota al pie.
+- **La familia de refrescos de dos pestañas** (hallazgo de la Fase 8, sin tocar): sigue pendiente de
+  decisión para el endurecimiento.
 
 Antes de arrancarla, tres cosas que quedan en manos del odontólogo (las mismas de la Fase 7 más una
 nueva):
@@ -1156,18 +1236,11 @@ nueva):
   [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) y el editor del récipe
   avisa mientras falten, así que hoy el récipe sale **sin** esos datos, no con datos inventados.
   El logo se deja en [`assets/clinic/`](../assets/clinic/README.md).
-- **La revisión a ojo del récipe impreso** (A5) y de la página pública de verificación, que ya se
-  revisaron en captura durante la sesión.
+- **La revisión a ojo del récipe impreso** (A5), de la página pública de verificación y ahora
+  también del **PDF A4 de los reportes**.
 - **La vuelta por `/flujo` con el día real**: es la pantalla que va a usar todo el tiempo, así que
   conviene probarla con la agenda de una jornada de verdad (y decidir si el atajo `F8` —que cierra la
   sesión clínica, no la del sistema— es el que quiere).
-
-Lo que la Fase 9 puede dar por puesto: los **permisos del odontólogo** ya incluyen el día completo
-(ADR 0038) y `reports:read` lo tienen los tres roles operativos desde la Fase 1; el **shell y el panel
-inferior** ya soportan tablet; y los **eventos de dominio** que alimentan el read model
-(`scheduling.appointment.*`, `clinical.session.*`, `clinical.prescription.issued`,
-`odontogram.finding.recorded`, `patients.patient.*`) llevan publicándose desde sus fases con su
-`event_id`, su actor y su hora.
 
 > Este documento es la referencia viva del proyecto: cualquier cambio de alcance se refleja aquí
 > **antes** de escribir código, y cada decisión relevante se registra como ADR en

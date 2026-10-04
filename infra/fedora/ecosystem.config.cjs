@@ -88,6 +88,7 @@ module.exports = {
     // y se reinstala con: pm2 start infra/fedora/ecosystem.config.cjs && pm2 save
     //   Fase 2: patients       Fase 3: scheduling     Fase 4: notifications
     //   Fase 5: screens        Fase 6: clinical, odontogram
-    //   Fase 9: reporting
+    //   Fase 9: reporting (read model de KPIs y exportaciones)
+    service('reporting', 'services/reporting/dist/index.js'),
   ],
 };

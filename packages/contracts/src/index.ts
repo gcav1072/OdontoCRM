@@ -1,4 +1,5 @@
 export * from './clinic.js';
+export * from './common/csv.js';
 export * from './common/ids.js';
 export * from './common/optional.js';
 export * from './common/pagination.js';
@@ -15,6 +16,7 @@ export * from './domain/notification.js';
 export * from './domain/odontogram.js';
 export * from './domain/patient.js';
 export * from './domain/prescription.js';
+export * from './domain/reporting.js';
 export * from './domain/scheduling.js';
 export * from './domain/screens.js';
 export * from './domain/state-machine.js';

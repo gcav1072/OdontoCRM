@@ -25,6 +25,7 @@ export const PUERTOS = [
   { puerto: 4005, servicio: 'clinical', script: 'dev:clinical' },
   { puerto: 4006, servicio: 'odontogram', script: 'dev:odontogram' },
   { puerto: 4007, servicio: 'screens', script: 'dev:screens' },
+  { puerto: 4008, servicio: 'reporting', script: 'dev:reporting' },
 ];
 
 /** ¿Hay alguien escuchando en ese puerto? */
@@ -247,7 +248,7 @@ export const retratoDeLaPila = async () => {
   }
 
   /**
-   * El modo lo deciden los **servicios** (4001-4007 y la puerta), no la interfaz:
+   * El modo lo deciden los **servicios** (4001-4008 y la puerta), no la interfaz:
    * Vite sirve igual en los dos modos y su línea de comandos nunca dice `--watch`.
    * Así, «dev» es una pila de servicios con recarga y «fijo» una sin ella.
    */

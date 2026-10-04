@@ -171,3 +171,108 @@ export const diffSensitiveFields = <T extends Record<string, unknown>>(
     after: changedFields.length > 0 ? afterSubset : null,
   };
 };
+
+/* ── Lectura de la auditoría (Fase 9) ──────────────────────────────────────── */
+
+/**
+ * Rango de la consulta cuando llegan **fechas sueltas** (`aaaa-mm-dd`).
+ *
+ * `new Date('2026-10-01')` es medianoche **UTC**, que en Venezuela (UTC−4, sin
+ * horario de verano) son las 20:00 del día anterior: una búsqueda «del 1 de
+ * octubre» dejaría fuera la mañana del 1 y traería la noche del 30. Aquí el día
+ * se interpreta en la zona de la clínica, que es lo que espera quien lo escribe.
+ */
+export const CARACAS_OFFSET = '-04:00';
+
+export const auditInstantRange = (
+  from: string | undefined,
+  to: string | undefined,
+): { fromIso: string | undefined; toIso: string | undefined } => {
+  const dayOnly = /^\d{4}-\d{2}-\d{2}$/;
+  const resolve = (value: string | undefined, endOfDay: boolean): string | undefined => {
+    if (value === undefined || value === '') return undefined;
+    if (!dayOnly.test(value)) return value;
+    return endOfDay
+      ? `${value}T23:59:59.999${CARACAS_OFFSET}`
+      : `${value}T00:00:00.000${CARACAS_OFFSET}`;
+  };
+  return { fromIso: resolve(from, false), toIso: resolve(to, true) };
+};
+
+/** Una fila del diff: el campo y sus dos valores, ya legibles. */
+export interface AuditDiffRow {
+  field: string;
+  before: string;
+  after: string;
+}
+
+/** Texto legible de un valor del diff (los `null` se pintan como «—»). */
+export const formatAuditValue = (value: unknown): string => {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'sí' : 'no';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
+
+/**
+ * Filas del **diff antes/después** de un evento de auditoría.
+ *
+ * Los campos se toman de `changedFields` y, si no viniera, de la unión de las
+ * claves de `before` y `after` (los eventos antiguos no siempre lo traían). El
+ * orden es el de `changedFields`, que es el orden en que el servicio detectó los
+ * cambios: leer «teléfono: antes → después» es el requisito de la fase.
+ */
+export const auditDiffRows = (event: {
+  changedFields: readonly string[];
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}): AuditDiffRow[] => {
+  const before = event.before ?? {};
+  const after = event.after ?? {};
+  const fields =
+    event.changedFields.length > 0
+      ? [...event.changedFields]
+      : [...new Set([...Object.keys(before), ...Object.keys(after)])];
+  return fields.map((field) => ({
+    field,
+    before: formatAuditValue(before[field]),
+    after: formatAuditValue(after[field]),
+  }));
+};
+
+/** Columnas de la exportación CSV de la auditoría (mismas que la tabla). */
+export const AUDIT_EXPORT_COLUMNS = [
+  { key: 'occurredAt', label: 'Fecha y hora' },
+  { key: 'actorUsername', label: 'Usuario' },
+  { key: 'action', label: 'Acción' },
+  { key: 'entityType', label: 'Entidad' },
+  { key: 'entityId', label: 'Identificador' },
+  { key: 'summary', label: 'Qué pasó' },
+  { key: 'changedFields', label: 'Campos cambiados' },
+  { key: 'before', label: 'Antes' },
+  { key: 'after', label: 'Después' },
+  { key: 'reason', label: 'Motivo' },
+  { key: 'ip', label: 'IP' },
+  { key: 'requestId', label: 'Petición' },
+] as const;
+
+/** Convierte un evento de auditoría en la fila del CSV, con el diff en texto. */
+export const auditEventToRow = (event: AuditEventRecord): Record<string, string> => {
+  const diff = auditDiffRows(event);
+  const joinDiff = (side: 'before' | 'after'): string =>
+    diff.map((row) => `${row.field}: ${row[side]}`).join(' | ');
+  return {
+    occurredAt: event.occurredAt,
+    actorUsername: event.actorUsername ?? '—',
+    action: event.action,
+    entityType: event.entityType,
+    entityId: event.entityId ?? '—',
+    summary: event.summary ?? '—',
+    changedFields: event.changedFields.join(', '),
+    before: joinDiff('before'),
+    after: joinDiff('after'),
+    reason: event.reason ?? '—',
+    ip: event.ip ?? '—',
+    requestId: event.requestId ?? '—',
+  };
+};

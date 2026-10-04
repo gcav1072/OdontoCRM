@@ -158,6 +158,91 @@ const DICCIONARIO = {
   'modulo.pantallas.titulo': 'Pantallas',
   'modulo.pantallas.descripcion': 'Dispositivos y tokens de las pantallas de sala y consultorio.',
 
+  // --- Reportes: módulo /reportes (Fase 9) ---------------------------------
+  'reportes.titulo': 'Reportes del consultorio',
+  'reportes.descripcion': 'Indicadores operativos y clínicos del período que elijas.',
+  'reportes.rango': 'Del {desde} al {hasta}',
+  'reportes.catalogo.vacioTitulo': 'Sin reportes para tu rol',
+  'reportes.catalogo.vacio': 'Tu rol todavía no tiene reportes asignados.',
+
+  // Pestañas y permisos: los clínicos exigen `reports:clinical` (ADR 0039).
+  'reportes.pestanas.titulo': 'Reportes disponibles',
+  'reportes.pestanas.clinicaBloqueada': 'Solo con el permiso de reportes clínicos.',
+  'reportes.pestanas.clinicaAvisoTitulo': 'Reportes clínicos ocultos',
+  'reportes.pestanas.clinicaAviso':
+    'Los reportes clínicos los ve el odontólogo o el administrador.',
+
+  // Filtros comunes a los seis reportes.
+  'reportes.filtros.desde': 'Desde',
+  'reportes.filtros.hasta': 'Hasta',
+  'reportes.filtros.edadMin': 'Edad mínima',
+  'reportes.filtros.edadMax': 'Edad máxima',
+  'reportes.filtros.edadInvalida': 'La edad mínima no puede ser mayor que la máxima.',
+  'reportes.filtros.sexo': 'Sexo',
+  'reportes.filtros.estado': 'Estado del paciente',
+  'reportes.filtros.todos': 'Todos',
+  'reportes.filtros.granularidad': 'Agrupación',
+  'reportes.filtros.granularidadAyuda': 'Cómo se agrupan las series de tiempo.',
+  'reportes.filtros.fechasInvalidas': 'La fecha inicial no puede ser posterior a la final.',
+  'reportes.filtros.rangoBloqueado': 'Corrige el rango de fechas para ver el reporte.',
+  'reportes.filtros.actualizar': 'Actualizar',
+  'reportes.filtros.actualizando': 'Actualizando…',
+  'reportes.granularidad.day': 'Por día',
+  'reportes.granularidad.week': 'Por semana',
+  'reportes.granularidad.month': 'Por mes',
+
+  // Resumen del día (`GET /reports/summary`): sus cifras no traen etiqueta.
+  'reportes.resumen.titulo': 'Resumen de hoy',
+  'reportes.resumen.fecha': 'Del {fecha}',
+  'reportes.resumen.actualizado': 'Datos actualizados el {fecha}',
+  'reportes.resumen.sinActualizar': 'El resumen del día todavía no registra una actualización.',
+  'reportes.resumen.cargando': 'Cargando el resumen del día…',
+  'reportes.resumen.error': 'No se pudo cargar el resumen del día',
+  'reportes.resumen.citas': 'Citas de hoy',
+  'reportes.resumen.citasCanceladas': 'Canceladas: {total}',
+  'reportes.resumen.atendidas': 'Atendidas',
+  'reportes.resumen.inasistencias': 'Inasistencias',
+  'reportes.resumen.pendientes': 'Pendientes',
+  'reportes.resumen.cupoLibre': 'Cupos libres',
+  'reportes.resumen.cupoDetalle': 'Cupo {cupo} · asignados {asignados}',
+  'reportes.resumen.activos': 'Pacientes activos',
+  'reportes.resumen.enEspera': 'En espera de cita',
+  'reportes.resumen.nuevos': 'Nuevos del mes',
+  'reportes.resumen.notificaciones': 'Avisos: {enviadas} enviados · {fallidas} fallidos',
+
+  // Reporte activo: los textos del documento los trae el contrato.
+  'reportes.reporte.cargando': 'Cargando el reporte…',
+  'reportes.reporte.error': 'No se pudo cargar el reporte',
+  'reportes.reporte.generado': 'Generado el {fecha}',
+  'reportes.reporte.actualizando': 'Actualizando…',
+  'reportes.reporte.kpis': 'Cifras del período',
+  'reportes.reporte.graficas': 'Gráficas',
+  'reportes.reporte.sinGraficas': 'Este reporte no trae gráficas en el período.',
+  'reportes.reporte.detalle': 'Detalle',
+  'reportes.reporte.vacioTitulo': 'Sin datos en el período',
+  'reportes.reporte.vacio': 'No hay datos con estos filtros: amplía el rango de fechas.',
+
+  // Gráficas y tabla del documento.
+  'reportes.grafica.aria': 'Gráfica de {titulo}',
+  'reportes.grafica.vacia': 'La gráfica no tiene puntos en el período.',
+  'reportes.grafica.tablaEquivalente': 'Los mismos datos están en la tabla de abajo.',
+  'reportes.tabla.caption': 'Detalle de {reporte}',
+  'reportes.tabla.recortada': 'Se muestran {filas} de {total} filas.',
+  'reportes.tabla.vacioTitulo': 'Sin filas',
+  'reportes.tabla.vacia': 'La tabla no trae filas con estos filtros.',
+
+  // Exportación e impresión.
+  'reportes.export.titulo': 'Exportar',
+  'reportes.export.csv': 'Descargar CSV',
+  'reportes.export.pdf': 'Descargar PDF',
+  'reportes.export.imprimir': 'Imprimir',
+  'reportes.export.etiqueta': '{reporte} en formato {formato}',
+  'reportes.export.exito': 'Se descargó {archivo}.',
+  'reportes.export.preparando': 'Preparando…',
+  'reportes.export.imprimirAyuda': 'Se imprime la pantalla; el PDF lo genera el servidor.',
+  'reportes.formato.csv': 'CSV',
+  'reportes.formato.pdf': 'PDF',
+
   // --- Módulos en construcción --------------------------------------------
   'placeholder.titulo': 'Módulo en construcción',
   'placeholder.texto':
@@ -620,6 +705,7 @@ const DICCIONARIO = {
   'permiso.odontogram:read': 'Consultar el odontograma',
   'permiso.odontogram:write': 'Actualizar el odontograma',
   'permiso.reports:read': 'Ver reportes',
+  'permiso.reports:clinical': 'Ver reportes clínicos (perfil clínico, salud bucal y récipes)',
   'permiso.audit:read': 'Consultar la auditoría',
 
   // --- Acciones de auditoría ----------------------------------------------
@@ -644,6 +730,133 @@ const DICCIONARIO = {
   'auditoria.medical_record_amended': 'Adenda a la historia clínica',
   'auditoria.medical_record_printed': 'Historia clínica impresa',
   'auditoria.medical_record_consent_accepted': 'Consentimiento informado registrado',
+
+  // Las 32 que faltaban para cubrir las 53 de `AUDIT_ACTIONS`: mientras el
+  // diccionario no las tenga, la pantalla muestra el código crudo (`patient_updated`).
+
+  // Pantallas kiosko
+  'auditoria.device_login_failed': 'Acceso fallido desde una pantalla',
+  // Pacientes (llegan por el outbox desde el servicio de pacientes)
+  'auditoria.patient_created': 'Paciente registrado',
+  'auditoria.patient_updated': 'Paciente editado',
+  'auditoria.patient_status_changed': 'Estado del paciente cambiado',
+  'auditoria.patient_deleted': 'Paciente eliminado del registro',
+  // Agenda (llegan por el outbox desde el servicio de agenda)
+  'auditoria.request_created': 'Solicitud de cita recibida',
+  'auditoria.request_cancelled': 'Solicitud de cita cancelada',
+  'auditoria.appointment_scheduled': 'Cita programada',
+  'auditoria.appointment_rescheduled': 'Cita reprogramada',
+  'auditoria.appointment_cancelled': 'Cita cancelada',
+  'auditoria.appointment_notified': 'Aviso de cita enviado al paciente',
+  'auditoria.appointment_checked_in': 'Paciente en sala de espera',
+  'auditoria.appointment_called': 'Paciente llamado a consulta',
+  'auditoria.appointment_in_consultation': 'Paciente en consulta',
+  'auditoria.appointment_attended': 'Cita atendida',
+  'auditoria.appointment_no_show': 'Paciente que no asistió',
+  'auditoria.appointment_overbook_authorized': 'Sobrecupo autorizado',
+  'auditoria.day_capacity_changed': 'Cupo del día ajustado',
+  'auditoria.slot_template_changed': 'Plantilla de franjas ajustada',
+  // Sesiones clínicas y récipes (Fase 7)
+  'auditoria.clinical_session_created': 'Sesión clínica abierta',
+  'auditoria.clinical_session_closed': 'Sesión clínica cerrada',
+  'auditoria.clinical_session_amended': 'Adenda a la sesión clínica',
+  'auditoria.clinical_session_file_uploaded': 'Archivo adjuntado a la sesión clínica',
+  'auditoria.clinical_session_file_removed': 'Archivo quitado de la sesión clínica',
+  'auditoria.prescription_issued': 'Recipe emitido',
+  'auditoria.prescription_reprinted': 'Recipe reimpreso',
+  'auditoria.prescription_annulled': 'Recipe anulado',
+  // Odontograma (llegan por el outbox desde el servicio de odontograma)
+  'auditoria.tooth_finding_recorded': 'Hallazgo registrado en una pieza',
+  'auditoria.tooth_finding_updated': 'Hallazgo actualizado en una pieza',
+  'auditoria.tooth_finding_removed': 'Hallazgo quitado de una pieza',
+  'auditoria.tooth_finding_superseded': 'Hallazgo reemplazado por uno nuevo',
+  'auditoria.odontogram_printed': 'Odontograma impreso',
+
+  // --- Módulo de auditoría (Fase 9) ---------------------------------------
+  'auditoria.titulo': 'Auditoría',
+  'auditoria.descripcion':
+    'Bitácora de accesos y de cambios sensibles, con el antes y el después de cada campo.',
+
+  // Filtros
+  'auditoria.filtros': 'Filtros de la búsqueda',
+  'auditoria.filtro.desde': 'Desde',
+  'auditoria.filtro.hasta': 'Hasta',
+  'auditoria.filtro.fechaAyuda': 'El día completo, en hora de Venezuela.',
+  'auditoria.filtro.rangoInvalido': 'La fecha inicial es posterior a la final.',
+  'auditoria.filtro.usuario': 'Usuario',
+  'auditoria.filtro.usuarioPlaceholder': 'Nombre de usuario',
+  'auditoria.filtro.accion': 'Acción',
+  'auditoria.filtro.todasAcciones': 'Todas las acciones',
+  'auditoria.filtro.entidad': 'Tipo de entidad',
+  'auditoria.filtro.todasEntidades': 'Todos los tipos',
+  'auditoria.filtro.identificador': 'Identificador',
+  'auditoria.filtro.identificadorPlaceholder': 'UUID de la entidad',
+  'auditoria.filtro.campo': 'Campo',
+  'auditoria.filtro.campoPlaceholder': 'Por ejemplo: phone',
+
+  // Tabla
+  'auditoria.tabla.fecha': 'Fecha y hora',
+  'auditoria.tabla.usuario': 'Usuario',
+  'auditoria.tabla.accion': 'Acción',
+  'auditoria.tabla.entidad': 'Entidad',
+  'auditoria.tabla.resumen': 'Qué pasó',
+  'auditoria.tabla.motivo': 'Motivo',
+  'auditoria.tabla.campos': 'Campos',
+  'auditoria.tabla.detalle': 'Ver detalle',
+  'auditoria.tabla.detalleAria': 'Ver el detalle: {texto}',
+  'auditoria.tabla.unCampo': '1 campo',
+  'auditoria.tabla.variosCampos': '{total} campos',
+
+  // Listado, paginación y estados
+  'auditoria.resumen.linea': '{desde}–{hasta} de {total}',
+  'auditoria.resumen.cero': 'Sin resultados',
+  'auditoria.paginacion': 'Página {pagina} de {paginas}',
+  'auditoria.anterior': 'Anterior',
+  'auditoria.siguiente': 'Siguiente',
+  'auditoria.cargando': 'Cargando la auditoría…',
+  'auditoria.error': 'No se pudieron cargar los eventos de auditoría',
+  'auditoria.vacio.titulo': 'Ningún cambio coincide con los filtros',
+  'auditoria.vacio.texto': 'Prueba con otro rango de fechas u otro usuario, o quita algún filtro.',
+
+  // Exportación
+  'auditoria.exportar': 'Exportar CSV',
+  'auditoria.exportando': 'Exportando…',
+  'auditoria.exportacion.lista': 'Se descargó el CSV con los filtros aplicados.',
+  'auditoria.exportacion.error': 'No se pudo exportar la auditoría',
+
+  // Detalle del evento
+  'auditoria.dialogo.sinResumen': 'Sin resumen',
+  'auditoria.dialogo.datos': 'Datos del evento',
+  'auditoria.dialogo.usuario': 'Usuario',
+  'auditoria.dialogo.entidad': 'Entidad',
+  'auditoria.dialogo.identificador': 'Identificador',
+  'auditoria.dialogo.ip': 'IP',
+  'auditoria.dialogo.peticion': 'Petición',
+  'auditoria.dialogo.navegador': 'Navegador',
+  'auditoria.dialogo.cambios': 'Cambios: antes y después',
+  'auditoria.dialogo.columna.campo': 'Campo',
+  'auditoria.dialogo.columna.antes': 'Antes',
+  'auditoria.dialogo.columna.despues': 'Después',
+  'auditoria.dialogo.sinDiff':
+    'Este evento no guarda valores anteriores y nuevos: no cambió ningún campo o el servicio no los registró.',
+  'auditoria.dialogo.motivo': 'Motivo',
+  'auditoria.dialogo.filtrarEntidad': 'Ver todo de esta entidad',
+
+  // Tipos de entidad que existen hoy
+  'auditoria.entidad.patient': 'Paciente',
+  'auditoria.entidad.appointment': 'Cita',
+  'auditoria.entidad.request': 'Solicitud',
+  'auditoria.entidad.day_capacity': 'Cupo del día',
+  'auditoria.entidad.slot_template': 'Plantilla de franjas',
+  'auditoria.entidad.user': 'Usuario',
+  'auditoria.entidad.device_token': 'Token de pantalla',
+  'auditoria.entidad.medical_record': 'Historia clínica',
+  'auditoria.entidad.clinical_session': 'Sesión clínica',
+  'auditoria.entidad.prescription': 'Recipe',
+  'auditoria.entidad.tooth_finding': 'Hallazgo en una pieza',
+  'auditoria.entidad.odontogram': 'Odontograma',
+  'auditoria.entidad.refresh_token': 'Token de refresco',
+  'auditoria.entidad.session': 'Sesión',
 
   // --- Programación de la jornada (Fase 3) --------------------------------
   'programacion.titulo': 'Programación de la jornada',
@@ -1312,6 +1525,9 @@ const DICCIONARIO = {
   'flujo.atajo.llamarAyuda': 'Llama al paciente en curso (sale en la pantalla de la sala)',
   'flujo.atajo.cerrarAyuda': 'Cierra la sesión clínica de la visita',
   'flujo.atajos.ayuda': '{buscar} · {llamar} · {cerrar}',
+  // Nombre del grupo de atajos para lectores de pantalla (y para las pruebas, que
+  // necesitan distinguir estos botones del que ofrece la pantalla vacía).
+  'flujo.atajos.grupo': 'Atajos del día',
   'flujo.cerrar.sinPaciente': 'No hay ningún paciente abierto: elige su cita en la cola del día.',
   'flujo.cerrar.sinContenido':
     'Para cerrar la sesión hace falta el motivo, el diagnóstico o algún procedimiento.',
@@ -2179,6 +2395,7 @@ export const PERMISSION_LABELS: Readonly<Record<Permission, string>> = {
   'odontogram:read': t('permiso.odontogram:read'),
   'odontogram:write': t('permiso.odontogram:write'),
   'reports:read': t('permiso.reports:read'),
+  'reports:clinical': t('permiso.reports:clinical'),
   'audit:read': t('permiso.audit:read'),
 };
 
@@ -2204,6 +2421,38 @@ const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   medical_record_amended: t('auditoria.medical_record_amended'),
   medical_record_printed: t('auditoria.medical_record_printed'),
   medical_record_consent_accepted: t('auditoria.medical_record_consent_accepted'),
+  device_login_failed: t('auditoria.device_login_failed'),
+  patient_created: t('auditoria.patient_created'),
+  patient_updated: t('auditoria.patient_updated'),
+  patient_status_changed: t('auditoria.patient_status_changed'),
+  patient_deleted: t('auditoria.patient_deleted'),
+  request_created: t('auditoria.request_created'),
+  request_cancelled: t('auditoria.request_cancelled'),
+  appointment_scheduled: t('auditoria.appointment_scheduled'),
+  appointment_rescheduled: t('auditoria.appointment_rescheduled'),
+  appointment_cancelled: t('auditoria.appointment_cancelled'),
+  appointment_notified: t('auditoria.appointment_notified'),
+  appointment_checked_in: t('auditoria.appointment_checked_in'),
+  appointment_called: t('auditoria.appointment_called'),
+  appointment_in_consultation: t('auditoria.appointment_in_consultation'),
+  appointment_attended: t('auditoria.appointment_attended'),
+  appointment_no_show: t('auditoria.appointment_no_show'),
+  appointment_overbook_authorized: t('auditoria.appointment_overbook_authorized'),
+  day_capacity_changed: t('auditoria.day_capacity_changed'),
+  slot_template_changed: t('auditoria.slot_template_changed'),
+  clinical_session_created: t('auditoria.clinical_session_created'),
+  clinical_session_closed: t('auditoria.clinical_session_closed'),
+  clinical_session_amended: t('auditoria.clinical_session_amended'),
+  clinical_session_file_uploaded: t('auditoria.clinical_session_file_uploaded'),
+  clinical_session_file_removed: t('auditoria.clinical_session_file_removed'),
+  prescription_issued: t('auditoria.prescription_issued'),
+  prescription_reprinted: t('auditoria.prescription_reprinted'),
+  prescription_annulled: t('auditoria.prescription_annulled'),
+  tooth_finding_recorded: t('auditoria.tooth_finding_recorded'),
+  tooth_finding_updated: t('auditoria.tooth_finding_updated'),
+  tooth_finding_removed: t('auditoria.tooth_finding_removed'),
+  tooth_finding_superseded: t('auditoria.tooth_finding_superseded'),
+  odontogram_printed: t('auditoria.odontogram_printed'),
 };
 
 /** Etiqueta de una acción de auditoría; si el servidor añade una nueva, se muestra tal cual. */

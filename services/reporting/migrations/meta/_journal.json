@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791142199626,
+      "tag": "0000_married_juggernaut",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791146000000,
+      "tag": "0001_vistas_materializadas",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791146000001,
+      "tag": "0002_lucky_greymalkin",
+      "breakpoints": true
+    }
+  ]
+}

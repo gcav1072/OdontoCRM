@@ -27,6 +27,13 @@ export const PERMISSIONS = [
   'odontogram:read',
   'odontogram:write',
   'reports:read',
+  /**
+   * Reportes **clínicos** (perfil clínico, salud bucal y recetas). El plan §5.4
+   * da a la secretaría los reportes operativos y al odontólogo los clínicos, así
+   * que estos últimos exigen un permiso propio ([ADR 0039](../../../docs/adr/0039-reportes-clinicos-con-permiso-propio.md)):
+   * `reports:read` no bastaba porque lo tienen los tres roles.
+   */
+  'reports:clinical',
   'audit:read',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
@@ -76,6 +83,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     'odontogram:read',
     'odontogram:write',
     'reports:read',
+    'reports:clinical',
   ],
   pantalla: ['screens:display'],
 };

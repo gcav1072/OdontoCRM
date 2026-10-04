@@ -72,6 +72,7 @@ module.exports = {
       out_file: path.join(root, 'logs', 'web.out.log'),
       error_file: path.join(root, 'logs', 'web.error.log'),
     },
-    // Fase 9: reporting
+    // Fase 9: el servicio de reportes (read model de KPIs y exportaciones).
+    service('reporting', 'services/reporting/dist/index.js', 'services/reporting/.env'),
   ],
 };

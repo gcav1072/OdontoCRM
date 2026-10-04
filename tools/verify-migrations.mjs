@@ -67,6 +67,23 @@ const SERVICES = [
     migrations: 'services/odontogram/migrations',
     tables: ['odontograms', 'tooth_findings', 'tooth_finding_history', 'odontogram_prints'],
   },
+  {
+    name: 'reporting',
+    migrations: 'services/reporting/migrations',
+    tables: [
+      'dim_patient',
+      'fact_request',
+      'fact_appointment',
+      'fact_clinical_session',
+      'fact_prescription',
+      'fact_prescription_item',
+      'fact_tooth_finding',
+      'dim_day_capacity',
+      'patient_profiles',
+      'report_refreshes',
+      'processed_events',
+    ],
+  },
 ];
 
 const args = process.argv.slice(2);

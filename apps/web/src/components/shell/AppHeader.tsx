@@ -21,7 +21,7 @@ export const AppHeader = () => {
   const nombreRoles = roles.map((rol) => ROLE_LABELS[rol]).join(' · ');
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-surface/90 px-4 backdrop-blur lg:px-6">
+    <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-surface/90 px-4 backdrop-blur lg:px-6 print:hidden">
       <div className="min-w-0 flex-1">
         <h1 className="truncate text-base font-semibold text-ink">{titulo}</h1>
         <p className="hidden truncate text-xs text-ink-subtle sm:block">{descripcion}</p>

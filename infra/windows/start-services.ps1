@@ -49,7 +49,10 @@ foreach ($url in @(
     'http://127.0.0.1:4002/ready',
     'http://127.0.0.1:4003/ready',
     'http://127.0.0.1:4004/ready',
-    'http://127.0.0.1:4007/ready'
+    'http://127.0.0.1:4005/ready',
+    'http://127.0.0.1:4006/ready',
+    'http://127.0.0.1:4007/ready',
+    'http://127.0.0.1:4008/ready'
   )) {
   try {
     $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5

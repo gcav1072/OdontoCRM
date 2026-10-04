@@ -15,7 +15,6 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
 const CANDIDATES = ['services/identity/.env', 'services/patients/.env', 'services/scheduling/.env'];
 
 const readEnvValue = (relativePath, key) => {
@@ -67,7 +66,81 @@ const extraEnv = {
   TEST_ODONTOGRAM_DATABASE_URL:
     process.env.TEST_ODONTOGRAM_DATABASE_URL ??
     readEnvValue('services/odontogram/.env', 'DATABASE_URL'),
+  TEST_REPORTING_DATABASE_URL:
+    process.env.TEST_REPORTING_DATABASE_URL ??
+    readEnvValue('services/reporting/.env', 'DATABASE_URL'),
 };
+
+/**
+ * Base **propia** para la suite de reportes.
+ *
+ * Es la única suite que afirma cifras **absolutas** sobre su read model («el embudo
+ * cuenta 4 solicitudes»), y con la pila en marcha el servicio de reportes proyecta en
+ * esa misma base los eventos que publican las demás suites y el humo: los totales
+ * cambiaban según lo que estuviera corriendo. Se le prepara una base temporal (como
+ * hace `db:verify-migrations`) con las extensiones y las migraciones del servicio, y
+ * se borra al terminar. Si falta `PG_ADMIN_URL` o `packages/db/dist`, se usa la base
+ * del servicio y la suite se aísla por su cuenta (vacía el read model y acota el
+ * rango de fechas).
+ */
+const prepararBaseDeReportes = async () => {
+  const compartida = extraEnv.TEST_REPORTING_DATABASE_URL;
+  const adminUrl = process.env.PG_ADMIN_URL ?? readEnvValue('.env', 'PG_ADMIN_URL');
+  const migrador = resolve(ROOT, 'services/reporting/dist/db/migrate.js');
+  if (compartida === undefined || adminUrl === undefined || !existsSync(migrador)) {
+    console.warn(
+      '· Suite de reportes sobre la base del servicio (falta PG_ADMIN_URL o el build): ' +
+        'se aísla vaciando el read model.',
+    );
+    return { url: compartida, temporal: undefined };
+  }
+
+  const { default: pg } = await import('pg');
+  const { runMigrations } = await import('../packages/db/dist/index.js');
+  const owner = decodeURIComponent(new URL(compartida).username);
+  const temporal = 'odonto_reporting_prueba';
+  if (!/^[a-z_][a-z0-9_]*$/.test(owner) || !/^[a-z_][a-z0-9_]*$/.test(temporal)) {
+    return { url: compartida, temporal: undefined };
+  }
+
+  const admin = new pg.Client({
+    connectionString: adminUrl,
+    application_name: 'odontocrm-test-db',
+  });
+  await admin.connect();
+  try {
+    await admin.query(`drop database if exists "${temporal}" with (force)`);
+    await admin.query(`create database "${temporal}" owner "${owner}"`);
+  } finally {
+    await admin.end();
+  }
+
+  const url = compartida.replace(/\/[^/]+$/, `/${temporal}`);
+  // Las extensiones las crea el bootstrap en cada base (`pgcrypto` para
+  // `gen_random_uuid()`): la base de prueba tiene que nacer igual.
+  const extensiones = new pg.Client({
+    connectionString: url,
+    application_name: 'odontocrm-test-ext',
+  });
+  await extensiones.connect();
+  try {
+    await extensiones.query('create extension if not exists pgcrypto');
+    await extensiones.query('create extension if not exists pg_trgm');
+  } finally {
+    await extensiones.end();
+  }
+
+  await runMigrations({
+    connectionString: url,
+    applicationName: 'odontocrm-test-reporting',
+    migrationsFolder: resolve(ROOT, 'services/reporting/migrations'),
+  });
+  console.log(`· Reportes: base temporal "${temporal}" preparada y migrada.`);
+  return { url, temporal };
+};
+
+const reportes = await prepararBaseDeReportes();
+if (reportes.url !== undefined) extraEnv.TEST_REPORTING_DATABASE_URL = reportes.url;
 
 const url = new URL(databaseUrl);
 console.log(
@@ -77,7 +150,14 @@ console.log(
 const passthrough = process.argv.slice(2);
 // Sin argumentos corre **toda** la suite: con `TEST_DATABASE_URL` presente, las
 // pruebas de integración (que sin ella se omiten) se ejecutan de verdad.
-const vitestArgs = ['run', ...passthrough];
+//
+// `--maxWorkers`: varias suites publican eventos y **esperan a que los servicios en
+// marcha los auditen** (la auditoría vive en identity y llega por el outbox). Con los
+// 68 archivos en paralelo y los 9 servicios consumiendo la misma cola, la espera se
+// quedaba corta de vez en cuando y fallaba una suite distinta en cada corrida; con
+// cuatro workers la suite es reproducible. Se puede subir con
+// `npm run test:integration -- --maxWorkers=8` cuando la máquina esté libre.
+const vitestArgs = ['run', '--maxWorkers=4', ...passthrough];
 
 const result = spawnSync(
   process.execPath,
@@ -88,5 +168,26 @@ const result = spawnSync(
     env: { ...process.env, ...extraEnv },
   },
 );
+
+// La base temporal de reportes no se queda por ahí: se borra siempre.
+if (reportes.temporal !== undefined) {
+  const { default: pg } = await import('pg');
+  const adminUrl = process.env.PG_ADMIN_URL ?? readEnvValue('.env', 'PG_ADMIN_URL');
+  const admin = new pg.Client({
+    connectionString: adminUrl,
+    application_name: 'odontocrm-test-db',
+  });
+  try {
+    await admin.connect();
+    await admin.query(`drop database if exists "${reportes.temporal}" with (force)`);
+    console.log(`· Reportes: base temporal "${reportes.temporal}" borrada.`);
+  } catch {
+    console.warn(
+      `· No se pudo borrar la base temporal "${reportes.temporal}" (se borrará en la próxima corrida).`,
+    );
+  } finally {
+    await admin.end().catch(() => undefined);
+  }
+}
 
 process.exit(result.status ?? 1);
