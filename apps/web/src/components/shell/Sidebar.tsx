@@ -28,7 +28,9 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
   return (
     <aside
       className={cn(
-        'sticky top-0 z-30 flex h-dvh shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200',
+        // `print:hidden`: al imprimir un reporte (Fase 9) el papel lleva el
+        // documento, no el menú.
+        'sticky top-0 z-30 flex h-dvh shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200 print:hidden',
         collapsed ? 'w-16' : 'w-16 lg:w-64',
       )}
     >

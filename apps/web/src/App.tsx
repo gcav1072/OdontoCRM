@@ -19,6 +19,8 @@ import { OdontogramPrintPage } from './pages/OdontogramPrintPage';
 import { PatientDetailPage } from './pages/PatientDetailPage';
 import { PatientRegistryPage } from './pages/PatientRegistryPage';
 import { PatientsPage } from './pages/PatientsPage';
+import { ReportesPage } from './pages/ReportesPage';
+import { AuditoriaPage } from './pages/AuditoriaPage';
 import { SchedulingPage } from './pages/SchedulingPage';
 import { ScreensPage } from './pages/ScreensPage';
 import { ScreenConsultorioPage } from './pages/ScreenConsultorioPage';
@@ -54,6 +56,8 @@ export const App = () => {
         'pantallas',
         'consultorio',
         'flujo',
+        'reportes',
+        'auditoria',
       ].includes(modulo.id),
   );
 
@@ -233,6 +237,29 @@ export const App = () => {
           element={
             <RequirePermission permission="odontogram:read">
               <OdontogramHistoryPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* Fase 9: reportes y KPIs. Se entra con `reports:read` (los reportes
+            operativos) y los clínicos —perfil clínico, salud bucal y recetas—
+            se comprueban dentro con `reports:clinical` (ADR 0039). */}
+        <Route
+          path="reportes"
+          element={
+            <RequirePermission permission="reports:read">
+              <ReportesPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* Fase 9: auditoría. Solo `admin` tiene `audit:read`; el diff
+            antes/después y el motivo se ven en la propia lista. */}
+        <Route
+          path="auditoria"
+          element={
+            <RequirePermission permission="audit:read">
+              <AuditoriaPage />
             </RequirePermission>
           }
         />

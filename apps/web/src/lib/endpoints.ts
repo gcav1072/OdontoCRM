@@ -58,6 +58,7 @@ import {
   type PatientFileKind,
   type PatientFilters,
   type PatientLookupResult,
+  type PatientStatus,
   type PatientSummary,
   type Permission,
   type PrescriptionDetail,
@@ -65,6 +66,11 @@ import {
   type PrescriptionVerificationResult,
   type RequestSummary,
   type ResetPasswordInput,
+  type ReportDocument,
+  type ReportExportFormat,
+  type ReportGranularity,
+  type ReportKey,
+  type ReportSummary,
   type RescheduleAppointmentInput,
   type RetryNotificationInput,
   type Role,
@@ -74,6 +80,7 @@ import {
   type ScreenDeviceUpdate,
   type SessionInfo,
   type SetCapacityInput,
+  type Sex,
   type SlotTemplate,
   type SlotTemplateInput,
   type StatusHistoryEntry,
@@ -119,9 +126,22 @@ export interface AuditEventsParams {
   actorUsername?: string;
   action?: string;
   entityType?: string;
+  /** Entidad concreta (`GET /audit/events?entityType=patient&entityId=…`). */
+  entityId?: string;
   field?: string;
   page?: number;
   pageSize?: number;
+}
+
+/** Filtros de un reporte: los mismos seis campos para los seis reportes. */
+export interface ReportQueryParams {
+  from?: string;
+  to?: string;
+  ageMin?: number;
+  ageMax?: number;
+  sex?: Sex;
+  status?: PatientStatus;
+  granularity?: ReportGranularity;
 }
 
 export const authApi = {
@@ -234,13 +254,56 @@ export const usersApi = {
 };
 
 /**
- * Consulta de auditoría. La Fase 9 construye la pantalla; el contrato ya queda
- * cubierto aquí para no duplicarlo entonces.
+ * Consulta de auditoría (Fase 9: la pantalla; el transporte ya estaba desde la
+ * Fase 1). La exportación baja el mismo listado filtrado en CSV.
  */
 export const auditApi = {
   events: (params: AuditEventsParams, signal?: AbortSignal): Promise<Paginated<AuditEventRecord>> =>
     api.get<Paginated<AuditEventRecord>>('/audit/events', {
       query: { ...params } as QueryParams,
+      signal,
+    }),
+
+  /**
+   * CSV del listado **con los mismos filtros** que la pantalla. Lo arma el
+   * servidor para que lo descargado coincida con lo que se ve (y para que el
+   * diff antes/después salga en texto legible).
+   */
+  exportCsv: (params: AuditEventsParams, signal?: AbortSignal): Promise<Blob> =>
+    apiBinary('GET', '/audit/events/export.csv', {
+      query: { ...params } as QueryParams,
+      signal,
+    }),
+};
+
+/**
+ * Reportes y KPIs (Fase 9). Todos los reportes comparten filtros y devuelven el
+ * mismo documento (`ReportDocument`): la interfaz tiene una sola forma de
+ * pintarlos y una sola de exportarlos.
+ */
+export const reportsApi = {
+  summary: (signal?: AbortSignal): Promise<ReportSummary> =>
+    api.get<ReportSummary>('/reports/summary', { signal }),
+
+  document: (
+    key: ReportKey,
+    filters: ReportQueryParams = {},
+    signal?: AbortSignal,
+  ): Promise<ReportDocument> =>
+    api.get<ReportDocument>(`/reports/${key}`, {
+      query: { ...filters } as QueryParams,
+      signal,
+    }),
+
+  /** Descarga del reporte en CSV o PDF (mismos filtros que la pantalla). */
+  exportFile: (
+    key: ReportKey,
+    format: ReportExportFormat,
+    filters: ReportQueryParams = {},
+    signal?: AbortSignal,
+  ): Promise<Blob> =>
+    apiBinary('GET', `/reports/${key}/export.${format}`, {
+      query: { ...filters } as QueryParams,
       signal,
     }),
 };

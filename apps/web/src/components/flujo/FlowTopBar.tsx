@@ -210,8 +210,14 @@ export const FlowTopBar = ({
           )}
         </div>
 
-        {/* Atajos: teclas en el puesto de trabajo, botones en la tableta. */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Atajos: teclas en el puesto de trabajo, botones en la tableta. El grupo
+            lleva nombre accesible para que se anuncie como un conjunto y para poder
+            distinguirlo del botón que ofrece la pantalla vacía («Sin paciente»). */}
+        <div
+          role="group"
+          aria-label={t('flujo.atajos.grupo')}
+          className="flex flex-wrap items-center gap-2"
+        >
           <Button
             variant="secondary"
             onClick={() => onShortcut('buscar')}
