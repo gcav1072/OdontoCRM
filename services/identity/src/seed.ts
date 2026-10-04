@@ -1,3 +1,4 @@
+import { CLINIC } from '@odontocrm/contracts';
 import { hashPassword, verifyPassword } from '@odontocrm/kernel';
 import { eq } from 'drizzle-orm';
 import type { Role } from '@odontocrm/contracts';
@@ -10,7 +11,10 @@ import { userRoles, users } from './db/schema.js';
  * Crea los usuarios iniciales del sistema (Fase 1):
  *   · `admin`     → administrador, acceso total
  *   · `recepcion` → secretaria (recepción, registro, programación, secretaría)
- *   · `egomez`    → odontóloga (consultorio, historia clínica, odontograma)
+ *   · **un odontólogo por cada uno de `CLINIC.dentists`** (consultorio, historia
+ *     clínica, odontograma, sesiones y récipes). El nombre, el usuario y el MPPS de
+ *     esa sección son los del consultorio: es lo que hay que editar para poner el
+ *     sistema con otro odontólogo (`packages/contracts/src/clinic.ts`).
  *
  *   npm run build:node
  *   npm run seed:users -w @odontocrm/identity              (idempotente)
@@ -31,11 +35,17 @@ interface SeedUser {
   passwordEnv: string;
 }
 
-const DEVELOPMENT_PASSWORDS = {
+const DEVELOPMENT_PASSWORDS: Readonly<Record<string, string>> = {
   admin: 'admin-odontocrm-2026',
   recepcion: 'recepcion-odontocrm-2026',
   egomez: 'consultorio-odontocrm-2026',
 } as const;
+
+/**
+ * Contraseña temporal del resto de los odontólogos que se añadan a `CLINIC.dentists`:
+ * la cuenta nace pidiendo el cambio, así que la temporal solo tiene que existir.
+ */
+const DENTIST_DEFAULT_PASSWORD = 'consultorio-odontocrm-2026';
 
 const reset = process.argv.includes('--reset');
 /** `--print`: solo recuerda las credenciales y su estado; no escribe en la base. */
@@ -44,7 +54,7 @@ const soloRecordar = process.argv.includes('--print');
 const config = loadIdentityConfig();
 const production = config.NODE_ENV === 'production';
 
-const resolvePassword = (username: keyof typeof DEVELOPMENT_PASSWORDS): string => {
+const resolvePassword = (username: string): string => {
   const envName = `SEED_PASSWORD_${username.toUpperCase()}`;
   const fromEnv = process.env[envName];
   if (fromEnv !== undefined && fromEnv.length >= 10) return fromEnv;
@@ -53,8 +63,22 @@ const resolvePassword = (username: keyof typeof DEVELOPMENT_PASSWORDS): string =
       `En producción define ${envName} (mínimo 10 caracteres) antes de sembrar usuarios.`,
     );
   }
-  return DEVELOPMENT_PASSWORDS[username];
+  return DEVELOPMENT_PASSWORDS[username] ?? DENTIST_DEFAULT_PASSWORD;
 };
+
+/**
+ * Los odontólogos salen de `CLINIC.dentists` (`packages/contracts/src/clinic.ts`):
+ * para poner el sistema con otro odontólogo se edita esa sección —nombre, usuario y
+ * MPPS— y `npm run seed:users` crea su cuenta. Añadir uno más a la lista basta.
+ */
+const DENTIST_USERS: SeedUser[] = CLINIC.dentists.map((dentist) => ({
+  username: dentist.username,
+  fullName: dentist.fullName,
+  roles: ['odontologo'] as Role[],
+  email: dentist.email,
+  password: resolvePassword(dentist.username),
+  passwordEnv: `SEED_PASSWORD_${dentist.username.toUpperCase()}`,
+}));
 
 const SEED_USERS: SeedUser[] = [
   {
@@ -73,14 +97,7 @@ const SEED_USERS: SeedUser[] = [
     password: resolvePassword('recepcion'),
     passwordEnv: 'SEED_PASSWORD_RECEPCION',
   },
-  {
-    username: 'egomez',
-    fullName: 'Od. Erika Gómez',
-    roles: ['odontologo'],
-    email: null,
-    password: resolvePassword('egomez'),
-    passwordEnv: 'SEED_PASSWORD_EGOMEZ',
-  },
+  ...DENTIST_USERS,
 ];
 
 const database = createIdentityDatabase(config);
@@ -142,8 +159,8 @@ const recordarCredenciales = async (): Promise<void> => {
   // eslint-disable-next-line no-console -- script de línea de comandos
   console.log(
     'Las pruebas de humo cambian la del `admin` a `prueba-e2e-odontocrm-2026`.\n' +
-      'Restaurar las tres:  npm run seed:users -- --reset\n' +
-      'Cambiarlas antes de sembrar:  SEED_PASSWORD_ADMIN, SEED_PASSWORD_RECEPCION, SEED_PASSWORD_EGOMEZ\n' +
+      `Restaurar las ${String(SEED_USERS.length)}:  npm run seed:users -- --reset\n` +
+      `Cambiarlas antes de sembrar:  ${SEED_USERS.map((usuario) => usuario.passwordEnv).join(', ')}\n` +
       'Detalle completo:  docs/COMANDOS.md §5',
   );
 };
