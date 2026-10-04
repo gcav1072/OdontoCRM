@@ -1,7 +1,14 @@
 import { createDomainEvent, EVENT_TOPICS } from '@odontocrm/events';
 import { describe, expect, it } from 'vitest';
 
-import { DOMAIN_EVENTS_QUEUE, enqueueDomainEvent, type DomainEventQueueClient } from './boss.js';
+import {
+  consumerQueueName,
+  DOMAIN_EVENTS_QUEUE,
+  enqueueDomainEvent,
+  ensureConsumerQueues,
+  EVENT_CONSUMERS,
+  type DomainEventQueueClient,
+} from './boss.js';
 import { backoffSeconds, OUTBOX_MAX_ATTEMPTS } from './outbox.js';
 
 describe('reintentos del outbox', () => {
@@ -140,5 +147,48 @@ describe('publicación en las colas de consumidores', () => {
     await enqueueDomainEvent(boss, evento(), `${DOMAIN_EVENTS_QUEUE}.prueba`);
 
     expect(enviados).toEqual([`${DOMAIN_EVENTS_QUEUE}.prueba`]);
+  });
+});
+
+/**
+ * La foto de colas se toma **antes** de publicar: si un evento sale mientras otro
+ * servicio todavía arranca, ese servicio no lo ve nunca. Medido en la puesta en
+ * marcha del 2026-10-04 (10 altas de paciente y 30 hallazgos se quedaron sin
+ * proyectar), el publicador ahora declara las colas conocidas antes del primer envío.
+ */
+describe('colas de los consumidores', () => {
+  const jefeFalso = () => {
+    const creadas: string[] = [];
+    return {
+      creadas,
+      boss: {
+        createQueue: async (name: string) => {
+          creadas.push(name);
+        },
+      },
+    };
+  };
+
+  it('declara todas las colas conocidas antes de publicar', async () => {
+    const { boss, creadas } = jefeFalso();
+
+    await ensureConsumerQueues(boss as never);
+
+    expect(creadas).toHaveLength(EVENT_CONSUMERS.length);
+    expect(creadas).toContain(consumerQueueName('reporting'));
+    expect(creadas).toContain(consumerQueueName('identity'));
+  });
+
+  it('el gateway no consume eventos: no se le crea cola', () => {
+    expect(EVENT_CONSUMERS).not.toContain('gateway');
+    expect(EVENT_CONSUMERS).toContain('screens');
+  });
+
+  it('con una cola concreta (pruebas) solo declara esa', async () => {
+    const { boss, creadas } = jefeFalso();
+
+    await ensureConsumerQueues(boss as never, ['domain-events.prueba']);
+
+    expect(creadas).toEqual([consumerQueueName('prueba')]);
   });
 });

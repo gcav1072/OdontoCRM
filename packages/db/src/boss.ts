@@ -1,6 +1,6 @@
 import { PgBoss } from 'pg-boss';
 
-import { DOMAIN_EVENTS_QUEUE, type DomainEvent } from '@odontocrm/events';
+import { DOMAIN_EVENTS_QUEUE, SERVICE_NAMES, type DomainEvent } from '@odontocrm/events';
 
 export { DOMAIN_EVENTS_QUEUE };
 export type { DomainEvent };
@@ -55,6 +55,34 @@ export const ensureDomainEventsQueue = async (
 
 /** Cola propia de un consumidor concreto (`domain-events.<servicio>`). */
 export const consumerQueueName = (service: string): string => `${DOMAIN_EVENTS_QUEUE}.${service}`;
+
+/**
+ * Servicios que consumen eventos (todos menos el gateway, que es solo borde).
+ * Se derivan del catálogo para que añadir un consumidor no se olvide aquí.
+ */
+export const EVENT_CONSUMERS: readonly string[] = SERVICE_NAMES.filter(
+  (name) => name !== 'gateway',
+);
+
+/**
+ * Declara **todas** las colas de consumidores antes de publicar.
+ *
+ * Existe por un fallo medido en la puesta en marcha del 2026-10-04: la lista de
+ * colas es una foto y `enqueueDomainEvent` publica solo donde ya hay cola, así que
+ * los eventos que un servicio publicaba **mientras otro todavía arrancaba** no
+ * llegaban nunca a ese consumidor (con la pila recién levantada, los 10 primeros
+ * altas de paciente y los 30 primeros hallazgos se quedaron sin proyectar en
+ * reportes; el mismo agujero afectaba a la auditoría y a las pantallas). Ahora el
+ * publicador garantiza las colas conocidas **antes** de su primer envío, y el
+ * orden de arranque deja de importar.
+ */
+export const ensureConsumerQueues = async (
+  boss: PgBoss,
+  /** Nombres de cola **completos**; por defecto, la de cada consumidor conocido. */
+  queues: readonly string[] = EVENT_CONSUMERS.map(consumerQueueName),
+): Promise<void> => {
+  await Promise.all(queues.map((queue) => ensureDomainEventsQueue(boss, queue)));
+};
 
 /** Lo mínimo que necesita el publicador: así se puede probar con un doble. */
 export interface DomainEventQueueClient {
