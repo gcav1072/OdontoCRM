@@ -5,7 +5,8 @@ odontograma, récipes, reportes y auditoría — construido como **microservicio
 TypeScript** sobre **PostgreSQL**, pensado para correr en la red local de la clínica y,
 más adelante, fuera de ella por VPN.
 
-> **Estado: Fase 7 completada** (sesiones clínicas, adjuntos y récipes A5, en dos sesiones). El plan
+> **Estado: Fase 8 completada** (la página unificada `/flujo`: el día completo en una pantalla, con
+> la cola del día, el paciente en curso y las acciones de secretaría en la barra superior). El plan
 > completo, con las 11 fases y sus criterios de aceptación, está en
 > [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md).
 
@@ -85,6 +86,7 @@ está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)**. Estos son los del día a d�
 | `npm test` | Pruebas unitarias y de contrato (Vitest) |
 | `npm run test:integration` | Suites contra PostgreSQL real (outbox, colas, sesión, pacientes, agenda, pantallas) |
 | `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`, `prescription` |
+| `npm run e2e:flujo` | **El día completo en un navegador de verdad**: `/flujo` con Chromium (Fase 8) |
 | **`npm run verify`** | **Puerta de calidad: secretos + lint + formato + compilación + pruebas unitarias** |
 
 Antes de cerrar cualquier fase, `npm run verify` debe pasar en verde, además de
@@ -485,6 +487,37 @@ es un documento A5 con membrete, numerado `RX-000001` y verificable por QR
   navegador ya sabe hacer.
 - `npm run smoke:prescription` recorre todo el camino (32 comprobaciones), incluida la verificación
   pública **sin token**.
+
+---
+
+## Interfaz de la Fase 8 (`/flujo`)
+
+**El día completo en una sola pantalla**, para la odontóloga que trabaja sin asistente: la cola del día
+a la izquierda (con selector de fecha, buscador y contadores), el **paciente en curso** en el centro con
+su expediente —historia, sesión con adjuntos y récipe, y odontograma— y las **acciones de secretaría**
+en la barra superior ([ADR 0038](docs/adr/0038-permisos-del-odontologo-en-el-flujo.md)).
+
+| Acción de la barra | Qué hace |
+| :--- | :--- |
+| **Registrar llegada** | Pasa la cita a «en sala de espera» |
+| **Llamar** | Publica el llamado que sale en la pantalla de la sala (el 2.º llamado repite) |
+| **Pasar a consulta** | Pasa la cita a «en consulta» |
+| **Marcar atendido** | Cierra la visita; con la sesión clínica cerrada no pide motivo |
+| **No asistió** | Inasistencia (solo después de la tolerancia de 15 min) |
+| **Llamar fuera de orden** | Encadena llegada y llamado para quien no le tocaba por hora |
+| **Ver historial** | Las transiciones de la cita con su actor, motivo y hora |
+
+- **Atajos**: `F2` buscar paciente, `F4` llamar al paciente en curso y `F8` **cerrar la sesión clínica**
+  de la visita (con la pregunta del récipe). No disparan con un diálogo abierto ni con
+  `Ctrl`/`Alt`/`Meta`, y cada uno tiene su botón porque en la tableta no hay teclado.
+- **El expediente es el mismo de `/consultorio`** (`PatientWorkspace`), así que `/flujo` no puede
+  quedarse corta respecto a las rutas individuales; `/secretaria` y `/consultorio` siguen ahí y sin
+  cambios.
+- **Modo tableta**: una sola columna (cola arriba, expediente debajo) y botones grandes; comprobado a
+  820 px.
+- **Permisos**: se entra con `clinical:read`; las acciones de escritura se comprueban dentro y siguen
+  las del servidor (máquina de estados + permisos).
+- `npm run e2e:flujo` hace el día completo en Chromium (24 comprobaciones), **sin salir de `/flujo`**.
 
 ---
 

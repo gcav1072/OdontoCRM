@@ -4,6 +4,63 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 8] — La página unificada del flujo diario · 2026-10-04
+
+### Añadido
+
+- **`/flujo`** ([ADR 0038](docs/adr/0038-permisos-del-odontologo-en-el-flujo.md)): **el día completo en
+  una sola pantalla** para la odontóloga que trabaja sin asistente.
+  - **Cola del día** a la izquierda: selector de fecha (anterior, hoy, siguiente y campo de fecha),
+    buscador por nombre, documento, teléfono o ticket, los contadores del servidor y una fila por cita
+    con su hora, su estado y sus llamados.
+  - **Paciente en curso** en el centro, con **el mismo expediente de `/consultorio`**: el área del
+    paciente salió a `PatientWorkspace` (historia, sesión —con adjuntos y récipe— y odontograma), así
+    que la ruta unificada no puede quedarse corta respecto a las rutas individuales.
+  - **Acciones de secretaría en la barra superior**: registrar llegada, llamar (el llamado que sale en
+    la pantalla de la sala), pasar a consulta, marcar atendido, marcar inasistencia, **llamar fuera de
+    orden** y el historial de la cita. Son los mismos diálogos y la misma máquina de estados que
+    `/secretaria`; al pulsar una fila de la cola, todo actúa sobre la cita que el doctor tiene delante.
+  - **Atajos**: `F2` buscar paciente, `F4` llamar y `F8` cerrar la sesión clínica (con la pregunta del
+    récipe). No disparan con un diálogo abierto ni con `Ctrl`/`Alt`/`Meta`, y cada uno tiene su botón
+    porque en la tableta no hay teclado. **`F8` cierra la visita, no la sesión del sistema** (esa sigue
+    en el panel inferior).
+  - **Modo tableta** comprobado a 820 px: una sola columna (cola arriba, expediente debajo) y botones
+    grandes.
+- **`npm run e2e:flujo`**: la prueba del día completo en Chromium sobre la pila real, con **24
+  comprobaciones**. La doctora entra con su usuario `odontologo`, registra al paciente, le da cita,
+  registra la llegada, llama con `F4`, lo pasa a consulta, escribe y cierra la sesión con `F8` y marca
+  la cita atendida **sin salir de `/flujo`** (la URL se vigila en cada paso); después comprueba que
+  `/secretaria` y `/consultorio` siguen en pie y que la consola y la red quedan limpias.
+- **Las piezas puras del flujo, con 15 pruebas**: qué cita abre la pantalla (en consulta, llamada, en
+  sala y, si no hay ninguna, la próxima del día), cómo se ordena y filtra la cola, y a qué acción
+  traduce cada tecla.
+
+### Cambiado
+
+- **El rol `odontologo` gana `scheduling:write`** y la máquina de estados le abre la **inasistencia**
+  ([ADR 0038](docs/adr/0038-permisos-del-odontologo-en-el-flujo.md)): sin eso, las cinco acciones del
+  flujo le respondían 403 y la Fase 8 no podía funcionar. Notificar (`scheduling:notify`) y autorizar
+  sobrecupo (`scheduling:overbook`) siguen fuera de su alcance, y **cancelar y reprogramar** siguen
+  respondiendo 409 porque la máquina de estados no se las autoriza; una prueba de integración lo fija.
+  Los permisos viajan en el token: **tras desplegarlo hay que volver a entrar**.
+- **`/consultorio` conserva su comportamiento**, pero comparte el expediente con `/flujo` y gana el
+  aviso de primera visita también cuando se abre directamente la pestaña de la sesión.
+
+### Corregido
+
+- **La sesión nacía sin la cita que la respalda**: la lista de citas del día que ofrece «la cita que
+  respalda la sesión» se pedía una vez, al abrir el paciente, así que para cuando el doctor pulsaba
+  «Abrir sesión» ya estaba vieja (el paciente había pasado a consulta). La sesión se abría **sin**
+  `appointment_id`, «atendido» pedía un motivo y la visita perdía su enlace con la agenda. Ahora la
+  cita se resuelve **al abrir** (releyendo la agenda) y `/flujo` pasa la cita que tiene delante. El
+  respaldo tampoco exige estar «en consulta»: vale la cita llamada o la que espera en la sala.
+- **Cerrar una sesión ya no pierde lo último escrito**: el cierre guarda lo que quede pendiente antes
+  de cerrar (el autoguardado espera 1,2 s desde la última tecla y el cierre es inmutable), con el
+  botón o con `F8`.
+- En la columna estrecha de `/flujo`, la fila de la cola partía la hora y recortaba el nombre; ahora
+  cada cita ocupa dos líneas. Y mientras la jornada se está pidiendo se ve el indicador de carga en
+  vez de «no hay citas».
+
 ## [Herramientas] — Una sola pila a la vez · 2026-10-04
 
 ### Añadido
