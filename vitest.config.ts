@@ -12,6 +12,7 @@ export default defineConfig({
       '@odontocrm/events': resolveWorkspace('./packages/events/src/index.ts'),
       '@odontocrm/db': resolveWorkspace('./packages/db/src/index.ts'),
       '@odontocrm/kernel': resolveWorkspace('./packages/kernel/src/index.ts'),
+      '@odontocrm/storage': resolveWorkspace('./packages/storage/src/index.ts'),
       '@odontocrm/testing': resolveWorkspace('./packages/testing/src/index.ts'),
     },
   },

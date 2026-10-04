@@ -5,12 +5,12 @@ import {
   type PatientFile,
   type PatientFileKind,
 } from '@odontocrm/contracts';
+import { buildStorageKey, safeExtension, type BlobStore } from '@odontocrm/storage';
 import { AppError, NotFoundError } from '@odontocrm/kernel';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 
 import type { PatientsDb } from '../db/client.js';
 import { patientFiles, type PatientFileRow } from '../db/schema.js';
-import { buildStorageKey, safeExtension, type BlobStore } from './blob-store.js';
 import { findPatientById } from '../patients/patient-service.js';
 
 export const toPatientFile = (row: PatientFileRow): PatientFile => ({
@@ -85,7 +85,7 @@ export const savePatientFile = async (
 
   const fileId = globalThis.crypto.randomUUID();
   const extension = safeExtension(input.originalName, input.mime);
-  const key = buildStorageKey(input.patientId, fileId, extension);
+  const key = buildStorageKey('patients', input.patientId, fileId, extension);
   const stored = await blobStore.save({ key, data: input.data });
 
   const inserted = await db

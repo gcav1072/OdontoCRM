@@ -1,4 +1,4 @@
-import type { BlobStore } from './files/blob-store.js';
+import type { BlobStore } from '@odontocrm/storage';
 import type { PatientsConfig } from './config.js';
 import type { PatientsDb } from './db/client.js';
 import type pg from 'pg';

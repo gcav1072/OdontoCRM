@@ -19,7 +19,10 @@ build/
 secrets/
 
 # ─── Datos locales y adjuntos (radiografías, PDFs) ───────────────────────────
-storage/
+# Anclado a la raíz: el almacén de los servicios es `./storage/patients` y
+# `./storage/clinical`. Sin la barra inicial, `storage/` ignoraba también
+# `packages/storage` (el paquete BlobStore) y no había forma de versionarlo.
+/storage/
 tmp/
 *.dump
 *.backup

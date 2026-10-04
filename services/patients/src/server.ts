@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 
 import type { PatientsConfig } from './config.js';
 import type { PatientsDatabaseHandle } from './db/client.js';
-import type { BlobStore } from './files/blob-store.js';
+import type { BlobStore } from '@odontocrm/storage';
 import { registerFileRoutes } from './routes/file-routes.js';
 import { registerInternalRoutes } from './routes/internal-routes.js';
 import { registerPatientRoutes } from './routes/patient-routes.js';

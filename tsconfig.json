@@ -5,6 +5,7 @@
     { "path": "packages/events" },
     { "path": "packages/db" },
     { "path": "packages/kernel" },
+    { "path": "packages/storage" },
     { "path": "packages/testing" },
     { "path": "services/identity" },
     { "path": "services/patients" },

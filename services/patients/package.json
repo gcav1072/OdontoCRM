@@ -17,6 +17,7 @@
     "@odontocrm/db": "*",
     "@odontocrm/events": "*",
     "@odontocrm/kernel": "*",
+    "@odontocrm/storage": "*",
     "@odontocrm/testing": "*",
     "fastify": "^5.12.5"
   }

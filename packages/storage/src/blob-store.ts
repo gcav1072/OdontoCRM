@@ -3,14 +3,19 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 
 /**
- * Almacén de binarios. Hoy escribe en disco; la interfaz está pensada para que
- * mañana se cambie por S3/MinIO sin tocar los servicios que la usan.
+ * Almacén de binarios **compartido por los servicios** (adjuntos del paciente,
+ * radiografías de la sesión y el PDF del récipe). Hoy escribe en disco; la interfaz
+ * está pensada para que mañana se cambie por S3/MinIO sin tocar a quien la usa.
  *
- * Las rutas son **relativas al almacén** y las construye el propio almacén a
- * partir de identificadores validados: nunca se acepta una ruta del cliente.
+ * Las rutas son **relativas al almacén** y las construye el propio almacén a partir
+ * de identificadores validados: nunca se acepta una ruta del cliente.
+ *
+ * Vivía dentro del servicio de pacientes; se movió aquí cuando la historia clínica
+ * necesitó el mismo almacén para los adjuntos de la sesión (una copia por servicio
+ * habría sido dos maneras de escribir lo mismo).
  */
 export interface BlobStore {
-  /** Guarda el contenido y devuelve la ruta relativa y su huella. */
+  /** Guarda el contenido y devuelve la ruta relativa, su huella y su tamaño. */
   save: (input: {
     key: string;
     data: Buffer;
@@ -36,9 +41,19 @@ export const safeExtension = (originalName: string, mime: string): string => {
   return /^[a-z0-9]{1,5}$/.test(candidate) ? candidate : 'bin';
 };
 
-/** Clave de almacenamiento: `patients/<paciente>/<archivo>.<ext>`. */
-export const buildStorageKey = (patientId: string, fileId: string, extension: string): string =>
-  ['patients', patientId, `${fileId}.${extension}`].join('/');
+/**
+ * Clave de almacenamiento: `<prefijo>/<dueño>/<archivo>.<ext>`.
+ *
+ * El prefijo separa los mundos dentro del mismo almacén (`patients` para la ficha
+ * del paciente, `clinical` para las sesiones y los récipes) y el dueño es el
+ * paciente o la sesión a la que pertenece el binario.
+ */
+export const buildStorageKey = (
+  prefix: string,
+  ownerId: string,
+  fileId: string,
+  extension: string,
+): string => [prefix, ownerId, `${fileId}.${extension}`].join('/');
 
 export interface DiskBlobStoreOptions {
   rootDir: string;

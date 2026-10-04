@@ -8,12 +8,12 @@ import {
   stopBoss,
 } from '@odontocrm/db';
 import { startServer } from '@odontocrm/kernel';
+import { createDiskBlobStore } from '@odontocrm/storage';
 import { mkdir } from 'node:fs/promises';
 
 import { loadPatientsConfig, storageRoot } from './config.js';
 import { handleDomainEvents } from './consumer.js';
 import { createPatientsDatabase } from './db/client.js';
-import { createDiskBlobStore } from './files/blob-store.js';
 import { createPatientsServer } from './server.js';
 
 const main = async (): Promise<void> => {
