@@ -100,6 +100,7 @@ powershell -ExecutionPolicy Bypass -File infra/windows/start-services.ps1
 | `npx vitest run <ruta>` | Una sola suite unitaria | Ej.: `npx vitest run packages/contracts/src/domain/screens.test.ts` |
 | `npm run test:integration` | Suites contra PostgreSQL real | `-- <ruta>` para una sola; requiere `db:bootstrap`, `db:migrate` y `build` |
 | `npm run db:verify-migrations` | Aplica las migraciones de **cada servicio** desde cero en bases limpias | `-- --only screens`; necesita `build` y `PG_ADMIN_URL` |
+| `npm run audit` | **Auditoría de conexiones**: eventos (quién publica y quién escucha), HTTP (rutas ↔ gateway ↔ interfaz, internas no expuestas), permisos y configuración, y bases + cola compartida | `-- --solo eventos\|http\|permisos\|datos`; sale con error solo si algo es estructural |
 
 ---
 
@@ -316,6 +317,7 @@ workspace y las rutas siguen siendo correctas.
 | Quiero… | Comando |
 | :--- | :--- |
 | Levantar todo y usar la app | `npm run dev` (o `infra/windows/start-services.ps1`) |
+| **Cerrar una fase con todo revisado** | `npm run verify` + `npm run audit` + `npm run test:integration` + el humo del módulo |
 | Usar la app con los servicios en PM2 | `npm run dev:web` (solo la web; el `/api` va al gateway por el proxy) |
 | Saber si la pantalla está en negro por culpa de un servidor viejo | `npm run check:web` y `npm run dev:check` |
 | Liberar los puertos que dejó una sesión anterior | `npm run dev:stop` |

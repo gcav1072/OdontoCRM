@@ -90,6 +90,10 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   con un botón de recarga, en lugar de quedarse en negro.
 - **`docs/COMANDOS.md`**: guía única de comandos (puesta en marcha, calidad, base de datos, semillas,
   arranque, humos, PM2/Fedora, «quiero hacer X» y problemas típicos). El README deja de duplicarla.
+- **`npm run audit`**: la auditoría de conexiones quedó como herramienta del proyecto
+  (`tools/audit-conexiones.mjs`): cuatro secciones (eventos, HTTP, permisos y configuración, bases y
+  cola) con veredicto, para repetirla al cerrar cada fase. Sale con error solo si algo es
+  estructural.
 - **`.env.example` completo**: sección «Ajustes finos» con las ~30 variables que los servicios leen
   y no estaban documentadas (hosts, pool de conexiones, cookies, anti-flood, reintentos, ritmo de la
   cola, tope de archivo, rutas de las claves del JWT), cada una con su valor por defecto.

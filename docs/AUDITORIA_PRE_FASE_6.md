@@ -26,18 +26,21 @@ no se publican.
 
 | Comprobación | Comando |
 | :--- | :--- |
-| Matriz de eventos | `node tmp/auditar-eventos.mjs` (script de auditoría) |
-| Matriz HTTP | `node tmp/auditar-http.mjs` |
-| Permisos y configuración | `node tmp/auditar-permisos-config.mjs` |
-| Bases y cola | `node tmp/auditar-bases.mjs` |
+| **Todo de una pasada** | **`npm run audit`** (y `-- --solo eventos\|http\|permisos\|datos`) |
+| Matriz de eventos | `npm run audit -- --solo eventos` |
+| Matriz HTTP | `npm run audit -- --solo http` |
+| Permisos y configuración | `npm run audit -- --solo permisos` |
+| Bases y cola | `npm run audit -- --solo datos` |
 | Migraciones desde cero | `npm run db:verify-migrations` |
 | Suite de integración | `npm run test:integration` |
 | Humos de punta a punta | `npm run smoke:auth · patients · agenda · notifications · screens` |
 | La SPA monta | `npm run check:web` |
 | Menú del bot | `npm run telegram:menu` |
 
-Los cuatro scripts de auditoría son de un solo uso y viven en `tmp/` (ignorado por
-Git). Si esta auditoría se repite en la Fase 7, conviene promoverlos a `tools/`.
+La auditoría quedó como **herramienta del proyecto** (`tools/audit-conexiones.mjs`, `npm run audit`):
+sale con código 1 solo si encuentra algo estructural (ruta inalcanzable, ruta interna expuesta,
+outbox atascado o cola con basura) e informa aparte de la deuda y de lo que aún no existe por ser
+de una fase futura. Conviene ejecutarla al cerrar cada fase.
 
 ## 3. Las matrices
 
@@ -183,7 +186,7 @@ copiar la Fase 6:
 | 3 | **Temas declarados que nadie publica**: `notifications.message.sent`, `message.failed`, `patient_channel.linked`, `patients.file.uploaded`, `identity.user.*`, `identity.session.*` | Baja (deuda de contrato) | Documentados. `message.sent/failed` conviene publicarlos en la Fase 9 (reportes y KPIs) y `file.uploaded` en la Fase 6 (adjuntos de la historia) |
 | 4 | **La vinculación de canal no queda auditada** (consecuencia del anterior) | Media-baja | Recomendado antes de la Fase 9: publicar `patient_channel.linked` con la forma genérica (`auditPayload`); la auditoría lo recogería sola |
 | 5 | **El `secretario` no tiene acceso a clínica** | Decisión de producto | Confirmar antes de la sesión A (¿la secretaría imprime récipes o consentimientos?) |
-| 6 | **Los scripts de auditoría viven en `tmp/`** | Baja | Promoverlos a `tools/` si la auditoría se repite en la Fase 7 |
+| 6 | **Los scripts de auditoría vivían en `tmp/`** (sin versionar) | Baja | ✅ **Arreglado**: son `tools/audit-conexiones.mjs` con `npm run audit` (cuatro secciones y veredicto), documentados en la guía de comandos |
 
 ### Detalle del arreglo 1 (cola)
 
