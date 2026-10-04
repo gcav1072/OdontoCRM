@@ -1,4 +1,16 @@
+import { resolveTestMode, type TestModeStatus } from '@odontocrm/contracts';
 import { z } from 'zod';
+
+/**
+ * Banderas del `.env` escritas como texto (`true`/`false`). Un valor distinto
+ * **no** se interpreta como verdadero: revienta al arrancar, que es lo que se
+ * quiere con una bandera de seguridad.
+ */
+const flag = (defaultValue: 'true' | 'false') =>
+  z
+    .enum(['true', 'false'])
+    .default(defaultValue)
+    .transform((value) => value === 'true');
 
 /**
  * Variables comunes a todos los servicios. Cada servicio extiende este esquema
@@ -12,6 +24,13 @@ export const baseEnvSchema = z.object({
     .default('false')
     .transform((value) => value === 'true'),
   TZ: z.string().min(1).default('America/Caracas'),
+  /** Pide el modo test (ADR 0020): datos ficticios, banner y envíos simulados. */
+  TEST_MODE: flag('false'),
+  /**
+   * Permiso explícito para el modo test. Es el segundo cerrojo: en la instalación
+   * de la clínica queda en `false` y ningún `TEST_MODE=true` suelto enciende nada.
+   */
+  ALLOW_TEST_MODE: flag('false'),
 });
 
 export type BaseEnv = z.infer<typeof baseEnvSchema>;
@@ -98,3 +117,27 @@ export const isProduction = (config: { NODE_ENV: string }): boolean =>
   config.NODE_ENV === 'production';
 
 export const isTest = (config: { NODE_ENV: string }): boolean => config.NODE_ENV === 'test';
+
+/**
+ * Estado del modo test a partir de la configuración cargada. Las reglas están en
+ * `@odontocrm/contracts` (`resolveTestMode`) para que el gateway, los servicios
+ * y la interfaz decidan con la misma función; aquí solo se traducen los nombres
+ * del `.env`.
+ */
+export const testModeStatus = (config: {
+  NODE_ENV: string;
+  TEST_MODE: boolean;
+  ALLOW_TEST_MODE: boolean;
+}): TestModeStatus =>
+  resolveTestMode({
+    nodeEnv: config.NODE_ENV,
+    testMode: config.TEST_MODE,
+    allowTestMode: config.ALLOW_TEST_MODE,
+  });
+
+/** Atajo legible: ¿está activo el modo test en esta configuración? */
+export const testModeEnabled = (config: {
+  NODE_ENV: string;
+  TEST_MODE: boolean;
+  ALLOW_TEST_MODE: boolean;
+}): boolean => testModeStatus(config).enabled;
