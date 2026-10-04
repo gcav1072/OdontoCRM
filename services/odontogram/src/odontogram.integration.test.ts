@@ -418,9 +418,9 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
     expect(rows.filter((row) => row.action === 'tooth_finding_superseded')).toHaveLength(2);
   }, 40_000);
 
-  it('un tratamiento convive con las caras: corona, conducto y obturación en la misma pieza (ADR 0032)', async () => {
-    // La 46 ya venía con «corona» del lote inicial: ahora se le añaden caries y
-    // conducto, que es la boca normal y con la regla anterior se rechazaba.
+  it('el conducto convive con la corona y con la caries; la corona cubre lo que había debajo', async () => {
+    // A la 46 le añadimos caries y conducto sobre una pieza que ya tenía «corona»: la
+    // caries va **después** de la corona, así que es la recurrente y se registra.
     const caries = await recordFinding(
       handle.db,
       patientId,
@@ -436,17 +436,17 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
       hallazgo({ toothNumber: 46, condition: 'endodoncia' }),
       actor,
     );
-    // Ni la corona supera la caries ni el conducto supera a la corona.
+    // Un conducto no recubre nada: ni supera la caries ni la corona.
     expect(conducto.resolvedSurfaces).toEqual([]);
     expect(conducto.odontogram.findings['46']?.map((row) => row.condition).sort()).toEqual([
       'caries',
       'corona',
       'endodoncia',
     ]);
-    // Y ninguna fila quedó superada: el tratamiento no toca las caras.
     expect((await filasDePieza(46)).every((row) => row.resolvedAt === null)).toBe(true);
 
-    // En un mismo lote también: una corona con su caries es un lote válido.
+    // En un mismo lote, la corona con la caries que tenía debajo: la caries queda
+    // **cubierta** (no se borra), y da igual el orden en que la interfaz las mande.
     const lote = await recordFindingsBatch(
       handle.db,
       patientId,
@@ -459,8 +459,12 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
       actor,
     );
     expect(lote.unchanged).toBe(false);
-    expect(lote.resolvedSurfaces).toEqual([]);
-    expect(lote.odontogram.findings['47']).toHaveLength(2);
+    expect(lote.resolvedSurfaces).toEqual(['occlusal']);
+    // Vigente solo la corona: el gráfico enseña la corona, no el empaste de debajo.
+    expect(lote.odontogram.findings['47']?.map((row) => row.condition)).toEqual(['corona']);
+    // Y el dato sigue en la base, superado y con su motivo.
+    const superada = (await filasDePieza(47)).find((row) => row.surface === 'occlusal');
+    expect(superada?.resolvedAt).not.toBeNull();
   }, 40_000);
 
   it('`ausente` no admite nada más y las parejas imposibles se rechazan (409)', async () => {
@@ -563,7 +567,15 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
     expect(borrado.unchanged).toBe(false);
     expect((await leerBoca()).findings['16']).toBeUndefined();
     // Las caras superadas siguen ahí, con `resolved_at`, pero ya no se leen.
-    expect(await filasDePieza(16)).toHaveLength(2);
+    const filas16 = await filasDePieza(16);
+    expect(
+      filas16.map((row) => [
+        row.surface,
+        row.condition,
+        row.resolvedAt === null ? 'vigente' : 'superada',
+      ]),
+      `filas de la 16: ${JSON.stringify(filas16.map((row) => [row.surface, row.condition, row.resolvedAt === null ? 'vigente' : 'superada']))}`,
+    ).toHaveLength(2);
 
     const caraSana = await clearSurface(
       handle.db,
@@ -616,13 +628,14 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
     // 13 registros: los 5 del lote de carga rápida, `ausente` en la 16, caries y
     // conducto en la 46, corona con caries en la 47, el implante de la 22 y
     // conducto con corona en la 23. Más 1 actualización de estado, 2 caras
-    // superadas por `ausente` y 2 eliminaciones.
-    expect(completo.entries).toHaveLength(18);
+    // superadas por `ausente`, 1 superada por su corona (la caries del 47, que queda
+    // cubierta) y 2 eliminaciones.
+    expect(completo.entries).toHaveLength(19);
     const porEvento = completo.entries.reduce<Record<string, number>>((cuenta, entry) => {
       cuenta[entry.event] = (cuenta[entry.event] ?? 0) + 1;
       return cuenta;
     }, {});
-    expect(porEvento).toEqual({ registrado: 13, actualizado: 1, superado: 2, eliminado: 2 });
+    expect(porEvento).toEqual({ registrado: 13, actualizado: 1, superado: 3, eliminado: 2 });
     expect(completo.entries[0]?.event).toBe('eliminado');
     expect(completo.entries.at(-1)?.event).toBe('registrado');
 
@@ -679,9 +692,11 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
       .from(toothFindings)
       .where(and(eq(toothFindings.odontogramId, odontogramId), isNull(toothFindings.resolvedAt)));
     // Quedan vigentes: 22 (implante), 23 (conducto + corona), 36 (ausente),
-    // 46 (corona + caries + conducto) y 47 (corona + caries) = 9 filas.
-    expect(filas).toHaveLength(9);
-    // Y 2 superadas: las caras de la 16, que `ausente` dejó fuera de lectura.
+    // 46 (corona + caries + conducto) y 47 (corona) = 8 filas: la caries del 47 la
+    // cubrió su corona, y lo cubierto **no se lee** (aunque siga en la base).
+    expect(filas).toHaveLength(8);
+    // Y 3 superadas: las 2 caras de la 16 que `ausente` dejó fuera de lectura, más la
+    // caries del 47 que quedó debajo de la corona.
     expect(
       await handle.db
         .select({ id: toothFindings.id })
@@ -689,7 +704,7 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
         .where(
           and(eq(toothFindings.odontogramId, odontogramId), isNotNull(toothFindings.resolvedAt)),
         ),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   }, 40_000);
 
   /**
@@ -762,4 +777,97 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
     expect(conducto).toBeInstanceOf(ConflictError);
     expect((conducto as ConflictError).extensions['conflictingCondition']).toBe('implante');
   });
+
+  /**
+   * La excepción clínica que pidió el odontólogo: una corona **recubre el muñón en sus
+   * 360°**, así que lo que hubiera debajo no se ve en boca (se supera, no se borra), y
+   * una **caries recurrente** en el margen se registra *después* y sí se ve.
+   */
+  it('la caries recurrente sobre una corona se registra encima y el dato de debajo se conserva', async () => {
+    // 1) Un diente con su obturación, antes de coronarlo.
+    await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({
+        toothNumber: 44,
+        surface: 'occlusal',
+        condition: 'restauracion',
+        state: 'completado',
+      }),
+      actor,
+    );
+
+    // 2) Se corona: la obturación queda cubierta y el gráfico se queda con la corona.
+    const coronada = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 44, condition: 'corona', state: 'completado' }),
+      actor,
+    );
+    expect(coronada.resolvedSurfaces).toEqual(['occlusal']);
+    expect(coronada.odontogram.findings['44']?.map((row) => row.condition)).toEqual(['corona']);
+
+    // La historia conserva las dos cosas con su fecha: es el respaldo médico legal de
+    // lo que había debajo de la corona.
+    const historial = await getHistory(handle.db, patientId, MAX_HISTORY_LIMIT);
+    const deLa44 = historial.entries.filter((entry) => entry.toothNumber === 44);
+    expect(deLa44.map((entry) => entry.event)).toEqual(
+      expect.arrayContaining(['registrado', 'superado']),
+    );
+    const superada = deLa44.find((entry) => entry.event === 'superado');
+    expect(superada?.reason).toContain('corona');
+    expect(superada?.condition).toBe('restauracion');
+    // Y en la base sigue la fila, con su `resolved_at`.
+    const filaSuperada = (await filasDePieza(44)).find((row) => row.surface === 'occlusal');
+    expect(filaSuperada?.resolvedAt).not.toBeNull();
+
+    // 3) Años después, una filtración en el margen: caries sobre la corona. Se registra
+    //    y se ve, porque la superación miró solo lo que había al poner la corona.
+    const recurrente = await recordFinding(
+      handle.db,
+      patientId,
+      hallazgo({ toothNumber: 44, surface: 'vestibular', condition: 'caries' }),
+      actor,
+    );
+    expect(recurrente.resolvedSurfaces).toEqual([]);
+    expect(recurrente.odontogram.findings['44']?.map((row) => row.condition).sort()).toEqual([
+      'caries',
+      'corona',
+    ]);
+  }, 40_000);
+
+  it('el lote da el mismo resultado con las caras antes o después de la corona', async () => {
+    // La hoja táctil manda el tratamiento con sus caras en una transacción; el orden en
+    // que las mande no puede cambiar lo que se ve después.
+    const coronaPrimero = await recordFindingsBatch(
+      handle.db,
+      patientId,
+      {
+        findings: [
+          hallazgo({ toothNumber: 45, condition: 'corona', state: 'completado' }),
+          hallazgo({ toothNumber: 45, surface: 'occlusal', condition: 'caries' }),
+        ],
+      },
+      actor,
+    );
+    const carasPrimero = await recordFindingsBatch(
+      handle.db,
+      patientId,
+      {
+        findings: [
+          hallazgo({ toothNumber: 43, surface: 'occlusal', condition: 'caries' }),
+          hallazgo({ toothNumber: 43, condition: 'corona', state: 'completado' }),
+        ],
+      },
+      actor,
+    );
+
+    for (const resultado of [coronaPrimero, carasPrimero]) {
+      expect(resultado.resolvedSurfaces).toEqual(['occlusal']);
+    }
+    expect(coronaPrimero.odontogram.findings['45']?.map((row) => row.condition)).toEqual([
+      'corona',
+    ]);
+    expect(carasPrimero.odontogram.findings['43']?.map((row) => row.condition)).toEqual(['corona']);
+  }, 40_000);
 });

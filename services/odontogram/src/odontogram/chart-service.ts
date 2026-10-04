@@ -527,12 +527,16 @@ const publishFindingEvent = async (
 
 /**
  * Supera las caras de la pieza cuando la condición **manda sobre ellas**
- * (`ausente`; ver `WHOLE_TOOTH_RULES`): todas las caras vigentes se dan por
+ * (`ausente` y `corona`; ver `WHOLE_TOOTH_RULES`): todas las caras vigentes se dan por
  * superadas en la misma transacción. No se borran: el histórico conserva que
  * existieron y `resolvedSurfaces` dice cuáles fueron.
  *
- * Los tratamientos (`corona`, `endodoncia`, `implante`) y el plan
- * (`extraccion_indicada`) **no** llaman aquí: conviven con las caras (ADR 0032).
+ * La corona entra aquí porque **recubre el muñón**: lo que hubiera debajo ya no se ve
+ * en boca. La caries que aparezca **después** no se supera —esa es la recurrente, y se
+ * pinta sobre la corona—, porque esto solo mira lo que había en este momento.
+ *
+ * `endodoncia`, `implante` y el plan (`extraccion_indicada`) **no** llaman aquí:
+ * conviven con las caras (ADR 0032).
  */
 const supersedeSurfaces = async (
   db: OdontogramDb,
@@ -869,6 +873,24 @@ export const recordFinding = async (
   return toMutationResult(db, outcome);
 };
 
+/**
+ * Orden de aplicación dentro de un lote: **primero las caras y después las condiciones
+ * de pieza completa**.
+ *
+ * Importa cuando el lote trae las dos cosas para la misma pieza (la hoja táctil manda
+ * «corona» con la caries que tenía debajo, en una transacción). Si la corona se aplica
+ * antes, la caries que viene detrás queda vigente y se pinta **encima** de la corona:
+ * se leería como una caries recurrente que nadie ha diagnosticado. Aplicando las caras
+ * primero, la corona las supera como es debido, y el resultado **no depende del orden
+ * en que la interfaz mande el lote**.
+ */
+const ordenDeAplicacion = (
+  findings: readonly RecordFindingInput[],
+): readonly RecordFindingInput[] => [
+  ...findings.filter((finding) => finding.surface !== null),
+  ...findings.filter((finding) => finding.surface === null),
+];
+
 /** Carga rápida: varios hallazgos en **una** transacción (o todos o ninguno). */
 export const recordFindingsBatch = async (
   db: OdontogramDb,
@@ -892,7 +914,7 @@ export const recordFindingsBatch = async (
     let unchanged = true;
     const resueltas = new Set<ToothSurface>();
 
-    for (const finding of input.findings) {
+    for (const finding of ordenDeAplicacion(input.findings)) {
       const applied = await applyFinding(tx, odontogram, patientId, finding, actor);
       odontogram = applied.odontogram;
       if (!applied.unchanged) unchanged = false;
