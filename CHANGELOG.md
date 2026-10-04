@@ -4,6 +4,40 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Corrección] — El bot no se queda callado y `db:reset` queda blindado · 2026-10-04
+
+### Corregido
+
+- **El asistente de Telegram ya no deja al paciente sin respuesta cuando falla algo de
+  fuera.** Probando el flujo con el bot (2026-10-04) llegó un `ECONNREFUSED 127.0.0.1:4002` a
+  mitad del paso del documento —el servicio de pacientes se estaba reiniciando—: el error subía
+  al bucle del canal, se registraba en el log y **la persona no recibía nada**, sin saber si
+  esperar o volver a escribir. Ahora, si un paso falla por algo de fuera, el paciente recibe el
+  aviso `servicio_no_disponible` (plantilla nueva, editable) **y se le repite el paso**; la
+  conversación no se mueve, así que reenviar el dato la retoma donde estaba.
+- **Reintento corto en las llamadas internas**: las **lecturas** (buscar paciente por documento,
+  estado de la solicitud, cita) se repiten hasta tres veces con espera creciente ante un fallo
+  pasajero —un servicio reiniciándose, un 5xx—; las **escrituras** (alta de paciente, solicitud,
+  cancelación) solo se repiten si la petición **no llegó a salir** (`ECONNREFUSED`), porque
+  repetir a ciegas podría crear dos tickets. Un 4xx no se reintenta nunca.
+
+### Añadido
+
+- **`tools/dev-check.mjs` comprueba las 9 bases antes de arrancar**: si falta alguna (un
+  `db:reset` a medias, por ejemplo) lo dice con esas palabras y no arranca media pila.
+- **Bloqueo de mantenimiento** ([`tools/lib/mantenimiento.mjs`](tools/lib/mantenimiento.mjs)):
+  mientras `db:reset` borra y recrea bases, deja `tmp/mantenimiento.lock` con su PID; `dev:check`
+  y `stack:dev`/`stack:fijo` se niegan a arrancar mientras esté vivo. Si el proceso que lo creó
+  ya no existe, el bloqueo está **caducado** y se limpia solo: no es un candado ciego que se
+  quede pegado (misma lección que el [ADR 0037](docs/adr/0037-una-sola-pila-a-la-vez.md)).
+
+### Cambiado
+
+- **`db:reset` más difícil de usar mal**: guarda contra un `PG_ADMIN_URL` que no sea de esta
+  máquina (salvo `--remoto`, dicho a propósito), deja el bloqueo mientras trabaja (y lo quita
+  siempre, incluso si falla), y con `--sin-sembrar` avisa en grande de que la base queda **sin
+  usuarios** y que hace falta `npm run seed:users`.
+
 ## [Herramientas] — Empezar de cero: `npm run db:reset` · 2026-10-04
 
 ### Añadido

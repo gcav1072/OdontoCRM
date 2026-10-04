@@ -142,11 +142,29 @@ npm run stack:fijo                  # (o stack:dev) y a probar
 - Es una herramienta **de consola y solo de consola**: ningún servicio, ruta ni botón la llama,
   y sin `--yes` no borra nada (explica lo que haría y sale con código 1).
 - **No toca** los roles de PostgreSQL, los `.env`, las claves del JWT (`.keys/`) ni la
-  configuración. Se niega a correr con `NODE_ENV=production`.
+  configuración.
 - Al terminar hay que **volver a iniciar sesión** (las sesiones y los refrescos viven en la base).
 - Lo que sí queda sembrado, porque sale de las migraciones y del arranque: los **3 usuarios**
   (contraseña temporal), las **10 franjas** de la plantilla de jornada, los **25 medicamentos**
   del catálogo y las **19 plantillas** de mensajes (estas al arrancar `notifications`).
+
+**Guardas (por qué es difícil hacerlo mal):**
+
+| Guarda | Qué evita |
+| :--- | :--- |
+| `--yes` obligatorio | Un dedo en el sitio equivocado |
+| **Bloqueo de mantenimiento** (`tmp/mantenimiento.lock`, con el PID) | Arrancar la pila *mientras* se recrean las bases: los servicios que apunten a una base que ya no existe se caen al conectar y el bot falla con `ECONNREFUSED`. Lo miran `dev:check` (la puerta de `npm run dev`) y `stack:dev` / `stack:fijo`. Si el proceso que lo creó murió, el bloqueo está **caducado** y se limpia solo (no se queda pegado como un candado ciego) |
+| Pila parada (puertos libres) | Borrar la base debajo de los servicios en marcha |
+| `NODE_ENV=production` | Reiniciar por descuido la base de la clínica |
+| Host de `PG_ADMIN_URL` local | Borrar por accidente la base de un servidor remoto (se puede con `--remoto`, dicho a propósito) |
+| Lista cerrada de 9 bases | Que un nombre calculado se lleve por delante otra base de la instancia |
+| `with (force)` | Que una conexión suelta (pgAdmin) deje el borrado a medias |
+| Comprobación de la ruta de `storage/` | Un borrado recursivo sobre una ruta no verificada |
+
+- `--sin-sembrar` deja la base **sin usuarios** (la interfaz no se puede usar): el comando lo
+  avisa en grande al terminar. Para arreglarlo: `npm run seed:users`.
+- `npm run dev:check` comprueba además que **las 9 bases existan** antes de arrancar: si un
+  `db:reset` quedó a medias, lo dice con esas palabras en vez de dejar media pila en pie.
 
 ---
 
