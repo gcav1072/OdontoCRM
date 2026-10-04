@@ -9,6 +9,7 @@ import { DayQueue } from '../components/flujo/DayQueue';
 import {
   accionDeTecla,
   citasDeLaCola,
+  citasDelDia,
   hayDialogoAbierto,
   resolverSeleccion,
   type AccionFlujo,
@@ -92,17 +93,23 @@ export const FlujoPage = () => {
   const diaQuery = useDayView(fecha);
   const dia = diaQuery.data;
 
+  /** La jornada completa, para saber cuál es la cita en curso. */
+  const citas = useMemo(() => citasDelDia(dia), [dia]);
+  /** Lo que ve la lista: la jornada filtrada por el buscador. */
   const visibles = useMemo(() => citasDeLaCola(dia, busqueda), [dia, busqueda]);
 
   /**
    * Cita en curso. Cuando el doctor pulsa una fila de la cola manda esa cita; si la
    * cita desaparece de la jornada (la reprogramaron a otro día), se vuelve a la que
    * toca por estado y hora en lugar de dejar la pantalla en blanco.
+   *
+   * Se resuelve sobre la **jornada completa**, no sobre la lista filtrada: buscar a
+   * otro paciente en la cola no puede dejar la pantalla sin paciente y, con él, sin
+   * las acciones de la barra (lo destapó la aceptación de la Fase 10 con una jornada
+   * sembrada de verdad: al filtrar por el documento del paciente de prueba, el
+   * botón «Registrar llegada» desaparecía de la pantalla).
    */
-  const cita = useMemo(
-    () => resolverSeleccion(visibles, elegidaId, ahora),
-    [visibles, elegidaId, ahora],
-  );
+  const cita = useMemo(() => resolverSeleccion(citas, elegidaId, ahora), [citas, elegidaId, ahora]);
 
   /**
    * Paciente del centro: el de la cita en curso o, si el doctor buscó con `F2` a

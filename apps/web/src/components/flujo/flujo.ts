@@ -16,14 +16,16 @@ import { coincideBusqueda, porHoraDeInicio } from '../secretaria/acciones';
 
 /* ── Cola del día ─────────────────────────────────────────────────────────── */
 
-/** Citas de la jornada, ordenadas por hora y filtradas por el buscador. */
+/** Citas de la jornada, ordenadas por hora (la jornada completa). */
+export const citasDelDia = (day: DayView | undefined): readonly AppointmentSummary[] =>
+  [...(day?.appointments ?? [])].sort(porHoraDeInicio);
+
+/** Lo que muestra la lista: la jornada filtrada por el buscador. */
 export const citasDeLaCola = (
   day: DayView | undefined,
   busqueda: string,
 ): readonly AppointmentSummary[] =>
-  [...(day?.appointments ?? [])]
-    .sort(porHoraDeInicio)
-    .filter((cita) => coincideBusqueda(cita, busqueda));
+  citasDelDia(day).filter((cita) => coincideBusqueda(cita, busqueda));
 
 /** ¿La cita sigue esperando al doctor? (ni cerrada ni cancelada) */
 const sigueEnJuego = (cita: AppointmentSummary): boolean => !isTerminalStatus(cita.status);

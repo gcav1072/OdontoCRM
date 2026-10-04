@@ -9,6 +9,7 @@ import {
   ayudaDeAtajo,
   citaEnCurso,
   citasDeLaCola,
+  citasDelDia,
   hayDialogoAbierto,
   resolverSeleccion,
 } from './flujo';
@@ -95,6 +96,36 @@ describe('citasDeLaCola', () => {
 
   it('sin jornada cargada devuelve una cola vacía', () => {
     expect(citasDeLaCola(undefined, '')).toEqual([]);
+  });
+});
+
+/**
+ * El filtro es de la **lista**, no de la jornada: si buscar a otro paciente dejara
+ * la pantalla sin cita en curso, desaparecerían con ella las acciones de la barra
+ * («Registrar llegada», «Llamar», «Cerrar la sesión»). Lo destapó la aceptación de
+ * la Fase 10 con una jornada sembrada de verdad.
+ */
+describe('la cita en curso sobrevive al buscador', () => {
+  const enConsulta = cita({ id: 'en-consulta', startTime: '09:00', status: 'en_consulta' });
+  const dePrueba = cita({
+    id: 'de-prueba',
+    startTime: '11:00',
+    patientName: 'Paciente de prueba',
+    patientDocument: 'V-90140571',
+  });
+  const dia = jornada([enConsulta, dePrueba]);
+  const ahora = enCaracas('18:00');
+
+  it('la jornada completa se ordena sin filtrar', () => {
+    expect(citasDelDia(dia).map((fila) => fila.id)).toEqual(['en-consulta', 'de-prueba']);
+  });
+
+  it('filtrar por el documento de otra cita deja la cita en curso a la vista', () => {
+    // Lo que hace `/flujo`: la lista se filtra, pero la selección se resuelve sobre
+    // la jornada completa.
+    const visibles = citasDeLaCola(dia, '90140571');
+    expect(visibles.map((fila) => fila.id)).toEqual(['de-prueba']);
+    expect(resolverSeleccion(citasDelDia(dia), null, ahora)?.id).toBe('en-consulta');
   });
 });
 
