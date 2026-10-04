@@ -401,17 +401,35 @@ sudo systemctl restart postgresql-18
 
 ### 6.3 `pg_hba.conf` (quién puede conectarse y cómo)
 
+**Esto no es opcional en Fedora.** Medido en la PC de pruebas (Fase 10): el clúster
+que crea `postgresql-setup --initdb` deja las conexiones **TCP en `ident`**, no en
+`scram-sha-256` (`select auth_method from pg_hba_file_rules` lo confirma). Con
+`ident` y sin servidor de identidad, **ningún servicio puede entrar** por
+`127.0.0.1` («la autentificación Ident falló para el usuario …») aunque la
+contraseña esté bien. Hay que dejar el archivo así:
+
 ```conf
 # TYPE      DATABASE        USER            ADDRESS         METHOD
 local       all             postgres                        peer
-local       all             all                             scram-sha-256
+local       all             all                             peer
 host        all             all             127.0.0.1/32    scram-sha-256
 host        all             all             ::1/128         scram-sha-256
 # (ninguna línea para 0.0.0.0/0: PostgreSQL no se expone a la red)
 ```
 
+Se cambia con dos comandos (el respaldo del original primero, que aquí no se sabe
+si hará falta):
+
 ```bash
-sudo systemctl reload postgresql-18
+sudo cp /var/lib/pgsql/data/pg_hba.conf /var/lib/pgsql/data/pg_hba.conf.orig
+sudo sed -i -E \
+  's#^(host[[:space:]]+all[[:space:]]+all[[:space:]]+(127\.0\.0\.1/32|::1/128)[[:space:]]+)ident#\1scram-sha-256#' \
+  /var/lib/pgsql/data/pg_hba.conf
+sudo systemctl reload postgresql
+
+# Verificación (con el usuario que tenga superusuario por peer)
+psql "postgres:///postgres?host=/var/run/postgresql" \
+  -c "select type, database, user_name, address, auth_method from pg_hba_file_rules"
 ```
 
 > PENDIENTE FASE 10: si el respaldo se ejecuta como `root` por el socket con
