@@ -1,6 +1,8 @@
 import {
   ANTI_FLOOD_MAX_MESSAGES,
   ANTI_FLOOD_WINDOW_SECONDS,
+  CLINIC,
+  clinicFullAddress,
   NOTIFICATION_MAX_ATTEMPTS,
   NOTIFICATION_RETRY_DELAYS_SECONDS,
 } from '@odontocrm/contracts';
@@ -58,13 +60,17 @@ export const notificationsEnvSchema = baseEnvSchema.extend({
     .default(NOTIFICATION_MAX_ATTEMPTS),
   RETRY_DELAYS_SECONDS: z.string().default(NOTIFICATION_RETRY_DELAYS_SECONDS.join(',')),
 
-  /** Datos que aparecen en los mensajes y en el `.ics`. */
-  CLINIC_NAME: z.string().min(1).default('Consultorio - Od. Erika Gómez'),
-  CLINIC_ADDRESS: z
+  /**
+   * Datos que aparecen en los mensajes y en el `.ics`. Salen de `CLINIC`
+   * (`packages/contracts/src/clinic.ts`, la sección editable del consultorio) y el
+   * `.env` solo los sustituye si una instalación concreta lo necesita.
+   */
+  CLINIC_NAME: z.string().min(1).default(CLINIC.name),
+  CLINIC_ADDRESS: z.string().min(1).default(clinicFullAddress()),
+  CLINIC_EMAIL: z
     .string()
-    .min(1)
-    .default('Av. Luis del Valle García, C.E. Nueva Esparta, Planta Baja, Local 1-2'),
-  CLINIC_EMAIL: z.string().min(3).default('citas@odontocrm.local'),
+    .min(3)
+    .default(CLINIC.email ?? 'citas@odontocrm.local'),
 
   /** Servicios internos que usa el bot (altas de paciente y solicitudes). */
   PATIENTS_URL: z.string().min(1).default('http://127.0.0.1:4002'),

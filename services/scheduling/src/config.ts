@@ -1,5 +1,7 @@
 import { baseEnvSchema, loadConfig } from '@odontocrm/kernel';
 import {
+  CLINIC,
+  clinicFullAddress,
   DEFAULT_DAY_CAPACITY,
   DEFAULT_NO_SHOW_GRACE_MINUTES,
   DEFAULT_SLOT_MINUTES,
@@ -31,12 +33,9 @@ export const schedulingEnvSchema = baseEnvSchema.extend({
     .min(0)
     .max(240)
     .default(DEFAULT_NO_SHOW_GRACE_MINUTES),
-  /** Dirección que aparece en el aviso al paciente. */
-  CLINIC_ADDRESS: z
-    .string()
-    .min(1)
-    .default('Av. Luis del Valle García, C.E. Nueva Esparta, Planta Baja, Local 1-2'),
-  CLINIC_NAME: z.string().min(1).default('Consultorio - Od. Erika Gómez'),
+  /** Dirección que aparece en el aviso al paciente (por defecto, la del consultorio). */
+  CLINIC_ADDRESS: z.string().min(1).default(clinicFullAddress()),
+  CLINIC_NAME: z.string().min(1).default(CLINIC.name),
 
   /**
    * Servicio clínico (red interna). La agenda lo consulta para comprobar que la

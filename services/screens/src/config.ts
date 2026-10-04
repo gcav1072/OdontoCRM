@@ -1,4 +1,5 @@
 import { baseEnvSchema, loadConfig } from '@odontocrm/kernel';
+import { CLINIC } from '@odontocrm/contracts';
 import { z } from 'zod';
 
 export const screensEnvSchema = baseEnvSchema.extend({
@@ -18,7 +19,8 @@ export const screensEnvSchema = baseEnvSchema.extend({
   SCREEN_KEEPALIVE_SECONDS: z.coerce.number().int().min(5).max(120).default(20),
   /** Nombre del sillón que aparece en el llamado (un solo sillón, decisión 6). */
   CHAIR_LABEL: z.string().min(1).max(40).default('Consultorio 1'),
-  CLINIC_NAME: z.string().min(1).default('Consultorio - Od. Erika Gómez'),
+  /** Nombre del consultorio que sale en las pantallas (por defecto, el editable). */
+  CLINIC_NAME: z.string().min(1).default(CLINIC.name),
 
   /** Servicio de pacientes: la pantalla del consultorio pide ahí la ficha. */
   PATIENTS_URL: z.string().min(1).default('http://127.0.0.1:4002'),
