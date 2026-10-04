@@ -445,6 +445,27 @@ sudo npm run db:bootstrap -- --only identity     # un solo servicio
 sudo npm run db:bootstrap -- --rotate            # cambia contraseñas (¡reinicie después!)
 ```
 
+**Alternativa sin contraseña de superusuario (la más cómoda en Fedora).** El clúster
+que crea `postgresql-setup --initdb` usa autenticación **`peer`** en el socket local:
+el usuario del sistema entra como el rol que se llame igual. Se le da superusuario a
+tu usuario y el bootstrap entra por el socket, sin escribir ninguna contraseña en
+ningún archivo:
+
+```bash
+# OJO: dentro de un script con sudo, $USER es root: usa tu usuario de verdad.
+sudo -u postgres createuser --superuser "$USER"
+
+sudo tee /opt/odontocrm/.env >/dev/null <<'EOF'
+PG_ADMIN_URL=postgres:///postgres?host=/var/run/postgresql
+NODE_ENV=production
+LOG_LEVEL=info
+EOF
+```
+
+Con esta forma, las URLs que genera el bootstrap para los servicios siguen siendo
+**TCP a 127.0.0.1** con la contraseña aleatoria de cada rol: el socket solo lo usa el
+administrador. Es el camino probado en la PC Fedora de pruebas (Fase 10).
+
 > Nota de seguridad: el bootstrap también usa `/opt/odontocrm/.env` (o el `.env` de la
 > raíz) solo para leer `PG_ADMIN_URL`; cuando termines puedes **borrarlo**
 > (`sudo shred -u /opt/odontocrm/.env`). Las contraseñas de cada rol quedan en

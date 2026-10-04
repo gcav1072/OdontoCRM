@@ -148,15 +148,39 @@ const adminUrl = process.env.PG_ADMIN_URL;
 if (!adminUrl) {
   console.error(
     'Falta PG_ADMIN_URL.\n' +
-      `Crea el archivo ${rootEnvFile} con esta línea (usa tu contraseña de postgres):\n` +
+      `Crea el archivo ${rootEnvFile} con una de estas líneas:\n` +
       '  PG_ADMIN_URL=postgres://postgres:TU_PASSWORD@127.0.0.1:5432/postgres\n' +
+      '  # o, si el superusuario entra por el socket con autenticación peer (Fedora):\n' +
+      '  PG_ADMIN_URL=postgres://TU_USUARIO@/postgres?host=/var/run/postgresql\n' +
       'Ver docs/SEGURIDAD_SECRETOS.md §1.',
   );
   process.exit(1);
 }
 
-const parsedAdminUrl = new URL(adminUrl);
-const host = parsedAdminUrl.hostname;
+/**
+ * Host y puerto del administrador. **Ojo con la forma de socket**: `new URL` no
+ * acepta `postgres://usuario@/base?host=/var/run/postgresql` (autoridad vacía con
+ * usuario), que sí entiende PostgreSQL y es el camino de Fedora con autenticación
+ * `peer` (`postgresql-setup --initdb`). Se lee el `host` de la consulta y se sigue.
+ */
+const parseAdminUrl = (url) => {
+  try {
+    const parsed = new URL(url);
+    return { host: parsed.hostname, port: parsed.port };
+  } catch {
+    const consulta = new URLSearchParams(url.slice(url.indexOf('?') + 1));
+    return { host: consulta.get('host') ?? '', port: consulta.get('port') ?? '' };
+  }
+};
+
+const parsedAdminUrl = parseAdminUrl(adminUrl);
+
+/**
+ * Si el administrador entra por el socket, los servicios siguen hablando por
+ * **TCP a 127.0.0.1**, que es como están configurados y como exige
+ * `PrivateTmp=true` de systemd (INSTALL.md §10.3).
+ */
+const host = parsedAdminUrl.host === '' ? '127.0.0.1' : parsedAdminUrl.host;
 const port = parsedAdminUrl.port === '' ? '5432' : parsedAdminUrl.port;
 
 const buildUrl = (role, password, database) =>

@@ -62,8 +62,12 @@ Para partir del cierre verificado de la fase anterior: `git switch --detach fase
 
 ```bash
 cp .env.example .env
-# Edita PG_ADMIN_URL con la contraseña del superusuario `postgres` de PostgreSQL 18
-# (si lleva @ : / ? # hay que codificarla en porcentaje).
+# En Fedora lo cómodo es entrar por el socket con autenticación `peer`, sin
+# contraseñas: dale superusuario a tu usuario y apunta PG_ADMIN_URL al socket.
+#   sudo -u postgres createuser --superuser "$USER"
+#   PG_ADMIN_URL=postgres:///postgres?host=/var/run/postgresql
+# (La otra vía es la contraseña del superusuario `postgres` por TCP, como en
+#  Windows: postgres://postgres:CLAVE@127.0.0.1:5432/postgres)
 npm run env:check        # ¿a algún .env le falta una clave de su plantilla?
 
 npm run db:bootstrap     # 8 bases + 8 roles + la cola de eventos compartida (idempotente)
