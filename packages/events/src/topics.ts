@@ -42,8 +42,11 @@ export const EVENT_TOPICS = {
   sessionCreated: 'clinical.session.created',
   sessionClosed: 'clinical.session.closed',
   sessionAmended: 'clinical.session.amended',
+  sessionFileUploaded: 'clinical.session.file_uploaded',
+  sessionFileRemoved: 'clinical.session.file_removed',
   prescriptionIssued: 'clinical.prescription.issued',
   prescriptionReprinted: 'clinical.prescription.reprinted',
+  prescriptionAnnulled: 'clinical.prescription.annulled',
 
   toothFindingRecorded: 'odontogram.finding.recorded',
   toothFindingRemoved: 'odontogram.finding.removed',
