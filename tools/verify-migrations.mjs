@@ -50,7 +50,17 @@ const SERVICES = [
   {
     name: 'clinical',
     migrations: 'services/clinical/migrations',
-    tables: ['medical_records', 'medical_record_sections', 'medical_record_amendments'],
+    tables: [
+      'medical_records',
+      'medical_record_sections',
+      'medical_record_amendments',
+      // Fase 7A: la evolución, y 7B: adjuntos de la sesión y récipes.
+      'clinical_sessions',
+      'clinical_session_files',
+      'medications_catalog',
+      'prescriptions',
+      'prescription_items',
+    ],
   },
   {
     name: 'odontogram',
