@@ -54,6 +54,8 @@ export interface ToothFindingSheetProps {
   findings: readonly ToothFindingRecord[];
   /** Sin permiso de escritura la hoja solo informa. */
   canWrite: boolean;
+  /** Sesión clínica abierta (Fase 7): el hallazgo queda ligado a esta visita. */
+  sessionId?: string | null;
   onClose: () => void;
   /**
    * Se llama tras un cambio que el servidor aceptó. Trae la pieza, los hallazgos
@@ -73,6 +75,7 @@ export const ToothFindingSheet = ({
   toothNumber,
   findings,
   canWrite,
+  sessionId = null,
   onClose,
   onApplied,
   onError,
@@ -166,9 +169,10 @@ export const ToothFindingSheet = ({
     }
 
     // Las notas acompañan a **todos** los hallazgos de esta acción: si se marcan tres
-    // caras con la misma observación, las tres la llevan.
+    // caras con la misma observación, las tres la llevan. La sesión también: lo que
+    // se marca con la sesión abierta pertenece a esa visita.
     const nota = notasNuevas.trim() === '' ? null : notasNuevas.trim();
-    const entradas = findingsFromSelection(selection).map((entrada) => ({
+    const entradas = findingsFromSelection({ ...selection, sessionId }).map((entrada) => ({
       ...entrada,
       notes: nota,
     }));

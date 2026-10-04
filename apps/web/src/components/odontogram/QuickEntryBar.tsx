@@ -116,6 +116,8 @@ export interface QuickEntryBarProps {
   detail: OdontogramDetail | null;
   /** Estado de la máquina; lo guarda el panel para que el gráfico marque la pieza. */
   state: QuickEntryState;
+  /** Sesión clínica abierta (Fase 7): el hallazgo queda ligado a esta visita. */
+  sessionId?: string | null;
   onStateChange: (state: QuickEntryState) => void;
   /** Una mutación se aplicó: el panel actualiza la caché y apila el deshacer. */
   onApplied: (result: OdontogramMutationResult, action: QuickEntryAction) => void;
@@ -131,6 +133,7 @@ export const QuickEntryBar = ({
   patientId,
   detail,
   state,
+  sessionId = null,
   onStateChange,
   onApplied,
   onError,
@@ -152,7 +155,11 @@ export const QuickEntryBar = ({
   const ejecutar = async (intent: QuickEntryAction): Promise<void> => {
     try {
       if (intent.kind === 'record') {
-        onApplied(await odontogramApi.recordFinding(patientId, intent.input), intent);
+        // La sesión la pone el panel: la máquina de teclado no sabe de visitas.
+        onApplied(
+          await odontogramApi.recordFinding(patientId, { ...intent.input, sessionId }),
+          intent,
+        );
       } else if (intent.kind === 'delete') {
         onApplied(await odontogramApi.removeFinding(patientId, intent.input), intent);
       } else {

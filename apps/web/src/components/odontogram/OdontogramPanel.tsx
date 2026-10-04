@@ -75,9 +75,19 @@ export interface OdontogramPanelProps {
   patientId: string;
   /** Escribir exige `odontogram:write`; sin permiso el panel es de solo lectura. */
   canWrite?: boolean;
+  /**
+   * Sesión clínica abierta (Fase 7): cada hallazgo queda ligado a la sesión en la
+   * que se registró, que es lo que después agrupa la evolución por visita. Sin
+   * sesión abierta el hallazgo se guarda igual, con la sesión en blanco.
+   */
+  sessionId?: string | null;
 }
 
-export const OdontogramPanel = ({ patientId, canWrite = false }: OdontogramPanelProps) => {
+export const OdontogramPanel = ({
+  patientId,
+  canWrite = false,
+  sessionId = null,
+}: OdontogramPanelProps) => {
   const queryClient = useQueryClient();
   const { notice, mostrar, exito, error, limpiar } = useNotice();
   /** Con el dedo, tocar una pieza abre la hoja de botones grandes. */
@@ -418,6 +428,7 @@ export const OdontogramPanel = ({ patientId, canWrite = false }: OdontogramPanel
               patientId={patientId}
               detail={detail}
               state={quick}
+              sessionId={sessionId}
               onStateChange={setQuick}
               onApplied={aplicar}
               onError={(fallo) => error(apiErrorMessage(fallo))}
@@ -463,6 +474,7 @@ export const OdontogramPanel = ({ patientId, canWrite = false }: OdontogramPanel
           toothNumber={hoja}
           findings={findingsForTooth(detail, hoja ?? 0)}
           canWrite={canWrite}
+          sessionId={sessionId}
           onClose={() => setHoja(null)}
           onApplied={aplicarHoja}
           onError={(fallo) => error(fallo)}
