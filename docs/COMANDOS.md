@@ -33,7 +33,7 @@
 | `npm run dev` | Compila en vigilancia y arranca gateway + servicios + interfaz (Vite) | Para trabajar con la aplicación abierta |
 | `npm test` | Pruebas unitarias y de contrato (Vitest, sin base de datos) | Mientras se programa: `npm run test:watch` |
 | `npm run test:integration` | Las mismas suites **contra PostgreSQL real** (outbox, colas, sesiones, agenda, pantallas) | Antes de dar algo por terminado |
-| `npm run smoke:<módulo>` | Recorrido de punta a punta **contra los servicios arrancados** por el gateway | Cuando algo «funciona en las pruebas pero no en la app» (`auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`) |
+| `npm run smoke:<módulo>` | Recorrido de punta a punta **contra los servicios arrancados** por el gateway | Cuando algo «funciona en las pruebas pero no en la app» (`auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`) |
 
 > `npm run verify` **no** ejecuta las pruebas de integración ni las de humo: no toca
 > la base de datos ni arranca servicios. Para el DoD de una fase hay que correr
@@ -228,6 +228,8 @@ base de datos). Necesitan los servicios arrancados y datos sembrados.
 | `npm run smoke:agenda` | Ticket, cupo, franja, sobrecupo, reprogramación y aviso en lote | 41 |
 | `npm run smoke:notifications` | Estado de canales, plantillas, vinculación con QR, aviso de cita con `.ics` y el botón «Notificar» sin duplicar | 27 |
 | `npm run smoke:screens` | Pantalla kiosko, llamado en el lobby por SSE (mide la latencia), consultorio y baja de la pantalla | 26 |
+| `npm run smoke:odontogram` | Boca por teclado, superación de caras por la pieza completa, borrado y auditoría | 29 |
+| `npm run smoke:clinical` | Sesión clínica: abrir, autoguardar, cerrar (y no cerrar en blanco), enmendar, hallazgo del odontograma ligado a la sesión y «atendido» con y sin sesión (estrena paciente y busca hora libre en cada corrida) | 30 |
 
 Variables opcionales (mismas en todas):
 

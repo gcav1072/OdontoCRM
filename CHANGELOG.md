@@ -4,6 +4,68 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 7, sesión A] — Sesiones clínicas · 2026-10-04
+
+### Añadido
+
+- **La evolución del paciente ya tiene su documento** ([ADR 0034](docs/adr/0034-sesion-clinica-evolucion.md)):
+  `clinical_sessions` (migración `0001` de `clinical`) con el **documento del día** en `jsonb`
+  —motivo de la visita, anamnesis breve y cambios, **signos vitales** (TA, FC, temperatura, SpO₂ y
+  peso, con rangos validados en el contrato), examen intraoral y periodontal, **procedimientos del
+  catálogo** con pieza y caras, materiales e insumos, diagnóstico, indicaciones postoperatorias,
+  próxima cita y notas internas—, **numeración por paciente** (`S-000001`, con índice único y
+  reserva transaccional) y estados `borrador → cerrada` con `amended_from_id`.
+- **`packages/contracts`**: contrato de la sesión con 28 procedimientos y 16 materiales de catálogo
+  («otros» inputable, que es lo que permite contarlos en los reportes de la Fase 9), rangos de los
+  signos vitales —una tensión al revés o un peso de 900 kg son errores de tecleo, no datos—,
+  `clinicalSessionCanClose` y los textos de resumen. Se añade `common/optional.ts` (campos
+  opcionales normalizados a `null`, compartidos con la historia clínica) y el mapeo de las alertas
+  clínicas al **semáforo de riesgo** de la pantalla del consultorio. 18 pruebas nuevas.
+- **`services/clinical`**: sesiones con **autoguardado idempotente** (sin cambios no escribe nada, y
+  la comparación es por contenido canónico porque `jsonb` reordena las claves), **cierre** que exige
+  contenido mínimo y deja la sesión inmutable, **enmienda** que abre una sesión nueva con el
+  contenido copiado y su motivo, y rutas públicas (`/clinical/patients/:id/sessions`,
+  `/clinical/sessions/:id`, `/close`, `/amend`, `/clinical/appointments/:id/sessions`) más la ruta
+  interna de estado. Eventos y auditoría por outbox con `entityType: 'clinical_session'`.
+  7 pruebas de integración nuevas contra PostgreSQL real.
+- **«Atendido» con respaldo clínico**: `appointments.clinical_session_id` (migración `0003` de
+  `scheduling`) y verificación **contra el servicio clínico** antes de aceptar la sesión que evita el
+  motivo: existe, es del mismo paciente y está cerrada. Antes bastaba con mandar un identificador
+  inventado para saltarse la regla; sin sesión, el «atendido» sigue exigiendo motivo auditado.
+- **Interfaz**: pestaña **Sesión clínica** en `/consultorio` (con la sesión abierta en el rótulo),
+  formulario con **autoguardado** («Sin cambios / Sin guardar / Guardando / Guardado a las 10:23»),
+  selector de la cita del día al abrir, procedimientos con pieza y **caras** (que se limpian al
+  cambiar de pieza), materiales, cierre con nota, corrección de una sesión cerrada y la **evolución
+  anterior** a la vista. El odontograma marca cada hallazgo **dentro de la sesión** (`sessionId`) y
+  el diálogo de «atendido» de la secretaría detecta la sesión cerrada y ya no pide motivo.
+- **La pantalla del consultorio ya muestra los datos críticos del paciente en curso**
+  ([ADR 0035](docs/adr/0035-datos-criticos-leidos-no-empujados.md)): alergias, crónicos y
+  anticoagulantes con semáforo de riesgo, **leídos** de la historia clínica al construir el estado
+  (lo empujado en `room_state` queda como respaldo si el servicio clínico no responde).
+- `npm run smoke:clinical`: 30 comprobaciones de punta a punta por el gateway real (abrir,
+  autoguardar, no cerrar en blanco, cerrar, no editar lo cerrado, enmendar, ligar el hallazgo del
+  odontograma a la sesión, «atendido» con y sin sesión, y permisos de la secretaría).
+
+### Corregido
+
+- **El `CHECK` del canal de la solicitud no conocía `whatsapp`** (migración `0002` de `scheduling`):
+  el ADR 0029 añadió el canal a `CHANNELS` en la Fase 4.1, pero el constraint de la base se quedó con
+  los cuatro canales anteriores, así que una solicitud de WhatsApp real habría chocado contra él. Se
+  realinea con el contrato, que es la única fuente de verdad.
+- **La suite de pantallas compartía base con el servicio en desarrollo**: los eventos de la suite de
+  agenda los proyectaba el servicio vivo y dejaban a un paciente ajeno «en el consultorio»; la prueba
+  lee un único paciente y fallaba por datos de otra suite. Ahora limpia lo que no es de su corrida
+  antes de empezar.
+
+### Cambiado
+
+- **El borrador de la sesión no genera auditoría**: el acto clínico queda registrado al **cerrar**
+  (created/closed/amended son los únicos eventos del catálogo) y el autoguardado se limita a escribir
+  el documento.
+- **El autoguardado exige el documento completo** (`.required()` en el contrato): con los `default`
+  del esquema, un cliente que mandara solo el campo que tocó borraría en silencio los procedimientos
+  que ya estaban (responde `400`).
+
 ## [Fase 6, sesión B] — Odontograma FDI · 2026-10-04
 
 ### Añadido

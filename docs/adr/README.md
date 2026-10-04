@@ -3,8 +3,8 @@
 Una ADR por decisión relevante, en el formato *Contexto · Decisión · Consecuencias*.
 Las decisiones 0001–0021 provienen de la sesión de planificación del **2026-10-02**
 (§1 de [`../PLAN_MAESTRO_FASES.md`](../PLAN_MAESTRO_FASES.md)); las 0022–0025 se
-tomaron durante la Fase 0, la 0029 en la Fase 4.1 y la 0030 en la Fase 5, y quedan
-documentadas por la misma razón.
+tomaron durante la Fase 0, la 0029 en la Fase 4.1, la 0030 en la Fase 5, las 0031–0033
+en la Fase 6 y las 0034–0035 en la Fase 7, y quedan documentadas por la misma razón.
 
 | # | Decisión | Estado |
 | :-: | :--- | :--- |
@@ -41,3 +41,5 @@ documentadas por la misma razón.
 | [0031](0031-odontograma-pieza-completa-sobre-caras.md) | La pieza completa manda sobre las caras del odontograma | **corregida por la 0032** |
 | [0032](0032-convivencia-de-tratamientos-con-las-caras.md) | Los tratamientos conviven con las caras; solo `ausente` las supera | aceptada (fase 6B) |
 | [0033](0033-odontograma-en-posicion-anatomica.md) | El odontograma se dibuja en posición anatómica (espejo por cuadrante y borde incisal) | aceptada (fase 6B) |
+| [0034](0034-sesion-clinica-evolucion.md) | La sesión clínica es el documento de la evolución (borrador autoguardado, cierre inmutable, enmienda) | aceptada (fase 7A) |
+| [0035](0035-datos-criticos-leidos-no-empujados.md) | Los datos críticos del consultorio se leen de la historia clínica, no se empujan | aceptada (fase 7A) |

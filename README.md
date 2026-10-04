@@ -5,8 +5,8 @@ odontograma, récipes, reportes y auditoría — construido como **microservicio
 TypeScript** sobre **PostgreSQL**, pensado para correr en la red local de la clínica y,
 más adelante, fuera de ella por VPN.
 
-> **Estado: Fase 0 completada** (fundación del repositorio e infraestructura local).
-> El plan completo, con las 11 fases y sus criterios de aceptación, está en
+> **Estado: Fase 7 completada en su sesión A** (sesiones clínicas, fase 7B pendiente: adjuntos y
+> récipes A5). El plan completo, con las 11 fases y sus criterios de aceptación, está en
 > [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md).
 
 ---
@@ -80,7 +80,7 @@ está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)**. Estos son los del día a d�
 | `npm run dev` | Compila en modo vigilancia y arranca gateway + servicios + interfaz (5173) |
 | `npm test` | Pruebas unitarias y de contrato (Vitest) |
 | `npm run test:integration` | Suites contra PostgreSQL real (outbox, colas, sesión, pacientes, agenda, pantallas) |
-| `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens` |
+| `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical` |
 | **`npm run verify`** | **Puerta de calidad: secretos + lint + formato + compilación + pruebas unitarias** |
 
 Antes de cerrar cualquier fase, `npm run verify` debe pasar en verde, además de
@@ -115,7 +115,7 @@ docs                  Plan maestro, formato de historia clínica y ADRs
 | patients | 4002 | ✅ Fase 2 |
 | scheduling | 4003 | ✅ Fase 3 |
 | notifications | 4004 | ✅ Fase 4 (Telegram) · Fase 4.1 (multicanal + webhook) |
-| clinical | 4005 | ✅ Fase 6, sesión A (historia clínica) |
+| clinical | 4005 | ✅ Fase 6, sesión A (historia clínica) · Fase 7A (sesiones) |
 | odontogram | 4006 | ✅ Fase 6, sesión B (odontograma FDI) |
 | screens | 4007 | ✅ Fase 5 (secretaría y pantallas con SSE) |
 | reporting | 4008 | Fase 9 |
@@ -365,6 +365,53 @@ fila**— y motor geométrico SVG sin dependencias. La dentición (permanente 11
   crece hasta que cada pieza pasa de 44 px (con desplazamiento horizontal si no cabe). La hoja usa
   el mismo modelo de selección que el teclado: marcar tres caras deja tres hallazgos en una sola
   transacción. Con ratón se sigue pulsando la cara exacta.
+
+---
+
+## API de la Fase 7A (sesión clínica)
+
+La sesión es la **evolución** del paciente (§11 de
+[`docs/formato_historia.md`](docs/formato_historia.md)): la historia se firma una vez, y cada visita
+se documenta con una sesión que nace en `borrador`, se **autoguarda** mientras el doctor escribe y
+pasa a `cerrada`, que es inmutable ([ADR 0034](docs/adr/0034-sesion-clinica-evolucion.md)).
+
+| Método y ruta | Qué hace | Permiso |
+| :--- | :--- | :--- |
+| `GET /api/v1/clinical/patients/:patientId/sessions` | Evolución del paciente, de la última visita a la primera | `clinical:read` |
+| `POST /api/v1/clinical/patients/:patientId/sessions` | Abre la sesión del día (idempotente; abre la historia si no existía) | `clinical:write` |
+| `GET /api/v1/clinical/sessions/:id` | Sesión completa con su documento | `clinical:read` |
+| `PUT /api/v1/clinical/sessions/:id` | **Autoguardado**: el documento completo de la sesión | `clinical:write` |
+| `POST /api/v1/clinical/sessions/:id/close` | Cierra la sesión (exige contenido mínimo) y la deja inmutable | `clinical:write` |
+| `POST /api/v1/clinical/sessions/:id/amend` | Corrige una sesión cerrada **abriendo otra** en borrador, con motivo | `clinical:write` |
+| `GET /api/v1/clinical/appointments/:appointmentId/sessions` | Sesiones de una cita: la secretaría sabe si el doctor ya cerró | `clinical:read` |
+| `GET /internal/v1/clinical/sessions/:id/status` | Estado de la sesión, para que la **agenda** verifique el «atendido» | secreto interno |
+
+- **El borrador se autoguarda sin ruido**: no publica evento ni auditoría (el catálogo solo tiene
+  `clinical.session.created/closed/amended`) y, si el documento no cambió, no escribe nada. El acto
+  clínico nace **al cerrar**, y ahí sí queda en la auditoría con su resumen, sus procedimientos y su
+  actor.
+- **Una sesión vacía no se cierra**: hace falta motivo, un procedimiento o un diagnóstico. Una sesión
+  cerrada no se edita (`409`); la corrección abre una sesión **enmendada** con el contenido copiado
+  y el motivo, y la original se conserva.
+- **El autoguardado exige el documento completo** (`400` si falta algo): con los valores por defecto
+  del contrato, un cliente que mandara solo el campo que tocó borraría en silencio los
+  procedimientos que ya estaban.
+- **Firmar la historia no cierra la evolución**: se puede abrir una sesión con la historia firmada.
+- **Marcar «atendido» sin motivo ya es real**: la sesión cerrada respalda la cita
+  (`appointments.clinical_session_id`). La agenda **verifica** la sesión contra el servicio clínico
+  —existe, es del mismo paciente y está cerrada—, así que un identificador inventado responde `409`;
+  sin sesión, el «atendido» sigue pidiendo motivo auditado (y la secretaría ve en su diálogo que la
+  sesión ya está cerrada).
+- **El odontograma se marca dentro de la sesión**: los hallazgos registrados con la sesión abierta
+  guardan su `sessionId`, que es lo que agrupa la evolución por visita.
+- **La pantalla del consultorio ya muestra los datos críticos** (alergias, crónicos,
+  anticoagulantes) con semáforo de riesgo: se leen de la historia clínica en el momento de pintarlos
+  ([ADR 0035](docs/adr/0035-datos-criticos-leidos-no-empujados.md)).
+- La interfaz vive en `/consultorio` (pestaña **Sesión clínica**): signos vitales con sus rangos,
+  examen del día, procedimientos **del catálogo** con pieza y caras, materiales, diagnóstico,
+  indicaciones, próxima cita y notas internas; indicador de guardado, cierre con nota y la evolución
+  anterior a la vista.
+- `npm run smoke:clinical` recorre todo el camino contra el gateway real (30 comprobaciones).
 
 ---
 
