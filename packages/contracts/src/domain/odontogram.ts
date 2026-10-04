@@ -72,13 +72,16 @@ export const wholeToothConditionSchema = z.enum(WHOLE_TOOTH_CONDITIONS);
  * para todas:
  *
  * - `ausente` **supera** las caras que hubiera (se quedan marcadas como superadas, no
- *   se borran) y no convive con un diente ni con su plan: no puede llevar corona,
- *   conducto ni extracción indicada.
- * - Los **tratamientos** (`corona`, `endodoncia`, `implante`) y el **plan**
- *   (`extraccion_indicada`) **conviven con las caras**: una corona sobre un diente
- *   obturado, o un conducto con su restauración encima, son la boca normal, no una
- *   contradicción. Antes se trataban como `ausente` y eso impedía registrar la
- *   realidad.
+ *   se borran) **y las excluye**: no convive con un diente ni con su plan, así que no
+ *   puede llevar corona, conducto ni extracción indicada.
+ * - La **corona** también las supera, pero **no las excluye**: recubre el muñón y lo
+ *   que hubiera debajo ya no se ve en boca (el dato se conserva superado), y una
+ *   caries que aparezca **después** —la recurrente, en el margen— se registra encima
+ *   y se ve en el dibujo.
+ * - `endodoncia`, `implante` y el **plan** (`extraccion_indicada`) **conviven con las
+ *   caras**: un conducto con su restauración encima, o una caries en un diente con la
+ *   extracción indicada, son la boca normal, no una contradicción. Antes se trataban
+ *   como `ausente` y eso impedía registrar la realidad.
  * - Entre ellos solo se bloquean las parejas **imposibles**: un implante no tiene
  *   raíz que endodonciar (`implante` × `endodoncia`) y nada convive con `ausente`
  *   **salvo el implante**: la corona natural puede no estar y el implante sostenerla,
@@ -87,8 +90,22 @@ export const wholeToothConditionSchema = z.enum(WHOLE_TOOTH_CONDITIONS);
  *   y corona) también se admiten.
  */
 export interface WholeToothRule {
-  /** Si al registrarla hay que **superar** las caras vigentes de esa pieza. */
+  /**
+   * Si al registrarla hay que **superar** las caras vigentes de esa pieza: quedan con
+   * `resolved_at` y su entrada en el histórico, no se borran. El gráfico deja de
+   * pintarlas porque en boca ya no se ven.
+   */
   supersedesSurfaces: boolean;
+  /**
+   * Si la condición **excluye** las caras: no caben juntas de ninguna manera, ni antes
+   * ni después. Es lo que hace `ausente` (una pieza que no está no tiene caries) y lo
+   * que **no** hace `corona`: la corona tapa lo que había debajo, pero una **caries
+   * recurrente** sobre la corona se registra después y se ve.
+   *
+   * Sin esta distinción, superar y excluir serían lo mismo y la filtración marginal
+   * sobre una corona no se podría anotar.
+   */
+  excludesSurfaces: boolean;
   /** Condiciones de pieza completa con las que **no** puede convivir. */
   incompatibleWith: readonly WholeToothCondition[];
 }
@@ -102,22 +119,52 @@ export const WHOLE_TOOTH_RULES: Readonly<Record<WholeToothCondition, WholeToothR
    */
   ausente: {
     supersedesSurfaces: true,
+    excludesSurfaces: true,
     incompatibleWith: ['extraccion_indicada', 'corona', 'endodoncia'],
   },
   // Plan de tratamiento: describe lo que se va a hacer con una pieza que sigue ahí
   // (y que puede tener caries mientras tanto).
-  extraccion_indicada: { supersedesSurfaces: false, incompatibleWith: ['ausente'] },
-  // Tratamientos: conviven con las caras y entre ellos, salvo lo imposible.
-  corona: { supersedesSurfaces: false, incompatibleWith: ['ausente'] },
+  extraccion_indicada: {
+    supersedesSurfaces: false,
+    excludesSurfaces: false,
+    incompatibleWith: ['ausente'],
+  },
+  /**
+   * La corona protésica **recubre el muñón en sus 360°**: en boca ya no se ve si
+   * debajo había amalgama o resina, así que el gráfico no las enseña (si no, el
+   * círculo de la corona sobre trapecios pintados se lee como «caries dentro de la
+   * corona»). El dato **no se pierde**: las caras quedan superadas con `resolved_at`
+   * y su entrada en el histórico, que es lo que sostiene la historia clínica.
+   *
+   * No las excluye: la **caries recurrente** que aparezca después se registra sobre la
+   * corona y se ve, porque la superación solo mira lo que había cuando se puso.
+   */
+  corona: {
+    supersedesSurfaces: true,
+    excludesSurfaces: false,
+    incompatibleWith: ['ausente'],
+  },
   // El implante sustituye la raíz: convive con la corona ausente (fase quirúrgica) y
   // con la corona protésica (fase rehabilitada). Lo que no tiene es conducto.
-  implante: { supersedesSurfaces: false, incompatibleWith: ['endodoncia'] },
-  endodoncia: { supersedesSurfaces: false, incompatibleWith: ['ausente', 'implante'] },
+  implante: {
+    supersedesSurfaces: false,
+    excludesSurfaces: false,
+    incompatibleWith: ['endodoncia'],
+  },
+  endodoncia: {
+    supersedesSurfaces: false,
+    excludesSurfaces: false,
+    incompatibleWith: ['ausente', 'implante'],
+  },
 };
 
 /** `true` si la condición, al registrarse, deja superadas las caras de la pieza. */
 export const supersedesSurfaces = (condition: ToothCondition): boolean =>
   isWholeToothCondition(condition) && WHOLE_TOOTH_RULES[condition].supersedesSurfaces;
+
+/** `true` si la condición **excluye** las caras: no caben juntas, ni antes ni después. */
+export const excludesSurfaces = (condition: ToothCondition): boolean =>
+  isWholeToothCondition(condition) && WHOLE_TOOTH_RULES[condition].excludesSurfaces;
 
 /**
  * `true` si las dos condiciones **no pueden estar a la vez** en la misma pieza.
@@ -136,13 +183,15 @@ export const conditionsConflict = (a: ToothCondition, b: ToothCondition): boolea
   // en el mismo diente es la boca normal).
   if (!aEntera && !bEntera) return false;
 
-  // Cara × pieza completa: no caben juntas **si esa condición manda sobre las
-  // caras** (hoy, únicamente `ausente`); un tratamiento sí convive con ellas.
+  // Cara × pieza completa: no caben juntas **si la condición excluye las caras**
+  // (hoy, únicamente `ausente`). Ojo: **superarlas no es excluirlas** — la corona tapa
+  // lo que había debajo, pero una caries recurrente sobre la corona es una boca real
+  // y tiene que poder registrarse.
   if (aEntera !== bEntera) {
     const entera: WholeToothCondition = aEntera
       ? (a as WholeToothCondition)
       : (b as WholeToothCondition);
-    return WHOLE_TOOTH_RULES[entera].supersedesSurfaces;
+    return WHOLE_TOOTH_RULES[entera].excludesSurfaces;
   }
 
   // Dos condiciones de pieza completa: solo las parejas imposibles.
@@ -174,9 +223,10 @@ export const recordingConflicts = (existing: ToothCondition, next: ToothConditio
   // Una condición de pieza completa se registra sobre las caras que haya: o las
   // supera (`ausente`) o convive con ellas (los tratamientos). Nunca choca con ellas.
   if (nextEntera && !existingEntera) return false;
-  // Al revés sí: una cara no se registra sobre una pieza ausente.
+  // Al revés solo choca si la condición vigente **excluye** las caras (una caries no
+  // se registra sobre una pieza ausente). Sobre una corona sí: es la recurrente.
   if (!nextEntera && existingEntera) {
-    return WHOLE_TOOTH_RULES[existing as WholeToothCondition].supersedesSurfaces;
+    return WHOLE_TOOTH_RULES[existing as WholeToothCondition].excludesSurfaces;
   }
 
   const siguiente = next as WholeToothCondition;

@@ -20,6 +20,8 @@ import {
   selectionIsApplicable,
   supersedesSurfaces,
   SURFACE_POLYGONS,
+  excludesSurfaces,
+  recordingConflicts,
   surfaceAtPoint,
   surfaceLabelFor,
   TOOTH_NUMBERS,
@@ -298,21 +300,47 @@ describe('geometría del componente SVG', () => {
 });
 
 describe('convivencia de tratamientos con las caras (ADR 0032)', () => {
-  it('solo `ausente` supera las caras', () => {
+  it('`ausente` y `corona` superan las caras; lo que solo hace `ausente` es excluirlas', () => {
+    // Superar = al registrarlas, las caras que hubiera quedan cubiertas (con su
+    // histórico). La corona recubre el muñón en 360°: en boca ya no se ve debajo.
     expect(supersedesSurfaces('ausente')).toBe(true);
-    for (const condition of ['extraccion_indicada', 'corona', 'implante', 'endodoncia'] as const) {
+    expect(supersedesSurfaces('corona')).toBe(true);
+    for (const condition of ['extraccion_indicada', 'implante', 'endodoncia'] as const) {
       expect(supersedesSurfaces(condition)).toBe(false);
     }
     expect(supersedesSurfaces('caries')).toBe(false);
     expect(supersedesSurfaces('restauracion')).toBe(false);
+
+    // Excluir = no caben juntas de ninguna manera. Solo la pieza que no está.
+    expect(excludesSurfaces('ausente')).toBe(true);
+    for (const condition of [
+      'corona',
+      'extraccion_indicada',
+      'implante',
+      'endodoncia',
+      'caries',
+    ] as const) {
+      expect(excludesSurfaces(condition)).toBe(false);
+    }
   });
 
-  it('un tratamiento convive con las caras: la corona sobre un diente obturado es boca normal', () => {
-    expect(conditionsConflict('corona', 'caries')).toBe(false);
-    expect(conditionsConflict('corona', 'restauracion')).toBe(false);
+  it('los tratamientos que no recubren conviven con las caras', () => {
+    // Un conducto no tapa nada: la restauración que lleva encima sigue viéndose.
     expect(conditionsConflict('endodoncia', 'restauracion')).toBe(false);
     expect(conditionsConflict('extraccion_indicada', 'caries')).toBe(false);
     expect(conditionsConflict('implante', 'caries')).toBe(false);
+  });
+
+  it('la caries recurrente sobre una corona se registra; la corona tapa lo anterior', () => {
+    // Registrar la corona cubre lo que había debajo…
+    expect(recordingConflicts('caries', 'corona')).toBe(false);
+    expect(recordingConflicts('restauracion', 'corona')).toBe(false);
+    // …y una caries **después** de la corona es la filtración marginal: se admite.
+    expect(recordingConflicts('corona', 'caries')).toBe(false);
+    expect(conditionsConflict('corona', 'caries')).toBe(false);
+    // Lo que no se admite es una caries en una pieza que no está.
+    expect(recordingConflicts('ausente', 'caries')).toBe(true);
+    expect(conditionsConflict('ausente', 'caries')).toBe(true);
   });
 
   it('`ausente` choca con todo lo que necesita un diente… salvo con el implante', () => {
