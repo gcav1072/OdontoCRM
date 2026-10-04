@@ -907,13 +907,14 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    Regla general: **si un evento cambia un dato de otro servicio, ese servicio necesita su
    proyección y una prueba que la cubra**; el humo de agenda ya crea un paciente nuevo y
    comprueba la transición.
-12. **La cola padre `domain-events` recibe una copia que nadie trabaja.** El publicador entrega
-   el evento a todas las colas conocidas (`domain-events` y `domain-events.<servicio>`), pero en
-   este despliegue ningún servicio trabaja la padre: acumula trabajos en estado `created` que no
-   se borran (≈970 tras un día de pruebas), porque la retención de `deleteAfterSeconds` solo
-   aplica a los completados. Es **crecimiento de almacenamiento, no de latencia**. Opciones para
-   la Fase 10: no publicar en la padre cuando hay colas de consumidores, trabajarla, o darle
-   retención a los `created`.
+12. **La cola padre `domain-events` recibía una copia que nadie trabajaba.** El publicador
+   entregaba el evento a todas las colas conocidas (`domain-events` y
+   `domain-events.<servicio>`), pero en este despliegue ningún servicio trabaja la padre:
+   acumulaba trabajos en estado `created` que no se borran (≈1.300 en un día de pruebas),
+   porque la retención de `deleteAfterSeconds` solo aplica a los completados. Era
+   **crecimiento de almacenamiento, no de latencia**. Arreglado: se publica solo en colas de
+   consumidor, la padre queda como último recurso y la cola de pruebas se borra al terminar
+   (ver `docs/AUDITORIA_PRE_FASE_6.md`).
 13. **El buscador de la bandeja ataba la entrada al valor diferido.** El campo usaba el texto
    con retardo (350 ms) como `value`, así que las letras aparecían tarde y el cursor saltaba:
    medido en un navegador real, **406 ms por letra**. La consulta puede diferirse; **el campo,
