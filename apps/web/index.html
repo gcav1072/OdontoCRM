@@ -8,7 +8,42 @@
     <title>OdontoCRM</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      Reserva visible: si el paquete de la aplicación no llega a ejecutarse (servidor
+      de desarrollo muerto, error de módulo, caché rota), esto es lo que se ve en
+      lugar de una pantalla en negro. `main.tsx` lo sustituye al montar React y, si
+      el arranque falla, lo cambia por un aviso con el error y un botón de recarga.
+    -->
+    <div id="root">
+      <div
+        id="arranque"
+        style="
+          min-height: 100dvh;
+          display: grid;
+          place-content: center;
+          gap: 0.75rem;
+          padding: 2rem;
+          background: #0f172a;
+          color: #e2e8f0;
+          font-family:
+            system-ui,
+            -apple-system,
+            'Segoe UI',
+            sans-serif;
+          text-align: center;
+        "
+      >
+        <p style="margin: 0; font-size: 1.1rem; font-weight: 600">Cargando OdontoCRM…</p>
+        <p id="arranque-detalle" style="margin: 0; font-size: 0.9rem; color: #94a3b8">
+          Si este mensaje no desaparece, la aplicación no pudo arrancar.
+        </p>
+        <noscript>
+          <p style="margin: 0; font-size: 0.9rem; color: #fca5a5">
+            Esta aplicación necesita JavaScript activado.
+          </p>
+        </noscript>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
