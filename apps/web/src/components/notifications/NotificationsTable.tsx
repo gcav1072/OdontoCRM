@@ -53,8 +53,13 @@ export interface NotificationFiltersState {
 export interface NotificationsTableProps {
   filters: NotificationFiltersState;
   onFiltersChange: (filters: NotificationFiltersState) => void;
-  /** Texto de búsqueda ya diferido por la página. */
+  /**
+   * Texto que se está escribiendo: es el que ve el campo. **No** se retrasa, o el
+   * cursor saltaría y las letras aparecerían tarde (medido: 406 ms por letra).
+   */
   search: string;
+  /** El mismo texto ya diferido: es el que viaja a la consulta. */
+  searchApplied: string;
   onSearchChange: (search: string) => void;
   page: number;
   onPageChange: (page: number) => void;
@@ -81,6 +86,7 @@ export const NotificationsTable = ({
   filters,
   onFiltersChange,
   search,
+  searchApplied,
   onSearchChange,
   page,
   onPageChange,
@@ -92,7 +98,7 @@ export const NotificationsTable = ({
   const consulta: NotificationsListParams = {
     status: filters.status === '' ? undefined : filters.status,
     channel: filters.channel === '' ? undefined : filters.channel,
-    search: search.trim() === '' ? undefined : search.trim(),
+    search: searchApplied.trim() === '' ? undefined : searchApplied.trim(),
     from: filters.from === '' ? undefined : filters.from,
     to: filters.to === '' ? undefined : filters.to,
     page,

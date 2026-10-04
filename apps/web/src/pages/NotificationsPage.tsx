@@ -121,9 +121,12 @@ export const NotificationsPage = () => {
       <NotificationsTable
         filters={filtros}
         onFiltersChange={setFiltros}
-        /* Se pasa el texto ya diferido: si viajara el de cada tecla, la consulta
-           cambiaría de clave en cada pulsación y la búsqueda no se ahorraría. */
-        search={busquedaDiferida}
+        /* Al campo se le pasa el texto de cada tecla (si se le diera el diferido,
+           las letras aparecerían con retardo y el cursor saltaría: medido, 406 ms
+           por letra) y a la consulta el ya diferido, para no pedir en cada
+           pulsación. */
+        search={busqueda}
+        searchApplied={busquedaDiferida}
         onSearchChange={setBusqueda}
         page={pagina}
         onPageChange={setPagina}
