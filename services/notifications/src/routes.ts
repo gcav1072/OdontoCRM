@@ -123,6 +123,7 @@ export const registerNotificationRoutes = (
 
     return reply.status(200).send({
       mode,
+      testMode: canales.modoTest,
       botUsername: telegram?.usuario ?? null,
       botName: telegram?.nombre ?? null,
       connected: mode === 'real' && (telegram?.conectado ?? false),
