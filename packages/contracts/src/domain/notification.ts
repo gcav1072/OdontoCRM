@@ -508,6 +508,12 @@ export type ChannelStatus = z.infer<typeof channelStatusSchema>;
 export const botStatusSchema = z.object({
   /** `real` con token configurado; `simulado` sin token (modo de pruebas). */
   mode: z.enum(['real', 'simulado']),
+  /**
+   * Modo test activo (ADR 0020): los envíos están **bloqueados** y se registran
+   * como simulados. La bandeja lo dice para que nadie espere que el paciente
+   * reciba el aviso.
+   */
+  testMode: z.boolean(),
   botUsername: z.string().nullable(),
   botName: z.string().nullable(),
   connected: z.boolean(),

@@ -5,7 +5,14 @@
  * mismos pacientes, horas y tickets en cualquier máquina y en cualquier
  * ejecución, así que las pruebas y las demostraciones son reproducibles.
  */
-export const TEST_MODE_SEED = 'odontocrm-2026';
+import { TEST_MODE_SEED } from '@odontocrm/contracts';
+
+/**
+ * La semilla vive en `@odontocrm/contracts` (junto a las demás marcas del modo
+ * test) y se **reexporta** aquí para no tener dos constantes que puedan
+ * separarse: los seeds y las pruebas importan de un solo sitio.
+ */
+export { TEST_MODE_SEED };
 
 /** Hash FNV-1a de 32 bits: convierte una semilla de texto en un entero estable. */
 export const hashSeed = (seed: string): number => {
