@@ -27,11 +27,19 @@ describe('permisos por rol', () => {
     expect(hasPermission(['secretario'], 'audit:read')).toBe(false);
   });
 
-  it('odontologo escribe lo clínico y no toca la agenda', () => {
+  it('odontologo escribe lo clínico y no administra usuarios', () => {
     expect(hasPermission(['odontologo'], 'clinical:write')).toBe(true);
     expect(hasPermission(['odontologo'], 'odontogram:write')).toBe(true);
-    expect(hasPermission(['odontologo'], 'scheduling:write')).toBe(false);
     expect(hasPermission(['odontologo'], 'users:manage')).toBe(false);
+    expect(hasPermission(['odontologo'], 'audit:read')).toBe(false);
+  });
+
+  it('odontologo escribe el flujo del día cuando trabaja solo (2026-10-04)', () => {
+    // Fase 8: la odontóloga sin asistente lleva la jornada desde `/flujo`.
+    expect(hasPermission(['odontologo'], 'scheduling:write')).toBe(true);
+    // Notificar y autorizar sobrecupo siguen fuera de su alcance.
+    expect(hasPermission(['odontologo'], 'scheduling:notify')).toBe(false);
+    expect(hasPermission(['odontologo'], 'scheduling:overbook')).toBe(false);
   });
 
   it('odontologo registra y edita pacientes, pero no los borra (2026-10-03)', () => {

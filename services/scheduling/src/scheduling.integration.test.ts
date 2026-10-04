@@ -498,6 +498,106 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     ]);
   }, 60_000);
 
+  it('el odontólogo solo lleva el flujo del día completo (Fase 8)', async () => {
+    const request = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
+    const appointment = await assignAppointment(
+      schedulingHandle.db,
+      anAssignment(request.id, { date: otherDay, startTime: '12:00' }),
+      admin,
+      { config },
+    );
+
+    // Las cinco acciones de la barra de `/flujo`, ejecutadas por el odontólogo.
+    const enSala = await transitionAppointment(
+      schedulingHandle.db,
+      appointment.id,
+      'en_sala_espera',
+      dentist,
+      { config },
+    );
+    expect(enSala.status).toBe('en_sala_espera');
+
+    const llamado = await transitionAppointment(
+      schedulingHandle.db,
+      appointment.id,
+      'llamado',
+      dentist,
+      { config },
+    );
+    expect(llamado.status).toBe('llamado');
+
+    const enConsulta = await transitionAppointment(
+      schedulingHandle.db,
+      appointment.id,
+      'en_consulta',
+      dentist,
+      { config },
+    );
+    expect(enConsulta.status).toBe('en_consulta');
+
+    const atendida = await transitionAppointment(
+      schedulingHandle.db,
+      appointment.id,
+      'atendido',
+      dentist,
+      { config, forceReason: 'visita atendida por la odontóloga' },
+    );
+    expect(atendida.status).toBe('atendido');
+
+    // Y la inasistencia, que era la única de las cinco reservada a secretaría.
+    const request2 = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
+    const appointment2 = await assignAppointment(
+      schedulingHandle.db,
+      anAssignment(request2.id, { date: otherDay, startTime: '12:30' }),
+      admin,
+      { config },
+    );
+    const later = new Date(`${otherDay}T18:00:00-04:00`);
+    const inasistencia = await transitionAppointment(
+      schedulingHandle.db,
+      appointment2.id,
+      'no_asistio',
+      dentist,
+      { config, reason: 'no llegó y ya pasó la tolerancia', now: later },
+    );
+    expect(inasistencia.status).toBe('no_asistio');
+
+    // Lo que sigue siendo de la secretaría: notificar, cancelar y reprogramar.
+    const request3 = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
+    const appointment3 = await assignAppointment(
+      schedulingHandle.db,
+      anAssignment(request3.id, { date: otherDay, startTime: '13:00' }),
+      admin,
+      { config },
+    );
+    await expect(
+      transitionAppointment(schedulingHandle.db, appointment3.id, 'notificada', dentist, {
+        config,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      transitionAppointment(schedulingHandle.db, appointment3.id, 'cancelada', dentist, {
+        config,
+        reason: 'la paciente avisó',
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      rescheduleAppointment(
+        schedulingHandle.db,
+        appointment3.id,
+        {
+          date: otherDay,
+          startTime: '13:30',
+          slotKind: 'franja',
+          reason: 'la paciente pidió otra hora',
+          authorizeOverbook: false,
+        },
+        dentist,
+        { config },
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+  }, 60_000);
+
   it('«atendido» solo acepta una sesión clínica cerrada y del mismo paciente', async () => {
     const request = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
     const appointment = await assignAppointment(
