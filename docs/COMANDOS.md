@@ -113,7 +113,7 @@ powershell -ExecutionPolicy Bypass -File infra/windows/start-services.ps1
 | `npm run db:migrate` | Aplica las migraciones de todos los servicios implementados | `-- --only <servicio>` |
 | `npm run db:verify-migrations` | Desde cero: crea una base temporal por servicio, migra con el migrador real, comprueba tablas/índices y la borra | `-- --only <servicio>` |
 | `npm run db:generate:<servicio>` | Genera una migración a partir del esquema Drizzle del servicio | `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram` |
-| `npm run db:reset` | **Borra absolutamente todo** y deja el sistema recién migrado: las 9 bases `odonto_*` (con `with (force)`) y el contenido de `storage/`; después compila, hace `db:bootstrap`, `db:migrate` y `seed:users`. Solo consola y **exige `--yes`** | `-- --yes` (hace falta) · `-- --solo-bases` (conserva los archivos) · `-- --sin-sembrar` (sin usuarios) |
+| `npm run db:reset` | **Borra absolutamente todo** y deja el sistema **listo para usar**: las 9 bases `odonto_*` (con `with (force)`) y el contenido de `storage/`; después compila, hace `db:bootstrap`, `db:migrate` y **siembra los usuarios**. Solo consola y **exige `--yes`** | `-- --yes` (hace falta) · `-- --solo-bases` (conserva los archivos) · `-- --remoto` (permite una base que no es de esta máquina) |
 | `npm run keys:generate` | Par de claves EdDSA del JWT en `services/identity/.keys/` (ignorado por Git) | `-- --force` regenera (invalida todas las sesiones) |
 
 Los generadores de migración se ejecutan **desde la raíz** (drizzle-kit resuelve las
@@ -135,18 +135,22 @@ inmutables: [ADR 0034](adr/0034-sesion-clinica-evolucion.md),
 
 ```powershell
 npm run stack:down                  # el comando se niega a borrar con la pila en marcha
-npm run db:reset -- --yes           # borra todo y reconstruye
+npm run db:reset -- --yes           # borra todo y reconstruye (deja la app lista para usar)
 npm run stack:fijo                  # (o stack:dev) y a probar
 ```
 
 - Es una herramienta **de consola y solo de consola**: ningún servicio, ruta ni botón la llama,
-  y sin `--yes` no borra nada (explica lo que haría y sale con código 1).
+  y sin `--yes` no borra nada (explica lo que haría y sale con código 1). Una bandera que no
+  conozca **no se ignora**: el comando se detiene y dice cuáles valen.
+- **Los usuarios se siembran siempre.** Existió una bandera `--sin-sembrar` que los omitía y
+  solo servía para dejar la aplicación inservible (sin usuarios no entra nadie, con ninguna
+  contraseña): se retiró el 2026-10-04.
 - **No toca** los roles de PostgreSQL, los `.env`, las claves del JWT (`.keys/`) ni la
   configuración.
 - Al terminar hay que **volver a iniciar sesión** (las sesiones y los refrescos viven en la base).
-- Lo que sí queda sembrado, porque sale de las migraciones y del arranque: los **3 usuarios**
-  (contraseña temporal), las **10 franjas** de la plantilla de jornada, los **25 medicamentos**
-  del catálogo y las **19 plantillas** de mensajes (estas al arrancar `notifications`).
+- Lo que queda sembrado: los **3 usuarios** (admin, recepción y el odontólogo, con contraseña
+  temporal), las **10 franjas** de la plantilla de jornada y los **25 medicamentos** del catálogo
+  (de las migraciones), y las **20 plantillas** de mensajes (al arrancar `notifications`).
 
 **Guardas (por qué es difícil hacerlo mal):**
 
@@ -161,10 +165,30 @@ npm run stack:fijo                  # (o stack:dev) y a probar
 | `with (force)` | Que una conexión suelta (pgAdmin) deje el borrado a medias |
 | Comprobación de la ruta de `storage/` | Un borrado recursivo sobre una ruta no verificada |
 
-- `--sin-sembrar` deja la base **sin usuarios** (la interfaz no se puede usar): el comando lo
-  avisa en grande al terminar. Para arreglarlo: `npm run seed:users`.
-- `npm run dev:check` comprueba además que **las 9 bases existan** antes de arrancar: si un
-  `db:reset` quedó a medias, lo dice con esas palabras en vez de dejar media pila en pie.
+- `npm run dev:check` comprueba además que **las 9 bases existan** y avisa si no hay usuarios
+  antes de arrancar: si un `db:reset` quedó a medias, lo dice con esas palabras en vez de dejar
+  media pila en pie.
+- **Si el login dice «todavía no hay ningún usuario»** (o `dev:check` avisa de lo mismo), es que
+  las migraciones corrieron pero no el seed: `npm run seed:users` y listo. El login lo dice él
+  mismo (código `no_users` del problema RFC 7807) en vez de culpar a la contraseña.
+
+### Si se corta la luz (o el equipo se apaga de golpe)
+
+PostgreSQL es resistente a un apagón (WAL + `fsync`), pero **los archivos de configuración
+generados sí pueden quedar con el tamaño de antes y el contenido a ceros** (le pasó a los ocho
+`services/<svc>/.env` el 2026-10-04). Síntoma: los servicios no arrancan o no conectan y el
+`.env` del servicio tiene bytes nulos. Se arregla sin perder datos ni migraciones:
+
+```powershell
+npm run stack:down
+npm run db:bootstrap     # reescribe los .env (y rota la contraseña del rol si no pudo leerla)
+npm run db:migrate       # comprueba que los 8 servicios conectan (es idempotente)
+npm run stack:fijo
+```
+
+Las bases, los datos y las claves del JWT (`.keys/`, que no se regeneran) sobreviven al corte.
+Si el `.env` quedó con una línea de ceros conservada por el bootstrap, se puede limpiar
+(`\0` fuera) sin tocar las claves.
 
 ---
 

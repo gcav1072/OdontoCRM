@@ -1,18 +1,22 @@
 #!/usr/bin/env node
 /**
- * **Borra absolutamente todo** y deja el sistema recién migrado y con los usuarios
- * sembrados. Es la única forma de dejar la base limpia de verdad: los seeds con
- * `--reset` solo quitan lo ficticio, y la historia clínica, las sesiones y los
- * récipes **no se pueden borrar** por diseño (son documentos inmutables,
- * [ADR 0034](../../docs/adr/0034-sesion-clinica-evolucion.md) y
- * [ADR 0036](../../docs/adr/0036-recipe-emitido-documento-archivado.md)).
+ * **Borra absolutamente todo** y deja el sistema listo para usar: las bases
+ * recién migradas y los **usuarios sembrados**. Es la única forma de dejar la base
+ * limpia de verdad: los seeds con `--reset` solo quitan lo ficticio, y la historia
+ * clínica, las sesiones y los récipes **no se pueden borrar** por diseño (son
+ * documentos inmutables, [ADR 0034](../../docs/adr/0034-sesion-clinica-evolucion.md)
+ * y [ADR 0036](../../docs/adr/0036-recipe-emitido-documento-archivado.md)).
  *
  * ```
  * npm run db:reset                 # explica lo que haría; NO toca nada
- * npm run db:reset -- --yes        # borra todo y deja el sistema listo
+ * npm run db:reset -- --yes        # borra todo y deja el sistema listo para usar
  * npm run db:reset -- --yes --solo-bases     # conserva storage/ (adjuntos y PDFs)
- * npm run db:reset -- --yes --sin-sembrar    # sin usuarios sembrados
  * ```
+ *
+ * **Los usuarios se siembran siempre.** Existió una bandera `--sin-sembrar` que los
+ * omitía y solo servía para dejar la aplicación inservible (sin usuarios no entra
+ * nadie, con ninguna contraseña); se quitó el 2026-10-04. Si alguien la pasa, el
+ * comando lo dice y no hace nada.
  *
  * Qué borra:
  *   1. Las **9 bases** `odonto_*` (los 8 servicios + la cola de eventos `pg-boss`),
@@ -68,18 +72,38 @@ const BASES = [
 ];
 
 const args = process.argv.slice(2);
-const confirmado = args.includes('--yes');
-const soloBases = args.includes('--solo-bases');
-const sinSembrar = args.includes('--sin-sembrar');
+const CONOCIDAS = ['--yes', '--solo-bases', '--remoto'];
 /** Permite apuntar a una base que no está en esta máquina (por defecto, se niega). */
 const permitirRemoto = args.includes('--remoto');
+
+/**
+ * Nada de banderas desconocidas en silencio: ignorarlas es lo que hizo que alguien
+ * creyera que `seed:demo -- --sin-sembrar` no sembraba usuarios (esa bandera es de
+ * aquí, no de los seeds) y se quedara sin poder entrar.
+ */
+const desconocidas = args.filter((arg) => !CONOCIDAS.includes(arg));
+
+if (desconocidas.length > 0) {
+  console.error(
+    `db:reset: no conozco estas banderas: ${desconocidas.join(', ')}\n` +
+      (desconocidas.includes('--sin-sembrar')
+        ? '  «--sin-sembrar» ya no existe: el reset **siempre** siembra los usuarios, porque\n' +
+          '  sin usuarios no entra nadie (con ninguna contraseña) y la aplicación queda inservible.\n'
+        : '') +
+      `  Las que valen: ${CONOCIDAS.join(' · ')}\n`,
+  );
+  process.exit(1);
+}
+
+const confirmado = args.includes('--yes');
+const soloBases = args.includes('--solo-bases');
 
 const linea = (texto = '') => console.log(texto);
 
 /* ── 1. Confirmación explícita ─────────────────────────────────────────────── */
 
 if (!confirmado) {
-  linea('db:reset — borra TODO y deja el sistema recién migrado (no ha tocado nada).');
+  linea('db:reset — borra TODO y deja el sistema listo para usar (no ha tocado nada).');
   linea();
   linea('  Se borran:');
   linea(`    · las ${String(BASES.length)} bases odonto_* (datos, auditoría, cola de eventos)`);
@@ -87,13 +111,15 @@ if (!confirmado) {
     `    · el contenido de storage/ (adjuntos y PDF de récipes)${soloBases ? ' — OMITIDO con --solo-bases' : ''}`,
   );
   linea();
+  linea('  Se rehace: las bases migradas y los usuarios sembrados (admin, recepcion y el');
+  linea('  odontólogo, con contraseña temporal). La aplicación queda lista para entrar.');
+  linea();
   linea('  Se conservan: los roles y credenciales de PostgreSQL (.env), las claves del JWT');
   linea('  (.keys/) y la configuración. Habrá que volver a iniciar sesión.');
   linea();
   linea('  Para hacerlo de verdad:');
   linea('    npm run db:reset -- --yes');
   linea('    npm run db:reset -- --yes --solo-bases     (conserva los archivos)');
-  linea('    npm run db:reset -- --yes --sin-sembrar    (SIN usuarios: hay que sembrarlos luego)');
   process.exit(1);
 }
 
@@ -288,13 +314,8 @@ try {
   correrNpm('build:node');
   correrNpm('db:bootstrap');
   correrNpm('db:migrate');
-  if (sinSembrar) {
-    linea('\n── Usuarios: NO se siembran (--sin-sembrar) ───────────────────');
-    linea('  ⚠ La base queda SIN usuarios: la interfaz no se puede usar y no hay con qué');
-    linea('    entrar hasta que los siembres:   npm run seed:users');
-  } else {
-    correrNpm('seed:users');
-  }
+  // Los usuarios van **siempre**: sin ellos la aplicación no se puede usar.
+  correrNpm('seed:users');
 } catch (error) {
   console.error(
     `\ndb:reset: ${error instanceof Error ? error.message : String(error)}\n` +
@@ -310,14 +331,12 @@ if (process.exitCode === 1) process.exit(1);
 
 linea('\n── Bloqueo de mantenimiento liberado ──────────────────────────');
 linea('\n── Listo ──────────────────────────────────────────────────────');
-if (sinSembrar) {
-  linea('  Base limpia y migrada, pero SIN usuarios: ejecuta `npm run seed:users` antes de');
-  linea('  entrar a la interfaz.');
-} else {
-  linea('  La base está limpia, migrada y con los usuarios sembrados (contraseñas');
-  linea('  temporales: el sistema pedirá cambiarlas al entrar).');
-}
+linea('  La base está limpia, migrada y **lista para usar**: los usuarios están sembrados');
+linea('  con contraseña temporal, así que el sistema pedirá cambiarla al entrar.');
 linea();
 linea('  Arranca la pila:  npm run stack:fijo   (PM2, sin recarga)');
 linea('                    npm run stack:dev    (todo con recarga)');
 linea('  Comprueba antes:  npm run stack:status');
+if (!soloBases) {
+  linea('  Datos de ejemplo: npm run seed:demo -- --count 500   &&   npm run seed:agenda');
+}

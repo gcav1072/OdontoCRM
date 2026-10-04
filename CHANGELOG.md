@@ -6,6 +6,19 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
 ## [Corrección] — El bot no se queda callado y `db:reset` queda blindado · 2026-10-04
 
+### Cambiado
+
+- **`db:reset` siempre siembra los usuarios**, para que la aplicación quede **lista para usar**
+  (admin, recepción y el odontólogo, con contraseña temporal). Se retiró la bandera
+  `--sin-sembrar`, que solo servía para dejar el sistema inservible: sin usuarios no entra nadie,
+  con ninguna contraseña. Y una bandera desconocida ya no se ignora en silencio: el comando se
+  detiene y dice cuáles valen (ese descuido es justo lo que hizo creer que
+  `seed:demo -- --sin-sembrar` no sembraba usuarios).
+- **El login explica el caso «no hay usuarios»**: si la tabla está vacía (base recién creada, o
+  migrada sin seed), responde `401` con `type …/errors/no_users` y el detalle «crea los usuarios
+  iniciales con `npm run seed:users`», en vez de «usuario o contraseña incorrectos», que mandaba a
+  buscar el problema donde no estaba. `dev:check` también avisa antes de arrancar.
+
 ### Corregido
 
 - **El asistente de Telegram ya no deja al paciente sin respuesta cuando falla algo de

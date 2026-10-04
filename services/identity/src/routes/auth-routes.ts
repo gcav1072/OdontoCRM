@@ -33,6 +33,7 @@ import {
 import {
   findUserById,
   findUserByUsername,
+  isEmptyUsers,
   loadRoles,
   setOwnPassword,
 } from '../users/user-service.js';
@@ -100,6 +101,22 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
         { ...auditBase, action: 'login_failed', reason: 'usuario inexistente' },
         (error) => request.log.error({ err: error }, 'No se pudo registrar la auditoría'),
       );
+
+      /**
+       * Base recién creada (o `db:reset --sin-sembrar`, que a propósito no siembra
+       * usuarios): sin usuarios **ninguna** contraseña puede funcionar, así que decir
+       * «usuario o contraseña incorrectos» deja a quien instala dando vueltas. Se
+       * comprueba aquí, que es donde duele, en vez de esperar a que lo adivine.
+       */
+      if (await isEmptyUsers(db)) {
+        throw new AppError({
+          status: 401,
+          code: 'no_users',
+          message:
+            'Todavía no hay ningún usuario en el sistema. Crea los usuarios iniciales con «npm run seed:users».',
+        });
+      }
+
       throw new UnauthorizedError('Usuario o contraseña incorrectos');
     }
 

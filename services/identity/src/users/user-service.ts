@@ -58,6 +58,16 @@ export const findUserById = async (db: IdentityDb, id: string): Promise<UserRow 
   return rows[0] ?? null;
 };
 
+/**
+ * ¿La tabla de usuarios está vacía? Es el estado de una base recién creada (o de un
+ * `db:reset --sin-sembrar`, que a propósito no siembra usuarios): sin usuarios
+ * **ninguna** contraseña sirve, y el login lo dice en vez de culpar a la contraseña.
+ */
+export const isEmptyUsers = async (db: IdentityDb): Promise<boolean> => {
+  const rows = await db.select({ id: users.id }).from(users).limit(1);
+  return rows.length === 0;
+};
+
 export const loadRoles = async (db: IdentityDb, userId: string): Promise<Role[]> => {
   const rows = await db
     .select({ role: userRoles.role })

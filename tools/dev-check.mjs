@@ -23,7 +23,7 @@
  * Desde que la pila se cambia de modo con `npm run stack:*`, este preflight es la
  * puerta de `npm run dev`: la regla es **una sola pila a la vez**.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pg from 'pg';
 
@@ -168,5 +168,35 @@ if (faltantes.length > 0) {
 }
 
 if (sinServidor) process.exit(soloInformar ? 0 : 1);
+
+/**
+ * Sin usuarios no se puede entrar con **ninguna** contraseña: es el estado que deja
+ * `db:reset --sin-sembrar`. Se avisa aquí (no se falla: los servicios arrancan
+ * igual) para no tener que adivinarlo en la pantalla de login. El login también lo
+ * dice, pero mejor saberlo antes.
+ */
+try {
+  const identityUrl = /^DATABASE_URL=(.*)$/m
+    .exec(readFileSync(resolve(ROOT, 'services/identity/.env'), 'utf8'))?.[1]
+    ?.trim();
+
+  if (identityUrl !== undefined) {
+    const identidad = new Client({ connectionString: identityUrl });
+    await identidad.connect();
+    try {
+      const { rows } = await identidad.query('select count(*)::int as total from users');
+      if (rows[0]?.total === 0) {
+        console.warn(
+          'dev:check: las bases existen pero **no hay usuarios**: ninguna contraseña va a\n' +
+            '           funcionar hasta que los crees con  npm run seed:users\n',
+        );
+      }
+    } finally {
+      await identidad.end().catch(() => undefined);
+    }
+  }
+} catch {
+  // Si no se puede comprobar (credenciales, tabla a medio migrar), no se bloquea nada.
+}
 
 console.log('dev:check: los puertos del desarrollo están libres y las 9 bases existen ✔');

@@ -34,6 +34,29 @@ const fakeDatabase = (behaviour: 'ok' | 'fail'): IdentityDatabaseHandle =>
     close: () => Promise.resolve(),
   }) as unknown as IdentityDatabaseHandle;
 
+/**
+ * Base simulada **sin usuarios**: `select … from users … limit 1` devuelve vacío (para
+ * el login) y la escritura de auditoría revienta, que es justo lo que el servicio
+ * tolera (la registra en el log y sigue). Sirve para comprobar el mensaje del login
+ * en una base recién creada, sin borrar los usuarios de la base de verdad.
+ */
+const fakeDatabaseSinUsuarios = (): IdentityDatabaseHandle =>
+  ({
+    db: {
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: async () => [] }),
+          limit: async () => [],
+        }),
+      }),
+      insert: () => ({
+        values: () => Promise.reject(new Error('sin auditoría en la base simulada')),
+      }),
+    },
+    pool: fakePool('ok'),
+    close: () => Promise.resolve(),
+  }) as unknown as IdentityDatabaseHandle;
+
 /** Cabeceras que en producción inyecta el gateway tras validar el JWT. */
 const identityHeaders = (
   overrides: Partial<
@@ -129,6 +152,30 @@ describe('servidor de identity', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ service: 'identity', status: 'ok' });
+  });
+});
+
+describe('login sin usuarios', () => {
+  it('lo dice en vez de culpar a la contraseña (base recién creada o --sin-sembrar)', async () => {
+    const config = loadIdentityConfig(baseEnv);
+    const app = await createIdentityServer({
+      config,
+      database: fakeDatabaseSinUsuarios(),
+      privateKey,
+    });
+    openServers.push(app);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { username: 'admin', password: 'admin-odontocrm-2026' },
+    });
+
+    expect(response.statusCode).toBe(401);
+    // El código viaja en el `type` del problema (RFC 7807), como en el resto del API.
+    const cuerpo = response.json<{ type: string; detail: string }>();
+    expect(cuerpo.type).toContain('/errors/no_users');
+    expect(cuerpo.detail).toContain('npm run seed:users');
   });
 });
 
