@@ -92,12 +92,24 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
       INTERNAL_SERVICE_SECRET: 'secreto-interno-de-prueba-1234',
     });
     handle = createScreensDatabase(config);
+
+    /**
+     * Esta base es la misma que usa el servicio de pantallas en desarrollo, y ese
+     * servicio **consume los eventos de las otras suites** (la de agenda publica
+     * citas de sus pacientes de prueba y las proyecta aquí). Esas filas ajenas
+     * dejarían a otro paciente «en el consultorio» y esta suite lee un único
+     * paciente, así que se limpia lo que no es de esta corrida.
+     */
+    await handle.db.execute(sql`delete from room_state where patient_name not like ${`%${MARK}%`}`);
+
     services = {
       config,
       db: handle.db,
       pool: handle.pool,
       broadcast: createScreenBroadcaster(),
       lastError: null,
+      // Sin servicio clínico en la suite: se usa lo que quedó en la proyección.
+      alertLookup: async () => null,
     };
   }, 30_000);
 
@@ -242,6 +254,31 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
     const conFlags = await consultationState(handle.db);
     expect(conFlags.criticalFlags).toHaveLength(2);
     expect(conFlags.criticalFlags[0]).toMatchObject({ tipo: 'alergia', severidad: 'alto' });
+
+    /**
+     * Lo que se lee de la historia clínica manda sobre lo empujado: el doctor puede
+     * escribir la anamnesis con el paciente ya sentado, y la alergia aparece en la
+     * pantalla sin esperar a que nadie la empuje.
+     */
+    const frescos = await consultationState(handle.db, {
+      alertLookup: async (id) =>
+        id === patientId
+          ? [
+              {
+                tipo: 'alergia',
+                etiqueta: 'Alergia a la penicilina',
+                severidad: 'alto',
+                detalle: null,
+              },
+            ]
+          : null,
+    });
+    expect(frescos.criticalFlags).toHaveLength(1);
+    expect(frescos.criticalFlags[0]?.etiqueta).toBe('Alergia a la penicilina');
+
+    // Si el servicio clínico no responde, queda lo empujado y la pantalla no se rompe.
+    const sinServicio = await consultationState(handle.db, { alertLookup: async () => null });
+    expect(sinServicio.criticalFlags).toHaveLength(2);
 
     // Marcarla como atendida la saca de la sala.
     expect(

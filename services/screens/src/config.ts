@@ -22,6 +22,11 @@ export const screensEnvSchema = baseEnvSchema.extend({
 
   /** Servicio de pacientes: la pantalla del consultorio pide ahí la ficha. */
   PATIENTS_URL: z.string().min(1).default('http://127.0.0.1:4002'),
+  /**
+   * Servicio clínico: de ahí salen los datos críticos del paciente en curso
+   * (alergias, crónicos, anticoagulantes) que la pantalla pinta con semáforo.
+   */
+  CLINICAL_URL: z.string().min(1).default('http://127.0.0.1:4005'),
 
   /** Secreto compartido con los demás servicios para las rutas internas. */
   INTERNAL_SERVICE_SECRET: z.string().min(16).optional(),

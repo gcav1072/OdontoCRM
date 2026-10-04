@@ -11,23 +11,24 @@ import { startServer } from '@odontocrm/kernel';
 import { loadScreensConfig } from './config.js';
 import { handleDomainEvents } from './consumer.js';
 import { createScreensDatabase } from './db/client.js';
-import { createPatientLookup } from './internal-client.js';
+import { createPatientLookup, createAlertLookup } from './internal-client.js';
 import { createScreenBroadcaster } from './sala/broadcast.js';
 import { consultationState, lobbyState } from './sala/estado-service.js';
 import { createScreensServer } from './server.js';
+import type { ScreensServices } from './services.js';
 
 const main = async (): Promise<void> => {
   const config = loadScreensConfig();
   const database = createScreensDatabase(config);
   const broadcast = createScreenBroadcaster();
   const patientLookup = createPatientLookup(config);
+  /** Datos críticos del paciente en curso (alergias, crónicos) para el consultorio. */
+  const alertLookup = createAlertLookup(config);
 
-  const services = {
-    config,
-    db: database.db,
-    pool: database.pool,
+  const services: Omit<ScreensServices, 'config' | 'db' | 'pool'> = {
     broadcast,
-    lastError: null as string | null,
+    lastError: null,
+    alertLookup,
   };
 
   const app = await createScreensServer({ config, database, services });
@@ -35,7 +36,7 @@ const main = async (): Promise<void> => {
   /** Recalcula y reparte el estado: es lo que ven las pantallas conectadas. */
   const refrescar = async (): Promise<void> => {
     broadcast.publicar('lobby', await lobbyState(database.db, config));
-    broadcast.publicar('consultorio', await consultationState(database.db));
+    broadcast.publicar('consultorio', await consultationState(database.db, { alertLookup }));
   };
 
   // Cola de eventos: la sala se alimenta de lo que pasa en la agenda.

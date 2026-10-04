@@ -47,11 +47,12 @@ const safeEquals = (left: string, right: string): boolean => {
  *    desactivarlas;
  *  - **kiosko** (`screens:display`): estado y flujo SSE, con el token de
  *    dispositivo canjeado en identity (el gateway publica su id en `x-user-id`);
- *  - **interno**: los datos críticos del paciente en curso (los manda la historia
- *    clínica cuando exista, Fase 6).
+ *  - **interno**: los datos críticos del paciente en curso, que se **leen** de la
+ *    historia clínica al pintar el estado ([ADR 0035](../../../docs/adr/0035-datos-criticos-leidos-no-empujados.md));
+ *    la ruta interna sigue disponible como respaldo.
  */
 export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServices): void => {
-  const { db, config, broadcast } = services;
+  const { db, config, broadcast, alertLookup } = services;
   const manage = requirePermission('screens:manage');
   const display = requirePermission('screens:display');
 
@@ -125,7 +126,7 @@ export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServ
 
   app.get('/api/v1/screens/consultorio', { preHandler: display }, async (request, reply) => {
     await pantallaDe(request);
-    return reply.status(200).send(await consultationState(db));
+    return reply.status(200).send(await consultationState(db, { alertLookup }));
   });
 
   /** Cuántas pantallas están conectadas en vivo (para la administración). */
@@ -144,7 +145,10 @@ export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServ
     kind: PantallaKind,
   ): Promise<void> => {
     await pantallaDe(request);
-    const estado = kind === 'lobby' ? await lobbyState(db, config) : await consultationState(db);
+    const estado =
+      kind === 'lobby'
+        ? await lobbyState(db, config)
+        : await consultationState(db, { alertLookup });
 
     // A partir de aquí la respuesta la controla el flujo de eventos.
     reply.hijack();
@@ -213,7 +217,7 @@ export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServ
   app.post('/internal/v1/screens/room/critical-flags', async (request, reply) => {
     const input = parseOrThrow(criticalFlagsInputSchema, request.body ?? {});
     const actualizadas = await setCriticalFlags(db, input.appointmentId, input.flags);
-    const estado = await consultationState(db);
+    const estado = await consultationState(db, { alertLookup });
     broadcast.publicar('consultorio', estado);
     return reply.status(200).send({ actualizadas, estado });
   });

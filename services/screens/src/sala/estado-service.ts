@@ -21,6 +21,7 @@ import { and, asc, count, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 
 import type { ScreensConfig } from '../config.js';
 import type { ScreensDb } from '../db/client.js';
+import type { ClinicalAlertLookup } from '../internal-client.js';
 import {
   callEvents,
   roomState,
@@ -523,7 +524,10 @@ export const lobbyState = async (db: ScreensDb, config: ScreensConfig): Promise<
 };
 
 /** Estado de la pantalla del consultorio: quién está dentro (o entrando). */
-export const consultationState = async (db: ScreensDb): Promise<ConsultationState> => {
+export const consultationState = async (
+  db: ScreensDb,
+  options: { alertLookup?: ClinicalAlertLookup | undefined } = {},
+): Promise<ConsultationState> => {
   const filas = await db
     .select()
     .from(roomState)
@@ -555,6 +559,13 @@ export const consultationState = async (db: ScreensDb): Promise<ConsultationStat
     };
   }
 
+  /**
+   * Los datos críticos se leen **ahora** de la historia clínica; lo que hubieran
+   * empujado antes queda como respaldo si el servicio clínico no responde. Así la
+   * alergia que se escribe con el paciente sentado aparece sin esperar a nadie.
+   */
+  const frescos = actual.patientId === null ? null : await options.alertLookup?.(actual.patientId);
+
   return {
     appointmentId: actual.appointmentId,
     patientId: actual.patientId,
@@ -565,7 +576,7 @@ export const consultationState = async (db: ScreensDb): Promise<ConsultationStat
     ticket: actual.ticket,
     reason: actual.reason,
     since: actual.estado === 'en_consulta' ? actual.since.toISOString() : null,
-    criticalFlags: flagsOf(actual),
+    criticalFlags: frescos ?? flagsOf(actual),
     waitingCount: waiting,
     updatedAt: new Date().toISOString(),
   };
