@@ -7,6 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { registerAuthGuard } from './auth-guard.js';
 import { jwtPublicKeyPath, type GatewayConfig } from './config.js';
 import { buildSystemMeta } from './meta.js';
+import { buildUpstreamChecks } from './upstreams.js';
 import { buildProxyRoutes } from './routes.js';
 
 export interface CreateGatewayServerOptions {
@@ -34,7 +35,9 @@ export const createGatewayServer = async (
     logLevel: config.LOG_LEVEL,
     prettyLogs: config.LOG_PRETTY,
     production: isProduction(config),
-    checks: [],
+    // El `/ready` de la puerta mira a sus servicios: sin ellos no hay nada que
+    // enrutar y el tablero de estado tiene que verlo (Fase 10).
+    checks: buildUpstreamChecks(config),
   });
 
   const publicKey = options.publicKey ?? (await loadPublicKey(jwtPublicKeyPath(config)));
