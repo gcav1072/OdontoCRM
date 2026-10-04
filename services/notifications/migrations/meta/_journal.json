@@ -22,6 +22,13 @@
       "when": 1791067418230,
       "tag": "0002_plantillas_sin_comandos",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791075123398,
+      "tag": "0003_ayuda_con_menu_de_comandos",
+      "breakpoints": true
     }
   ]
 }

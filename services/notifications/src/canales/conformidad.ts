@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import type { ChannelAdapter, InboundMessage } from '@odontocrm/contracts';
+import { BOT_COMMANDS } from '@odontocrm/contracts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { sendAdapted } from './adaptador.js';
@@ -49,6 +50,8 @@ export interface CasoListo {
   eventoEsperado?: (base: string) => string;
   /** Envíos observados, si el canal los registra (el simulado). */
   enviados?: SentMessage[];
+  /** Menú de comandos registrado al iniciar, si el canal tiene menú. */
+  menuRegistrado?: readonly { command: string; description: string }[];
   /** Firma del webhook, si el canal lo tiene. */
   webhook?: {
     firma: (cuerpo: string) => string;
@@ -240,6 +243,22 @@ export const runChannelConformance = (caso: CasoConformidad): void => {
       await esperarA(() => actual.entregados.length === 1, 'el mensaje del webhook llegue');
       expect(actual.entregados[0]).toMatchObject({ direccion: '55507', texto: 'cita' });
     });
+
+    it('el menú de comandos queda registrado en los canales que lo tienen', async () => {
+      // WhatsApp y el simulado sin comandos no tienen menú: no hay nada que exigir.
+      if (actual.menuRegistrado === undefined) {
+        expect(actual.adapter.capacidades.comandos).toBe(false);
+        return;
+      }
+
+      // El menú sale del catálogo del contrato, en su orden: ni uno de más ni de menos.
+      expect(actual.menuRegistrado.map((comando) => comando.command)).toEqual(
+        BOT_COMMANDS.map((comando) => comando.comando),
+      );
+      for (const comando of actual.menuRegistrado) {
+        expect(comando.description.length).toBeGreaterThanOrEqual(3);
+      }
+    });
   });
 };
 
@@ -281,6 +300,8 @@ export const casoTelegram = (): CasoConformidad => ({
     return {
       adapter,
       entregados,
+      // El transporte de doble guarda el menú que el adaptador registra al iniciar.
+      menuRegistrado: transport.menu,
       eventoEsperado: (base_) => String(Number(base_)),
       inyectar: async ({ direccion, eventoId, texto, accion }) => {
         const updateId = Number(eventoId);

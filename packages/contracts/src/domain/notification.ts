@@ -220,7 +220,7 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
       '«estado» — consultar tu solicitud\n' +
       '«cancelar» — anular tu solicitud\n' +
       '«mi ticket» — recordarte tu ticket\n\n' +
-      'Por Telegram también funcionan /nueva, /estado, /cancelar y /mi_ticket.',
+      'Escríbeme cualquiera de esas palabras y te guío paso a paso.',
     placeholders: [],
   },
   {

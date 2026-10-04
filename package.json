@@ -32,6 +32,7 @@
     "dev:check": "node tools/dev-check.mjs",
     "dev:stop": "node tools/dev-stop.mjs",
     "check:web": "node tools/check-web.mjs",
+    "telegram:menu": "node tools/telegram-menu.mjs",
     "dev:build": "tsc -b --watch --preserveWatchOutput",
     "dev:identity": "node --watch --env-file-if-exists=.env --env-file-if-exists=services/identity/.env services/identity/dist/index.js",
     "dev:patients": "node --watch --env-file-if-exists=.env --env-file-if-exists=services/patients/.env services/patients/dist/index.js",

@@ -5,6 +5,7 @@ import type {
   OutboundMessage,
   SendResult,
 } from '@odontocrm/contracts';
+import { toMenuCommands } from '@odontocrm/contracts';
 
 import type { NotificationsConfig } from '../config.js';
 import { telegramMode } from '../config.js';
@@ -28,6 +29,11 @@ export interface TelegramAdapterOptions {
   transport?: TelegramTransport;
   /** Cada cuánto se reintenta si el long polling falla. */
   retryDelayMs?: number;
+  /**
+   * Aviso de fallos que **no** deben tumbar el bot (por ejemplo, registrar el menú
+   * de comandos cuando la red no está).
+   */
+  onError?: (error: unknown) => void;
 }
 
 const TELEGRAM_CAPABILITIES: ChannelCapabilities = {
@@ -95,6 +101,18 @@ export const createTelegramAdapter = (options: TelegramAdapterOptions): ChannelA
       // Sin token no hay nada que sondear: el transporte simulado no tiene
       // actualizaciones y un bucle haría girar el proceso en vacío.
       if (telegramMode(config) === 'simulado') return;
+
+      // El menú de comandos (`/` y el botón junto al campo de texto) se registra
+      // antes de empezar a escuchar, con el catálogo del contrato: Telegram lo
+      // guarda por bot, así que basta con hacerlo en cada arranque. Si falla (red,
+      // token sin permisos) el bot sigue funcionando: solo se pierde el menú.
+      try {
+        await transport.setMyCommands(toMenuCommands());
+        await transport.setChatMenuButton();
+      } catch (error) {
+        options.onError?.(error);
+      }
+
       if (running || stopping) return;
       running = true;
 

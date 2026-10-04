@@ -22,6 +22,7 @@ import {
   type OutboundButton,
   type RequestSummary,
 } from '@odontocrm/contracts';
+import { botCommandsAsText } from '@odontocrm/contracts';
 import { and, eq, gt } from 'drizzle-orm';
 
 import { sendAdapted, type AdapterRegistry } from '../canales/adaptador.js';
@@ -224,13 +225,25 @@ const reply = async (
   key: string,
   values: Readonly<Record<string, string | null>> = {},
   botones?: readonly OutboundButton[],
+  opciones: { conMenu?: boolean } = {},
 ): Promise<void> => {
   const texto = await renderMessageFor(services.db, key, {
     clinica: services.config.CLINIC_NAME,
     lugar: services.config.CLINIC_ADDRESS,
     ...values,
   });
-  await enviar(services, conversacion, texto, botones);
+
+  // La ayuda termina con el menú de comandos, generado del catálogo del contrato:
+  // así quien no descubra el menú de Telegram (o use WhatsApp, que no lo tiene) ve
+  // igualmente lo que el asistente sabe hacer, y la lista no se queda desfasada.
+  const capacidades = services.canales.get(conversacion.canal)?.capacidades;
+  const conMenu = opciones.conMenu === true && capacidades?.comandos === true;
+  await enviar(
+    services,
+    conversacion,
+    conMenu ? `${texto}\n\n${botCommandsAsText()}` : texto,
+    botones,
+  );
 };
 
 const DOC_TYPE_EXAMPLE: Readonly<Record<DocType, string>> = {
@@ -771,7 +784,7 @@ export const handleInbound = async (
         return { ...conversacion, handled: true, action: 'start' };
       }
       case 'ayuda': {
-        await reply(services, conversacion, 'ayuda');
+        await reply(services, conversacion, 'ayuda', {}, undefined, { conMenu: true });
         return { ...conversacion, handled: true, action: 'ayuda' };
       }
       case 'estado': {
@@ -813,9 +826,9 @@ export const handleInbound = async (
     }
   }
 
-  // Un comando que no existe: se ofrece la ayuda (solo en canales con comandos).
+  // Un comando que no existe: se ofrece la ayuda con el menú (solo en canales con comandos).
   if (detectada.comando) {
-    await reply(services, conversacion, 'ayuda');
+    await reply(services, conversacion, 'ayuda', {}, undefined, { conMenu: true });
     return { ...conversacion, handled: true, action: 'comando_desconocido' };
   }
 

@@ -63,6 +63,12 @@ export interface SentMessage {
   document?: { filename: string; size: number; mime: string };
 }
 
+/** Comando tal como lo registra el menú de Telegram. */
+export interface MenuCommand {
+  command: string;
+  description: string;
+}
+
 /**
  * Transporte de Telegram. Hay dos implementaciones: la real (HTTP contra la API de
  * Telegram) y la **simulada**, que se usa cuando no hay token: registra los envíos
@@ -72,6 +78,8 @@ export interface TelegramTransport {
   readonly mode: 'real' | 'simulado';
   /** Envíos realizados (solo el transporte simulado los conserva). */
   readonly sent: SentMessage[];
+  /** Menú de comandos registrado (solo el transporte simulado lo conserva). */
+  readonly menu: MenuCommand[];
   getMe: () => Promise<BotIdentity>;
   getUpdates: (offset: number, timeoutSeconds: number) => Promise<TelegramUpdate[]>;
   sendMessage: (chatId: string, text: string, options?: SendOptions) => Promise<SendResult>;
@@ -81,6 +89,12 @@ export interface TelegramTransport {
     caption?: string,
   ) => Promise<SendResult>;
   answerCallbackQuery: (callbackId: string, text?: string) => Promise<void>;
+  /** Registra el menú que aparece al pulsar `/` (idempotente). */
+  setMyCommands: (commands: readonly MenuCommand[]) => Promise<void>;
+  /** Deja el botón del menú mostrando la lista de comandos. */
+  setChatMenuButton: () => Promise<void>;
+  /** El menú que Telegram tiene registrado ahora mismo (para comprobarlo). */
+  getMyCommands: () => Promise<MenuCommand[]>;
 }
 
 const callApi = async <T>(
@@ -125,6 +139,8 @@ export const createHttpTransport = (
 ): TelegramTransport => ({
   mode: 'real',
   sent: [],
+  // El transporte real no guarda el menú: vive en Telegram (se lee con `getMyCommands`).
+  menu: [],
 
   getMe: async () => {
     const me = await callApi<{ id: number; username?: string; first_name?: string }>(
@@ -196,6 +212,25 @@ export const createHttpTransport = (
       ...(text === undefined ? {} : { text }),
     });
   },
+
+  /**
+   * Menú de comandos: es lo que Telegram dibuja al pulsar `/` o el botón junto al
+   * campo de texto. Se registra al arrancar (y en cada arranque: es idempotente),
+   * así que el menú sigue a `BOT_COMMANDS` sin que nadie toque BotFather.
+   */
+  setMyCommands: async (commands) => {
+    await callApi(config, token, 'setMyCommands', { commands });
+  },
+
+  /** El botón del menú muestra la lista de comandos (es el comportamiento que se quiere). */
+  setChatMenuButton: async () => {
+    await callApi(config, token, 'setChatMenuButton', { menu_button: { type: 'commands' } });
+  },
+
+  getMyCommands: async () => {
+    const commands = await callApi<MenuCommand[]>(config, token, 'getMyCommands');
+    return commands.map(({ command, description }) => ({ command, description }));
+  },
 });
 
 /**
@@ -205,10 +240,12 @@ export const createHttpTransport = (
  */
 export const createSimulatedTransport = (): TelegramTransport => {
   const sent: SentMessage[] = [];
+  const menu: MenuCommand[] = [];
 
   return {
     mode: 'simulado',
     sent,
+    menu,
 
     getMe: async () => ({ id: 'simulado', username: null, name: 'Bot simulado' }),
 
@@ -234,6 +271,19 @@ export const createSimulatedTransport = (): TelegramTransport => {
     },
 
     answerCallbackQuery: async () => undefined,
+
+    // El menú se guarda en memoria: las pruebas comprueban que se registra.
+    setMyCommands: async (commands) => {
+      menu.splice(
+        0,
+        menu.length,
+        ...commands.map(({ command, description }) => ({ command, description })),
+      );
+    },
+
+    setChatMenuButton: async () => undefined,
+
+    getMyCommands: async () => menu.map(({ command, description }) => ({ command, description })),
   };
 };
 

@@ -206,6 +206,67 @@ export const normalizePhrase = (texto: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
+/* ── Menú de comandos ──────────────────────────────────────────────────────── */
+
+/**
+ * Comando del menú. Telegram dibuja la lista al pulsar `/` (o el botón junto al
+ * campo de texto) y se registra con `setMyCommands`; WhatsApp no tiene comandos,
+ * así que allí el núcleo solo usa las frases naturales.
+ */
+export interface BotCommand {
+  /** Sin la barra: es lo que exige la API del canal (minúsculas, `a-z0-9_`). */
+  comando: string;
+  /** Lo que se lee en el menú: corto, para que no se corte en el móvil. */
+  descripcion: string;
+  /** Intención que dispara (el asistente no conoce comandos, solo intenciones). */
+  intencion: BotIntent;
+  /** `true` si admite algo detrás (`/estado #000123`). */
+  admiteArgumento?: boolean;
+}
+
+/**
+ * Catálogo de comandos, en el orden en que se muestran. Es la **única** fuente:
+ * de aquí salen el menú de Telegram y la lista que se escribe en la ayuda, así
+ * que añadir un comando es añadirlo una vez.
+ */
+export const BOT_COMMANDS: readonly BotCommand[] = [
+  { comando: 'start', descripcion: 'Empezar (y vincular mi Telegram)', intencion: 'start' },
+  { comando: 'nueva', descripcion: 'Pedir una cita', intencion: 'nueva' },
+  {
+    comando: 'estado',
+    descripcion: 'Ver cómo va mi cita',
+    intencion: 'estado',
+    admiteArgumento: true,
+  },
+  { comando: 'mi_ticket', descripcion: 'Recordarme mi ticket', intencion: 'mi_ticket' },
+  {
+    comando: 'cancelar',
+    descripcion: 'Anular mi solicitud',
+    intencion: 'cancelar',
+    admiteArgumento: true,
+  },
+  { comando: 'ayuda', descripcion: 'Ver todo lo que puedo hacer', intencion: 'ayuda' },
+];
+
+/** Límites de Telegram (`setMyCommands`), para no registrar algo que rechace. */
+export const BOT_COMMAND_LIMITS = {
+  maxComandos: 100,
+  maxLargoComando: 32,
+  minLargoDescripcion: 3,
+  maxLargoDescripcion: 256,
+} as const;
+
+/** Comandos con la forma que pide la API del canal (`command` / `description`). */
+export const toMenuCommands = (): readonly { command: string; description: string }[] =>
+  BOT_COMMANDS.map(({ comando, descripcion }) => ({ command: comando, description: descripcion }));
+
+/**
+ * La misma lista, en texto, para el mensaje de ayuda: quien no descubra el menú
+ * (o use WhatsApp, que no lo tiene) lee igualmente lo que el asistente sabe hacer.
+ */
+export const botCommandsAsText = (): string =>
+  BOT_COMMANDS.map(({ comando, descripcion }) => `/${comando} — ${descripcion}`).join('\n');
+
 const INTENT_BY_PHRASE: ReadonlyMap<string, BotIntent> = new Map(
   BOT_INTENTS.flatMap((intencion) =>
     INTENT_PHRASES[intencion].map((frase) => [normalizePhrase(frase), intencion] as const),

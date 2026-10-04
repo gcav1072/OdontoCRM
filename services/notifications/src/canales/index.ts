@@ -24,12 +24,23 @@ export interface CanalesHandle {
  */
 export const createChannelAdapters = (
   config: NotificationsConfig,
-  options: { onError?: (error: unknown, entrante: InboundMessage) => void } = {},
+  options: {
+    onError?: (error: unknown, entrante: InboundMessage) => void;
+    onAviso?: (error: unknown, contexto: string) => void;
+  } = {},
 ): CanalesHandle => {
   const modo = telegramMode(config);
   const transport = createTransport(config, modo);
 
-  const adapters: ChannelAdapter[] = [createTelegramAdapter({ config, transport })];
+  const adapters: ChannelAdapter[] = [
+    createTelegramAdapter({
+      config,
+      transport,
+      ...(options.onAviso === undefined
+        ? {}
+        : { onError: (error) => options.onAviso?.(error, 'menu_de_comandos') }),
+    }),
+  ];
 
   const credentials = whatsappCredentials(config);
   if (credentials !== null) {

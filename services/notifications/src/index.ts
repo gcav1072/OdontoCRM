@@ -27,9 +27,13 @@ const main = async (): Promise<void> => {
   // El logger todavía no existe cuando se construyen los adaptadores: el error de
   // entrega se guarda y se registra en cuanto el servidor está en pie.
   let logError: (error: unknown) => void = () => undefined;
+  let logAviso: (error: unknown, contexto: string) => void = () => undefined;
   const canales = createChannelAdapters(config, {
     onError: (error) => {
       logError(error);
+    },
+    onAviso: (error, contexto) => {
+      logAviso(error, contexto);
     },
   });
 
@@ -46,6 +50,10 @@ const main = async (): Promise<void> => {
   logError = (error) => {
     services.lastError = error instanceof Error ? error.message : String(error);
     app.log.error({ err: error }, 'Falló la entrega de un mensaje del canal');
+  };
+  logAviso = (error, contexto) => {
+    // Un aviso no tumba nada: el bot sigue, solo se pierde el detalle.
+    app.log.warn({ err: error, contexto }, 'Detalle del canal que no se pudo aplicar');
   };
 
   // Plantillas del catálogo: si falta alguna (o se borró), se vuelve a sembrar.
