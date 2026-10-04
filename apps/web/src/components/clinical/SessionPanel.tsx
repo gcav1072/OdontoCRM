@@ -72,6 +72,11 @@ export interface SessionPanelProps {
   sessions: readonly ClinicalSessionSummary[];
   /** Recarga la lista de sesiones (abrir, cerrar, enmendar). */
   onChanged: () => void;
+  /**
+   * Cita en curso que respalda la sesión que se abra (`/flujo` la conoce: es la que
+   * tiene delante). Sin ella se elige la que la agenda tenga en el consultorio.
+   */
+  appointmentId?: string | null;
   /** Lleva a la pestaña del odontograma: lo que se marca allí cae en esta sesión. */
   onOpenOdontogram?: (() => void) | undefined;
   /**
@@ -86,6 +91,16 @@ export interface SessionPanelProps {
 
 /** Fecha de hoy en la zona del consultorio (la que usa la agenda). */
 const today = (): string => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
+
+/**
+ * Cita que respalda la sesión que se va a abrir: la que está en el consultorio y, si
+ * todavía no pasó, la llamada o la que espera en la sala. Un paciente puede sentarse
+ * en el sillón antes de que nadie marque «pasar a consulta».
+ */
+const citaQueRespalda = (citas: readonly AppointmentSummary[]): AppointmentSummary | undefined =>
+  citas.find((cita) => cita.status === 'en_consulta') ??
+  citas.find((cita) => cita.status === 'llamado') ??
+  citas.find((cita) => cita.status === 'en_sala_espera');
 
 /** Fila de una sesión cerrada: número, fecha, resumen y acciones. */
 const ClosedSessionCard = ({
@@ -130,6 +145,7 @@ export const SessionPanel = ({
   openSession,
   sessions,
   onChanged,
+  appointmentId = null,
   onOpenOdontogram,
   closeRequest = 0,
   onCloseBlocked,
@@ -189,9 +205,15 @@ export const SessionPanel = ({
     setHoraGuardado(null);
   }, [sesionQuery.data]);
 
-  /** Citas de hoy del paciente: es lo que enlaza la sesión con el «atendido». */
+  /**
+   * Citas de hoy del paciente: es lo que enlaza la sesión con el «atendido».
+   *
+   * La clave lleva la cita en curso (`appointmentId`) porque la lista puede ser de
+   * antes de que el paciente pasara a consulta: al cambiar la cita que el flujo tiene
+   * delante, la lista se vuelve a pedir y el respaldo de la sesión queda al día.
+   */
   const citasQuery = useQuery({
-    queryKey: ['clinica', 'citas-hoy', patientId],
+    queryKey: ['clinica', 'citas-hoy', patientId, appointmentId],
     queryFn: ({ signal }) =>
       appointmentsApi.list({ date: today(), patientId, page: 1, pageSize: 20 }, signal),
     enabled: canWrite && openSession === null,
@@ -202,17 +224,33 @@ export const SessionPanel = ({
     [citasQuery.data],
   );
 
-  const enConsulta = citas.find((cita) => cita.status === 'en_consulta');
+  /**
+   * La sesión se abre **respaldada por la cita que está delante**: la que trae el
+   * flujo si la hay y, si no, la que la agenda tiene en el consultorio. Sin ese
+   * respaldo, marcar «atendido» pediría un motivo y la visita quedaría sin enlace.
+   */
   useEffect(() => {
-    if (enConsulta !== undefined && citaElegida === '') setCitaElegida(enConsulta.id);
-  }, [enConsulta, citaElegida]);
+    if (citaElegida !== '') return;
+    const respaldo = appointmentId ?? citaQueRespalda(citas)?.id ?? null;
+    if (respaldo !== null) setCitaElegida(respaldo);
+  }, [appointmentId, citas, citaElegida]);
 
   const abrir = useMutation({
-    mutationFn: () =>
-      clinicalApi.openSession(patientId, {
-        appointmentId: citaElegida === '' ? null : citaElegida,
+    mutationFn: async () => {
+      // Si no hay cita elegida se resuelve **al abrir**, releyendo la agenda: entre
+      // que la pantalla pintó la lista y el doctor pulsó el botón, el paciente pudo
+      // pasar a consulta (y la lista que se ve es de antes).
+      let respaldo = citaElegida;
+      if (respaldo === '') {
+        const frescas = await citasQuery.refetch();
+        const enAgenda = citaQueRespalda(frescas.data?.items ?? []);
+        respaldo = appointmentId ?? enAgenda?.id ?? '';
+      }
+      return clinicalApi.openSession(patientId, {
+        appointmentId: respaldo === '' ? null : respaldo,
         motivo: null,
-      }),
+      });
+    },
     onSuccess: () => {
       onChanged();
       exito(t('clinica.sesion.exito.abierta'));

@@ -274,6 +274,7 @@ export const FlujoPage = () => {
           appointments={visibles}
           selectedId={cita?.id ?? null}
           search={busqueda}
+          loading={diaQuery.isPending}
           onSearch={setBusqueda}
           onSelect={(fila) => {
             setElegidaId(fila.id);
@@ -308,6 +309,8 @@ export const FlujoPage = () => {
               tab={pestana}
               onTabChange={setPestana}
               exitLabel={t('flujo.volverCola')}
+              // La cita que el flujo tiene delante respalda la sesión que se abra.
+              appointmentId={cita?.id ?? null}
               onExit={() => {
                 setPacienteSuelto(null);
                 setElegidaId(null);
