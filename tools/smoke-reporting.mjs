@@ -230,17 +230,18 @@ const piezaConCondicion = (documento, pieza, condicion) =>
 
 /**
  * Espera a que el read model tenga la cifra pedida: sondea con reintentos hasta
- * `ESPERA_PROYECCION_MS`. Devuelve la última respuesta, liste o no.
+ * `limiteMs` (por defecto `ESPERA_PROYECCION_MS`). Devuelve la última respuesta,
+ * liste o no.
  */
-const esperarReporte = async (path, listo, etiqueta) => {
-  const limite = Date.now() + ESPERA_PROYECCION_MS;
+const esperarReporte = async (path, listo, etiqueta, limiteMs = ESPERA_PROYECCION_MS) => {
+  const limite = Date.now() + limiteMs;
   let ultima = await call(path);
   // Sin ruta no hay proyección que esperar (el servicio todavía no está): se falla ya.
   if (ultima.status === 404) return ultima;
   while (!(ultima.status === 200 && listo(ultima.body))) {
     if (Date.now() >= limite) {
       console.log(
-        `· ${etiqueta}: la proyección no llegó en ${String(ESPERA_PROYECCION_MS / 1000)} s (último status ${String(ultima.status)})`,
+        `· ${etiqueta}: la proyección no llegó en ${String(limiteMs / 1000)} s (último status ${String(ultima.status)})`,
       );
       return ultima;
     }
@@ -899,8 +900,19 @@ check(
   JSON.stringify(demografiaFiltrada.body?.filters ?? {}),
 );
 
-/* 9.5) Perfil clínico: diabetes y alergias incluyen al paciente. */
-const perfil = documentos.get('clinical-profile');
+/* 9.5) Perfil clínico: diabetes y alergias incluyen al paciente.
+   La historia clínica se proyecta **en dos pasos**: el perfil se guarda de paso y se
+   aplica cuando llega el alta del paciente, que la publica **otro servicio**. Medido
+   con el humo, los eventos de la historia se procesaron a las 20:36:06 y el alta a
+   las 20:36:07: un segundo, pero el retardo depende de los dos publicadores de
+   outbox, así que aquí se espera con más margen que en el resto de reportes. */
+const ESPERA_PERFIL_MS = Number(process.env.SMOKE_REPORTING_PROFILE_WAIT_MS ?? 30_000);
+const perfil = await esperarReporte(
+  `/api/v1/reports/clinical-profile?from=${desde}&to=${hoy}`,
+  (cuerpo) => filaDe(cuerpo, /diabetes/).conteo >= 1,
+  'el perfil clínico del paciente de la prueba',
+  ESPERA_PERFIL_MS,
+);
 const diabetes = filaDe(perfil?.body, /diabetes/);
 const alergias = filaDe(perfil?.body, /alerg/);
 check(
