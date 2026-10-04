@@ -1945,15 +1945,15 @@ exige el plan (§13, Fase 10).
 
 | ID | Pendiente | Cómo se comprueba | Verificado | Evidencia |
 | :--- | :--- | :--- | :--- | :--- |
-| P-01 | Versiones exactas de paquetes | `dnf list installed \| grep -E 'postgresql18\|nodejs'` | ☐ | |
-| P-02 | Canal y versión de Node.js 26 | `node --version` tras instalar | ☐ | |
-| P-03 | Nombres de variables vs `.env.example` | `diff` contra el `.env.example` del repo | ☐ | |
+| P-01 | Versiones exactas de paquetes | `dnf list installed \| grep -E 'postgresql18\|nodejs'` | ✅ | **PC de pruebas (Fedora 44):** `postgresql-server-18.6-1.fc44`, `nodejs-26.10.0-1nodesource`. Ojo: en Fedora 44 el motor viene de los repos de Fedora (`postgresql-server`), **no** de PGDG (`postgresql18-server`): las dos rutas son válidas y la guía explica las dos. |
+| P-02 | Canal y versión de Node.js 26 | `node --version` tras instalar | ✅ | **PC de pruebas:** `setup_26.x` de NodeSource existe y entrega **v26.10.0** con npm 11.19.1; quitó el `nodejs22` de Fedora sin conflictos (nadie más lo usaba). |
+| P-03 | Nombres de variables vs `.env.example` | `diff` contra el `.env.example` del repo | ✅ | **PC de pruebas:** `npm run env:check` → «los .env tienen todas las claves de su plantilla». |
 | P-04 | Artefacto compilado (`dist/index.js`) | `ls /opt/odontocrm/services/*/dist/ /opt/odontocrm/apps/gateway/dist/` | ☐ | |
 | P-05 | Flujo de bootstrap y migraciones en producción | `npm run db:bootstrap` · `npm run db:migrate` (§6.4 y §9.3) | ☐ | |
-| P-06 | Dependencias de Chromium / `install-deps` | `ldd … \| grep 'not found'` | ☐ | |
+| P-06 | Dependencias de Chromium / `install-deps` | `ldd … \| grep 'not found'` | ✅ | **PC de pruebas:** `npx playwright install-deps chromium` **no soporta Fedora 44** (cae a `ubuntu24.04` y muere en `apt-get`); con la lista de `dnf` de §4.1 y `ldd` no falta ninguna biblioteca. El plan B de la guía es el camino real. |
 | P-07 | Chromium bajo `systemd` endurecido | generar un PDF de prueba | ☐ | |
 | P-08 | Nombres reales de roles (`infra/db/bootstrap.mjs`) | `sudo -u postgres psql -c '\du'` | ☐ | |
-| P-09 | Socket de PostgreSQL y `pg_hba.conf` | `ls /var/run/postgresql` · `pg_hba.conf` | ☐ | |
+| P-09 | Socket de PostgreSQL y `pg_hba.conf` | `ls /var/run/postgresql` · `pg_hba.conf` | ✅ | **PC de pruebas:** el socket está en `/var/run/postgresql` y `postgresql-setup --initdb` deja **`ident`** en las líneas `host` (no `scram-sha-256`): con eso **ningún servicio entra por TCP** aunque la contraseña sea correcta. Hay que cambiarlas a `scram-sha-256` (§6.3). El administrador entra por el socket con `peer` (`PG_ADMIN_URL=postgres:///postgres?host=/var/run/postgresql`). |
 | P-10 | PM2 en producción: `infra/fedora/ecosystem.config.cjs` con los dos `--env-file-if-exists` y `.env` legibles por el grupo (`0640 root:odontocrm`) | §10.4 · `pm2 ls` · `pm2 logs odontocrm-identity` | ☐ | |
 | P-11 | Proxy elegido + SSE + SELinux | pantalla en vivo + `ausearch` | ☐ | |
 | P-12 | Certificado interno y confianza en dispositivos | `openssl s_client` desde PC/tablet/TV | ☐ | |
@@ -1971,6 +1971,22 @@ exige el plan (§13, Fase 10).
 | P-24 | **Secretos solo en `/etc/odontocrm`**: `services/<servicio>/.env` trasladados y borrados; ningún `.env` en `/opt/odontocrm` | §8.6 · `sudo find /opt/odontocrm -type f -name '.env'` | ☐ | |
 | P-25 | Los dos archivos de entorno por servicio se cargan en orden (común → propio) con el supervisor elegido | `systemctl show odontocrm@identity -p EnvironmentFiles` · `node --env-file-if-exists=…` | ☐ | |
 | P-26 | **Nombres reales de los paquetes de SELinux**: en Fedora son `setools-console` (+ `setroubleshoot-server` para `sealert`, `audit` para `ausearch`); `setools-conftools` no existe | `dnf provides '*/sealert'` · instalarlos de nuevo sin error | ✅ | Banco de pruebas (Fase 10): `dnf install setools-conftools` falló, `setools-console` se instaló; §4 y §12 corregidos |
+
+### 20.1-bis Hallazgos de la Fase 10 (y su arreglo)
+
+Cada uno se descubrió **corriendo el sistema**, no leyéndolo, y quedó corregido en el
+mismo commit que lo documenta:
+
+| ID | Hallazgo | Arreglo |
+| :--- | :--- | :--- |
+| P-27 | **`TELEGRAM_MODE=polling` no existe.** El esquema acepta `auto \| real \| simulado` (el long polling es el transporte, no un modo). La plantilla de `/etc/odontocrm/notifications.env` lo traía desde la Fase 4 y el servicio **no arrancaba** (`ConfigError`), con él la migración. | Plantilla corregida a `auto`; `install.sh` arregla el valor heredado en archivos existentes (§8.2). |
+| P-28 | **El clúster de Fedora deja `ident` en TCP.** Ningún servicio entra por `127.0.0.1` aunque la contraseña esté bien. | §6.3 explica el síntoma y deja los comandos para pasar a `scram-sha-256`. |
+| P-29 | **`node --watch` muere si falta un `--env-file-if-exists`.** El gateway no tenía `apps/gateway/.env` y la pila entera se caía al arrancar. | El bootstrap crea el archivo vacío con su explicación. |
+| P-30 | **Buscar en la cola de `/flujo` dejaba la pantalla sin paciente en curso** (y sin las acciones de la barra): el filtro se aplicaba a la jornada antes de resolver la cita en curso. | La selección se resuelve sobre la jornada completa; dos pruebas puras lo fijan. |
+| P-31 | **Los eventos publicados mientras otro servicio arrancaba se perdían**: la lista de colas es una foto y el publicador entregaba solo donde ya había cola (10 altas y 30 hallazgos sin proyectar). | El publicador declara las colas de los cinco consumidores conocidos antes de su primer envío; una prueba compara la lista con el código. |
+| P-32 | **`seed:verify` dependía de la collation del clúster**: con `en_US.UTF-8`, `examenes_complementarios` va antes que `examen_extraoral`, y la huella cambiaba de máquina a máquina sin que ningún dato fuera distinto. | Las consultas de texto llevan `collate "C"` (orden por bytes), el mismo que usa el comparador. |
+| P-33 | **`npx playwright install-deps chromium` no soporta Fedora** (probó `ubuntu24.04` y murió en `apt-get`). | §4.1 ya documenta la lista de `dnf` como plan B; el script de instalación la usa cuando el comando falla. |
+| P-34 | **Intermitencia de las suites de integración**: con cuatro suites en paralelo falla una prueba distinta en cada corrida (esperas del camino outbox → cola → consumidor). Comprobado que **no** la introdujo la Fase 10 (con el cambio de colas revertido en un árbol aparte falla igual). | Tope único y ajustable (`TEST_WAIT_MS`, 30 s). Pendiente de endurecer: no es un fallo de producto. |
 
 ### 20.2 Registro de la prueba de restauración
 
