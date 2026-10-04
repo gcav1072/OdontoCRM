@@ -24,8 +24,20 @@ const NEW_PASSWORD = process.env.SMOKE_NEW_PASSWORD ?? 'prueba-e2e-odontocrm-202
 const TEST_CHAT_ID = process.env.SMOKE_TELEGRAM_CHAT_ID ?? null;
 const MARK = 'PRUEBA DE HUMO AVISOS';
 
+/**
+ * `SMOKE_BOT_OPCIONAL=1` — para una máquina **sin bot configurado** (la PC de
+ * pruebas antes de poner el token, o un despliegue que todavía no usa Telegram).
+ * Las cuatro comprobaciones que necesitan un bot real (identidad, conexión, enlace
+ * y QR) se informan como «no aplica» en lugar de fallar, y el resumen lo dice sin
+ * adornos: **la parte del bot queda pendiente**, no verificada.
+ *
+ * Lo usa `npm run e2e:clinica -- --sin-bot`.
+ */
+const BOT_OPCIONAL = process.env.SMOKE_BOT_OPCIONAL === '1';
+
 let token = '';
 let failures = 0;
+let omitidas = 0;
 
 const call = async (path, options = {}) => {
   const response = await fetch(`${GATEWAY}${path}`, {
@@ -50,6 +62,12 @@ const call = async (path, options = {}) => {
 const check = (label, condition, detail = '') => {
   if (!condition) failures += 1;
   console.log(`${condition ? '✔' : '✖'} ${label}${detail === '' ? '' : ` → ${detail}`}`);
+};
+
+/** Comprobación que **no aplica** en esta instalación (se cuenta y se dice). */
+const omitir = (label, motivo) => {
+  omitidas += 1;
+  console.log(`· ${label} → no aplica: ${motivo}`);
 };
 
 // 1) Sesión.
@@ -87,12 +105,18 @@ if (login.body?.user?.mustChangePassword === true) {
 // 2) Estado del bot: modo, identidad y cola.
 const status = await call('/api/v1/notifications/status');
 check('el estado del bot responde', status.status === 200, `status ${status.status}`);
-check(
-  'el bot está configurado',
-  status.body?.mode === 'real' && typeof status.body?.botUsername === 'string',
-  `modo ${status.body?.mode}, bot @${status.body?.botUsername ?? '—'}`,
-);
-check('el bot está conectado con Telegram', status.body?.connected === true);
+const botConfigurado = status.body?.mode === 'real' && typeof status.body?.botUsername === 'string';
+if (!botConfigurado && BOT_OPCIONAL) {
+  omitir('el bot está configurado', 'esta máquina no tiene TELEGRAM_BOT_TOKEN/USERNAME');
+  omitir('el bot está conectado con Telegram', 'no hay bot que conectar');
+} else {
+  check(
+    'el bot está configurado',
+    botConfigurado,
+    `modo ${status.body?.mode}, bot @${status.body?.botUsername ?? '—'}`,
+  );
+  check('el bot está conectado con Telegram', status.body?.connected === true);
+}
 check(
   'la cola tiene contadores',
   typeof status.body?.counts?.queued === 'number' &&
@@ -161,16 +185,21 @@ check(
   linkCode.status === 200,
   `código ${linkCode.body?.code}`,
 );
-check(
-  'el enlace apunta al bot real',
-  typeof linkCode.body?.deepLink === 'string' && linkCode.body.deepLink.includes('t.me/'),
-  String(linkCode.body?.deepLink ?? ''),
-);
-check(
-  'el QR viene listo para mostrar',
-  typeof linkCode.body?.qrDataUrl === 'string' &&
-    linkCode.body.qrDataUrl.startsWith('data:image/png'),
-);
+if (!botConfigurado && BOT_OPCIONAL) {
+  omitir('el enlace apunta al bot real', 'hace falta el @usuario del bot');
+  omitir('el QR viene listo para mostrar', 'hace falta el @usuario del bot');
+} else {
+  check(
+    'el enlace apunta al bot real',
+    typeof linkCode.body?.deepLink === 'string' && linkCode.body.deepLink.includes('t.me/'),
+    String(linkCode.body?.deepLink ?? ''),
+  );
+  check(
+    'el QR viene listo para mostrar',
+    typeof linkCode.body?.qrDataUrl === 'string' &&
+      linkCode.body.qrDataUrl.startsWith('data:image/png'),
+  );
+}
 check('el enlace caduca', typeof linkCode.body?.expiresAt === 'string');
 
 // 5) Camino completo de un aviso de cita.
@@ -336,6 +365,13 @@ if (typeof request.body?.id === 'string') {
 console.log(
   `\nBot: @${status.body?.botUsername ?? '—'} (${status.body?.mode}) · día usado: ${day}`,
 );
+if (omitidas > 0) {
+  console.warn(
+    `${String(omitidas)} comprobación(es) NO se hicieron: el bot no está configurado en esta máquina.\n` +
+      '  La parte del bot queda PENDIENTE: pon TELEGRAM_BOT_TOKEN y TELEGRAM_BOT_USERNAME en\n' +
+      '  services/notifications/.env (o /etc/odontocrm/notifications.env) y repite la prueba.',
+  );
+}
 if (failures > 0) {
   console.error(`${String(failures)} comprobación(es) fallaron contra ${GATEWAY}`);
   process.exit(1);
