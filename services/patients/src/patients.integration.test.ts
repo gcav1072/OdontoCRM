@@ -10,11 +10,12 @@ import {
   createBoss,
   createOutboxRunner,
   ensureDomainEventsQueue,
+  outboxEvents,
   registerDomainEventHandler,
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
-import { EVENT_TOPICS, createDomainEvent } from '@odontocrm/events';
+import { EVENT_TOPICS, createDomainEvent, type DomainEvent } from '@odontocrm/events';
 import { and, eq, like } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -24,9 +25,11 @@ import { loadIdentityConfig } from '../../identity/dist/config.js';
 import { createIdentityDatabase } from '../../identity/dist/db/client.js';
 import * as identitySchema from '../../identity/dist/db/schema.js';
 import { loadPatientsConfig } from './config.js';
+import { handleDomainEvents } from './consumer.js';
 import { createPatientsDatabase } from './db/client.js';
 import { patients } from './db/schema.js';
 import {
+  changePatientStatus,
   createPatient,
   deletePatient,
   listPatients,
@@ -89,7 +92,9 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
   let boss: PgBoss;
   let patientId = '';
 
-  const auditRows = async (): Promise<
+  const auditRows = async (
+    paraId: string = patientId,
+  ): Promise<
     Array<{
       action: string;
       actorUsername: string | null;
@@ -112,20 +117,30 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
       .where(
         and(
           eq(identitySchema.auditEvents.entityType, 'patient'),
-          eq(identitySchema.auditEvents.entityId, patientId),
+          eq(identitySchema.auditEvents.entityId, paraId),
         ),
       );
     return rows as never;
   };
 
+  /** Estado actual del paciente, leído de la base donde vive. */
+  const statusOf = async (id: string): Promise<string> => {
+    const filas = await patientsHandle.db
+      .select({ status: patients.status })
+      .from(patients)
+      .where(eq(patients.id, id));
+    return String(filas[0]?.status ?? '—');
+  };
+
   const waitForAudit = async (
     predicate: (rows: Awaited<ReturnType<typeof auditRows>>) => boolean,
+    paraId: string = patientId,
   ): Promise<Awaited<ReturnType<typeof auditRows>>> => {
     const deadline = Date.now() + 15_000;
-    let rows = await auditRows();
+    let rows = await auditRows(paraId);
     while (!predicate(rows) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 250));
-      rows = await auditRows();
+      rows = await auditRows(paraId);
     }
     return rows;
   };
@@ -279,6 +294,109 @@ describeWithDatabases('auditoría de pacientes por el outbox (PostgreSQL real)',
       );
     expect(rows).toHaveLength(1);
   });
+
+  /**
+   * El paciente nace en `en_espera_cita` (lo crea el bot o el mostrador) y su
+   * estado solo lo escribe este servicio: por eso la cita que asigna la agenda
+   * llega por evento y se proyecta aquí. Sin esto, en `/pacientes` seguía
+   * apareciendo «En espera de cita» con la cita ya programada y el `.ics` enviado.
+   */
+  const citaProgramada = (paraPaciente: string): DomainEvent =>
+    createDomainEvent({
+      topic: EVENT_TOPICS.appointmentScheduled,
+      aggregateId: globalThis.crypto.randomUUID(),
+      producer: 'scheduling',
+      payload: {
+        // Así lo publica la agenda: el paciente viaja en el bloque del aviso, no
+        // en el de la cita (que solo lleva fecha, hora y estado).
+        notification: {
+          patientId: paraPaciente,
+          patientName: `Paciente con cita ${suffix}`,
+          ticket: '#000123',
+        },
+        appointment: {
+          id: globalThis.crypto.randomUUID(),
+          date: '2026-12-01',
+          startTime: '09:00',
+          status: 'programada',
+        },
+      },
+    });
+
+  it('al asignársele una cita el paciente deja de estar «en espera de cita»', async () => {
+    const nuevo = await createPatient(
+      patientsHandle.db,
+      aPatient({ docNumber: `7${suffix}`, fullName: `Paciente con cita ${suffix}` }),
+      actor,
+    );
+    expect(await statusOf(nuevo.id)).toBe('en_espera_cita');
+
+    const [primero] = await handleDomainEvents({ db: patientsHandle.db }, [
+      citaProgramada(nuevo.id),
+    ]);
+    expect(primero).toEqual({ estado: 'aplicado', patientId: nuevo.id });
+    expect(await statusOf(nuevo.id)).toBe('activo');
+
+    // Repetir el evento (la cola entrega al menos una vez) no cambia nada.
+    const [segundo] = await handleDomainEvents({ db: patientsHandle.db }, [
+      citaProgramada(nuevo.id),
+    ]);
+    expect(segundo).toEqual({ estado: 'sin_cambios', patientId: nuevo.id });
+    expect(await statusOf(nuevo.id)).toBe('activo');
+
+    // Y un tema que no toca al paciente no se aplica.
+    const [tercero] = await handleDomainEvents({ db: patientsHandle.db }, [
+      createDomainEvent({
+        topic: EVENT_TOPICS.appointmentCalled,
+        aggregateId: globalThis.crypto.randomUUID(),
+        producer: 'scheduling',
+        payload: { notification: { patientId: nuevo.id } },
+      }),
+    ]);
+    expect(tercero).toEqual({ estado: 'ignorado', patientId: null });
+
+    // El cambio queda en la auditoría como cualquier otro cambio de estado. Se
+    // entrega el sobre directamente al consumidor de identity en vez de esperar a
+    // la cola: así la prueba mide lo que comprueba (la proyección y su rastro) y no
+    // cuánto tarda el sondeo del trabajador.
+    const runner = createOutboxRunner({ pool: patientsHandle.pool, boss });
+    const publicado = await runner.flush();
+    expect(publicado.published).toBeGreaterThanOrEqual(1);
+
+    const sobres = await patientsHandle.db
+      .select({ envelope: outboxEvents.envelope, eventType: outboxEvents.eventType })
+      .from(outboxEvents)
+      .where(
+        and(
+          eq(outboxEvents.aggregateId, nuevo.id),
+          eq(outboxEvents.eventType, 'patients.patient.updated'),
+        ),
+      );
+    expect(sobres).toHaveLength(1);
+    await handleDomainEvent(identityHandle.db, sobres[0]?.envelope as never);
+
+    const filas = await auditRows(nuevo.id);
+    const cambio = filas.find((item) => item.changedFields.includes('status'));
+    expect(cambio?.before).toMatchObject({ status: 'en_espera_cita' });
+    expect(cambio?.after).toMatchObject({ status: 'activo' });
+    expect(cambio?.reason).toBe('se le asignó una cita');
+  }, 40_000);
+
+  it('una baja a mano no se revierte porque llegue un evento de agenda', async () => {
+    const dado = await createPatient(
+      patientsHandle.db,
+      aPatient({ docNumber: `6${suffix}`, fullName: `Paciente dado de baja ${suffix}` }),
+      actor,
+    );
+    await changePatientStatus(patientsHandle.db, dado.id, 'inactivo', 'baja voluntaria', actor);
+    expect(await statusOf(dado.id)).toBe('inactivo');
+
+    const [resultado] = await handleDomainEvents({ db: patientsHandle.db }, [
+      citaProgramada(dado.id),
+    ]);
+    expect(resultado).toEqual({ estado: 'sin_cambios', patientId: dado.id });
+    expect(await statusOf(dado.id)).toBe('inactivo');
+  }, 40_000);
 
   it('el documento repetido devuelve conflicto con el paciente existente', async () => {
     await expect(

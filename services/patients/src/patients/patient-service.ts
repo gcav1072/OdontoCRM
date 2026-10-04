@@ -551,6 +551,67 @@ export const updatePatient = async (
   return { detail: await getPatientDetail(db, id), diff };
 };
 
+/**
+ * Promueve a `activo` al paciente que acaba de recibir una cita.
+ *
+ * Es la proyección del evento `scheduling.appointment.scheduled`: el estado del
+ * paciente lo escribe **su** servicio (el de agenda no puede tocar esta base), y
+ * `en_espera_cita` significa literalmente «todavía sin cita», así que asignársela
+ * termina ese estado. Es **idempotente** (solo mira a quien está en
+ * `en_espera_cita`, nunca resucita a un `inactivo`) y deja el rastro habitual
+ * (`patients.patient.updated`) para que aparezca en la auditoría como cualquier
+ * otro cambio de estado.
+ */
+export const promotePatientWithAppointment = async (
+  db: PatientsDb,
+  patientId: string,
+  reason: string,
+): Promise<boolean> => {
+  const actor = systemActor(reason);
+  let aplicado = false;
+
+  await db.transaction(async (tx) => {
+    const actualizados = await tx
+      .update(patients)
+      .set({ status: 'activo', updatedAt: new Date() })
+      .where(
+        and(
+          eq(patients.id, patientId),
+          eq(patients.status, 'en_espera_cita'),
+          isNull(patients.deletedAt),
+        ),
+      )
+      .returning({
+        id: patients.id,
+        docType: patients.docType,
+        docNumber: patients.docNumber,
+        fullName: patients.fullName,
+      });
+
+    const fila = actualizados[0];
+    if (fila === undefined) return;
+    aplicado = true;
+
+    await outboxRow(
+      {
+        topic: EVENT_TOPICS.patientUpdated,
+        patientId: fila.id,
+        document: formatDocument(fila.docType as DocType, fila.docNumber),
+        fullName: fila.fullName,
+        action: 'status_changed',
+        changedFields: ['status'],
+        before: { status: 'en_espera_cita' },
+        after: { status: 'activo' },
+        reason,
+        actor,
+      },
+      tx,
+    );
+  });
+
+  return aplicado;
+};
+
 /** Cambia el estado del paciente (activar, inactivar) dejando rastro. */
 export const changePatientStatus = async (
   db: PatientsDb,

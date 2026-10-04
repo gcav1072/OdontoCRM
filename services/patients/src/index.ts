@@ -1,7 +1,9 @@
 import {
+  consumerQueueName,
   createBoss,
   createOutboxRunner,
   ensureDomainEventsQueue,
+  registerDomainEventHandler,
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
@@ -9,6 +11,7 @@ import { startServer } from '@odontocrm/kernel';
 import { mkdir } from 'node:fs/promises';
 
 import { loadPatientsConfig, storageRoot } from './config.js';
+import { handleDomainEvents } from './consumer.js';
 import { createPatientsDatabase } from './db/client.js';
 import { createDiskBlobStore } from './files/blob-store.js';
 import { createPatientsServer } from './server.js';
@@ -46,6 +49,24 @@ const main = async (): Promise<void> => {
     },
   });
   outbox.start();
+
+  // Consumidor propio: la agenda avisa de que al paciente se le asignó una cita y
+  // aquí se le quita el «en espera de cita». No es urgente (nadie mira la ficha en
+  // el segundo en que se agenda), así que con el sondeo por defecto basta.
+  await registerDomainEventHandler(
+    boss,
+    async (events) => {
+      const resultados = await handleDomainEvents({ db: database.db }, events);
+      const aplicados = resultados.filter((resultado) => resultado.estado === 'aplicado');
+      if (aplicados.length > 0) {
+        app.log.info(
+          { aplicados: aplicados.length, lote: events.length },
+          'Pacientes con cita pasados a activo',
+        );
+      }
+    },
+    { queue: consumerQueueName('patients') },
+  );
 
   app.addHook('onClose', async () => {
     await outbox.stop();

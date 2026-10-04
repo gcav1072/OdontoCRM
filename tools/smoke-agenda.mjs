@@ -99,6 +99,29 @@ check(
 );
 if (patient === undefined) process.exit(1);
 
+// 2.b) Un paciente **nuevo** para la prueba: nace «en espera de cita» y al
+//      asignársele la cita tiene que pasar a «activo» solo (la agenda publica el
+//      evento y el servicio de pacientes lo proyecta). Sin paciente nuevo la
+//      comprobación no diría nada: los de demostración ya están activos.
+const nuevoPaciente = await call('/api/v1/patients', {
+  method: 'POST',
+  body: JSON.stringify({
+    docType: 'V',
+    docNumber: `9${String(Date.now()).slice(-7)}`,
+    fullName: `Paciente de humo ${MARK}`,
+    birthDate: '1990-05-15',
+    sex: 'F',
+    phone: '+584121110000',
+    reason: `${MARK}: paciente de la prueba de humo`,
+  }),
+});
+check(
+  'el paciente de prueba nace en espera de cita',
+  nuevoPaciente.status === 201 && nuevoPaciente.body?.status === 'en_espera_cita',
+  `${nuevoPaciente.status} · ${nuevoPaciente.body?.status ?? '—'}`,
+);
+const pacienteDePrueba = nuevoPaciente.body ?? patient;
+
 // 3) Un día de consulta: se deduce de las plantillas reales del consultorio.
 const templates = await call('/api/v1/agenda/templates');
 const workdays = new Set(
@@ -132,10 +155,10 @@ const slotC = freeSlots[2]?.startTime;
 const created = await call('/api/v1/requests', {
   method: 'POST',
   body: JSON.stringify({
-    patientId: patient.id,
-    patientName: patient.fullName,
-    patientDocument: patient.document,
-    patientPhone: patient.phone,
+    patientId: pacienteDePrueba.id,
+    patientName: pacienteDePrueba.fullName,
+    patientDocument: pacienteDePrueba.document,
+    patientPhone: pacienteDePrueba.phone,
     channel: 'telefono',
     reason: `${MARK}: dolor en la muela del juicio`,
     priority: 0,
@@ -189,6 +212,22 @@ check('la cita se asigna a la franja', assigned.status === 201, `status ${assign
 check('la cita conserva el ticket de la solicitud', assigned.body?.ticket === created.body?.ticket);
 const appointmentId = assigned.body?.id ?? '';
 
+// 5.b) Al tener cita, el paciente deja de estar «en espera de cita»: lo proyecta
+//      el servicio de pacientes al consumir el evento de la agenda (outbox →
+//      cola → proyección). Antes se quedaba así para siempre y en /pacientes
+//      aparecía «En espera de cita» con la cita ya programada.
+let estadoPaciente = 'en_espera_cita';
+for (let intento = 0; intento < 20 && estadoPaciente !== 'activo'; intento += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 1_000));
+  const ficha = await call(`/api/v1/patients/${pacienteDePrueba.id}`);
+  estadoPaciente = ficha.body?.status ?? estadoPaciente;
+}
+check(
+  'con la cita asignada el paciente pasa a activo',
+  estadoPaciente === 'activo',
+  `estado ${estadoPaciente}`,
+);
+
 // 6) La misma franja no se puede ocupar dos veces.
 const duplicated = await call('/api/v1/appointments', {
   method: 'POST',
@@ -203,9 +242,9 @@ check(
 const second = await call('/api/v1/requests', {
   method: 'POST',
   body: JSON.stringify({
-    patientId: patient.id,
-    patientName: patient.fullName,
-    patientDocument: patient.document,
+    patientId: pacienteDePrueba.id,
+    patientName: pacienteDePrueba.fullName,
+    patientDocument: pacienteDePrueba.document,
     channel: 'presencial',
     reason: `${MARK}: limpieza`,
     notes: MARK,
@@ -414,6 +453,14 @@ check(
     (afterCleanup.body?.counts?.notificadas ?? 0) === 0,
   `programadas ${afterCleanup.body?.counts?.programadas}, notificadas ${afterCleanup.body?.counts?.notificadas}`,
 );
+
+// El paciente de la prueba se borra (lógico) para no dejar basura en la ficha.
+if (nuevoPaciente.status === 201 && typeof pacienteDePrueba.id === 'string') {
+  await call(`/api/v1/patients/${pacienteDePrueba.id}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ reason: `${MARK}: limpieza de la prueba` }),
+  });
+}
 
 console.log(
   `\nDía usado: ${day} · solicitud ${created.body?.ticket ?? ''} · cita ${appointmentId}`,
