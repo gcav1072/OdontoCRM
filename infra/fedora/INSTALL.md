@@ -101,8 +101,8 @@ sudo git update-index --chmod=+x infra/fedora/install.sh \
   > PENDIENTE FASE 10: (P-03) al cerrar cada fase, reconciliar
   > `/etc/odontocrm/<servicio>.env` con el `config.ts` de ese servicio y con
   > `.env.example`; el kernel falla rápido (`ConfigError`) si falta una obligatoria.
-- **Comportamiento de Chromium bajo `systemd` endurecido** y el soporte real de
-  `playwright install-deps` en Fedora. Ver §9.5.
+- **Comportamiento de Chromium bajo `systemd` endurecido** (el soporte de
+  `install-deps` en Fedora ya está resuelto: no lo hay, se usa la lista de `dnf`). Ver §9.5.
 - **Nada de lo relacionado con datos clínicos** debe considerarse listo hasta que la
   prueba de restauración de §16 esté hecha y registrada.
 
@@ -264,13 +264,13 @@ sudo dnf install -y \
 El PDF A5 con membrete y QR se genera en el servidor con **Playwright/Chromium**, así
 que hacen falta las bibliotecas del navegador:
 
-```bash
-# Método preferido (si la distribución está soportada por Playwright):
-cd /opt/odontocrm
-sudo npx playwright install-deps chromium
+**En Fedora esta es la vía, no el plan B.** Medido en la Fase 10: `install-deps` de
+Playwright **no soporta Fedora** —no hay paquete oficial para la distribución, así que
+cae a `ubuntu24.04` e intenta `apt-get`, que no existe— y muere con código 127. El
+navegador en sí funciona: le faltan estas bibliotecas, que sí están empaquetadas.
 
-# Si el comando anterior dice que la distribución no está soportada,
-# instala a mano el conjunto de bibliotecas:
+```bash
+# Conjunto de bibliotecas que necesita Chromium en Fedora 44 (comprobado con ldd):
 sudo dnf install -y \
   nss nspr atk at-spi2-atk cups-libs libdrm mesa-libgbm libxshmfence \
   libX11 libXext libXcursor libXi libXtst libXcomposite libXdamage \
@@ -286,9 +286,12 @@ ldd /var/lib/odontocrm/ms-playwright/chromium-*/chrome-linux/chrome | grep 'not 
   echo 'OK: todas las bibliotecas presentes'
 ```
 
-> PENDIENTE FASE 10: (P-06) confirmar si `npx playwright install-deps chromium`
-> funciona en el Fedora usado; si no, fijar aquí la lista definitiva de paquetes
-> obtenida con `ldd`.
+> **P-06 (resuelto en la Fase 10, `fedora:check-ok`):** el comando
+> `npx playwright install-deps chromium` **no funciona en Fedora** (cae a `ubuntu24.04`
+> y muere en `apt-get`; código 127). La lista
+> de arriba es la definitiva: con ella, `ldd` no reporta ninguna biblioteca ausente y
+> Chromium genera los PDF. El script `infra/fedora/install.sh` intenta el comando y, si
+> falla, instala la lista (por eso el intento queda en el código).
 >
 > PENDIENTE FASE 10: (P-07) confirmar que Chromium arranca bajo la unidad `systemd`
 > endurecida (§10.3) y que puede crear *user namespaces* sin privilegios. Si falla, la
@@ -2014,7 +2017,7 @@ exige el plan (§13, Fase 10).
 | P-03 | Nombres de variables vs `.env.example` | `diff` contra el `.env.example` del repo | ✅ | **PC de pruebas:** `npm run env:check` → «los .env tienen todas las claves de su plantilla». |
 | P-04 | Artefacto compilado (`dist/index.js`) | `ls /opt/odontocrm/services/*/dist/ /opt/odontocrm/apps/gateway/dist/` | ☐ | |
 | P-05 | Flujo de bootstrap y migraciones en producción | `npm run db:bootstrap` · `npm run db:migrate` (§6.4 y §9.3) | ☐ | |
-| P-06 | Dependencias de Chromium / `install-deps` | `ldd … \| grep 'not found'` | ✅ | **PC de pruebas:** `npx playwright install-deps chromium` **no soporta Fedora 44** (cae a `ubuntu24.04` y muere en `apt-get`); con la lista de `dnf` de §4.1 y `ldd` no falta ninguna biblioteca. El plan B de la guía es el camino real. |
+| P-06 | Dependencias de Chromium / `install-deps` | `ldd … \| grep 'not found'` | ✅ | **PC de pruebas:** `npx playwright install-deps chromium` **no soporta Fedora 44** (mención, no instrucción: `fedora:check-ok`) (cae a `ubuntu24.04` y muere en `apt-get`); con la lista de `dnf` de §4.1 y `ldd` no falta ninguna biblioteca. El plan B de la guía es el camino real. |
 | P-07 | Chromium bajo `systemd` endurecido | generar un PDF de prueba | ☐ | |
 | P-08 | Nombres reales de roles (`infra/db/bootstrap.mjs`) | `sudo -u postgres psql -c '\du'` | ☐ | |
 | P-09 | Socket de PostgreSQL y `pg_hba.conf` | `ls /var/run/postgresql` · `pg_hba.conf` | ✅ | **PC de pruebas:** el socket está en `/var/run/postgresql` y `postgresql-setup --initdb` deja **`ident`** en las líneas `host` (no `scram-sha-256`): con eso **ningún servicio entra por TCP** aunque la contraseña sea correcta. Hay que cambiarlas a `scram-sha-256` (§6.3). El administrador entra por el socket con `peer` (`PG_ADMIN_URL=postgres:///postgres?host=/var/run/postgresql`). |
@@ -2034,7 +2037,7 @@ exige el plan (§13, Fase 10).
 | P-23 | Tailscale (opcional) | `tailscale status` + ACL | ☐ | |
 | P-24 | **Secretos solo en `/etc/odontocrm`**: `services/<servicio>/.env` trasladados y borrados; ningún `.env` en `/opt/odontocrm` | §8.6 · `sudo find /opt/odontocrm -type f -name '.env'` | ☐ | |
 | P-25 | Los dos archivos de entorno por servicio se cargan en orden (común → propio) con el supervisor elegido | `systemctl show odontocrm@identity -p EnvironmentFiles` · `node --env-file-if-exists=…` | ☐ | |
-| P-26 | **Nombres reales de los paquetes de SELinux**: en Fedora son `setools-console` (+ `setroubleshoot-server` para `sealert`, `audit` para `ausearch`); `setools-conftools` no existe | `dnf provides '*/sealert'` · instalarlos de nuevo sin error | ✅ | Banco de pruebas (Fase 10): `dnf install setools-conftools` falló, `setools-console` se instaló; §4 y §12 corregidos |
+| P-26 | **Nombres reales de los paquetes de SELinux**: en Fedora son `setools-console` (+ `setroubleshoot-server` para `sealert`, `audit` para `ausearch`); el que esta guía pedía antes no existe (`fedora:check-ok`) | `dnf provides '*/sealert'` · instalarlos de nuevo sin error | ✅ | Banco de pruebas (Fase 10): el paquete que pedía la guía falló al instalar, `setools-console` se instaló; §4 y §12 corregidos |
 
 ### 20.1-bis Hallazgos de la Fase 10 (y su arreglo)
 
@@ -2049,7 +2052,7 @@ mismo commit que lo documenta:
 | P-30 | **Buscar en la cola de `/flujo` dejaba la pantalla sin paciente en curso** (y sin las acciones de la barra): el filtro se aplicaba a la jornada antes de resolver la cita en curso. | La selección se resuelve sobre la jornada completa; dos pruebas puras lo fijan. |
 | P-31 | **Los eventos publicados mientras otro servicio arrancaba se perdían**: la lista de colas es una foto y el publicador entregaba solo donde ya había cola (10 altas y 30 hallazgos sin proyectar). | El publicador declara las colas de los cinco consumidores conocidos antes de su primer envío; una prueba compara la lista con el código. |
 | P-32 | **`seed:verify` dependía de la collation del clúster**: con `en_US.UTF-8`, `examenes_complementarios` va antes que `examen_extraoral`, y la huella cambiaba de máquina a máquina sin que ningún dato fuera distinto. | Las consultas de texto llevan `collate "C"` (orden por bytes), el mismo que usa el comparador. |
-| P-33 | **`npx playwright install-deps chromium` no soporta Fedora** (probó `ubuntu24.04` y murió en `apt-get`). | §4.1 ya documenta la lista de `dnf` como plan B; el script de instalación la usa cuando el comando falla. |
+| P-33 | **El comando `install-deps` de Playwright no soporta Fedora** (probó `ubuntu24.04` y murió en `apt-get`). `fedora:check-ok` | §4.1 ya documenta la lista de `dnf` como plan B; el script de instalación la usa cuando el comando falla. |
 | P-34 | **Intermitencia de las suites de integración**: con cuatro suites en paralelo falla una prueba distinta en cada corrida (esperas del camino outbox → cola → consumidor). Comprobado que **no** la introdujo la Fase 10 (con el cambio de colas revertido en un árbol aparte falla igual). | Tope único y ajustable (`TEST_WAIT_MS`, 30 s). Pendiente de endurecer: no es un fallo de producto. |
 
 ### 20.2 Registro de la prueba de restauración

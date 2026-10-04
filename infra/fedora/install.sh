@@ -272,7 +272,9 @@ PKGS_PG=(
 # > PENDIENTE FASE 10: la lista exacta puede variar según la versión de Fedora y
 #   de Playwright. Verificación recomendada tras instalar el navegador:
 #     ldd /var/lib/odontocrm/ms-playwright/chromium-*/chrome-linux/chrome | grep 'not found'
-#   y `npx playwright install-deps chromium` (si la distribución es soportada).
+#   y `npx playwright install-deps chromium` (si la distribución es soportada; en
+#   Fedora NO lo está y se instala la lista de abajo). El intento se deja a propósito.
+#   (fedora:check-ok)
 PKGS_CHROMIUM=(
   nss nspr atk at-spi2-atk cups-libs
   libdrm mesa-libgbm libxshmfence
@@ -609,15 +611,57 @@ EOF
 # servicio de notificaciones moría con `ConfigError: valor no permitido` — y con él la
 # migración. Medido en el ensayo de la Fase 10.
 corregir_valores_obsoletos() {
-  local archivo="/etc/odontocrm/notifications.env"
-  [[ -f "$archivo" ]] || return 0
-  if grep -qE '^TELEGRAM_MODE=polling[[:space:]]*$' "$archivo"; then
+  local archivo
+
+  # 1) notifications.env: TELEGRAM_MODE=polling no es un valor válido.
+  archivo="/etc/odontocrm/notifications.env"
+  if [[ -f "$archivo" ]] && grep -qE '^TELEGRAM_MODE=polling[[:space:]]*$' "$archivo"; then
     if (( APPLY )); then
       sed -i 's|^TELEGRAM_MODE=polling[[:space:]]*$|TELEGRAM_MODE=auto|' "$archivo"
       ok "corregido TELEGRAM_MODE=polling → auto en $archivo (con 'polling' el servicio no arranca)"
     else
       printf '       %s[dry-run] sed -i s/TELEGRAM_MODE=polling/TELEGRAM_MODE=auto/ %s%s\n' "$C_DIM" "$archivo" "$C_RESET"
     fi
+  fi
+
+  # 2) patients/clinical: la variable del almacén se llamaba STORAGE_ROOT, que
+  #    ningún servicio lee; el servicio caía a `./storage/…` sobre /opt (solo
+  #    lectura con ProtectSystem=strict) y moría en bucle. Se renombra conservando
+  #    el valor que hubiera.
+  local almacen="/var/lib/odontocrm/storage"
+  for archivo in /etc/odontocrm/patients.env /etc/odontocrm/clinical.env; do
+    [[ -f "$archivo" ]] || continue
+    if ! grep -qE '^STORAGE_DIR=' "$archivo"; then
+      if grep -qE '^STORAGE_ROOT=' "$archivo"; then
+        (( APPLY )) && sed -i -E "s|^STORAGE_ROOT=(.*)$|STORAGE_DIR=\1|" "$archivo"
+        ok "renombrado STORAGE_ROOT → STORAGE_DIR en $archivo (el servicio lee STORAGE_DIR)"
+      else
+        (( APPLY )) && printf '\nSTORAGE_DIR=%s\n' "$almacen" >>"$archivo"
+        ok "añadido STORAGE_DIR=$almacen en $archivo"
+      fi
+    fi
+    if ! grep -qE '^MAX_FILE_BYTES=' "$archivo"; then
+      (( APPLY )) && printf 'MAX_FILE_BYTES=20971520\n' >>"$archivo"
+      ok "añadido MAX_FILE_BYTES=20971520 (20 MB) en $archivo (STORAGE_MAX_UPLOAD_MB no lo lee nadie)"
+    fi
+    (( APPLY )) && sed -i '/^STORAGE_MAX_UPLOAD_MB=/d' "$archivo" || true
+  done
+
+  # 3) clinical: la URL pública (QR del récipe) tiene que ser la del proxy, no localhost.
+  archivo="/etc/odontocrm/clinical.env"
+  if [[ -f "$archivo" ]] && ! grep -qE '^PUBLIC_APP_URL=' "$archivo"; then
+    local web_origin
+    web_origin="$(sed -n 's/^WEB_ORIGIN=//p' /etc/odontocrm/odontocrm.env | head -1)"
+    (( APPLY )) && printf 'PUBLIC_APP_URL=%s\n' "${web_origin:-https://CAMBIAR_HOST_O_IP_DEL_SERVIDOR}" >>"$archivo"
+    ok "añadido PUBLIC_APP_URL=${web_origin:-CAMBIAR…} en $archivo (lo usa el QR de verificación del récipe)"
+  fi
+
+  # 4) gateway: sin la clave pública del JWT no arranca (su valor por defecto es
+  #    relativo al código, que en producción no tiene las claves).
+  archivo="/etc/odontocrm/gateway.env"
+  if [[ -f "$archivo" ]] && ! grep -qE '^JWT_PUBLIC_KEY_PATH=' "$archivo"; then
+    (( APPLY )) && printf 'JWT_PUBLIC_KEY_PATH=/etc/odontocrm/keys/jwt-public.pem\n' >>"$archivo"
+    ok "añadido JWT_PUBLIC_KEY_PATH en $archivo (sin él el gateway muere con ENOENT)"
   fi
 }
 
@@ -650,10 +694,13 @@ EOF
       patients)
         extra=$(cat <<'EOF'
 # --- Almacenamiento de archivos (abstracción S3-ready, Fase 2/7) -------------
-# > PENDIENTE FASE 10: confirmar los nombres contra services/patients/src/config.ts.
-STORAGE_DRIVER=local
-STORAGE_ROOT=/var/lib/odontocrm/storage
-STORAGE_MAX_UPLOAD_MB=20
+# Los nombres son los que LEE services/patients/src/config.ts. Con STORAGE_DIR mal
+# puesto el servicio cae al valor por defecto (`./storage/patients`, relativo a
+# /opt/odontocrm), que con ProtectSystem=strict es de SOLO LECTURA: el proceso muere
+# al primer archivo y systemd lo reintenta en bucle. Medido en la Fase 10.
+STORAGE_DIR=/var/lib/odontocrm/storage
+# Tamaño máximo por archivo, en BYTES (20 MB).
+MAX_FILE_BYTES=20971520
 EOF
 )
         ;;
@@ -675,13 +722,16 @@ EOF
         extra=$(cat <<'EOF'
 # --- Récipes A5 con Playwright/Chromium (Fase 7) -----------------------------
 # La caché de navegadores va FUERA del HOME y dentro de ReadWritePaths (§10.3).
+# Playwright la usa por sí solo; PDF_CHROMIUM_PATH solo hace falta para apuntar a
+# un Chrome del sistema en vez del navegador de Playwright.
 PLAYWRIGHT_BROWSERS_PATH=/var/lib/odontocrm/ms-playwright
-STORAGE_ROOT=/var/lib/odontocrm/storage
-# > PENDIENTE FASE 10: confirmar contra services/clinical/src/config.ts la ruta
-#   de las plantillas del PDF y las variables del membrete (logo, RIF, MPPS).
-PDF_TEMPLATE_DIR=/opt/odontocrm/services/clinical/templates
-CLINIC_NAME=Consultorio Odontológico
-CLINIC_ADDRESS=Av. Luis del Valle García, C.E. Nueva Esparta, Planta Baja, Local 1-2
+STORAGE_DIR=/var/lib/odontocrm/storage
+# Tamaño máximo por adjunto, en BYTES (20 MB).
+MAX_FILE_BYTES=20971520
+# URL con la que se abre la aplicación: la usa el QR de verificación del récipe
+# (impreso en el papel). Con el valor por defecto apuntaría a `localhost`, que en el
+# móvil del paciente no existe: tiene que ser la del proxy inverso (§13).
+PUBLIC_APP_URL=https://CAMBIAR_HOST_O_IP_DEL_SERVIDOR
 EOF
 )
         ;;
@@ -702,7 +752,14 @@ ${extra}"
   write_if_missing "$ETC_DIR/gateway.env" 0600 \
     "$(env_header gateway)
 
-$(env_service_body gateway "$GATEWAY_DB")"
+$(env_service_body gateway "$GATEWAY_DB")
+
+# --- Verificación del JWT -----------------------------------------------------
+# El gateway valida el token de acceso con la clave PÚBLICA. Su valor por defecto
+# es relativo al código (`./services/identity/.keys/…`), que en producción NO
+# existe: las claves viven en /etc/odontocrm/keys y el código no se escribe. Sin
+# esta línea el gateway muere al arrancar con ENOENT. Medido en la Fase 10.
+JWT_PUBLIC_KEY_PATH=/etc/odontocrm/keys/jwt-public.pem"
 
   # --- Archivo COMÚN de los 9 servicios --------------------------------------
   # Va después para que el resumen de salida lo muestre al final; el orden de
