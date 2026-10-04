@@ -29,7 +29,7 @@
 
 | Comando | Qué hace | Cuándo |
 | :--- | :--- | :--- |
-| `npm run verify` | **Puerta de calidad**: secretos → lint → formato → compilación → pruebas unitarias | Antes de cada commit importante y **siempre** antes de cerrar una fase |
+| `npm run verify` | **Puerta de calidad**: secretos → lint → formato → **tipos (Node y web)** → compilación → pruebas unitarias | Antes de cada commit importante y **siempre** antes de cerrar una fase |
 | `npm run dev` | Compila en vigilancia y arranca gateway + servicios + interfaz (Vite) | Para trabajar con la aplicación abierta |
 | `npm test` | Pruebas unitarias y de contrato (Vitest, sin base de datos) | Mientras se programa: `npm run test:watch` |
 | `npm run test:integration` | Las mismas suites **contra PostgreSQL real** (outbox, colas, sesiones, agenda, pantallas) | Antes de dar algo por terminado |
@@ -88,7 +88,7 @@ powershell -ExecutionPolicy Bypass -File infra/windows/start-services.ps1
 
 | Comando | Qué hace | Notas |
 | :--- | :--- | :--- |
-| `npm run verify` | Encadena `check-secrets`, `lint`, `format:check`, `build` y `test` | El estándar de cierre de fase |
+| `npm run verify` | Encadena `check-secrets`, `lint`, `format:check`, `typecheck`, `build` y `test` | El estándar de cierre de fase |
 | `npm run check-secrets` | Busca secretos en lo que está en *staging* | `-- --all` audita todo el repo |
 | `npm run lint` | ESLint 9 (incluye las reglas anti SQL-injection) | `npx eslint <ruta>` para un archivo |
 | `npm run format` / `format:check` | Prettier: escribe / comprueba | `npx prettier --write <ruta>` para un archivo |

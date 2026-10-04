@@ -81,7 +81,7 @@
     "seed:users": "node --env-file-if-exists=.env --env-file-if-exists=services/identity/.env services/identity/dist/seed.js",
     "seed:demo": "node --env-file-if-exists=.env --env-file-if-exists=services/patients/.env services/patients/dist/seed.js",
     "seed:agenda": "node --env-file-if-exists=.env --env-file-if-exists=services/scheduling/.env services/scheduling/dist/seed.js",
-    "verify": "npm run check-secrets && npm run lint && npm run format:check && npm run build && npm run test"
+    "verify": "npm run check-secrets && npm run lint && npm run format:check && npm run typecheck && npm run build && npm run test"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
