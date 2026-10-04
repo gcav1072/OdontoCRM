@@ -26,6 +26,7 @@ export const SERVICIOS = [
   { name: 'clinical', database: 'odonto_clinical', env: 'services/clinical/.env' },
   { name: 'odontogram', database: 'odonto_odontogram', env: 'services/odontogram/.env' },
   { name: 'notifications', database: 'odonto_notifications', env: 'services/notifications/.env' },
+  { name: 'screens', database: 'odonto_screens', env: 'services/screens/.env' },
   { name: 'identity', database: 'odonto_identity', env: 'services/identity/.env' },
   { name: 'reporting', database: 'odonto_reporting', env: 'services/reporting/.env' },
 ];
