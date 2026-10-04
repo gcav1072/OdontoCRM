@@ -232,10 +232,42 @@ Si el `.env` quedó con una línea de ceros conservada por el bootstrap, se pued
 | `npm run seed:users` | `admin`, `recepcion` y **un odontólogo por cada uno de `CLINIC.dentists`** (`packages/contracts/src/clinic.ts`) con contraseña temporal | `-- --reset` regenera las contraseñas · `-- --print` **recuerda** las claves sin tocar nada |
 | `npm run seed:demo` | Pacientes ficticios deterministas (cédulas 90.000.000+, `is_fictitious`) | `-- --count 5000`, `-- --reset` (borra **solo** lo ficticio) |
 | `npm run seed:agenda` | Solicitudes y citas de ejemplo en el próximo día de consulta | `-- --reset` (las borra) |
+| **`npm run seed:test`** | **Mundo de prueba completo del modo test** (Fase 10): 40 pacientes, sus solicitudes y citas (atendidas, inasistencias, canceladas, reprogramadas y la jornada de hoy), historias firmadas, sesiones cerradas, odontogramas, récipes emitidos, cupos del mes **y los eventos** que alimentan reportes, auditoría y pantallas | `-- --anchor 2026-10-02` fija el día de referencia · `-- --solo clinical` siembra una parte · `-- --dry-run` explica sin tocar nada |
+| **`npm run seed:verify`** | No crea nada: comprueba por **huellas** que lo sembrado es exactamente el mundo | `-- --con-proyeccion` comprueba además el read model de reportes (necesita la pila arriba) |
+| **`npm run seed:reset`** | Borra **solo** el mundo de `seed:test` (pacientes, citas, historias, sesiones, récipes y sus PDF, odontogramas, avisos, proyección, auditoría del seed y sus eventos) | — |
 
 > Los tres `--reset` quitan **solo datos de prueba**: pacientes ficticios, sus citas y las
 > contraseñas. La clínica (historias, sesiones, récipes, odontogramas) y la auditoría se quedan.
 > Para una base limpia de verdad: [`npm run db:reset`](#empezar-de-cero-dbreset).
+
+### El modo test (Fase 10)
+
+`seed:test` es el seed determinista del [ADR 0020](adr/0020-modo-test.md) y **solo corre con el
+modo test activo**:
+
+```bash
+# En el .env de la raíz (nunca en la instalación de la clínica)
+TEST_MODE=true
+ALLOW_TEST_MODE=true
+
+npm run build          # los seeds corren sobre dist/: compila primero
+npm run seed:test      # siembra (repetirlo no duplica: es idempotente)
+npm run seed:verify    # comprueba que lo sembrado es el mundo
+npm run seed:reset     # lo borra y deja las secuencias como estaban
+```
+
+- **Con `NODE_ENV=production` los tres comandos se niegan a correr**, aunque las banderas estén
+  en `true`: es el criterio de aceptación de la fase.
+- Los datos llevan cédulas **90.000.000+**, tickets y récipes del rango reservado **900.000+** y
+  la nota «MODO TEST»; la interfaz pinta el banner rojo y los envíos reales quedan bloqueados.
+- El día de referencia es **hoy** (hora de Venezuela) salvo que se fije con `--anchor`: así la
+  jornada siempre tiene sala de espera y consultorio, y los reportes tienen semanas de historia.
+- **Los eventos se entregan cuando la pila está arriba** (el outbox de cada servicio los publica y
+  los consumidores proyectan). Con la pila parada, `seed:verify` valida las bases operativas pero
+  el read model de reportes queda vacío hasta que arranques.
+
+Los tres comandos anteriores (`seed:users`, `seed:demo`, `seed:agenda`) siguen existiendo y
+**no emiten eventos**: son para poblar a mano. El mundo del modo test es el camino completo.
 
 ### ¿Cuál era la clave del admin?
 

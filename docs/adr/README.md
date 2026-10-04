@@ -50,3 +50,4 @@ Fase 9, y quedan documentadas por la misma razón.
 | [0039](0039-reportes-clinicos-con-permiso-propio.md) | Los reportes clínicos exigen un permiso propio (`reports:clinical`) | aceptada (fase 9) |
 | [0040](0040-refresco-del-read-model-de-reportes.md) | El read model de reportes se refresca al cerrar el lote y de noche | aceptada (fase 9) |
 | [0041](0041-el-evento-lleva-lo-que-el-consumidor-necesita.md) | Un evento de dominio lleva lo que su consumidor necesita (bloques `patient`, `profile` y `session`) | aceptada (fase 9) |
+| [0042](0042-el-seed-escribe-filas-y-eventos.md) | El seed del modo test escribe las filas y los eventos, con identificadores derivados de la semilla | aceptada (fase 10) |
