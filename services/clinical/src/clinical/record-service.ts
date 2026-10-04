@@ -33,6 +33,24 @@ type SectionsMap = Partial<Record<ClinicalSectionKey, Record<string, unknown>>>;
 
 const iso = (value: Date | null): string | null => (value === null ? null : value.toISOString());
 
+/**
+ * Bloque `profile` del evento: lo que el **read model de reportes** (Fase 9)
+ * necesita para el perfil clínico agregado (diabéticos, hipertensos, alérgicos,
+ * anticoagulados…), sin tener que reconstruir la anamnesis por su cuenta.
+ *
+ * Los códigos son los mismos que ya usa la pantalla del consultorio
+ * (`clinicalAlerts`, ADR 0035): una sola definición de «qué es un crónico».
+ */
+const profileOf = (
+  record: Pick<MedicalRecordRow, 'id' | 'patientId' | 'status'>,
+  sections: SectionsMap,
+): Record<string, unknown> => ({
+  patientId: record.patientId,
+  recordId: record.id,
+  recordStatus: record.status,
+  alertCodes: clinicalAlerts(sections).map((alert) => alert.code),
+});
+
 /* ── Lectura ───────────────────────────────────────────────────────────────── */
 
 export const findRecordByPatient = async (
@@ -210,15 +228,20 @@ export const openRecord = async (
         topic: EVENT_TOPICS.recordCreated,
         aggregateId: row.id,
         actor,
-        payload: auditPayload({
-          entityId: row.id,
-          action: 'medical_record_created',
-          summary: 'Historia clínica abierta',
-          changedFields: ['status'],
-          after: { patientId, status: 'borrador' },
-          reason: 'primera visita',
-          actor,
-        }),
+        payload: {
+          ...auditPayload({
+            entityId: row.id,
+            action: 'medical_record_created',
+            summary: 'Historia clínica abierta',
+            changedFields: ['status'],
+            after: { patientId, status: 'borrador' },
+            reason: 'primera visita',
+            actor,
+          }),
+          // La historia nace sin anamnesis: el perfil arranca vacío y se llena
+          // con los guardados de la sección (Fase 9).
+          profile: profileOf(row, {}),
+        },
       });
 
       return row;
@@ -285,6 +308,12 @@ export const saveSection = async (
     return buildDetail(db, record);
   }
 
+  // El perfil clínico se calcula con **todas** las secciones: la anamnesis puede
+  // venir de este guardado y el resto de los anteriores (Fase 9).
+  const sections: SectionsMap = {};
+  for (const row of previousRows) sections[row.sectionKey as ClinicalSectionKey] = row.content;
+  sections[sectionKey] = clean;
+
   const updated = await db.transaction(async (tx) => {
     await tx
       .insert(medicalRecordSections)
@@ -306,16 +335,22 @@ export const saveSection = async (
       topic: EVENT_TOPICS.recordUpdated,
       aggregateId: recordId,
       actor,
-      payload: auditPayload({
-        entityId: recordId,
-        action: 'medical_record_updated',
-        summary: `Historia clínica: sección «${sectionKey}» actualizada`,
-        changedFields,
-        before: previous ?? null,
-        after: clean,
-        reason: null,
-        actor,
-      }),
+      payload: {
+        ...auditPayload({
+          entityId: recordId,
+          action: 'medical_record_updated',
+          summary: `Historia clínica: sección «${sectionKey}» actualizada`,
+          changedFields,
+          before: previous ?? null,
+          after: clean,
+          reason: null,
+          actor,
+        }),
+        // Qué sección se tocó (la auditoría y el read model lo agradecen: el
+        // `after` solo trae el contenido, sin decir de qué parte es).
+        sectionKey,
+        profile: profileOf(row, sections),
+      },
     });
 
     return row;
@@ -459,16 +494,21 @@ export const signRecord = async (
       topic: EVENT_TOPICS.recordSigned,
       aggregateId: recordId,
       actor,
-      payload: auditPayload({
-        entityId: recordId,
-        action: 'medical_record_signed',
-        summary: 'Historia clínica firmada',
-        changedFields: ['status'],
-        before: { status: 'borrador' },
-        after: { status: 'firmada' },
-        reason: null,
-        actor,
-      }),
+      payload: {
+        ...auditPayload({
+          entityId: recordId,
+          action: 'medical_record_signed',
+          summary: 'Historia clínica firmada',
+          changedFields: ['status'],
+          before: { status: 'borrador' },
+          after: { status: 'firmada' },
+          reason: null,
+          actor,
+        }),
+        // Al firmar, el perfil clínico queda congelado con lo que dice el
+        // documento: es el dato que alimenta el reporte de crónicos (Fase 9).
+        profile: profileOf({ ...row, status: 'firmada' }, sections),
+      },
     });
 
     return row;
