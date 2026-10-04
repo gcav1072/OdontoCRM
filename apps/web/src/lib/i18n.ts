@@ -1654,6 +1654,7 @@ const DICCIONARIO = {
   'clinica.primeraVisita.titulo': 'Primera visita del paciente',
   'clinica.primeraVisita.texto': 'Primera visita del paciente, se debe llenar su historia clínica.',
   'clinica.primeraVisita.abrir': 'Abrir historia clínica',
+  'clinica.primeraVisita.irHistoria': 'Llenar la historia clínica',
 
   'clinica.paciente.desconocido': 'Paciente',
   'clinica.paciente.sinFicha':

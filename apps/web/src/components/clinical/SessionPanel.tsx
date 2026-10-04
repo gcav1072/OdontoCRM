@@ -1,4 +1,4 @@
-﻿import {
+import {
   clinicalSessionHasContent,
   sessionProcedureText,
   type AppointmentSummary,
@@ -252,10 +252,23 @@ export const SessionPanel = ({
   /**
    * Cerrar la sesión. Si el doctor dijo que sí al récipe, al terminar se abre el
    * editor: la sesión ya está cerrada (el récipe cuelga de ella y no la reabre).
+   *
+   * Antes de cerrar se guarda lo que quede pendiente: el cierre es inmutable y el
+   * autoguardado espera 1,2 s desde la última tecla, así que cerrar sin guardar
+   * —con el botón o con `F8`— perdería lo último escrito.
    */
   const cerrar = useMutation({
-    mutationFn: (values: { closureNote: string | null }) =>
-      clinicalApi.closeSession(sessionId ?? '', { confirm: true, closureNote: values.closureNote }),
+    mutationFn: async (values: { closureNote: string | null }) => {
+      if (sessionId !== null && JSON.stringify(contenido) !== ultimoEnviado.current) {
+        const guardada = await clinicalApi.saveSession(sessionId, contenido);
+        ultimoEnviado.current = JSON.stringify(guardada.content);
+        setGuardado('guardado');
+      }
+      return clinicalApi.closeSession(sessionId ?? '', {
+        confirm: true,
+        closureNote: values.closureNote,
+      });
+    },
     onSuccess: () => {
       setDialogo(recipeAlCerrar ? 'recipe' : null);
       setRecipeAlCerrar(false);
