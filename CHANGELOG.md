@@ -4,6 +4,21 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fedora] — Los paquetes de SELinux se llaman como son · 2026-10-04
+
+### Corregido
+
+- **`setools-conftools` no existe en Fedora.** La guía de instalación (§4 y §12) y `install.sh`
+  pedían ese paquete, que `dnf` rechaza con «no hay coincidencias». El paquete real es
+  **`setools-console`**, y las herramientas que la guía le atribuía vienen de otros sitios:
+  `sealert` de **`setroubleshoot-server`**, `audit2why` de **`policycoreutils-python-utils`** y
+  `ausearch` de **`audit`** —los tres añadidos a la lista de paquetes base—. Lo destapó la primera
+  instalación en el Fedora del banco de pruebas y queda anotado como **P-26** en el registro de la
+  Fase 10.
+- La tabla de paquetes de §4 ahora dice **qué trae cada uno** y añade el recurso para no volver a
+  tropezar: `dnf provides '*/<comando>'` dice a qué paquete pertenece una herramienta antes de darla
+  por perdida.
+
 ## [Fase 9] — Reportes, KPIs y auditoría · 2026-10-04 · tag `fase-9`
 
 ### Añadido

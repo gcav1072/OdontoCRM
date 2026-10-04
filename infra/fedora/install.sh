@@ -259,7 +259,10 @@ PKGS_BASE=(
   git tar gzip xz zstd rsync curl ca-certificates
   logrotate chrony
   firewalld
-  policycoreutils-python-utils setools-conftools
+  # SELinux: `semanage`/`restorecon` y `audit2why` vienen en policycoreutils-python-utils,
+  # `sesearch`/`seinfo` en setools-console, `sealert` en setroubleshoot-server y
+  # `ausearch` en audit. El nombre `setools-conftools` que traía la guía no existe en Fedora.
+  policycoreutils-python-utils setools-console setroubleshoot-server audit
 )
 PKGS_PG=(
   "postgresql${PG_MAJOR}-server"

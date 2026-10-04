@@ -231,7 +231,7 @@ Instalación manual (equivalente a lo que hace `install.sh`):
 sudo dnf install -y \
   git tar gzip xz zstd rsync curl ca-certificates \
   logrotate chrony firewalld \
-  policycoreutils-python-utils setools-conftools \
+  policycoreutils-python-utils setools-console setroubleshoot-server audit \
   postgresql18-server postgresql18-contrib
 ```
 
@@ -240,12 +240,22 @@ sudo dnf install -y \
 | `postgresql18-server` | Motor de base de datos (misma versión mayor que desarrollo). |
 | `postgresql18-contrib` | Extensiones (`pgcrypto`, `pg_trgm`) y utilidades; `pg_dump`/`pg_restore`. |
 | `firewalld` | Cortafuegos: solo el puerto del proxy a la LAN. |
-| `policycoreutils-python-utils` | `semanage`, `restorecon` (contextos SELinux). |
-| `setools-conftools` | `sealert`, `audit2why` (diagnóstico SELinux). |
+| `policycoreutils-python-utils` | `semanage` y `restorecon` (contextos SELinux) y `audit2why` (leer un rechazo). |
+| `setools-console` | `sesearch`, `seinfo`, `sediff`: consultar la política cuando SELinux bloquea algo. |
+| `setroubleshoot-server` | `sealert`, que resume en lenguaje llano los rechazos del registro de auditoría. |
+| `audit` | `ausearch`: buscar los rechazos AVC en `/var/log/audit/audit.log`. |
 | `git` | Clonar el repositorio en `/opt/odontocrm`. |
 | `logrotate` | Rotación de `/var/log/odontocrm/*.log`. |
 | `chrony` | Hora correcta (afecta a tickets, citas y JWT). |
 | `tar`, `gzip`, `xz`, `zstd`, `rsync` | Respaldos, copias externas y compresión. |
+
+> **Ojo con los nombres (corregido en la Fase 10):** esta guía pedía `setools-conftools`, que
+> **no existe en Fedora**; el paquete es `setools-console`. Y las herramientas que se le
+> atribuían vienen de otro sitio: `sealert` es de `setroubleshoot-server`, `audit2why` de
+> `policycoreutils-python-utils` y `ausearch` de `audit`. Si `dnf` se queja de un paquete que
+> no encuentra, comprueba el nombre con `dnf provides '*/<comando>'` antes de dar el paso por
+> perdido.
+
 
 ### 4.1 Dependencias de Chromium (PDF de récipes, Fase 7)
 
@@ -1077,7 +1087,7 @@ curl -m 5 http://<IP_DEL_SERVIDOR>:5432
 
 ```bash
 getenforce                 # debe decir Enforcing
-sudo dnf install -y policycoreutils-python-utils setools-conftools
+sudo dnf install -y policycoreutils-python-utils setools-console setroubleshoot-server audit
 ```
 
 ### 12.1 Contextos necesarios
@@ -1839,6 +1849,7 @@ exige el plan (§13, Fase 10).
 | P-23 | Tailscale (opcional) | `tailscale status` + ACL | ☐ | |
 | P-24 | **Secretos solo en `/etc/odontocrm`**: `services/<servicio>/.env` trasladados y borrados; ningún `.env` en `/opt/odontocrm` | §8.6 · `sudo find /opt/odontocrm -type f -name '.env'` | ☐ | |
 | P-25 | Los dos archivos de entorno por servicio se cargan en orden (común → propio) con el supervisor elegido | `systemctl show odontocrm@identity -p EnvironmentFiles` · `node --env-file-if-exists=…` | ☐ | |
+| P-26 | **Nombres reales de los paquetes de SELinux**: en Fedora son `setools-console` (+ `setroubleshoot-server` para `sealert`, `audit` para `ausearch`); `setools-conftools` no existe | `dnf provides '*/sealert'` · instalarlos de nuevo sin error | ✅ | Banco de pruebas (Fase 10): `dnf install setools-conftools` falló, `setools-console` se instaló; §4 y §12 corregidos |
 
 ### 20.2 Registro de la prueba de restauración
 
