@@ -42,3 +42,27 @@ export const parseQuery = <TSchema extends z.ZodType>(
   value: unknown,
   message = 'Los filtros de la consulta no son válidos',
 ): z.infer<TSchema> => parseOrThrow(schema, value, message);
+
+/**
+ * Valor de un campo de texto que llega en un `multipart/form-data`.
+ *
+ * Con `attachFieldsToBody: true`, `@fastify/multipart` deja **cada campo como un
+ * objeto** (`{ fieldname, value, … }`) y solo el archivo es un `MultipartFile`. Pasar
+ * esos objetos al esquema de Zod falla con «se esperaba string, se recibió object»,
+ * así que aquí se saca el valor de dentro. Los campos vacíos devuelven `undefined`
+ * —«no vino», que es distinto de la cadena vacía— para que el esquema aplique su
+ * valor por defecto.
+ *
+ * Existe porque la subida de archivos del paciente estuvo enviando los objetos tal
+ * cual y **nunca funcionó por HTTP** (la prueba de integración llamaba al servicio
+ * directamente y por eso no lo vio): cualquier ruta con `multipart` tiene que pasar
+ * sus campos por aquí.
+ */
+export const multipartFieldValue = (field: unknown): unknown => {
+  if (field === null || field === undefined) return undefined;
+  if (typeof field === 'object' && 'value' in field) {
+    const value = (field as { value?: unknown }).value;
+    return value === '' ? undefined : value;
+  }
+  return field === '' ? undefined : field;
+};
