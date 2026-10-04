@@ -865,24 +865,21 @@ export const handleInbound = async (
   }
 };
 
-/** ¿Tiene ya una solicitud en curso? Devuelve el ticket si la tiene. */
-const hasActiveRequest = async (
-  services: AsistenteServices,
-  conversation: BotConversationRow,
-): Promise<string | null> => {
-  if (conversation.lastTicket === null) return null;
-  const ticket = formatTicket(conversation.lastTicket).value;
-  const found = await services.clients.findRequestByTicket(ticket);
-  if (found === null) return null;
-  if (
-    found.status === 'cancelada' ||
-    found.status === 'atendido' ||
-    found.status === 'no_asistio'
-  ) {
-    return null;
-  }
-  return found.ticket;
-};
+/** ¿Tiene ya una solicitud en curso? Devuelve el ticket si la tiene. */ const hasActiveRequest =
+  async (services: AsistenteServices, conversation: BotConversationRow): Promise<string | null> => {
+    if (conversation.lastTicket === null) return null;
+    const ticket = formatTicket(conversation.lastTicket).value;
+    const found = await services.clients.findRequestByTicket(ticket);
+    if (found === null) return null;
+    if (
+      found.status === 'cancelada' ||
+      found.status === 'atendido' ||
+      found.status === 'no_asistio'
+    ) {
+      return null;
+    }
+    return found.ticket;
+  };
 
 /** Vinculación por código: `t.me/<bot>?start=<código>` en Telegram. */
 const linkByCode = async (
@@ -928,4 +925,54 @@ const linkByCode = async (
     'Listo: quedaste vinculado con tu ficha del consultorio. Te avisaré por aquí cuando tu cita esté confirmada.',
   );
   return true;
+};
+
+/* ── Cuando algo de fuera falla ────────────────────────────────────────────── */
+
+/** Pasos del guion que se pueden volver a pedir tal cual. */
+const PASOS_REPETIBLES = new Set([
+  'nombre',
+  'documento',
+  'telefono',
+  'nacimiento',
+  'sexo',
+  'motivo',
+]);
+
+/**
+ * El paciente **nunca se queda sin respuesta**.
+ *
+ * El asistente habla con otros servicios (pacientes y agenda) y con la base; si uno
+ * falla —un servicio reiniciándose, por ejemplo— el error subía hasta el bucle del
+ * canal y ahí se quedaba: el mensaje se registraba en el log y la persona no recibía
+ * nada, sin saber si esperar o volver a escribir. Pasó de verdad el 2026-10-04, con
+ * `ECONNREFUSED 127.0.0.1:4002` a mitad del paso del documento.
+ *
+ * Ahora se avisa y se repite el paso: la conversación está en la base y el mensaje
+ * se puede reenviar tal cual. El error sigue subiendo (el llamador lo registra) para
+ * que nadie lo confunda con un éxito.
+ */
+export const avisarFalloAlPaciente = async (
+  services: AsistenteServices,
+  entrante: InboundMessage,
+): Promise<void> => {
+  const conversacion: Conversacion = { canal: entrante.canal, direccion: entrante.direccion };
+
+  const conversation = await loadConversation(
+    services.db,
+    entrante.canal,
+    entrante.direccion,
+    entrante.usuario,
+  );
+
+  await reply(services, conversacion, 'servicio_no_disponible');
+
+  // Si estaba rellenando un paso, se le vuelve a pedir para que sepa qué escribir.
+  if (PASOS_REPETIBLES.has(conversation.state)) {
+    await askStep(
+      services,
+      conversacion,
+      conversation.state as 'nombre' | 'documento' | 'telefono' | 'nacimiento' | 'sexo' | 'motivo',
+    );
+  }
 };

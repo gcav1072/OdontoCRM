@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createAdapterRegistry, type AdapterRegistry } from './canales/adaptador.js';
 import { createSimulatedAdapter, type SimulatedAdapter } from './canales/simulado.js';
-import { handleInbound, loadConversation } from './core/asistente.js';
+import { avisarFalloAlPaciente, handleInbound, loadConversation } from './core/asistente.js';
 import { handleDomainEvent } from './consumer.js';
 import { loadNotificationsConfig, type NotificationsConfig } from './config.js';
 import { createNotificationsDatabase } from './db/client.js';
@@ -208,6 +208,54 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     await stopBoss(boss).catch(() => undefined);
     await handle.close();
   });
+
+  it('si un servicio interno se cae, el paciente recibe aviso y sigue en su paso', async () => {
+    const direccion = `${direccionBase}9`;
+    await enviar(telegram, { direccion, texto: 'quiero una cita' });
+    await enviar(telegram, { direccion, texto: 'Gabriel Astudillo' });
+    await enviar(telegram, { direccion, accion: 'doc:V' });
+
+    // El servicio de pacientes se está reiniciando: nadie escucha en su puerto.
+    const original = clients.findPatientByDocument;
+    const rechazo = new TypeError('fetch failed');
+    (rechazo as { cause?: unknown }).cause = { code: 'ECONNREFUSED' };
+    clients.findPatientByDocument = async () => {
+      throw rechazo;
+    };
+
+    const entrante: InboundMessage = {
+      canal: 'telegram',
+      direccion,
+      usuario: 'paciente-de-prueba',
+      texto: '28139170',
+      accion: null,
+      eventoId: evento(900_000 + contador),
+      recibidoEn: new Date().toISOString(),
+    };
+
+    try {
+      // El fallo sigue subiendo: el bucle del canal tiene que enterarse y registrarlo.
+      await expect(enviar(telegram, { direccion, texto: '28139170' })).rejects.toBeInstanceOf(
+        TypeError,
+      );
+    } finally {
+      clients.findPatientByDocument = original;
+    }
+
+    // Y el paciente no se queda sin respuesta: se le avisa y se le repite el paso.
+    await avisarFalloAlPaciente(services, entrante);
+
+    const respuestas = telegram.sent
+      .filter((mensaje) => mensaje.direccion === direccion)
+      .map((mensaje) => mensaje.texto);
+    expect(respuestas.join('\n')).toContain('no puedo consultar el sistema');
+    expect(respuestas.at(-1)).toContain('documento');
+
+    // La conversación no se movió: reenviar el número la retoma donde estaba.
+    const conversation = await loadConversation(handle.db, 'telegram', direccion, null);
+    expect(conversation.state).toBe('documento');
+    expect(conversation.draft.docType).toBe('V');
+  }, 60_000);
 
   it('el asistente recorre los 7 pasos por Telegram y entrega el ticket', async () => {
     const direccion = direccionBase;

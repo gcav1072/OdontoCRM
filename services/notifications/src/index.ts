@@ -13,7 +13,7 @@ import { startServer } from '@odontocrm/kernel';
 import { createChannelAdapters } from './canales/index.js';
 import { loadNotificationsConfig } from './config.js';
 import { handleDomainEvent, publishMessageEvent } from './consumer.js';
-import { handleInbound } from './core/asistente.js';
+import { avisarFalloAlPaciente, handleInbound } from './core/asistente.js';
 import { createNotificationsDatabase } from './db/client.js';
 import { createInternalClients } from './internal-client.js';
 import { ensureDefaultTemplates, processQueue } from './messaging.js';
@@ -175,6 +175,17 @@ const main = async (): Promise<void> => {
     } catch (error) {
       services.lastError = error instanceof Error ? error.message : String(error);
       app.log.error({ err: error, canal: entrante.canal }, 'Fallo al procesar un mensaje');
+
+      // Nada de silencio: si el paso falló por algo de fuera (un servicio interno
+      // caído, la base), el paciente recibe un aviso y se le repite el paso.
+      try {
+        await avisarFalloAlPaciente(asistente, entrante);
+      } catch (falloDelAviso) {
+        app.log.error(
+          { err: falloDelAviso, canal: entrante.canal },
+          'Tampoco se pudo avisar al paciente del fallo',
+        );
+      }
     }
   });
 

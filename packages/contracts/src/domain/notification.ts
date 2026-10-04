@@ -188,6 +188,7 @@ export const NOTIFICATION_TEMPLATE_KEYS = [
   'estado_solicitud',
   'documento_duplicado',
   'manual_pendiente',
+  'servicio_no_disponible',
 ] as const;
 export type NotificationTemplateKey = (typeof NOTIFICATION_TEMPLATE_KEYS)[number];
 
@@ -363,6 +364,16 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
       'Llamar a {paciente} ({telefono}) para avisar de su cita del {fecha} a las {hora} en {lugar}.\n' +
       'Guion: «Buenos días, le habla el consultorio de la Dra. Gómez para confirmar su cita…».',
     placeholders: ['paciente', 'telefono', 'fecha', 'hora', 'lugar'],
+  },
+  {
+    key: 'servicio_no_disponible',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Perdona: ahora mismo no puedo consultar el sistema del consultorio. ' +
+      'Espera unos segundos y vuelve a escribirme lo mismo, por favor. ' +
+      'Tu solicitud no se ha perdido: seguimos en el mismo paso.',
+    placeholders: [],
   },
 ];
 

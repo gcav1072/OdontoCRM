@@ -59,6 +59,74 @@ export class InternalRequestError extends Error {
   }
 }
 
+/**
+ * ¿La petición **no llegó a salir** del proceso? `ECONNREFUSED` es lo que devuelve
+ * `fetch` cuando el servicio está reiniciándose (o arrancando): nadie escuchaba en
+ * el puerto, así que la operación no se ejecutó y repetirla es seguro **incluso si
+ * es una escritura**.
+ *
+ * `ECONNRESET` y los tiempos de espera quedan fuera a propósito: ahí la petición
+ * pudo llegar y no se sabe si el servidor la aplicó, así que una escritura no se
+ * repite (crearía dos tickets).
+ */
+const noLlegoAlServicio = (error: unknown): boolean => {
+  const causa = (error as { cause?: { code?: string } } | null | undefined)?.cause;
+  return causa?.code === 'ECONNREFUSED';
+};
+
+/** Fallo pasajero del otro lado (5xx o límite de peticiones): vale reintentar. */
+const falloPasajero = (error: unknown): boolean =>
+  error instanceof InternalRequestError && (error.status >= 500 || error.status === 429);
+
+const esperar = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+interface RetryOptions {
+  intentos: number;
+  esperaMs: number;
+  /** Solo se reintenta si la petición no llegó a salir (escrituras). */
+  soloSiNoLlego?: boolean;
+}
+
+/**
+ * Repite una operación interna con una espera creciente.
+ *
+ * Existe por un caso real: el bot de Telegram falló a mitad del asistente con
+ * `ECONNREFUSED 127.0.0.1:4002` porque el servicio de pacientes se estaba
+ * reiniciando; el paciente se quedó sin respuesta. Un reintento de menos de un
+ * segundo habría bastado.
+ */
+const conReintentos = async <T>(operacion: () => Promise<T>, options: RetryOptions): Promise<T> => {
+  let ultimo: unknown;
+
+  for (let intento = 1; intento <= options.intentos; intento += 1) {
+    try {
+      return await operacion();
+    } catch (error) {
+      ultimo = error;
+      const valeReintentar =
+        options.soloSiNoLlego === true
+          ? noLlegoAlServicio(error)
+          : noLlegoAlServicio(error) || falloPasajero(error);
+      if (!valeReintentar || intento === options.intentos) break;
+      await esperar(options.esperaMs * intento);
+    }
+  }
+
+  throw ultimo;
+};
+
+/** Lecturas internas: se pueden repetir sin cuidado (son idempotentes). */
+const LECTURA: RetryOptions = { intentos: 3, esperaMs: 250 };
+/**
+ * Escrituras internas: solo se repiten si el servicio ni siquiera contestó. Si
+ * respondió con un error o se cortó a medias, la respuesta se devuelve tal cual
+ * (el asistente ya avisa al paciente y conserva la conversación).
+ */
+const ESCRITURA: RetryOptions = { intentos: 3, esperaMs: 250, soloSiNoLlego: true };
+
 const request = async <T>(
   config: NotificationsConfig,
   base: string,
@@ -95,87 +163,101 @@ const request = async <T>(
 };
 
 export const createInternalClients = (config: NotificationsConfig): InternalClients => ({
-  upsertPatient: async (input) => {
-    const result = await request<{
-      created: boolean;
-      patient: { id: string; fullName: string; document: string };
-    }>(config, config.PATIENTS_URL, '/internal/v1/patients/upsert-by-cedula', {
-      method: 'POST',
-      body: {
-        docType: input.docType,
-        docNumber: input.docNumber,
-        fullName: input.fullName,
-        birthDate: input.birthDate,
-        sex: input.sex,
-        phone: input.phone,
-        ...(input.guardian === undefined ? {} : { guardian: input.guardian }),
-        channel: input.channel,
-        reason: input.reason,
-      },
-    });
-    return { created: result.created, patient: result.patient };
-  },
+  upsertPatient: async (input) =>
+    conReintentos(async () => {
+      const result = await request<{
+        created: boolean;
+        patient: { id: string; fullName: string; document: string };
+      }>(config, config.PATIENTS_URL, '/internal/v1/patients/upsert-by-cedula', {
+        method: 'POST',
+        body: {
+          docType: input.docType,
+          docNumber: input.docNumber,
+          fullName: input.fullName,
+          birthDate: input.birthDate,
+          sex: input.sex,
+          phone: input.phone,
+          ...(input.guardian === undefined ? {} : { guardian: input.guardian }),
+          channel: input.channel,
+          reason: input.reason,
+        },
+      });
+      return { created: result.created, patient: result.patient };
+    }, ESCRITURA),
 
   createRequest: async (input) =>
-    request<RequestSummary>(config, config.SCHEDULING_URL, '/internal/v1/requests', {
-      method: 'POST',
-      body: { ...input, source: 'telegram' },
-    }),
+    conReintentos(
+      () =>
+        request<RequestSummary>(config, config.SCHEDULING_URL, '/internal/v1/requests', {
+          method: 'POST',
+          body: { ...input, source: 'telegram' },
+        }),
+      ESCRITURA,
+    ),
 
-  findPatientByDocument: async (docType, docNumber) => {
-    try {
-      return await request<{
-        id: string;
-        fullName: string;
-        docType: string;
-        docNumber: string;
-        document: string;
-        phone: string;
-        birthDate: string;
-        sex: string;
-      }>(
-        config,
-        config.PATIENTS_URL,
-        `/internal/v1/patients/by-document/${encodeURIComponent(docType)}/${encodeURIComponent(docNumber)}`,
-        { method: 'GET' },
-      );
-    } catch (error) {
-      if (error instanceof InternalRequestError && error.status === 404) return null;
-      throw error;
-    }
-  },
+  findPatientByDocument: async (docType, docNumber) =>
+    conReintentos(async () => {
+      try {
+        return await request<{
+          id: string;
+          fullName: string;
+          docType: string;
+          docNumber: string;
+          document: string;
+          phone: string;
+          birthDate: string;
+          sex: string;
+        }>(
+          config,
+          config.PATIENTS_URL,
+          `/internal/v1/patients/by-document/${encodeURIComponent(docType)}/${encodeURIComponent(docNumber)}`,
+          { method: 'GET' },
+        );
+      } catch (error) {
+        if (error instanceof InternalRequestError && error.status === 404) return null;
+        throw error;
+      }
+    }, LECTURA),
 
-  findRequestByTicket: async (ticket) => {
-    try {
-      return await request<RequestSummary>(
-        config,
-        config.SCHEDULING_URL,
-        `/internal/v1/requests/by-ticket/${encodeURIComponent(ticket)}`,
-        { method: 'GET' },
-      );
-    } catch (error) {
-      if (error instanceof InternalRequestError && error.status === 404) return null;
-      throw error;
-    }
-  },
+  findRequestByTicket: async (ticket) =>
+    conReintentos(async () => {
+      try {
+        return await request<RequestSummary>(
+          config,
+          config.SCHEDULING_URL,
+          `/internal/v1/requests/by-ticket/${encodeURIComponent(ticket)}`,
+          { method: 'GET' },
+        );
+      } catch (error) {
+        if (error instanceof InternalRequestError && error.status === 404) return null;
+        throw error;
+      }
+    }, LECTURA),
 
   cancelRequest: async (id, reason) =>
-    request<RequestSummary>(config, config.SCHEDULING_URL, `/internal/v1/requests/${id}/cancel`, {
-      method: 'POST',
-      body: { reason },
-    }),
+    conReintentos(
+      () =>
+        request<RequestSummary>(
+          config,
+          config.SCHEDULING_URL,
+          `/internal/v1/requests/${id}/cancel`,
+          { method: 'POST', body: { reason } },
+        ),
+      ESCRITURA,
+    ),
 
-  getAppointment: async (id) => {
-    try {
-      return await request<AppointmentSummary>(
-        config,
-        config.SCHEDULING_URL,
-        `/internal/v1/appointments/${id}`,
-        { method: 'GET' },
-      );
-    } catch (error) {
-      if (error instanceof InternalRequestError && error.status === 404) return null;
-      throw error;
-    }
-  },
+  getAppointment: async (id) =>
+    conReintentos(async () => {
+      try {
+        return await request<AppointmentSummary>(
+          config,
+          config.SCHEDULING_URL,
+          `/internal/v1/appointments/${id}`,
+          { method: 'GET' },
+        );
+      } catch (error) {
+        if (error instanceof InternalRequestError && error.status === 404) return null;
+        throw error;
+      }
+    }, LECTURA),
 });

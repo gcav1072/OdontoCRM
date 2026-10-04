@@ -1179,6 +1179,7 @@ const DICCIONARIO = {
   'notificaciones.plantilla.cita_cancelada': 'Cita cancelada',
   'notificaciones.plantilla.estado_solicitud': 'Estado de la solicitud',
   'notificaciones.plantilla.manual_pendiente': 'Aviso manual pendiente',
+  'notificaciones.plantilla.servicio_no_disponible': 'Sistema no disponible',
 
   // Vinculación de pacientes
   'notificaciones.canales.titulo': 'Vinculación de pacientes',
@@ -2374,6 +2375,7 @@ const NOMBRES_PLANTILLA: Readonly<Record<string, string>> = {
   cita_cancelada: t('notificaciones.plantilla.cita_cancelada'),
   estado_solicitud: t('notificaciones.plantilla.estado_solicitud'),
   manual_pendiente: t('notificaciones.plantilla.manual_pendiente'),
+  servicio_no_disponible: t('notificaciones.plantilla.servicio_no_disponible'),
 };
 
 export const templateName = (key: string): string => {
