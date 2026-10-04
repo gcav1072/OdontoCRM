@@ -1,6 +1,6 @@
 import { PgBoss } from 'pg-boss';
 
-import { DOMAIN_EVENTS_QUEUE, SERVICE_NAMES, type DomainEvent } from '@odontocrm/events';
+import { DOMAIN_EVENTS_QUEUE, type DomainEvent } from '@odontocrm/events';
 
 export { DOMAIN_EVENTS_QUEUE };
 export type { DomainEvent };
@@ -57,12 +57,22 @@ export const ensureDomainEventsQueue = async (
 export const consumerQueueName = (service: string): string => `${DOMAIN_EVENTS_QUEUE}.${service}`;
 
 /**
- * Servicios que consumen eventos (todos menos el gateway, que es solo borde).
- * Se derivan del catálogo para que añadir un consumidor no se olvide aquí.
+ * Servicios que **consumen** eventos: los que registran un manejador de la cola
+ * (`registerDomainEventHandler`). Son cinco; `scheduling`, `clinical` y
+ * `odontogram` solo publican, y el gateway es borde puro.
+ *
+ * La lista tiene que ser exacta en los dos sentidos: si falta un consumidor, sus
+ * eventos se pierden cuando la pila arranca desordenada; si sobra uno, se le crea
+ * una cola que nadie trabaja y el tablero de estado la denuncia para siempre. Hay
+ * una prueba que la compara con el código de los servicios (`boss.test.ts`).
  */
-export const EVENT_CONSUMERS: readonly string[] = SERVICE_NAMES.filter(
-  (name) => name !== 'gateway',
-);
+export const EVENT_CONSUMERS: readonly string[] = [
+  'identity',
+  'patients',
+  'notifications',
+  'screens',
+  'reporting',
+];
 
 /**
  * Declara **todas** las colas de consumidores antes de publicar.
