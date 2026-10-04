@@ -19,12 +19,32 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 
+import { bloqueoVigente } from './lib/mantenimiento.mjs';
 import { PUERTOS, cuando, esperarLibre, matar, retratoDeLaPila } from './lib/stack.mjs';
 
 const accion = process.argv[2] ?? 'status';
 const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const linea = (texto) => console.log(texto);
+
+/**
+ * No se arranca nada mientras haya una operación de mantenimiento en curso
+ * (`db:reset`): los servicios que apunten a una base que ya no existe se caen al
+ * conectar. Parar (`down`) y consultar el estado (`status`) sí se permiten.
+ */
+const bloquearSiHayMantenimiento = () => {
+  const bloqueo = bloqueoVigente();
+  if (bloqueo === null || !bloqueo.vivo) return false;
+
+  console.error(
+    `stack: hay una operación de mantenimiento en curso (${bloqueo.tarea}, PID ${String(bloqueo.pid)}).\n` +
+      '  No se arranca la pila hasta que termine: los servicios que apunten a una base\n' +
+      '  que ya no existe se caen al conectar.\n\n' +
+      '  · Espérala.\n' +
+      '  · Si ese proceso ya no existe:  npm run dev:check   (limpia el bloqueo caducado)\n',
+  );
+  process.exit(1);
+};
 
 const pintaEstado = (retrato) => {
   if (retrato.ocupados.length === 0) {
@@ -231,6 +251,7 @@ switch (accion) {
     break;
   }
   case 'dev': {
+    bloquearSiHayMantenimiento();
     if (!(await parar())) {
       console.error('stack: no se pudieron liberar los puertos; no se arranca');
       process.exit(1);
@@ -239,6 +260,7 @@ switch (accion) {
     break;
   }
   case 'fijo': {
+    bloquearSiHayMantenimiento();
     if (!(await parar())) {
       console.error('stack: no se pudieron liberar los puertos; no se arranca');
       process.exit(1);
