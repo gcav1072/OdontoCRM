@@ -66,6 +66,15 @@ const comparar = (nombre, esperado, obtenido, detalle) => {
   return iguales;
 };
 
+/**
+ * **Cuidado con el orden de los textos.** PostgreSQL ordena según la *collation*
+ * del clúster y no es la misma en todas partes: con `en_US.UTF-8` (el clúster de
+ * Fedora) `examenes_complementarios` va antes que `examen_extraoral`, y con `C`
+ * (la instancia de la primera validación) va al revés. Las consultas de aquí
+ * llevan `collate "C"` para que el orden sea el de los bytes —el mismo que usa el
+ * comparador de JavaScript— y la huella no cambie según dónde se corra. Lo
+ * destapó la verificación en la PC de pruebas de la Fase 10.
+ */
 const conectar = (servicio) => conexionDe(servicio, pg).client;
 
 const consultar = async (servicio, sql, parametros = []) => {
@@ -88,7 +97,7 @@ const verificarPacientes = async () => {
     'patients',
     `select id, doc_type as "docType", doc_number as "docNumber", full_name as "fullName",
             to_char(birth_date, 'YYYY-MM-DD') as "birthDate", sex, phone, status, is_fictitious as "isFictitious"
-       from patients where id = any($1::uuid[]) order by doc_number`,
+       from patients where id = any($1::uuid[]) order by doc_number collate "C"`,
     [ids.pacientes],
   );
 
@@ -235,7 +244,7 @@ const verificarClinica = async () => {
     `select s.record_id as "recordId", s.section_key as "sectionKey", s.content
        from medical_record_sections s
        join medical_records r on r.id = s.record_id
-      where r.patient_id = any($1::uuid[]) order by s.record_id, s.section_key`,
+      where r.patient_id = any($1::uuid[]) order by s.record_id, s.section_key collate "C"`,
     [ids.pacientes],
   );
   const esperadoSecciones = world.records
@@ -358,7 +367,8 @@ const verificarOdontograma = async () => {
     `select id, odontogram_id as "odontogramId", patient_id as "patientId", tooth_number as "toothNumber",
             surface, condition, state, recorded_in_session_id as "sessionId", resolved_at as "resolvedAt",
             to_char(recorded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "recordedAt"
-       from tooth_findings where patient_id = any($1::uuid[]) order by patient_id, tooth_number, condition, surface nulls last`,
+       from tooth_findings where patient_id = any($1::uuid[])
+            order by patient_id, tooth_number, condition collate "C", surface collate "C" nulls last`,
     [ids.pacientes],
   );
   const esperado = [...world.findings]
