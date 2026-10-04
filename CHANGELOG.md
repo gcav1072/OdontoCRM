@@ -75,6 +75,19 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
 ### Corregido
 
+- **Al marcar una corona, el gráfico ya no enseña el empaste de debajo** (revisión clínica del
+  ADR 0032): una corona periférica recubre el muñón en sus 360°, así que lo que había antes no se
+  inspecciona en boca y pintarlo dentro del círculo se lee como «¿caries dentro de la corona?». La
+  corona **supera** las caras: el gráfico se queda con la corona, y la obturación (o la caries) queda
+  con su `resolved_at` y su entrada en el histórico con fecha, que es el respaldo médico-legal. La
+  **caries recurrente** —la filtración del margen, registrada *después*— sí se ve, porque la
+  superación solo mira lo que había al poner la corona. En un lote, las caras se aplican antes que la
+  condición que las cubre: el resultado no depende del orden en que la interfaz las mande.
+- **Superar las caras no es excluirlas.** El modelo tenía una sola pregunta para las dos cosas, así
+  que al hacer que la corona superara las caras, la caries recurrente sobre una corona habría quedado
+  bloqueada (409) —justo la excepción clínica—. Ahora son dos reglas distintas
+  (`supersedesSurfaces` y `excludesSurfaces`): `ausente` supera **y** excluye; `corona` supera
+  y no excluye. Sin migración: son reglas de servicio, no forma de fila.
 - **La leyenda no explicaba el color de los tratamientos.** Un mismo símbolo significa dos cosas
   según su color, y en el papel solo salía en rojo: ahora cada tratamiento aparece **en los dos
   colores** con su lectura («Corona: rojo indicado · azul realizado») y las dos reglas escritas

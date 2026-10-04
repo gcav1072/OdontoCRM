@@ -31,13 +31,22 @@ una regla clínica.
 **Cada condición de pieza completa declara su regla** (`WHOLE_TOOTH_RULES`, en el contrato), y la
 regla tiene dos piezas:
 
-| Condición | ¿Supera las caras? | No convive con |
-| :--- | :--- | :--- |
-| `ausente` | **Sí** | `extraccion_indicada`, `corona`, `endodoncia` |
-| `extraccion_indicada` | No (convive) | `ausente` |
-| `corona` | No (convive) | `ausente` |
-| `endodoncia` | No (convive) | `ausente`, `implante` |
-| `implante` | No (convive) | `endodoncia` |
+| Condición | ¿Supera las caras? | ¿Las excluye? | No convive con |
+| :--- | :--- | :--- | :--- |
+| `ausente` | **Sí** | **Sí** | `extraccion_indicada`, `corona`, `endodoncia` |
+| `corona` | **Sí** (las recubre) | No | `ausente` |
+| `extraccion_indicada` | No (convive) | No | `ausente` |
+| `endodoncia` | No (convive) | No | `ausente`, `implante` |
+| `implante` | No (convive) | No | `endodoncia` |
+
+**Superar no es excluir**, y la diferencia es clínica ([revisión clínica](#revisión-clínica-2026-10-04)):
+
+- **Superar** (`supersedesSurfaces`): al registrar la condición, las caras vigentes quedan
+  cubiertas —con `resolved_at` y su entrada en el histórico, no se borran— y el gráfico deja de
+  pintarlas porque en boca ya no se ven.
+- **Excluir** (`excludesSurfaces`): las caras no caben de ninguna manera, ni antes ni después. Es lo
+  que hace `ausente` (una pieza que no está no tiene caries) y lo que **no** hace `corona`: una
+  **caries recurrente** en el margen de la corona se registra después y se ve.
 
 - **Solo `ausente` supera las caras** (y las conserva con `resolved_at`, como decía el ADR 0031).
 - Un **tratamiento se registra junto a lo que ya había**: la corona no borra la obturación ni deja
@@ -95,3 +104,41 @@ pieza entera.
 
 Queda para la Fase 7 la facturación por fases (quirúrgica y protésica por separado): hoy el
 presupuesto agrupa por pieza, no por fase.
+
+## Revisión clínica (2026-10-04)
+
+### Dos ejes: corona y raíz
+
+El odontólogo confirma que el **modelo de dos ejes** —lo que se ve en boca (corona) y lo que va
+inserto en hueso (raíz/soporte)— es el acierto de dominio, y que la **facturación por fases** es un
+modelo comercial derivado, no al revés:
+
+| Fase | Registro | Qué se factura (Fase 7) |
+| :--- | :--- | :--- |
+| Quirúrgica | `ausente` + `implante` | colocación del fixture de titanio |
+| Protésica | `corona` + `implante` | corona sobre implante |
+| Falla de la prótesis (fractura de cerámica) | se rehace `corona`; el implante sigue | rehacer la corona |
+| Falla del implante (periimplantitis) | se quita `implante` y queda `ausente` | — |
+
+Por eso la pieza puede cambiar de fase sin perder nada: cada paso queda como un alta, una baja o una
+superación en el histórico. Con el odontograma agrupando solo por pieza, la clínica no podría facturar
+escalonado; con los dos ejes en el estado clínico, el presupuesto de la Fase 7 se engancha directo a
+lo que ya está registrado.
+
+### La corona cubre las caras
+
+Al marcar `corona`, el gráfico **no** debe seguir mostrando la obturación o la caries de debajo:
+
+- **Anatómico:** una corona periférica completa recubre el muñón en sus 360°; en boca ya no se
+  inspecciona si debajo había amalgama mesial o resina oclusal.
+- **Ruido diagnóstico:** el círculo de la corona sobre trapecios pintados se lee como «¿caries dentro
+  de la corona? ¿filtración?». En la lectura rápida, la corona manda.
+- **El dato no se destruye:** la obturación queda superada con su `resolved_at` y su entrada en el
+  histórico con fecha, que es el respaldo médico-legal (`14/01/2026: Obturación oclusal` ·
+  `04/10/2026: Corona completa`).
+- **Excepción:** la **caries recurrente** del margen (cervical o vestibular) se registra *sobre* la
+  corona y **se ve**. Sale sola: la superación solo mira lo que había al poner la corona.
+
+Implementación: `corona.supersedesSurfaces = true` (no `excludesSurfaces`), y dentro de un lote las
+caras se aplican **antes** que la condición que las cubre, para que el resultado no dependa del orden
+en que la interfaz mande el lote.
