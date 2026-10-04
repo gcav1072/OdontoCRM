@@ -6,15 +6,30 @@ import {
   stopBoss,
 } from '@odontocrm/db';
 import { startServer } from '@odontocrm/kernel';
+import { createDiskBlobStore } from '@odontocrm/storage';
+import { mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 import { loadClinicalConfig } from './config.js';
 import { createClinicalDatabase } from './db/client.js';
+import { createPdfRenderer } from './prescriptions/pdf-renderer.js';
 import { createClinicalServer } from './server.js';
 import { createPatientSnapshotLookup } from './shared/patient-client.js';
 
 const main = async (): Promise<void> => {
   const config = loadClinicalConfig();
   const database = createClinicalDatabase(config);
+
+  /** Adjuntos de la sesión y PDF de los récipes: binarios en disco. */
+  const storageRoot = resolve(config.STORAGE_DIR);
+  await mkdir(storageRoot, { recursive: true });
+  const blobStore = createDiskBlobStore({ rootDir: storageRoot });
+
+  /** Un Chromium por proceso para el PDF A5 (arrancarlo cuesta más que el PDF). */
+  const pdfRenderer = createPdfRenderer({
+    executablePath: config.PDF_CHROMIUM_PATH,
+    timeoutMs: config.PDF_TIMEOUT_MS,
+  });
 
   /**
    * El publicador se crea después del servidor, así que el gancho se resuelve por
@@ -35,6 +50,8 @@ const main = async (): Promise<void> => {
     config,
     database,
     patientLookup: createPatientSnapshotLookup(config),
+    blobStore,
+    pdfRenderer,
     kickOutbox: () => publicador.kick(),
   });
 
@@ -56,12 +73,18 @@ const main = async (): Promise<void> => {
   app.addHook('onClose', async () => {
     await outbox.stop();
     await stopBoss(boss);
+    await pdfRenderer.close();
     await database.close();
   });
 
   await startServer(app, { port: config.CLINICAL_PORT, host: config.CLINICAL_HOST });
   app.log.info(
-    { port: config.CLINICAL_PORT, host: config.CLINICAL_HOST },
+    {
+      port: config.CLINICAL_PORT,
+      host: config.CLINICAL_HOST,
+      storage: storageRoot,
+      publicAppUrl: config.PUBLIC_APP_URL,
+    },
     'Servicio clinical escuchando',
   );
 };

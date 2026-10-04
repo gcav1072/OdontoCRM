@@ -15,6 +15,13 @@
       "when": 1791120298125,
       "tag": "0001_smooth_polaris",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791123672059,
+      "tag": "0002_naive_johnny_storm",
+      "breakpoints": true
     }
   ]
 }

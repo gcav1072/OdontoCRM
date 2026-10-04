@@ -1,7 +1,9 @@
+import type { BlobStore } from '@odontocrm/storage';
 import type pg from 'pg';
 
 import type { ClinicalConfig } from './config.js';
 import type { ClinicalDb } from './db/client.js';
+import type { PdfRenderer } from './prescriptions/pdf-renderer.js';
 import type { PatientSnapshotLookup } from './shared/patient-client.js';
 
 /** Todo lo que necesitan las rutas del servicio, en un solo objeto. */
@@ -10,6 +12,10 @@ export interface ClinicalServices {
   db: ClinicalDb;
   pool: pg.Pool;
   patientLookup: PatientSnapshotLookup;
+  /** Adjuntos de la sesión y PDF de los récipes: binarios en disco. */
+  blobStore: BlobStore;
+  /** Chromium para el PDF A5 del récipe (uno por proceso, reutilizado). */
+  pdfRenderer: PdfRenderer;
   /** Adelanta el publicador del outbox (lo conecta `index.ts`). */
   kickOutbox?: (() => void) | undefined;
 }

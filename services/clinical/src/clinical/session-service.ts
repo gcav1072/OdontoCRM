@@ -111,6 +111,12 @@ export const getSessionDetail = async (
   id: string,
 ): Promise<ClinicalSessionDetail> => toDetail(await loadSessionOrFail(db, id));
 
+/**
+ * La fila de la sesión o `404`. Lo usan los adjuntos y los récipes, que necesitan
+ * la sesión (su paciente y su número) para colgarse de ella.
+ */
+export const requireSession = loadSessionOrFail;
+
 /** Estado de la sesión para otros servicios (la agenda lo comprueba antes del «atendido»). */
 export const getSessionStatus = async (
   db: ClinicalDb,
