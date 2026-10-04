@@ -16,7 +16,7 @@
  */
 import pg from 'pg';
 
-import { buildTestWorld, worldFingerprints, worldEventIds } from '@odontocrm/testing';
+import { buildTestWorld, worldEventIds } from '@odontocrm/testing';
 
 import {
   aviso,
@@ -39,7 +39,6 @@ const silencioso = args.includes('--silencioso');
 exigirModoTest('verificar los datos de prueba');
 
 const world = buildTestWorld(anchor === undefined ? {} : { anchor });
-const huellas = worldFingerprints(world);
 
 const ids = {
   pacientes: world.patients.map((patient) => patient.id),
