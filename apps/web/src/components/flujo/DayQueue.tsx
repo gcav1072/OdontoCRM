@@ -1,5 +1,14 @@
 import { formatTime12h, type AppointmentSummary } from '@odontocrm/contracts';
-import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, Input } from '@odontocrm/ui';
+import {
+  Badge,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  EmptyState,
+  Input,
+  Spinner,
+} from '@odontocrm/ui';
 import { CalendarClock, Search } from 'lucide-react';
 
 import { t } from '../../lib/i18n';
@@ -11,6 +20,8 @@ export interface DayQueueProps {
   /** Cita en curso (la que ocupa el centro de la pantalla). */
   selectedId: string | null;
   search: string;
+  /** La jornada todavía se está pidiendo: no es lo mismo vacío que sin cargar. */
+  loading?: boolean;
   onSearch: (value: string) => void;
   onSelect: (appointment: AppointmentSummary) => void;
 }
@@ -27,6 +38,7 @@ export const DayQueue = ({
   appointments,
   selectedId,
   search,
+  loading = false,
   onSearch,
   onSelect,
 }: DayQueueProps) => (
@@ -54,46 +66,54 @@ export const DayQueue = ({
     </CardHeader>
 
     <CardContent className="lg:max-h-[calc(100dvh-14rem)] lg:overflow-y-auto">
-      {appointments.length === 0 ? (
+      {loading ? (
+        <div className="py-10">
+          <Spinner label={t('secretaria.cargando')} showLabel />
+        </div>
+      ) : appointments.length === 0 ? (
         <EmptyState
           icon={<CalendarClock className="size-5" aria-hidden />}
           title={t('flujo.cola.vacia')}
           description={search.trim() === '' ? t('secretaria.vacio') : t('secretaria.sinResultados')}
         />
       ) : (
-        <ul className="divide-y divide-border">
+        <ul aria-label={t('flujo.cola.titulo')} className="divide-y divide-border">
           {appointments.map((cita) => {
             const seleccionada = cita.id === selectedId;
             return (
               <li key={cita.id}>
+                {/* Dos líneas por cita: la hora y el estado arriba, el paciente
+                    debajo. En la columna estrecha del escritorio, una sola línea
+                    partía la hora y comía el nombre. */}
                 <button
                   type="button"
                   onClick={() => onSelect(cita)}
                   aria-current={seleccionada ? 'true' : undefined}
-                  className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-2 py-3 text-left transition-colors ${
+                  className={`w-full px-2 py-3 text-left transition-colors ${
                     seleccionada
                       ? 'rounded-control bg-primary/10 ring-1 ring-primary/40'
                       : 'hover:bg-surface-muted'
                   }`}
                 >
-                  <span className="font-mono text-xs font-semibold text-ink">
-                    {formatTime12h(cita.startTime)}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-ink">
-                      {cita.patientName}
+                  <span className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                    <span className="font-mono text-xs font-semibold whitespace-nowrap text-ink">
+                      {formatTime12h(cita.startTime)}
                     </span>
-                    <span className="block truncate text-xs text-ink-subtle">
-                      {cita.patientDocument ?? t('comun.sinDato')}
+                    <span className="flex shrink-0 flex-wrap items-center gap-1">
+                      <AppointmentStatusBadge status={cita.status} />
+                      {cita.callCount > 0 && (
+                        <Badge variant={cita.callCount >= 2 ? 'danger' : 'neutral'}>
+                          {t('programacion.accion.llamados', { total: cita.callCount })}
+                        </Badge>
+                      )}
                     </span>
                   </span>
-                  <span className="flex shrink-0 flex-wrap items-center gap-1">
-                    <AppointmentStatusBadge status={cita.status} />
-                    {cita.callCount > 0 && (
-                      <Badge variant={cita.callCount >= 2 ? 'danger' : 'neutral'}>
-                        {t('programacion.accion.llamados', { total: cita.callCount })}
-                      </Badge>
-                    )}
+                  <span className="mt-1 block truncate text-sm font-medium text-ink">
+                    {cita.patientName}
+                  </span>
+                  <span className="block truncate text-xs text-ink-subtle">
+                    {cita.patientDocument ?? t('comun.sinDato')}
+                    {cita.ticket !== null ? ` · ${cita.ticket}` : ''}
                   </span>
                 </button>
               </li>
