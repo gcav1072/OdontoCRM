@@ -49,6 +49,18 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
 ### Añadido
 
+- **La fase quirúrgica del implante ya se puede registrar** (ampliación del ADR 0032): `ausente` e
+  `implante` **conviven**, así que una pieza sin corona natural y con el implante colocado —o con la
+  corona protésica después— deja de ser una contradicción del sistema. `corona` + `implante` sigue
+  permitido (fase rehabilitada) y `endodoncia` + `implante` sigue bloqueado, que es lo imposible. El
+  paso de una fase a otra es quitar `ausente` y marcar `corona` (dos toques en la hoja). En el dibujo,
+  cuando hay implante el aspa de `ausente` no se pinta: el tornillo ya dice que no hay diente natural.
+  Probado en el servicio, por el gateway y en el gráfico.
+- **Se pueden corregir los hallazgos sin rehacer la ficha.** En la hoja de la pieza, cada hallazgo
+  lleva ahora **Marcar completado/pendiente** (el error de dedo más común, a un toque), **Editar**
+  —con el campo de **notas** clínicas, que existía en el modelo pero no se podía escribir desde
+  ninguna pantalla— y **Quitar**, como antes. La tabla del informe impreso sigue sin acciones: es
+  papel.
 - **El odontograma se maneja con el dedo.** En una tableta nadie acierta una cara de 12 px, así que
   con puntero grueso (`pointer: coarse`, hook `useCoarsePointer`) el toque sobre una pieza **abre la
   hoja de la pieza** ([`ToothFindingSheet`](apps/web/src/components/odontogram/ToothFindingSheet.tsx)):
@@ -63,6 +75,15 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
 ### Corregido
 
+- **La leyenda no explicaba el color de los tratamientos.** Un mismo símbolo significa dos cosas
+  según su color, y en el papel solo salía en rojo: ahora cada tratamiento aparece **en los dos
+  colores** con su lectura («Corona: rojo indicado · azul realizado») y las dos reglas escritas
+  —rojo es lo que queda por hacer, azul lo ya hecho—. De paso se unificó el criterio: la extracción
+  indicada salía **siempre** en rojo aunque estuviera marcada como hecha (era una excepción escondida
+  en el código); ahora sigue su estado como todo lo demás.
+- **Las celdas de notas vacías del informe se quedaban en blanco.** En un documento que puede acabar
+  en manos de una aseguradora, una celda vacía se lee como un olvido de captura: ahora dice **«Sin
+  observaciones»** (y también cuando la nota son solo espacios), con su prueba.
 - **Las piezas de la derecha del paciente tenían mesial y distal cambiados.** La arcada se dibuja como dos filas con la línea media en el centro, así que en el 16 la cara mesial mira a la **derecha** de la pantalla (hacia el 15, su vecino real); sin espejar, el dibujo llamaba «mesial» a la cara que toca el 17 —el vecino equivocado— y se registraba la caries donde no era. `archLayout` marca ahora cada pieza con `mirrorX` (cuadrantes 1 y 4, y 5 y 8 en la temporal) y la transformación y su inversa viven en el contrato (`toothGroupTransform` / `unscreenPoint`), de modo que el dibujo de pantalla, el del papel y el `hit-test` del clic aplican exactamente lo mismo ([ADR 0033](docs/adr/0033-odontograma-en-posicion-anatomica.md)). La prueba que lo protege es clínica, no geométrica: en el 16 la mesial está a la derecha, en el 26 a la izquierda y en el 46, además, la vestibular abajo.
 - **Los dientes anteriores decían «Oclusal» donde va el borde incisal.** Del canino al incisivo central la cara de masticación es el **borde incisal**: `surfaceLabelFor` nombra `Incisal` en las posiciones 1–3 del cuadrante (en la hoja de la pieza, en la barra de carga rápida, en la tabla impresa, en la evolución y en las etiquetas accesibles). El dato guardado sigue siendo `occlusal` —mismo polígono, sin migración—: lo que cambia es el nombre clínico.
 - **El gráfico del odontograma dibujaba las 32 piezas en el mismo sitio.** Un literal de plantilla
