@@ -20,7 +20,7 @@ el certificado**. Esto es lo que le toca a cada uno:
 
 | Aparato | Nombre | Certificado | El paso que se olvida |
 | :--- | :--- | :--- | :--- |
-| **Android** (tablet/móvil) | **No resuelve `.local`** con un navegador → IP, o DNS propio (`odontocrm nombre`) | `http://<IP>/ca.crt` → Ajustes → Seguridad → Cifrado y credenciales → Instalar un certificado → **Certificado de CA** | Android 7+ **no** confía en las CA de usuario para las *apps* (el navegador sí) |
+| **Android** (tablet/móvil) | **Suele resolver `.local`** (comprobado en un Pixel 7 con Chrome); en versiones antiguas o redes que filtran multidifusión, IP o DNS propio (`odontocrm nombre`) | `http://<IP>/ca.crt` → Ajustes → Seguridad → Cifrado y credenciales → Instalar un certificado → **Certificado de CA** | Android 7+ **no** confía en las CA de usuario para las *apps* (el navegador sí) |
 | **iPhone / iPad** | mDNS ✓ (funciona `.local`) | `http://<IP>/odontocrm.mobileconfig` **abierto con Safari** → Ajustes → Perfil descargado → Instalar | Ajustes → General → Información → **Ajustes de confianza de certificados → activar** |
 | **Windows 10/11** | `.local` a veces no resuelve (mDNS irregular) → IP, DNS propio o `hosts` | `http://<IP>/ca.der` (doble clic) o `irm http://<IP>/ca-windows.ps1 \| iex` en PowerShell como administrador | Hay que instalarlo en **Equipo local** → *Entidades de certificación raíz de confianza* |
 | **macOS** | mDNS ✓ | `http://<IP>/odontocrm.mobileconfig` → Ajustes → Perfil descargado | En Llaveros, marcar la CA como **«Confiar siempre»** |
@@ -276,8 +276,8 @@ sudo bash /opt/odontocrm/infra/fedora/ensayo-despliegue.sh --hasta=tls --lan-cid
 > tocar nada… **si la red deja pasar la multidifusión y el equipo sabe mDNS**. Dos avisos
 > que importan en una consulta:
 >
-> - Los navegadores de **Android no resuelven `.local`** (y Android no puede editar el
->   `hosts` sin root). Si en la clínica hay tablets Android, el camino es un **DNS propio**:
+> - En Android **suele funcionar** `.local` (probado en un Pixel 7), pero en versiones
+>   antiguas o donde la red filtra la multidifusión no: ahí el camino es un **DNS propio**:
 >   `sudo bash infra/fedora/nombre/instalar-dns.sh` y decirle al router que reparta esa IP
 >   como DNS. Funciona en todos los aparatos, incluidos los Android.
 > - Las wifi de invitados y las redes con aislamiento de clientes **filtran la

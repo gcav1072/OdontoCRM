@@ -1595,8 +1595,9 @@ de prometerle a la clínica que se entra «por el nombre»:
 
 1. depende de que la red deje pasar la **multidifusión** (las wifi de invitados y las redes
    con aislamiento de clientes la filtran), y
-2. depende de que el equipo sepa mDNS: Windows 10+, macOS y Linux con `nss-mdns` sí; los
-   navegadores de **Android, no** — y Android tampoco puede editar el archivo `hosts` sin root.
+2. depende de que el equipo sepa mDNS: Windows 10+, macOS, Linux con `nss-mdns` y **Android
+   moderno** (probado en un Pixel 7) sí; en Android antiguo no, y Android no puede editar el
+   archivo `hosts` sin root — de ahí el camino del DNS propio.
 
 Por eso hay cuatro caminos, y se eligen según los aparatos de la consulta:
 

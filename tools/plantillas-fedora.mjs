@@ -522,6 +522,19 @@ const exigir = (condicion, bien, mal) => {
     'el proxy sirve la CA en los formatos de todas las plataformas (PEM, DER, perfil y scripts)',
     `faltan en nginx/odontocrm.conf: ${sinServir.join(', ')}`,
   );
+  // Y en los DOS bloques (80 y 443): un equipo que todavía no confía en la CA **no puede
+  // descargarla por HTTPS** (Safari ni siquiera ofrece el perfil), así que si el enlace solo
+  // está en el bloque de 443 la petición por HTTP cae en el redirect y devuelve 301. Pasó de
+  // verdad: los cuatro enlaces nuevos respondían 301 y el certificado no se podía instalar.
+  const soloEnHttps = formatos.filter(
+    (f) =>
+      (conf.match(new RegExp(`location = ${f.replace(/[.]/g, '\\.')}\\b`, 'g')) ?? []).length < 2,
+  );
+  exigir(
+    soloEnHttps.length === 0,
+    'los enlaces de la CA se sirven por HTTP y por HTTPS (antes de confiar en la CA, solo hay HTTP)',
+    `estos enlaces solo están en el bloque de 443 y por HTTP devolverían 301: ${soloEnHttps.join(', ')}`,
+  );
   exigir(
     /application\/x-apple-aspen-config/.test(conf),
     'el perfil de Apple se sirve con su tipo MIME (si no, Safari lo muestra como texto)',
