@@ -5,10 +5,25 @@ odontograma, récipes, reportes y auditoría — construido como **microservicio
 TypeScript** sobre **PostgreSQL**, pensado para correr en la red local de la clínica y,
 más adelante, fuera de ella por VPN.
 
-> **Estado: Fase 8 completada** (la página unificada `/flujo`: el día completo en una pantalla, con
-> la cola del día, el paciente en curso y las acciones de secretaría en la barra superior). El plan
-> completo, con las 11 fases y sus criterios de aceptación, está en
-> [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md).
+> **Estado: Fase 10 completada — el sistema está listo para la clínica** (tag `fase-10`,
+> 2026-10-04). Las diez fases del plan están implementadas y validadas: identidad y sesiones,
+> pacientes, agenda, bot de Telegram, secretaría y pantallas kiosko, historia clínica,
+> odontograma FDI, sesiones y récipes A5 con QR, reportes y auditoría, y —en esta última— el
+> **modo test**, el **seed determinista**, la **observabilidad** (`npm run estado`) y el
+> **despliegue Fedora probado de punta a punta** (systemd, TLS interno, firewall, SELinux,
+> respaldo diario con restauración verificada y prueba de reinicio).
+>
+> **Por dónde empezar según quién seas:**
+>
+> | Quiero… | Documento |
+> | :--- | :--- |
+> | **Instalar el servidor de la clínica** | [`infra/fedora/INSTALL.md`](infra/fedora/INSTALL.md) + los dos guiones de [`infra/fedora/`](infra/fedora) |
+> | **Operar el sistema ya instalado** | [`infra/fedora/RUNBOOK.md`](infra/fedora/RUNBOOK.md) y [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) |
+> | **Usar el consultorio** (sin terminal) | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) |
+> | **Conectar tablets, móviles y TVs** | [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) |
+> | **Desarrollar** | este README y [`docs/COMANDOS.md`](docs/COMANDOS.md) |
+> | **Entender las decisiones** | [`docs/adr/`](docs/adr/README.md) (45 ADRs) y [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md) |
+> | **Ver qué se probó y con qué evidencia** | [`infra/fedora/INSTALL.md` §20](infra/fedora/INSTALL.md) y [`docs/REVISION_SEGURIDAD_FASE_10.md`](docs/REVISION_SEGURIDAD_FASE_10.md) |
 
 ---
 
@@ -16,13 +31,19 @@ más adelante, fuera de ella por VPN.
 
 | Componente | Versión usada | Nota |
 | :--- | :--- | :--- |
-| Node.js | 26.7 (mínimo 22.9) | `--env-file-if-exists` y `--watch` nativos |
+| Node.js | 26.10 en el servidor (mínimo 22.9) | `--env-file-if-exists` y `--watch` nativos |
 | npm | 11 (workspaces) | no se usa pnpm ni Docker |
 | PostgreSQL | 18 | una base de datos por servicio |
-| PM2 | global | mantiene los servicios vivos (producción) |
+| PM2 | global (opcional) | alternativa a `systemd`; **el supervisor validado en producción es `systemd`** |
 | Git | 2.55 | |
 
 ---
+
+> **¿Es el servidor de la clínica y no una máquina de desarrollo?** Entonces esto no es lo
+> que buscas: usa [`infra/fedora/INSTALL.md`](infra/fedora/INSTALL.md) (o, en corto,
+> `sudo bash infra/fedora/instalar-base-fedora.sh` y
+> `sudo bash infra/fedora/ensayo-despliegue.sh --hasta=respaldos`). Lo de aquí abajo levanta
+> una **pila de desarrollo** con recarga automática.
 
 ## Puesta en marcha (desarrollo)
 
@@ -90,6 +111,14 @@ está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)
 | `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`, `prescription`, `reporting` |
 | `npm run e2e:flujo` | **El día completo en un navegador de verdad**: `/flujo` con Chromium (Fase 8) |
 | `npm run e2e:reportes` | `/reportes` y `/auditoria` con Chromium: gráficas, seis pestañas, filtros y diff (Fase 9) |
+| `npm run estado` | **Tablero de estado**: los 9 servicios (`/health` y `/ready`), las 9 bases, la cola, el outbox, los envíos y el disco |
+| `npm run estado -- --alertas` | Solo los problemas; sale con 1 si hay alguno (es lo que corre el temporizador del servidor) |
+| `npm run seed:test` | **Mundo de prueba determinista**: 40 pacientes, 46 solicitudes, 42 citas, 22 historias, 27 sesiones, 22 récipes, 156 hallazgos y los 593 eventos que el sistema habría publicado |
+| `npm run seed:verify` | Comprueba por huellas que lo sembrado es el mundo (12 comprobaciones) |
+| `npm run seed:reset` | Quita solo lo ficticio (los datos reales y los documentos clínicos no se tocan) |
+| `npm run e2e:clinica` | **La aceptación completa**: los 11 pasos del día de la clínica encadenados, con `--sin-bot` si no hay token |
+| `npm run db:reset` | **Borra todo** y deja el sistema listo para usar (bases migradas + usuarios); solo en desarrollo |
+| `npm run fedora:check` | Comprueba que las plantillas del despliegue Fedora no se quedaron atrás respecto al código |
 | `npm run reports:latencia` | Llena el read model con 10.000 citas y mide los seis reportes (criterio: < 2 s cada uno) |
 | `npm run db:reset -- --yes` | **Empezar de cero**: borra las 9 bases y `storage/`, y deja todo migrado y sembrado (solo consola; sin `--yes` no borra nada) |
 | `npm run env:check` | ¿A algún `.env` le falta una clave de su plantilla (`.env.example`)? |
@@ -159,6 +188,10 @@ odontólogo, `npm run seed:users`. El logo se deja en [`assets/clinic/`](assets/
 | odontogram | 4006 | ✅ Fase 6, sesión B (odontograma FDI) |
 | screens | 4007 | ✅ Fase 5 (secretaría y pantallas con SSE) |
 | reporting | 4008 | ✅ Fase 9 (read model, KPIs y auditoría UI) |
+
+Además, la Fase 10 dejó el **modo test** (`TEST_MODE`, banner y envíos bloqueados), el **seed
+determinista** (`npm run seed:test`, `seed:reset`, `seed:verify`) y el **tablero de estado**
+(`npm run estado`, con `--alertas` para el temporizador del servidor).
 
 ---
 

@@ -372,16 +372,33 @@ EOF
     fi
 
     command -v ausearch >/dev/null || morir 'falta ausearch (paquete audit)'
-    denegaciones="$(ausearch -m avc -ts today 2>/dev/null | grep -c 'denied' || true)"
+    registro="$(ausearch -m avc -ts today 2>/dev/null | grep 'denied' || true)"
+    denegaciones="$(printf '%s' "$registro" | grep -c 'denied' || true)"
+
+    # No todo lo que SELinux deniega es del proyecto: Fedora tiene servicios del
+    # sistema que deniegan cosas sin importancia todos los días (`systemd-rfkill`
+    # pidiendo `dac_override` es el caso típico). Mezclarlas con las nuestras hace que
+    # un aviso inocente parezca una avería —pasó al cerrar la Fase 10—, así que se
+    # separan: primero lo del proyecto, y lo demás se menciona sin dramatizar.
+    nuestras="$(printf '%s' "$registro" |
+      grep -E 'comm="(nginx|node|chrome|headless_shell|postgres)"|path="/opt/odontocrm|path="/var/www/odontocrm|path="/var/lib/odontocrm|path="/etc/odontocrm|path="/var/log/odontocrm' || true)"
+    nuestras_n="$(printf '%s' "$nuestras" | grep -c 'denied' || true)"
+    ajenas_n=$(( ${denegaciones:-0} - ${nuestras_n:-0} ))
     echo
-    if [[ "${denegaciones:-0}" == "0" ]]; then
-      ok 'sin denegaciones hoy: SELinux no está bloqueando nada'
+
+    if [[ "${nuestras_n:-0}" == "0" ]]; then
+      ok "sin denegaciones del proyecto (nginx, los 9 servicios, Chromium, PostgreSQL)"
+      if [[ "${ajenas_n:-0}" != "0" ]]; then
+        av "$ajenas_n denegación(es) de servicios del SISTEMA (no del proyecto):"
+        printf '%s' "$registro" | grep -oE 'comm="[^"]+"' | sort | uniq -c |
+          sed 's/^/      /' | head -5
+        av 'son habituales en Fedora (systemd-rfkill y compañía) y no afectan a OdontoCRM'
+      fi
       exit 0
     fi
 
-    av "$denegaciones denegación(es) hoy. Últimas diez:"
-    ausearch -m avc -ts today 2>/dev/null | grep 'denied' | tail -10 |
-      sed -E 's/.*(denied[^\n]*)/    \1/' | cut -c1-160
+    av "$nuestras_n denegación(es) DEL PROYECTO hoy. Últimas diez:"
+    printf '%s' "$nuestras" | tail -10 | sed -E 's/.*(denied[^\n]*)/    \1/' | cut -c1-160
 
     echo
     echo "  ${C_TI}Causas típicas y su arreglo${C_RE}"
