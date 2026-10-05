@@ -76,10 +76,13 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    y TVs (--exportar /ruta). Es lo que quita el aviso de
                                    «conexión no privada» en los demás equipos.
   sudo odontocrm red               En qué IP se está sirviendo y con qué dirección entrar
-                                   desde otro equipo. Comprueba las TRES cosas que se
-                                   quedan apuntando a la red anterior al cambiar de
-                                   wifi/router (firewall, certificado y CORS) y dice
-                                   el comando que lo arregla.
+                                   desde otro equipo. Comprueba lo que se queda apuntando
+                                   a la red anterior al cambiar de wifi/router (firewall,
+                                   certificado, CORS y el nombre mDNS).
+  sudo odontocrm red --arreglar    Lo adapta solo: firewall por zona (sigue a la interfaz,
+                                   no a un rango fijo), certificado reemitido con la IP
+                                   de ahora (misma CA: los equipos no tocan nada) y
+                                   WEB_ORIGIN actualizado.
   sudo odontocrm selinux           Denegaciones de SELinux de hoy, con la causa más
                                    probable y el comando que lo arregla. «Sin
                                    denegaciones» es lo que quieres ver.
@@ -481,17 +484,98 @@ EOF
       problemas=$((problemas + 1))
     fi
 
+    # 4) mDNS: ¿el nombre se resuelve solo (sin tocar el hosts de cada equipo)?
+    if command -v avahi-resolve >/dev/null && systemctl is-active --quiet avahi-daemon; then
+      resuelto="$(avahi-resolve -n "${NOMBRE:-odontocrm.local}" 2>/dev/null | awk '{print $2}' | head -1)"
+      if [[ -n "$resuelto" ]]; then
+        ok "mDNS: ${NOMBRE:-odontocrm.local} se resuelve solo (→ $resuelto): los equipos no necesitan tocar el hosts"
+      else
+        av "mDNS no publica ${NOMBRE:-odontocrm.local} (esta máquina publica $(hostname).local):"
+        av "  los equipos tendrían que poner la línea en su archivo hosts"
+        problemas=$((problemas + 1))
+      fi
+    else
+      av 'sin avahi: el nombre solo funciona con una línea en el hosts de cada equipo'
+      problemas=$((problemas + 1))
+    fi
+
     echo
     if (( problemas == 0 )); then
       ok 'todo apunta a la red actual: se puede entrar desde otro equipo'
       echo "    Recuerda instalar el certificado en cada equipo:  http://${IP_LAN}/ca.crt"
-    else
-      av "$problemas cosa(s) apuntan a la red anterior. Se arreglan de una vez con:"
-      printf '      sudo bash %s/infra/fedora/ensayo-despliegue.sh --hasta=tls --lan-cidr=%s\n' "$CODE_DIR" "$RED_LAN"
-      echo '      (reemite el certificado con la IP actual, abre el firewall a esta red y'
-      echo '       actualiza WEB_ORIGIN con el nombre y la IP; tarda un minuto)'
+      exit 0
+    fi
+
+    av "$problemas cosa(s) apuntan a la red anterior:"
+
+    # ── Arreglo automático: `odontocrm red --arreglar` ────────────────────────
+    arreglar=0
+    for arg in "$@"; do
+      case "$arg" in --arreglar|-a|--si) arreglar=1 ;; esac
+    done
+    if (( ! arreglar )); then
+      echo '    Se arreglan de una vez con:'
+      printf '      sudo odontocrm red --arreglar\n'
+      echo '      (adapta el firewall a la red actual, reemite el certificado con la IP de'
+      echo '       ahora, actualiza WEB_ORIGIN y recarga el proxy: la CA no cambia, así que'
+      echo '       los equipos que ya la tienen instalada siguen confiando)'
       exit 2
     fi
+
+    printf '\n%sArreglando la red actual (%s)%s\n' "$C_TI" "$IP_LAN" "$C_RE"
+
+    # a) Firewall: se abre 443 (y 80) en la ZONA de la interfaz de la red local, no
+    #    para un rango fijo. Así sigue funcionando cuando cambia la red —el consultorio
+    #    con IP reservada, o este PC de pruebas en otro wifi— sin tocar nada.
+    if systemctl is-active --quiet firewalld; then
+      iface="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)"
+      zona="$(firewall-cmd --get-zone-of-interface="${iface:-$(ip route | awk '/default/ {print $5; exit}')}" 2>/dev/null || echo public)"
+      [[ -n "$zona" && "$zona" != "no" ]] || zona=public
+      firewall-cmd --permanent --zone="$zona" --add-service=https >/dev/null 2>&1 || true
+      firewall-cmd --permanent --zone="$zona" --add-service=http >/dev/null 2>&1 || true
+      # Las reglas por rango que apuntan a OTRA red se retiran: se quedaron viejas y
+      # confunden al siguiente que mire el firewall.
+      firewall-cmd --list-rich-rules 2>/dev/null | grep 'port="443"' | while read -r regla; do
+        printf '%s' "$regla" | grep -qF "$RED_LAN" || {
+          firewall-cmd --permanent --remove-rich-rule="$regla" >/dev/null 2>&1 || true
+          av "retirada una regla vieja del firewall: $regla"
+        }
+      done
+      firewall-cmd --reload >/dev/null 2>&1 || true
+      ok "firewalld: 443 y 80 abiertos en la zona «$zona» (sigue a la interfaz, no a un rango)"
+    fi
+
+    # b) El proxy sirve el nombre actualizado (por si cambió).
+    sed -i "s|^server_name .*|server_name ${NOMBRE:-odontocrm.local} ${IP_LAN};|" /etc/nginx/conf.d/odontocrm.conf 2>/dev/null || true
+    nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 &&
+      ok "nginx: server_name ${NOMBRE:-odontocrm.local} $IP_LAN" || av 'nginx no recargó: revisa la configuración'
+
+    # c) Certificado nuevo con el nombre y la IP de ahora. MISMA CA: los equipos que ya
+    #    tengan el certificado instalado no tienen que hacer nada.
+    if command -v mkcert >/dev/null; then
+      mkcert -key-file /etc/pki/tls/private/odontocrm.key \
+             -cert-file /etc/pki/tls/certs/odontocrm.crt \
+             "${NOMBRE:-odontocrm.local}" localhost 127.0.0.1 "$IP_LAN" >/dev/null 2>&1 &&
+        ok "certificado reemitido para ${NOMBRE:-odontocrm.local}, localhost, 127.0.0.1 y $IP_LAN" ||
+        av 'no pude reemitir el certificado con mkcert'
+      chmod 0600 /etc/pki/tls/private/odontocrm.key
+      systemctl reload nginx >/dev/null 2>&1 || true
+    fi
+
+    # d) CORS: el nombre y la IP de ahora.
+    archivo="/etc/odontocrm/odontocrm.env"
+    if grep -qE '^WEB_ORIGIN=' "$archivo"; then
+      sed -i "s|^WEB_ORIGIN=.*|WEB_ORIGIN=https://${NOMBRE:-odontocrm.local}, https://${IP_LAN}|" "$archivo"
+      ok "WEB_ORIGIN=https://${NOMBRE:-odontocrm.local}, https://${IP_LAN}"
+      for u in odontocrm@identity odontocrm@clinical odontocrm-gateway; do
+        systemctl restart "$u.service" >/dev/null 2>&1 || true
+      done
+      ok 'identity, clinical y el gateway reiniciados (leen el origen permitido)'
+    fi
+
+    echo
+    ok 'red actualizada. Comprueba con:  sudo odontocrm red'
+    exit 0
     ;;
 
   selinux)

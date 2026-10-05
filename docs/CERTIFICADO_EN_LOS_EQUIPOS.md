@@ -244,10 +244,19 @@ Los tres se arreglan de una vez:
 sudo bash /opt/odontocrm/infra/fedora/ensayo-despliegue.sh --hasta=tls --lan-cidr=192.168.1.0/24
 ```
 
-> **Truco para no repetirlo:** entra siempre por **`https://odontocrm.local`** y pon esa
-> línea en el archivo *hosts* de cada equipo apuntando a la IP del momento. El nombre no
-> cambia cuando cambia la red; la IP, sí. (El certificado cubre el nombre, así que el
-> candado sigue bien.)
+> **Lo mejor: que el nombre funcione solo.** Si el servidor se preparó con
+> `instalar-base-fedora.sh --nombre-mdns=odontocrm`, publica `odontocrm.local` por **mDNS**
+> y los equipos de la red lo resuelven **sin tocar el archivo hosts** (tablets, móviles,
+> Windows 10+, macOS y Linux con `nss-mdns`). Entra siempre por
+> `https://odontocrm.local`: el nombre no cambia cuando cambia la red; la IP, sí.
+>
+> Y si algún equipo no resuelve mDNS (algunos Android antiguos), ahí sí toca la línea en
+> su `hosts` apuntando a la IP del momento — o mejor, reserva la IP en el router para que
+> no cambie nunca.
+>
+> **El arreglo completo de una red nueva:** `sudo odontocrm red --arreglar` (firewall por
+> zona, certificado con la IP de ahora y `WEB_ORIGIN`; la CA no cambia, así que los
+> equipos no tocan nada).
 
 ---
 

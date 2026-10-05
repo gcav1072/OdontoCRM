@@ -454,13 +454,29 @@ if [[ "$HASTA" == "tls" || "$HASTA" == "respaldos" ]]; then
     av 'SELinux no está en Enforcing: no se toca'
   fi
 
-  # 4) firewalld: solo 443 a la LAN (nada de 5432 ni de 4001-4008).
-  if [[ -n "$LAN_CIDR" ]]; then
+  # 4) firewalld: solo el proxy (443 y 80). Nada de 5432 ni de 4001-4008.
+  #
+  # Se abre en la **zona** de la interfaz de la red local, no para un rango de IPs: así
+  # sigue valiendo cuando cambia la red (el PC de pruebas en otro wifi, o el consultorio
+  # si algún día le cambian el rango), sin tocar nada. Con `--lan-cidr=<red>` se hace al
+  # revés, con una regla estricta para ese rango: es lo recomendable en la clínica, donde
+  # la IP es reservada y fija.
+  if systemctl is-active --quiet firewalld || systemctl is-enabled --quiet firewalld 2>/dev/null; then
     systemctl enable --now firewalld >/dev/null 2>&1 || true
-    firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=${LAN_CIDR} port port=443 protocol=tcp accept" >/dev/null
-    firewall-cmd --permanent --add-service=http >/dev/null 2>&1 || true
+    if [[ -n "$LAN_CIDR" ]]; then
+      firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=${LAN_CIDR} port port=443 protocol=tcp accept" >/dev/null
+      firewall-cmd --permanent --add-service=http >/dev/null 2>&1 || true
+      modo_fw="rango estricto $LAN_CIDR"
+    else
+      IFACE_LAN="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)"
+      ZONA_LAN="$(firewall-cmd --get-zone-of-interface="${IFACE_LAN}" 2>/dev/null || echo public)"
+      [[ -n "$ZONA_LAN" && "$ZONA_LAN" != "no" ]] || ZONA_LAN=public
+      firewall-cmd --permanent --zone="$ZONA_LAN" --add-service=https >/dev/null 2>&1 || true
+      firewall-cmd --permanent --zone="$ZONA_LAN" --add-service=http >/dev/null 2>&1 || true
+      modo_fw="zona «$ZONA_LAN» (sigue a la interfaz ${IFACE_LAN:-?}: vale en cualquier red)"
+    fi
     firewall-cmd --reload >/dev/null
-    ok "firewalld: 443/tcp (y 80 para el redirect) abiertos a $LAN_CIDR"
+    ok "firewalld: 443/tcp (y 80 para el redirect) abiertos — $modo_fw"
     for puerto in 5432 4001 4002 4003 4004 4005 4006 4007 4008 8090; do
       if firewall-cmd --list-ports 2>/dev/null | grep -q "\b${puerto}/tcp\b"; then
         av "el $puerto está ABIERTO en firewalld y no debería (solo 127.0.0.1)"
@@ -468,7 +484,7 @@ if [[ "$HASTA" == "tls" || "$HASTA" == "respaldos" ]]; then
     done
     ok 'comprobado que la base y los servicios internos no están publicados'
   else
-    av 'sin --lan-cidr: no se toca firewalld (la regla es solo para la LAN)'
+    av 'firewalld no está activo en esta máquina: no se toca'
   fi
 
   # 5) Arrancar y probar de verdad contra https.

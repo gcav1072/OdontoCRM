@@ -1472,6 +1472,48 @@ sudo nginx -t && sudo systemctl enable --now nginx
 > `apps/web/src/lib/kiosko.ts`). La `location` correcta es esa; si algún día cambia,
 > se ajusta en el archivo versionado.
 
+### 13.2-bis La red del consultorio: que nada dependa de la IP
+
+En la clínica la PC tendrá **IP reservada y fija**, pero conviene que la instalación no
+dependa de ese número: si algún día cambia el router, el rango o se lleva el servidor a
+otra red, no debería haber que reconfigurar nada a mano.
+
+**Tres capas, y las tres se ajustan solas:**
+
+1. **Nombre fijo (`odontocrm.local`) en vez de IP.** Con el nombre publicado por **mDNS**
+   (avahi, que Fedora ya trae), los equipos de la red lo resuelven **solos**: tablets,
+   móviles, Windows 10+, macOS y Linux con `nss-mdns`. Nadie tiene que editar el archivo
+   `hosts`. Al preparar la máquina:
+
+   ```bash
+   sudo bash infra/fedora/instalar-base-fedora.sh --nombre-mdns=odontocrm
+   ```
+
+   (Cambia el nombre del servidor a `odontocrm`, y avahi publica `odontocrm.local` con la
+   IP que tenga en cada momento. Es reversible: `sudo hostnamectl set-hostname <otro>`.)
+
+2. **Firewall por zona, no por rango.** El proxy se publica en la **zona** de la interfaz
+   de la red local (por defecto al desplegar): la regla **sigue a la interfaz**, así que
+   vale en cualquier red sin tocar nada. En la clínica, si se quiere lo más estricto,
+   `--lan-cidr=192.168.1.0/24` deja una regla atada a ese rango.
+
+3. **Certificado con el nombre *y* la IP.** Se emite para `odontocrm.local`, `localhost`,
+   `127.0.0.1` y la IP del momento. Si la IP cambia, se reemite **con la misma CA**, así
+   que los equipos que ya tienen la CA instalada **no hacen nada**.
+
+**El comando que lo revisa y lo arregla:**
+
+```bash
+sudo odontocrm red               # ¿en qué IP estoy y qué apunta a la red anterior?
+sudo odontocrm red --arreglar    # lo adapta: firewall por zona, certificado con la IP
+                                 # de ahora, WEB_ORIGIN y recarga del proxy
+```
+
+**Resumen para el montaje en la clínica:** IP reservada en el router (para que no cambie),
+`--nombre-mdns=odontocrm` al preparar la máquina, y entrar siempre por
+`https://odontocrm.local`. La IP pasa a ser un detalle interno; lo que se teclea en los
+equipos es el nombre.
+
 ### 13.3-bis Quitar el aviso de certificado en los demás equipos
 
 El navegador de la tablet, el móvil o el televisor avisa «conexión no privada» porque

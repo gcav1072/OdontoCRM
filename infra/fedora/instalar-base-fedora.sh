@@ -11,7 +11,10 @@
 # Es idempotente: lo que ya está, se salta o se deja igual. Se puede repetir.
 #
 #   sudo bash infra/fedora/instalar-base-fedora.sh
-#   sudo bash infra/fedora/instalar-base-fedora.sh --dry-run   # sin cambios
+#   sudo bash infra/fedora/instalar-base-fedora.sh --nombre-mdns=odontocrm
+#       (recomendado en la clínica: el servidor se llama `odontocrm` y los equipos
+#        entran por https://odontocrm.local SIN tocar el archivo hosts de nadie)
+#   sudo bash infra/fedora/instalar-base-fedora.sh --dry-run   # sin cambios (informativo)
 #
 # No guarda ningún secreto y no toca el repositorio. Lo que sigue, después:
 #   npm run db:bootstrap && npm run db:migrate && npm run seed:users
@@ -20,6 +23,16 @@
 # (INSTALL.md §4 a §10 lo explica paso a paso.)
 # ---------------------------------------------------------------------------
 set -uo pipefail
+
+NOMBRE_MDNS=""
+for arg in "$@"; do
+  case "$arg" in
+    --nombre-mdns=*) NOMBRE_MDNS="${arg#*=}" ;;
+    --dry-run) DRY_RUN=1 ;;
+    *) echo "Argumento no reconocido: $arg"; exit 2 ;;
+  esac
+done
+DRY_RUN="${DRY_RUN:-0}"
 
 echo
 echo "== 1/6 · Paquetes base y herramientas del sistema =========================="
@@ -68,7 +81,30 @@ rm -f /tmp/nodesource-setup_26.x.sh
 sudo npm install -g pm2
 
 echo
-echo "== 6/6 · Resumen (pega esta parte de vuelta) ==============================="
+echo
+echo "== 7/7 · Nombre de red del servidor (mDNS) ================================"
+# Sin esto, cada equipo que quiera entrar por `odontocrm.local` necesita una linea en su
+# archivo hosts. Con el nombre publicado por mDNS (avahi, que ya viene en Fedora) los
+# equipos de la red lo resuelven SOLOS —tablets, moviles, Windows 10+, macOS y Linux con
+# nss-mdns— y da igual la IP que tenga el servidor en cada momento.
+if [[ -n "$NOMBRE_MDNS" ]]; then
+  actual="$(hostname)"
+  if [[ "$actual" == "$NOMBRE_MDNS" ]]; then
+    echo "  ya se llama $NOMBRE_MDNS"
+  elif (( DRY_RUN )); then
+    echo "  [dry-run] hostnamectl set-hostname $NOMBRE_MDNS   (ahora: $actual)"
+  else
+    hostnamectl set-hostname "$NOMBRE_MDNS"
+    echo "  nombre cambiado: $actual -> $NOMBRE_MDNS"
+  fi
+  (( DRY_RUN )) || systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
+  echo "  los equipos entran por:  https://${NOMBRE_MDNS}.local"
+else
+  echo "  (opcional, recomendado en la clinica) publica un nombre fijo para entrar:"
+  echo "      sudo bash $0 --nombre-mdns=odontocrm"
+  echo "  ahora mismo esta maquina publica: $(hostname).local"
+fi
+echo "== Resumen (pega esta parte de vuelta) ===================================="
 echo "node:      $(node --version 2>&1)"
 echo "npm:       $(npm --version 2>&1)"
 echo "pm2:       $(pm2 --version 2>&1 | tail -1)"
