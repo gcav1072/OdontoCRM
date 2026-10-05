@@ -315,6 +315,41 @@ case "$ORDEN" in
     # conexiones de los servicios que aún no se habían reiniciado (ventana de errores).
     # Y no se llama a `odontocrm.target`, que no existe en el repositorio: era código muerto
     # que aparentaba una intención.
+    # La configuración del proxy también es una COPIA (la instala nginx/instalar.sh, no
+    # install.sh). Si cambia en el repositorio —por ejemplo al añadir los enlaces del
+    # certificado en varios formatos— sin este paso la actualización deja el proxy viejo y
+    # esos enlaces responden 301 (caen en el redirect a HTTPS).
+    if [[ -f /etc/nginx/conf.d/odontocrm.conf ]]; then
+      host_actual="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null | tr -s ' ' | sed 's/ *$//' || true)"
+      if [[ -n "$host_actual" ]] &&
+        bash "$CODE_DIR/infra/fedora/nginx/instalar.sh" --host="$host_actual" >/tmp/odontocrm-nginx.log 2>&1; then
+        ok 'configuración del proxy al día (nginx/instalar.sh)'
+      else
+        av 'no pude actualizar la configuración del proxy; revisa /tmp/odontocrm-nginx.log'
+      fi
+    fi
+
+    # El nombre por mDNS: si el servidor cambió de nombre y avahi sigue anunciando el viejo
+    # (pasa porque `systemctl restart` no siempre reemplaza el proceso), los equipos no
+    # resuelven `odontocrm.local`. Se corrige aquí, que es donde uno lo espera.
+    if command -v avahi-resolve >/dev/null 2>&1; then
+      anunciado="$(pgrep -a avahi-daemon 2>/dev/null | grep -oP 'running \[\K[^]]+' | head -1 || true)"
+      if [[ -n "$anunciado" && "$anunciado" != "$(hostname).local" ]]; then
+        systemctl stop avahi-daemon.socket avahi-daemon.service >/dev/null 2>&1 || true
+        systemctl start avahi-daemon.socket avahi-daemon.service >/dev/null 2>&1 || true
+        for _ in $(seq 1 10); do
+          anunciado="$(pgrep -a avahi-daemon 2>/dev/null | grep -oP 'running \[\K[^]]+' | head -1 || true)"
+          [[ "$anunciado" == "$(hostname).local" ]] && break
+          sleep 1
+        done
+        if [[ "$anunciado" == "$(hostname).local" ]]; then
+          ok "mDNS: avahi anuncia $anunciado (antes anunciaba otro nombre)"
+        else
+          av "avahi sigue anunciando «$anunciado»: reinícialo a mano (systemctl restart avahi-daemon)"
+        fi
+      fi
+    fi
+
     reiniciados=0
     for s in "${SERVICIOS[@]}"; do
       systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 && reiniciados=$((reiniciados + 1))
@@ -500,6 +535,10 @@ EOF
 
   nombre|mdns|dns)
     necesita_root
+    ARREGLAR_NOMBRE=0
+    for arg in "$@"; do
+      case "$arg" in --arreglar|-a|--si) ARREGLAR_NOMBRE=1 ;; esac
+    done
     NOMBRE_ESPERADO="odontocrm.local"
     [[ -f /etc/nginx/conf.d/odontocrm.conf ]] &&
       NOMBRE_ESPERADO="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null |
@@ -513,12 +552,29 @@ EOF
     anunciado="$(pgrep -a avahi-daemon 2>/dev/null | grep -oP 'running \[\K[^]]+' | head -1 || true)"
     if [[ -z "$anunciado" ]]; then
       av 'avahi no está corriendo: sin él no hay nombre por mDNS'
+      (( ARREGLAR_NOMBRE )) && { systemctl enable --now avahi-daemon >/dev/null 2>&1 || true; }
       echo '      sudo systemctl enable --now avahi-daemon'
     elif [[ "$anunciado" == "$NOMBRE_ESPERADO" ]]; then
       ok "avahi anuncia $anunciado"
+    elif (( ARREGLAR_NOMBRE )); then
+      # El demonio publica el nombre que tenía al arrancar, y `systemctl restart` no siempre
+      # reemplaza el proceso (visto en la PC de pruebas: el servicio decía «Started» y seguía
+      # anunciando `fedora.local`). Se para y se arranca, comprobando **lo que anuncia**.
+      systemctl stop avahi-daemon.socket avahi-daemon.service >/dev/null 2>&1 || true
+      systemctl start avahi-daemon.socket avahi-daemon.service >/dev/null 2>&1 || true
+      for _ in $(seq 1 10); do
+        anunciado="$(pgrep -a avahi-daemon 2>/dev/null | grep -oP 'running \[\K[^]]+' | head -1 || true)"
+        [[ "$anunciado" == "$NOMBRE_ESPERADO" ]] && break
+        sleep 1
+      done
+      if [[ "$anunciado" == "$NOMBRE_ESPERADO" ]]; then
+        ok "avahi anuncia ahora $NOMBRE_ESPERADO"
+      else
+        av "avahi sigue anunciando «${anunciado:-nada}»; revisa: journalctl -u avahi-daemon"
+      fi
     else
       av "avahi anuncia «$anunciado», no «$NOMBRE_ESPERADO»: el demonio no se reinició desde el cambio de nombre"
-      echo '      sudo systemctl restart avahi-daemon && sudo odontocrm nombre'
+      echo '      sudo odontocrm nombre --arreglar'
     fi
     if [[ -n "$anunciado" ]] && timeout 3 avahi-resolve -n "$NOMBRE_ESPERADO" >/dev/null 2>&1; then
       ok "el nombre se resuelve por mDNS en esta red"

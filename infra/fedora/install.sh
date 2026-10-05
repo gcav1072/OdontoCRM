@@ -789,15 +789,13 @@ write_env_templates() {
 # COOKIE_SECRET lo genera `npm run db:bootstrap` (Fase 0).
 # > PENDIENTE FASE 10: confirmar los nombres de las variables de sesión contra
 #   services/identity/src/config.ts antes de la puesta en marcha.
-COOKIE_SECRET=CAMBIAR_SECRETO_DE_COOKIES
 JWT_PRIVATE_KEY_PATH=/etc/odontocrm/keys/jwt-private.pem
 JWT_PUBLIC_KEY_PATH=/etc/odontocrm/keys/jwt-public.pem
-ACCESS_TOKEN_TTL=15m
-REFRESH_TOKEN_TTL_DAYS=30
+# Los TTL de sesión, el bloqueo por intentos y `SameSite` **no son variables de entorno**:
+# viven como constantes de `packages/contracts/src/domain/auth.ts` (15 min de acceso, 30
+# días de refresco, 5 intentos y 15 minutos de bloqueo). Se quitaron de esta plantilla
+# porque tenerlas aquí hacía creer que se podían ajustar sin efecto ninguno.
 COOKIE_SECURE=true
-COOKIE_SAMESITE=Lax
-LOGIN_MAX_ATTEMPTS=5
-LOGIN_LOCK_MINUTES=15
 EOF
 )
         ;;
@@ -824,7 +822,6 @@ TELEGRAM_BOT_USERNAME=CAMBIAR_USUARIO_DEL_BOT
 # El modo es auto | real | simulado (el long polling es el transporte, no un modo):
 # con 'auto' el bot usa el real si hay token y el simulado si no lo hay.
 TELEGRAM_MODE=auto
-TELEGRAM_TEST_CHAT_ID=CAMBIAR_CHAT_ID_DE_PRUEBAS
 EOF
 )
         ;;

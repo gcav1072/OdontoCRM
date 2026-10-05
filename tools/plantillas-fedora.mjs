@@ -534,6 +534,65 @@ const exigir = (condicion, bien, mal) => {
     'los documentos no mencionan odontocrm.mobileconfig (iOS/macOS instalarían el .crt a mano)',
   );
 
+  // (13-quater) LO QUE PROTEGE EL CRECIMIENTO DEL PROGRAMA.
+  //
+  // Añadir una característica no puede romper el despliegue en silencio. Estas dos
+  // comprobaciones son las que vigilan eso:
+  //
+  //  a) **Un servicio nuevo tiene que estar en todas las listas**: si se crea
+  //     `services/<nuevo>` y se olvida en `SERVICIOS` (arranque y verificación), en el
+  //     bootstrap (bases) o en la lista de respaldo, el despliegue queda a medias y no
+  //     falla nada.
+  //  b) **Las variables muertas no vuelven**: la plantilla llegó a definir claves que
+  //     ningún servicio lee (`COOKIE_SECRET`, `LOGIN_MAX_ATTEMPTS`…), y eso hace creer que
+  //     se pueden ajustar: uno pone `ACCESS_TOKEN_TTL=4h` y no pasa nada.
+  const serviciosEnDisco = execFileSync('git', ['ls-files', 'services/*/src/config.ts'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter(Boolean)
+    .map((ruta) => ruta.split('/')[1])
+    .sort();
+
+  const listaDe = (texto, etiqueta) => {
+    const m =
+      new RegExp(`${etiqueta}=\\(([^)]*)\\)`).exec(texto) ??
+      new RegExp(`${etiqueta} = \\[([^\\]]*)\\]`).exec(texto);
+    if (m === null) return [];
+    return m[1]
+      .replace(/['"\n]/g, '')
+      .split(/[,\s]+/)
+      .filter(Boolean)
+      .sort();
+  };
+
+  const enComando = listaDe(odontocrm, 'SERVICIOS');
+  const enEnsayo = listaDe(leer('infra/fedora/ensayo-despliegue.sh'), 'SERVICIOS');
+  const faltanEnListas = serviciosEnDisco.filter(
+    (svc) => !enComando.includes(svc) || !enEnsayo.includes(svc),
+  );
+  exigir(
+    faltanEnListas.length === 0,
+    `los ${serviciosEnDisco.length} servicios de services/ están en las listas de despliegue`,
+    `services/ tiene ${serviciosEnDisco.join(', ')} pero faltan en las listas: ${faltanEnListas.join(', ')} (revisa SERVICIOS en odontocrm y en ensayo-despliegue.sh)`,
+  );
+
+  const muertas = [
+    'COOKIE_SECRET',
+    'COOKIE_SAMESITE',
+    'LOGIN_MAX_ATTEMPTS',
+    'LOGIN_LOCK_MINUTES',
+    'REFRESH_TOKEN_TTL_DAYS',
+    'TELEGRAM_TEST_CHAT_ID',
+  ];
+  const reaparecidas = muertas.filter((v) => new RegExp(`^${v}=`, 'm').test(installSh));
+  exigir(
+    reaparecidas.length === 0,
+    'la plantilla no define variables que ningún servicio lee',
+    `estas variables no las lee nadie y volvieron a la plantilla: ${reaparecidas.join(', ')} (los valores viven en packages/contracts)`,
+  );
+
   // (13) Las sondas de red llevan tope: `avahi-resolve` puede quedarse esperando.
   const avahiSinTope = ['infra/fedora/odontocrm', 'infra/fedora/instalar-base-fedora.sh'].filter(
     (ruta) =>

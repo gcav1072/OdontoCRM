@@ -866,6 +866,34 @@ Notas:
 
 ---
 
+## 7-bis. Añadir una característica sin romper el despliegue
+
+Esto es lo que hay que tocar **según lo que se añada**, y lo que el verificador comprueba
+para que no se olvide nada (`npm run fedora:check`, dentro de `npm run verify`):
+
+| Si añades… | Hay que tocar | Lo comprueba |
+| :--- | :--- | :--- |
+| **Una variable de entorno** nueva | La plantilla de `install.sh` **y** `§8.2` de esta guía, en el mismo commit | Que ninguna plantilla tenga variables que nadie lee, y que ningún esquema tenga un valor por defecto hostil (ruta `./…`, `127.0.0.1`, `:5173`) sin estar en la plantilla |
+| **Un servicio** nuevo | `SERVICIOS` en `infra/fedora/odontocrm` y en `ensayo-despliegue.sh`; su base en `bootstrap.mjs` y en las dos listas de respaldo (`install.sh` y `odontocrm-backup.sh`); su puerto en el `env_common_body`; y sus migraciones | Que los servicios de `services/` estén en las listas, y que la lista de bases coincida en los tres sitios |
+| **Una ruta o un endpoint** nuevo | Nada especial: el gateway proxya por prefijo y las rutas internas exigen `x-internal-token` | Las pruebas del servicio y `verify` |
+| **Algo en el proxy** (`nginx/odontocrm.conf`) | Nada más: `odontocrm actualizar` reejecuta `nginx/instalar.sh` con el nombre actual del servidor | Que el proxy sirva los enlaces del certificado y el tipo MIME del perfil de Apple |
+| **Una migración** | El archivo en `services/<svc>/migrations/`; `odontocrm actualizar` las aplica | `npm run verify:migrations` y el seed determinista |
+| **Un dato que sale impreso** (récipes, PDF) | `packages/contracts/src/clinic.ts` si es de la clínica (§8.0) | Que la guía mencione dónde se cambian los datos del consultorio |
+| **Una regla de seguridad** (secreto, permiso, cabecera) | El esquema Zod correspondiente, con el **marcador `CAMBIAR_*` tratado como ausente** (nunca como valor válido) | `odontocrm verificar` avisa de cualquier `CAMBIAR_*` sin sustituir |
+
+**Las tres reglas que evitan el 90 % de los sustos:**
+
+1. **Una variable nueva sin plantilla = servicio en bucle.** El valor por defecto casi
+   siempre es cómodo en desarrollo (relativo al repositorio) y **roto** en `/opt`, que es de
+   solo lectura para el servicio.
+2. **Un dato nuevo en un sitio nuevo = otra copia que puede quedarse vieja.** Antes de dar
+   algo por terminado: `grep` de dónde se lee y comprobar que lo que corre es lo que crees
+   (`cmp`, `git -C /opt/odontocrm log -1`, `odontocrm verificar`).
+3. **Todo lo que se use dos veces va al repositorio** (los guiones del despliegue nacieron en
+   `tmp/`, que está ignorado por git, y no viajaban a otra PC).
+
+---
+
 ## 8.0 Los datos del consultorio (antes de la primera puesta en marcha)
 
 La identidad de la clínica —nombre, dirección, RIF, teléfonos y **odontólogos con su
