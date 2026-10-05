@@ -17,7 +17,7 @@ más adelante, fuera de ella por VPN.
 >
 > | Quiero… | Documento |
 > | :--- | :--- |
-> | **Instalar el servidor de la clínica** | [`infra/fedora/INSTALL.md`](infra/fedora/INSTALL.md) + los dos guiones de [`infra/fedora/`](infra/fedora) |
+> | **Instalar el servidor de la clínica** | `sudo bash infra/fedora/instalar-servidor.sh --con-dns` y, para el detalle, [`INSTALL.md`](infra/fedora/INSTALL.md) §4-bis |
 > | **Operar el sistema ya instalado** | [`infra/fedora/RUNBOOK.md`](infra/fedora/RUNBOOK.md) y [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) |
 > | **Usar el consultorio** (sin terminal) | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) |
 > | **Conectar tablets, móviles y TVs** | [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) |
@@ -40,10 +40,16 @@ más adelante, fuera de ella por VPN.
 ---
 
 > **¿Es el servidor de la clínica y no una máquina de desarrollo?** Entonces esto no es lo
-> que buscas: usa [`infra/fedora/INSTALL.md`](infra/fedora/INSTALL.md) (o, en corto,
-> `sudo bash infra/fedora/instalar-base-fedora.sh` y
-> `sudo bash infra/fedora/ensayo-despliegue.sh --hasta=respaldos`). Lo de aquí abajo levanta
-> una **pila de desarrollo** con recarga automática.
+> que buscas: en una PC nueva, **un solo comando** hace todo (máquina, bases, usuarios,
+> despliegue, TLS, firewall, SELinux, respaldos y el nombre para los equipos):
+>
+> ```bash
+> sudo bash infra/fedora/instalar-servidor.sh --con-dns
+> ```
+>
+> Detalle paso a paso en [`infra/fedora/INSTALL.md`](infra/fedora/INSTALL.md) §4-bis; para una
+> instalación que ya existe, `sudo odontocrm actualizar`. Lo de aquí abajo levanta una **pila
+> de desarrollo** con recarga automática.
 
 ## Puesta en marcha (desarrollo)
 

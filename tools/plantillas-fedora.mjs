@@ -606,6 +606,37 @@ const exigir = (condicion, bien, mal) => {
     `estas variables no las lee nadie y volvieron a la plantilla: ${reaparecidas.join(', ')} (los valores viven en packages/contracts)`,
   );
 
+  // (13-quinquies) EL SEED: que una PC nueva no dependa de la memoria de nadie.
+  // Todas las mejoras de esta temporada tienen que estar en el camino de instalación, no
+  // solo en un guion suelto que alguien recuerde ejecutar.
+  const seedRuta = 'infra/fedora/instalar-servidor.sh';
+  exigir(
+    existsSync(join(ROOT, seedRuta)),
+    'el seed de instalación completa existe (infra/fedora/instalar-servidor.sh)',
+    `falta ${seedRuta}: una PC nueva tendría que seguir la guía a mano`,
+  );
+  const seed = existsSync(join(ROOT, seedRuta)) ? leer(seedRuta) : '';
+  const piezasDelSeed = [
+    ['instalar-base-fedora.sh', 'la máquina (paquetes, PostgreSQL, pg_hba, Node, nombre)'],
+    ['db:bootstrap', 'las 8 bases, sus roles y las credenciales'],
+    ['db:migrate', 'el esquema'],
+    ['seed:users', 'los usuarios iniciales'],
+    ['ensayo-despliegue.sh', 'despliegue, unidades, secretos, TLS, firewall, SELinux y respaldos'],
+    ['instalar-dns.sh', 'el nombre por DNS (para los aparatos que no resuelven .local)'],
+    ['odontocrm', 'el comando del servidor'],
+  ];
+  const sinPieza = piezasDelSeed.filter(([pista]) => !seed.includes(pista)).map(([, que]) => que);
+  exigir(
+    sinPieza.length === 0,
+    'el seed cubre la instalación completa (máquina, bases, usuarios, despliegue, respaldos y nombre)',
+    `al seed le falta: ${sinPieza.join(', ')}`,
+  );
+  exigir(
+    /instalar-servidor\.sh/.test(guia) && /instalar-servidor\.sh/.test(leer('README.md')),
+    'la guía y el README presentan el seed como el camino de una PC nueva',
+    'ni INSTALL.md ni README.md mencionan infra/fedora/instalar-servidor.sh',
+  );
+
   // (13) Las sondas de red llevan tope: `avahi-resolve` puede quedarse esperando.
   const avahiSinTope = ['infra/fedora/odontocrm', 'infra/fedora/instalar-base-fedora.sh'].filter(
     (ruta) =>

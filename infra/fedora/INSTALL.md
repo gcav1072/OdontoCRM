@@ -213,6 +213,35 @@ grep -q odontocrm.local /etc/hosts || echo '127.0.1.1  odontocrm.local odontocrm
 
 ---
 
+## 3-bis. Instalación completa en un comando (el «seed»)
+
+Para una **PC nueva**, el camino es uno solo:
+
+```bash
+git clone https://github.com/gcav1072/OdontoCRM.git && cd OdontoCRM
+sudo bash infra/fedora/instalar-servidor.sh --con-dns
+```
+
+Hace, en orden, lo que esta guía explica paso a paso —**sin reimplementar nada**: llama a los
+guiones que ya existen— y termina diciendo cómo entrar desde cada aparato:
+
+| Paso | Qué ejecuta por dentro |
+| :--- | :--- |
+| 1. La máquina | `instalar-base-fedora.sh --nombre-mdns=odontocrm`: paquetes, PostgreSQL del sistema, Node 26, nginx+mkcert, **`pg_hba.conf` en `scram-sha-256`** y el nombre por mDNS |
+| 2. Bases y usuarios | `npm run db:bootstrap` + `db:migrate` + `seed:users` (imprime la **contraseña temporal** de los usuarios iniciales) |
+| 3. Despliegue | `ensayo-despliegue.sh --hasta=respaldos`: código, unidades, secretos en `/etc/odontocrm`, migraciones, servicios, **TLS, firewall con el 80 y el 443, SELinux, respaldo y prueba de restauración** |
+| 4. El nombre | mDNS; con `--con-dns`, además el **DNS propio** (`infra/fedora/nombre/instalar-dns.sh`) para que funcione en todos los aparatos |
+| 5. Resumen | `tools/estado.mjs --alertas`, `odontocrm certificado` y la página del certificado para los equipos |
+
+Es **idempotente** (repetirlo no rompe nada) y admite `--dry-run`, `--sin-respaldo`,
+`--sin-nombre` y `--admin-url=` si tu superusuario necesita contraseña.
+
+> **Para una instalación que ya existe** no hace falta: se actualiza con
+> `sudo odontocrm actualizar`, que también pone al día la configuración del proxy y el nombre.
+> El seed es para la **primera** vez o para levantar otra PC de cero.
+
+---
+
 ## 4. Paquetes base (dnf)
 
 Instalación manual (equivalente a lo que hace `install.sh`):
