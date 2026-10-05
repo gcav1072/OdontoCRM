@@ -670,6 +670,21 @@ corregir_valores_obsoletos() {
     fi
   done
 
+  # 3-ter) notifications.env: si falta TELEGRAM_MODE, se pone. Una versión anterior
+  #    del ensayo borró la clave al trasladar los secretos (el .env de desarrollo no la
+  #    define porque usa el valor por defecto) y el archivo quedó sin ella: funciona,
+  #    pero el resumen avisaba «no define TELEGRAM_MODE» en cada corrida. Se repone con
+  #    su valor por defecto explícito.
+  archivo="/etc/odontocrm/notifications.env"
+  if [[ -f "$archivo" ]] && ! grep -qE '^TELEGRAM_MODE=' "$archivo"; then
+    if (( APPLY )); then
+      printf '\n# auto | real | simulado (el long polling es el transporte, no un modo)\nTELEGRAM_MODE=auto\n' >>"$archivo"
+      ok "repuesto TELEGRAM_MODE=auto en $archivo (se había perdido en un traslado anterior)"
+    else
+      printf '       %s[dry-run] printf TELEGRAM_MODE=auto >> %s%s\n' "$C_DIM" "$archivo" "$C_RESET"
+    fi
+  fi
+
   # 4) gateway: sin la clave pública del JWT no arranca (su valor por defecto es
   #    relativo al código, que en producción no tiene las claves).
   archivo="/etc/odontocrm/gateway.env"
