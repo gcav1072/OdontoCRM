@@ -27,6 +27,7 @@
 
 ---
 
+
 ## 1. Los cinco minutos de la mañana
 
 ```bash
@@ -237,6 +238,44 @@ servidor tiene datos de pacientes: cualquier cosa destructiva se ensaya antes en
 PC de pruebas.
 
 ---
+
+### El restablecimiento (o el respaldo) se queda mudo
+
+**Síntoma.** El comando no termina, no imprime nada nuevo y parece estar trabajando.
+En el ensayo de la Fase 10 pasó con el restablecimiento: se quedó **un minuto y medio
+esperando la contraseña** del rol administrador, que no estaba en
+`/etc/odontocrm/.pgpass`. Peor aún: como la terminal seguía ocupada por ese proceso,
+los comandos siguientes no hacían nada y todo parecía «no avanzar».
+
+**Qué mirar, en este orden:**
+
+```bash
+pgrep -af 'fase10-ensayo|[o]dontocrm-restore|[o]dontocrm-backup'   # ¿hay algo vivo?
+psql -d "postgres:///postgres?host=/var/run/postgresql" \
+  -c "select pid, state, wait_event, left(query,60) from pg_stat_activity where datname is not null"
+tail -20 /var/log/odontocrm/backup.log        # o restore_<fecha>.log
+```
+
+- Si `pg_stat_activity` **no** muestra bloqueos y el proceso sigue ahí, casi siempre es
+  una **pregunta sin responder** (contraseña) o un `psql` esperando entrada. La
+  solución está en las credenciales: `crear-rol-respaldo.sh --admin-role=<rol>` deja la
+  línea del administrador en `/etc/odontocrm/.pgpass`.
+- Los scripts ya **no preguntan** (`psql -w`): si falta la credencial, fallan en el acto
+  diciendo qué falta. Si ves un proceso mudo, es de una versión anterior: actualiza el
+  código desplegado (`git -C /opt/odontocrm log --oneline -1`).
+
+**Cómo salir:**
+
+```bash
+sudo pkill -f '[o]dontocrm-restore'      # el proceso atascado
+sudo pkill -f '[f]ase10-ensayo-fedora'   # y el ensayo que lo espera
+sudo bash /opt/odontocrm/infra/fedora/backup/odontocrm-restore.sh --limpiar-verif --yes
+```
+
+**Para que no vuelva a pasar:** el ensayo tiene **testigo** (no admite dos a la vez), los
+respaldos y restablecimientos corren con **tope de tiempo** (`timeout`), y si el código
+desplegado no coincide con el del repositorio el ensayo **se para** en vez de probar
+código viejo.
 
 ## 8. Actualizar el sistema
 
