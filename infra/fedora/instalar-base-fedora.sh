@@ -57,6 +57,12 @@ echo "== 3/6 · Rol superusuario para tu usuario (peer por socket) =============
 # usuario de verdad, que es el que abre la sesión (SUDO_USER).
 USUARIO_REAL="${SUDO_USER:-$USER}"
 sudo -u postgres createuser --superuser "$USUARIO_REAL" 2>/dev/null || echo "el rol $USUARIO_REAL ya existía"
+# Y también para root: en el despliegue el bootstrap y las migraciones se ejecutan con
+# `sudo` (el código de /opt pertenece a root), y con autenticación `peer` el usuario del
+# sistema tiene que tener su propio rol. Sin esto, `sudo npm run db:bootstrap` falla en
+# una máquina recién preparada con «Peer authentication failed for user "root"».
+sudo -u postgres createuser --superuser root 2>/dev/null || echo "el rol root ya existía"
+echo "  roles superusuario por socket: $USUARIO_REAL y root (peer)"
 # La comprobación va COMO ESE USUARIO, no como root: la autenticación `peer` compara el
 # usuario del sistema que conecta con el rol pedido, así que desde root falla con
 # «Peer authentication failed» aunque el rol exista. (Se veía ese error en cada corrida

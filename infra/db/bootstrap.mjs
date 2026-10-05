@@ -380,9 +380,22 @@ const run = async () => {
 
 run()
   .catch((error) => {
-    console.error(
-      `\nEl bootstrap falló: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const mensaje = error instanceof Error ? error.message : String(error);
+    console.error(`\nEl bootstrap falló: ${mensaje}`);
+
+    // El fallo más común en una máquina recién preparada (socket + `peer`): el usuario
+    // del sistema que ejecuta esto no tiene rol en PostgreSQL. Se dice el comando exacto
+    // en vez de dejar que se adivine —es el tropiezo número uno al instalar en otra PC—.
+    if (/peer authentication|autenticaci[oó]n peer|autentificaci[oó]n peer/i.test(mensaje)) {
+      const usuario = process.env['SUDO_USER'] ?? process.env['USER'] ?? 'tu_usuario';
+      console.error(
+        `\n  Es la autenticación del socket (\`peer\`): el rol «${usuario}» tiene que existir\n` +
+          '  porque PostgreSQL compara el usuario del sistema con el rol pedido.\n' +
+          '  Se arregla con:\n' +
+          `      sudo -u postgres createuser --superuser ${usuario}\n` +
+          '  (Lo hace `infra/fedora/instalar-base-fedora.sh`. Ver INSTALL.md §6.4.)',
+      );
+    }
     process.exitCode = 1;
   })
   .finally(async () => {

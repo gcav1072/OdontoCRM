@@ -512,9 +512,10 @@ NODE_ENV=production
 LOG_LEVEL=info
 EOF
 
-sudo npm run db:bootstrap          # crea lo que falte (no borra nada)
-sudo npm run db:bootstrap -- --only identity     # un solo servicio
-sudo npm run db:bootstrap -- --rotate            # cambia contraseñas (¡reinicie después!)
+npm run db:bootstrap               # crea lo que falte (no borra nada)
+npm run db:bootstrap -- --only identity     # un solo servicio
+npm run db:bootstrap -- --rotate            # cambia contraseñas (¡reinicie después!)
+#   Desde /opt (código de root) va con sudo:  sudo npm run db:bootstrap
 ```
 
 **Alternativa sin contraseña de superusuario (la más cómoda en Fedora).** El clúster
@@ -537,6 +538,14 @@ EOF
 Con esta forma, las URLs que genera el bootstrap para los servicios siguen siendo
 **TCP a 127.0.0.1** con la contraseña aleatoria de cada rol: el socket solo lo usa el
 administrador. Es el camino probado en la PC Fedora de pruebas (Fase 10).
+
+> **¿Con `sudo` o sin él?** Con autenticación `peer`, PostgreSQL compara el **usuario del
+> sistema** que conecta con el rol pedido, así que el rol tiene que ser el de quien
+> ejecuta el comando: si lanzas `sudo npm run db:bootstrap`, hace falta el rol **`root`**;
+> si lo lanzas como tu usuario, el tuyo. `infra/fedora/instalar-base-fedora.sh` crea los
+> dos, así que **con el instalador base hecho funcionan las dos formas**. Si te saltas ese
+> paso y ves `Peer authentication failed for user "…"`, el propio bootstrap te dice el
+> comando (`sudo -u postgres createuser --superuser <usuario>`).
 
 > Nota de seguridad: el bootstrap también usa `/opt/odontocrm/.env` (o el `.env` de la
 > raíz) solo para leer `PG_ADMIN_URL`; cuando termines puedes **borrarlo**
