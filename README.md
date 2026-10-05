@@ -79,6 +79,7 @@ Los secretos **nunca** se versionan ni se comparten por chat: ver
 La lista completa (con flags, requisitos, variables de entorno y problemas típicos)
 está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)
 - [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) — comandos del servidor en producción (`sudo odontocrm …`).**. Estos son los del día a día:
+- [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) — instalar el certificado del servidor en tablets, móviles, PCs y TVs.
 
 | Comando | Qué hace |
 | :--- | :--- |

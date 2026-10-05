@@ -46,6 +46,10 @@ contraseña propios**. Hay dos direcciones y las dos funcionan:
 >
 > La IP exacta de tu instalación la imprime el servidor con
 > `sudo odontocrm certificado`.
+>
+> **La guía completa, sistema por sistema** (Android, iPhone/iPad, Windows, macOS,
+> Linux y televisores, con cómo comprobar que quedó bien):
+> [`CERTIFICADO_EN_LOS_EQUIPOS.md`](CERTIFICADO_EN_LOS_EQUIPOS.md).
 
 ### Cómo se instala el certificado (según el equipo)
 

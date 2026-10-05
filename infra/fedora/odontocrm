@@ -310,11 +310,23 @@ case "$ORDEN" in
     ${C_TI}Mac${C_RE}
       1. Abre odontocrm-ca.pem → Llavero «Sistema» → doble clic → Confiar siempre.
 
+    ${C_TI}Linux (Arch, Fedora, Ubuntu…)${C_RE}
+      Arch:    sudo trust anchor --store odontocrm-ca.crt
+               (o: sudo cp odontocrm-ca.crt /etc/ca-certificates/trust-source/anchors/ && sudo update-ca-trust)
+      Fedora:  sudo cp odontocrm-ca.crt /etc/pki/ca-trust/source/anchors/ && sudo update-ca-trust
+      Ubuntu:  sudo cp odontocrm-ca.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates
+      Comprobar sin -k:  curl -sI https://${IP_CA:-<IP>}/ | head -1
+      Firefox va aparte: about:config → security.enterprise_roots.enabled = true
+
     ${C_TI}Smart TV${C_RE}
       Muchas no permiten instalar una CA. Alternativa: entrar por HTTP solo para la
       pantalla (si el televisor lo permite) o conectarle un mini-PC/tablet.
       ${C_AV}Nunca${C_RE} desactives la validación del servidor para «que funcione»: quita
       la protección justo donde circulan los datos clínicos.
+
+    ${C_TI}La guía completa, sistema por sistema${C_RE}
+      docs/CERTIFICADO_EN_LOS_EQUIPOS.md  (Android, iPhone/iPad, Windows, macOS,
+      Linux con Arch/Fedora/Ubuntu, Firefox y televisores)
 
     ${C_TI}Si prefieres no instalar nada${C_RE}
       Puedes aceptar el aviso en cada equipo («Avanzado» → «Continuar»): funciona

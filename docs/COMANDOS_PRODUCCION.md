@@ -284,8 +284,10 @@ después se cierra el navegador, se vuelve a abrir `https://odontocrm.local` (o 
 candado sale normal. Va por HTTP **a propósito**: hay que poder descargarlo antes de que
 el equipo confíe en el certificado.
 
-Los pasos por sistema operativo (Android, iPhone/iPad, Windows, Mac y qué hacer con un
-Smart TV que no admite CA) están en INSTALL §13.3-bis, y el comando los imprime.
+Los pasos por sistema operativo —**Android, iPhone/iPad, Windows, macOS, Linux (Arch,
+Fedora, Ubuntu/Debian) y televisores**— están en
+[`CERTIFICADO_EN_LOS_EQUIPOS.md`](CERTIFICADO_EN_LOS_EQUIPOS.md), y el comando los
+resume en pantalla.
 
 **Si esa página da «403 Forbidden» en texto plano**, la configuración es la vieja y
 apunta a `/etc/odontocrm`: nginx corre como usuario `nginx` y ese directorio es

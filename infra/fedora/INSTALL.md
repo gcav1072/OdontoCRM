@@ -1476,6 +1476,11 @@ puede descargarla por HTTPS sin pelearse antes con el aviso). Desde el propio eq
 3. Cerrar y volver a abrir el navegador: el candado sale normal y la pantalla deja de
    preguntar.
 
+La guía **paso a paso por sistema** (Android, iPhone/iPad, Windows, macOS, **Linux con
+Arch, Fedora y Ubuntu/Debian**, Firefox y televisores), con cómo comprobar que quedó
+bien y los problemas típicos, está en
+[`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](../../docs/CERTIFICADO_EN_LOS_EQUIPOS.md).
+
 **Si un televisor no permite instalar una CA** (pasa en muchos Smart TV), hay dos
 salidas honestas: ponerle un mini-PC o una tablet a la pantalla, o usar un dominio real
 con certificado de Let's Encrypt por DNS-01 (§13.2). Lo que **no** se hace nunca es
