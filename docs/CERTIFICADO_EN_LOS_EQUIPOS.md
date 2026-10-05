@@ -13,6 +13,31 @@
 
 ---
 
+## 0. Resumen: qué necesita cada aparato
+
+Se instalan **dos** cosas, y son problemas distintos: **resolver el nombre** y **confiar en
+el certificado**. Esto es lo que le toca a cada uno:
+
+| Aparato | Nombre | Certificado | El paso que se olvida |
+| :--- | :--- | :--- | :--- |
+| **Android** (tablet/móvil) | **No resuelve `.local`** con un navegador → IP, o DNS propio (`odontocrm nombre`) | `http://<IP>/ca.crt` → Ajustes → Seguridad → Cifrado y credenciales → Instalar un certificado → **Certificado de CA** | Android 7+ **no** confía en las CA de usuario para las *apps* (el navegador sí) |
+| **iPhone / iPad** | mDNS ✓ (funciona `.local`) | `http://<IP>/odontocrm.mobileconfig` **abierto con Safari** → Ajustes → Perfil descargado → Instalar | Ajustes → General → Información → **Ajustes de confianza de certificados → activar** |
+| **Windows 10/11** | `.local` a veces no resuelve (mDNS irregular) → IP, DNS propio o `hosts` | `http://<IP>/ca.der` (doble clic) o `irm http://<IP>/ca-windows.ps1 \| iex` en PowerShell como administrador | Hay que instalarlo en **Equipo local** → *Entidades de certificación raíz de confianza* |
+| **macOS** | mDNS ✓ | `http://<IP>/odontocrm.mobileconfig` → Ajustes → Perfil descargado | En Llaveros, marcar la CA como **«Confiar siempre»** |
+| **Linux** (Fedora/Debian/Arch) | mDNS ✓ con `nss-mdns` | `curl -fsSL http://<IP>/ca-linux.sh \| sudo bash` | **Firefox** usa su propio almacén: `security.enterprise_roots.enabled` |
+| **Televisor / Android TV** | — | Por USB (ver §8) | Muchos no permiten instalar CA: queda la IP y aceptar el aviso |
+
+> **Con tablets Android en la consulta, el nombre `.local` no basta** (su navegador no lo
+> resuelve y no se puede editar el `hosts` sin root): monta el DNS propio con
+> `sudo bash infra/fedora/nombre/instalar-dns.sh` (INSTALL §13.2-ter) o usa la IP.
+
+Y el comando que lo cuenta todo desde el servidor, incluidos los enlaces:
+
+```bash
+sudo odontocrm certificado      # formato de cada plataforma + comprobación de que se sirven
+sudo odontocrm nombre           # cómo entran los equipos: mDNS, DNS propio o IP
+```
+
 ## 1. Dónde se descarga
 
 En **el propio equipo** que hay que configurar, abrir esta dirección (con `http://`, no
@@ -64,8 +89,10 @@ instaladas por el usuario, no un fallo del servidor.
 
 ## 3. iPhone / iPad
 
-1. Descargar `http://<IP>/ca.crt` y aceptar **Permitir**. El archivo queda en
-   **Archivos** → **Descargas**.
+1. Con **Safari** (con Chrome no se ofrece el perfil), abrir
+   `http://<IP>/odontocrm.mobileconfig` y aceptar **Permitir**. Es la vía de un toque: el
+   perfil lleva la CA dentro. (Alternativa: `http://<IP>/ca.crt`, que queda en
+   **Archivos** → **Descargas**.)
 2. **Ajustes** → **General** → **VPN y gestión de dispositivos** → aparece el perfil
    descargado → **Instalar** (pide el código del dispositivo).
 3. **Ajustes** → **General** → **Información** → **Ajustes de confianza de

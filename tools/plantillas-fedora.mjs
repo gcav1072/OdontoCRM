@@ -505,6 +505,35 @@ const exigir = (condicion, bien, mal) => {
     'falta la orden `odontocrm nombre` (el diagnóstico del nombre en la red)',
   );
 
+  // (13-ter) El soporte multiplataforma del certificado: nginx tiene que servir los cuatro
+  //          formatos (PEM, DER, perfil de Apple y los scripts de un comando) y el perfil
+  //          **con su tipo MIME**, o iOS muestra el XML en vez de ofrecer instalarlo.
+  const conf = leer('infra/fedora/nginx/odontocrm.conf');
+  const formatos = [
+    '/ca.crt',
+    '/ca.der',
+    '/odontocrm.mobileconfig',
+    '/ca-windows.ps1',
+    '/ca-linux.sh',
+  ];
+  const sinServir = formatos.filter((f) => !conf.includes(`location = ${f}`));
+  exigir(
+    sinServir.length === 0,
+    'el proxy sirve la CA en los formatos de todas las plataformas (PEM, DER, perfil y scripts)',
+    `faltan en nginx/odontocrm.conf: ${sinServir.join(', ')}`,
+  );
+  exigir(
+    /application\/x-apple-aspen-config/.test(conf),
+    'el perfil de Apple se sirve con su tipo MIME (si no, Safari lo muestra como texto)',
+    'odontocrm.mobileconfig no lleva `application/x-apple-aspen-config`: iOS no ofrecerá instalarlo',
+  );
+  exigir(
+    /mobileconfig/.test(guia) &&
+      /odontocrm\.mobileconfig/.test(leer('docs/CERTIFICADO_EN_LOS_EQUIPOS.md')),
+    'las guías explican el perfil de Apple y los formatos por plataforma',
+    'los documentos no mencionan odontocrm.mobileconfig (iOS/macOS instalarían el .crt a mano)',
+  );
+
   // (13) Las sondas de red llevan tope: `avahi-resolve` puede quedarse esperando.
   const avahiSinTope = ['infra/fedora/odontocrm', 'infra/fedora/instalar-base-fedora.sh'].filter(
     (ruta) =>

@@ -388,23 +388,52 @@ case "$ORDEN" in
         av 'que nginx NO puede leer (daba 403). Arrégialo con:'
         av '  sudo bash '"$CODE_DIR"'/infra/fedora/nginx/instalar.sh'
       else
-        ca_http="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1/ca.crt || echo 000)"
-        if [[ "$ca_http" == "200" ]]; then
-          ok "el proxy sirve /ca.crt (comprobado: 200). Página para los equipos:"
-          printf '    %shttp://%s/ca.crt%s\n' "$C_TI" "${IP_CA:-<IP-del-servidor>}" "$C_RE"
-        else
-          av "el proxy responde $ca_http en /ca.crt: revisa permisos y SELinux"
-          av 'suele ser la copia pública: sudo bash '"$CODE_DIR"'/infra/fedora/nginx/instalar.sh'
-        fi
+        # Cuatro formatos, uno por familia de aparatos. Se comprueba cada uno: si falta,
+        # ese aparato se queda con el aviso de certificado sin saber por qué.
+        faltan=0
+        for archivo in ca.crt ca.der odontocrm.mobileconfig ca-windows.ps1 ca-linux.sh; do
+          codigo="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1/$archivo" || echo 000)"
+          if [[ "$codigo" == "200" ]]; then
+            ok "/$archivo se sirve (200)"
+          else
+            av "/$archivo responde $codigo (los equipos que lo necesiten no podrán instalarlo)"
+            faltan=$((faltan + 1))
+          fi
+        done
+        (( faltan == 0 )) || av 'arréglalo con:  sudo bash '"$CODE_DIR"'/infra/fedora/nginx/instalar.sh'
+
+        echo
+        printf '%sEn cada aparato%s (el certificado se instala una vez):\n' "$C_TI" "$C_RE"
+        printf '  %sAndroid%s   http://%s/ca.crt  → Ajustes → Seguridad → Cifrado y credenciales\n' "$C_TI" "$C_RE" "${IP_CA:-<IP>}"
+        printf '            → Instalar un certificado → Certificado de CA → elegir el archivo\n'
+        printf '  %siOS/iPadOS%s http://%s/odontocrm.mobileconfig  (abrir con SAFARI, no Chrome)\n' "$C_TI" "$C_RE" "${IP_CA:-<IP>}"
+        printf '            → Ajustes → Perfil descargado → Instalar\n'
+        printf '            → y el paso que se olvida: Ajustes → General → Información →\n'
+        printf '              Ajustes de confianza de certificados → ACTIVAR el de OdontoCRM\n'
+        printf '  %sWindows%s  http://%s/ca.der  (doble clic → Instalar certificado →\n' "$C_TI" "$C_RE" "${IP_CA:-<IP>}"
+        printf '            Equipo local → Entidades de certificación raíz de confianza)\n'
+        printf '            o en PowerShell como administrador:\n'
+        printf '              irm http://%s/ca-windows.ps1 | iex\n' "${IP_CA:-<IP>}"
+        printf '  %smacOS%s    http://%s/odontocrm.mobileconfig  → Ajustes → Perfil descargado\n' "$C_TI" "$C_RE" "${IP_CA:-<IP>}"
+        printf '  %sLinux%s    curl -fsSL http://%s/ca-linux.sh | sudo bash\n' "$C_TI" "$C_RE" "${IP_CA:-<IP>}"
+        printf '            (Firefox tiene su propio almacén: security.enterprise_roots.enabled)\n'
+        echo
+        printf '  Y para el %snombre%s en vez de la IP, ver: sudo odontocrm nombre\n' "$C_TI" "$C_RE"
       fi
 
       if [[ -z "$destino" ]]; then
         destino="/var/lib/odontocrm/ca-para-dispositivos"
       fi
       install -d -m 0755 "$destino"
-      install -m 0644 "$origen" "$destino/odontocrm-ca.crt"     # Android/Windows/Linux
-      install -m 0644 "$origen" "$destino/odontocrm-ca.pem"     # iOS/macOS/Firefox
-      ok "archivos listos en $destino: odontocrm-ca.crt y odontocrm-ca.pem"
+      install -m 0644 "$origen" "$destino/odontocrm-ca.crt"     # Android/Linux (PEM)
+      install -m 0644 "$origen" "$destino/odontocrm-ca.pem"     # Firefox/macOS
+      openssl x509 -in "$origen" -outform DER -out "$destino/odontocrm-ca.der" 2>/dev/null &&
+        chmod 0644 "$destino/odontocrm-ca.der"                   # Windows: doble clic
+      for extra in odontocrm.mobileconfig ca-windows.ps1 ca-linux.sh; do
+        [[ -f "/var/www/odontocrm/ca/$extra" ]] &&
+          install -m 0644 "/var/www/odontocrm/ca/$extra" "$destino/$extra"
+      done
+      ok "archivos listos en $destino para copiar por USB: .crt, .pem, .der, .mobileconfig y los dos scripts"
 
       cat <<EOF
 

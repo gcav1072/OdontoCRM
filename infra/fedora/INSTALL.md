@@ -1595,6 +1595,21 @@ sudo bash infra/fedora/nombre/instalar-dns.sh
 
 ### 13.3-bis Quitar el aviso de certificado en los demás equipos
 
+El proxy publica la CA en **el formato que pide cada plataforma** (`infra/fedora/nginx/instalar.sh`
+los genera y `odontocrm certificado` comprueba que se sirven):
+
+| Enlace | Para |
+| :--- | :--- |
+| `http://<servidor>/ca.crt` | Android, Linux (PEM) |
+| `http://<servidor>/ca.der` | Windows (doble clic), iOS/Android como alternativa |
+| `http://<servidor>/odontocrm.mobileconfig` | **iOS/iPadOS y macOS**: perfil de un toque (hay que abrirlo con **Safari** y después activar la confianza en Ajustes) |
+| `http://<servidor>/ca-windows.ps1` · `/ca-linux.sh` | Un solo comando en Windows (PowerShell como administrador) y en Linux |
+
+El detalle por aparato —incluidos los dos pasos que se olvidan (la **confianza total** en iOS
+y las **CA de usuario** en Android 7+) y la comprobación de cada uno— está en
+[`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](../../docs/CERTIFICADO_EN_LOS_EQUIPOS.md).
+
+
 El navegador de la tablet, el móvil o el televisor avisa «conexión no privada» porque
 el certificado lo firma la **CA interna** del servidor (`mkcert`), que solo está
 instalada en el propio servidor. Se quita instalando esa CA en cada equipo, **una sola

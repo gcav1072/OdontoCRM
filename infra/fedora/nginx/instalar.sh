@@ -121,6 +121,12 @@ grep -q 'listen 80 default_server;' "$CONF_DESTINO" && ok 'el redirect de http�
 # ni atravesarlo, así que servir la CA desde ahí daba **403 en texto plano** (error de
 # nginx, no de la aplicación). La CA es un certificado **público**, así que se copia a
 # /var/www/odontocrm/ca/ (0755) y se etiqueta para SELinux.
+# IP del servidor para los scripts de un solo comando (se toma del argumento --host si
+# trae una IP, y si no de la interfaz por la que sale la red local).
+HOST_IP="$(printf '%s' "${HOST:-}" | grep -oE '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b' | head -1 || true)"
+[[ -n "$HOST_IP" ]] || HOST_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1 || true)"
+[[ -n "$HOST_IP" ]] || HOST_IP="SERVIDOR"
+
 CA_PUBLICA="/var/www/odontocrm/ca/odontocrm-ca.crt"
 CA_ORIGEN="$ETC_DIR/keys/odontocrm-ca.crt"
 [[ -f "$CA_ORIGEN" ]] || CA_ORIGEN="${CAROOT:-/root/.local/share/mkcert}/rootCA.pem"
@@ -128,6 +134,98 @@ if [[ -f "$CA_ORIGEN" ]]; then
   install -d -m 0755 /var/www/odontocrm/ca
   install -m 0644 -o root -g root "$CA_ORIGEN" "$CA_PUBLICA"
   ok "CA publicada en $CA_PUBLICA (legible por nginx)"
+
+  # ── La CA en el formato que pide cada plataforma ──────────────────────────
+  #
+  # No todos los aparatos tragan lo mismo, y el que falla se queda con el aviso de
+  # certificado sin saber por qué:
+  #   · Android y Linux leen PEM (`ca.crt`) tal cual.
+  #   · Windows prefiere DER (`ca.der`): se instala con doble clic.
+  #   · iOS/iPadOS y macOS instalan un **perfil** (`odontocrm.mobileconfig`): es la vía
+  #     correcta y la única que además deja el certificado en el llavero del sistema.
+  #     Se sirve con `Content-Type: application/x-apple-aspen-config`, o Safari lo
+  #     muestra como texto en vez de ofrecer instalarlo.
+  CA_DIR="/var/www/odontocrm/ca"
+  if openssl x509 -in "$CA_PUBLICA" -outform DER -out "$CA_DIR/odontocrm-ca.der" 2>/dev/null; then
+    chmod 0644 "$CA_DIR/odontocrm-ca.der"
+    ok 'CA en DER publicada (odontocrm-ca.der: doble clic en Windows)'
+  else
+    av 'no pude generar el DER de la CA (Windows tendrá que usar el .crt)'
+  fi
+
+  # Perfil de iOS/macOS: la CA en base64 dentro de un .mobileconfig bien formado.
+  der_b64="$(openssl x509 -in "$CA_PUBLICA" -outform DER 2>/dev/null | base64 | tr -d '\n' || true)"
+  huella="$(openssl x509 -in "$CA_PUBLICA" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 || true)"
+  if [[ -n "$der_b64" ]]; then
+    uuid_ca="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo 00000000-0000-4000-8000-000000000001)"
+    uuid_perfil="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo 00000000-0000-4000-8000-000000000002)"
+    cat >"$CA_DIR/odontocrm.mobileconfig" <<PERFIL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadCertificateFileName</key><string>odontocrm-ca.crt</string>
+      <key>PayloadDescription</key><string>Autoridad de certificación interna de OdontoCRM</string>
+      <key>PayloadDisplayName</key><string>OdontoCRM · CA interna</string>
+      <key>PayloadIdentifier</key><string>local.odontocrm.ca</string>
+      <key>PayloadType</key><string>com.apple.security.root</string>
+      <key>PayloadUUID</key><string>${uuid_ca}</string>
+      <key>PayloadVersion</key><integer>1</integer>
+      <key>PayloadContent</key><data>${der_b64}</data>
+    </dict>
+  </array>
+  <key>PayloadDescription</key><string>Instala la CA interna de OdontoCRM para que el navegador no avise</string>
+  <key>PayloadDisplayName</key><string>OdontoCRM · certificado de la clínica</string>
+  <key>PayloadIdentifier</key><string>local.odontocrm.perfil</string>
+  <key>PayloadOrganization</key><string>OdontoCRM</string>
+  <key>PayloadRemovalDisallowed</key><false/>
+  <key>PayloadType</key><string>Configuration</string>
+  <key>PayloadUUID</key><string>${uuid_perfil}</string>
+  <key>PayloadVersion</key><integer>1</integer>
+</dict>
+</plist>
+PERFIL
+    chmod 0644 "$CA_DIR/odontocrm.mobileconfig"
+    ok 'perfil de iOS/macOS publicado (odontocrm.mobileconfig)'
+    [[ -n "$huella" ]] && echo "       huella SHA-256 de la CA: ${huella:0:47}…"
+  fi
+
+  # Scripts de un solo comando para los equipos de la consulta.
+  cat >"$CA_DIR/ca-windows.ps1" <<'PS1'
+# OdontoCRM · instalar la CA interna en Windows (PowerShell COMO ADMINISTRADOR)
+#   irm http://<IP-del-servidor>/ca-windows.ps1 | iex
+$ErrorActionPreference = 'Stop'
+$destino = Join-Path $env:TEMP 'odontocrm-ca.der'
+Invoke-WebRequest -Uri 'http://SERVIDOR/ca.der' -OutFile $destino
+Import-Certificate -FilePath $destino -CertStoreLocation 'Cert:\LocalMachine\Root' | Out-Null
+Write-Host 'CA instalada. Cierra y vuelve a abrir el navegador.' -ForegroundColor Green
+PS1
+  sed -i "s|http://SERVIDOR/|http://${HOST_IP:-SERVIDOR}/|" "$CA_DIR/ca-windows.ps1"
+  chmod 0644 "$CA_DIR/ca-windows.ps1"
+
+  cat >"$CA_DIR/ca-linux.sh" <<'SH'
+#!/usr/bin/env bash
+# OdontoCRM · instalar la CA interna en Linux (Fedora/RHEL y Debian/Ubuntu)
+set -euo pipefail
+[[ "$(id -u)" == 0 ]] || { echo 'se necesita sudo'; exit 1; }
+tmp="$(mktemp -d)"
+curl -fsSL 'http://SERVIDOR/ca.crt' -o "$tmp/odontocrm-ca.crt"
+if [[ -d /etc/pki/ca-trust/source/anchors ]]; then
+  install -m 0644 "$tmp/odontocrm-ca.crt" /etc/pki/ca-trust/source/anchors/ && update-ca-trust
+elif [[ -d /usr/local/share/ca-certificates ]]; then
+  install -m 0644 "$tmp/odontocrm-ca.crt" /usr/local/share/ca-certificates/odontocrm-ca.crt && update-ca-certificates
+else
+  echo 'no encontré el almacén del sistema; revisa la documentación de tu distribución'; exit 1
+fi
+rm -rf "$tmp"
+echo 'CA instalada. Firefox tiene su propio almacén: activa security.enterprise_roots.enabled'
+SH
+  sed -i "s|http://SERVIDOR/|http://${HOST_IP:-SERVIDOR}/|" "$CA_DIR/ca-linux.sh"
+  chmod 0755 "$CA_DIR/ca-linux.sh"
+  ok 'scripts de un comando publicados (ca-windows.ps1 y ca-linux.sh)'
   if command -v semanage >/dev/null && [[ "$(getenforce 2>/dev/null)" == "Enforcing" ]]; then
     semanage fcontext -a -t httpd_sys_content_t '/var/www/odontocrm(/.*)?' 2>/dev/null ||
       semanage fcontext -m -t httpd_sys_content_t '/var/www/odontocrm(/.*)?' 2>/dev/null || true
