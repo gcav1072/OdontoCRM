@@ -50,8 +50,11 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
   sudo odontocrm servicios         Estado de las 10 unidades de systemd.
   sudo odontocrm logs <servicio|gateway|nginx|postgres> [líneas]
                                    Últimos registros.
-  sudo odontocrm actualizar        Traer el código nuevo, compilar, migrar y reiniciar
+  sudo odontocrm actualizar [--rama=<nombre>]
+                                   Traer el código nuevo, compilar, migrar y reiniciar
                                    (lo mismo que RUNBOOK §8, sin acordarse de nada).
+                                   Sigue la rama que ya tiene el despliegue; con
+                                   `--rama=main` cambia a esa (y se queda en ella).
   sudo odontocrm parar             Detener los 9 servicios (el gateway primero: es la
                                    puerta). nginx y PostgreSQL se quedan.
   sudo odontocrm arrancar          Arrancarlos en orden y comprobar que los 9 responden.
@@ -173,10 +176,22 @@ case "$ORDEN" in
     fi
     git config --global --add safe.directory "$CODE_DIR" 2>/dev/null || true
     printf '%sActualizando %s%s\n' "$C_TI" "$CODE_DIR" "$C_RE"
+    # Qué rama se despliega: por defecto, la que ya tiene el despliegue (así
+    # `actualizar` es predecible: nunca salta de rama solo). Con `--rama=<nombre>` se
+    # cambia a propósito —por ejemplo, al pasar de una rama de fase a `main`—.
+    rama_objetivo=""
+    for arg in "$@"; do
+      case "$arg" in --rama=*) rama_objetivo="${arg#*=}" ;; esac
+    done
     git fetch --prune origin || morir 'no pude traer el código nuevo'
-    rama="$(git rev-parse --abbrev-ref HEAD)"
-    git checkout -B "$rama" "origin/$rama" || morir 'no pude cambiar a la rama del repositorio'
-    ok "código en $(git rev-parse --short HEAD)"
+    rama_actual="$(git rev-parse --abbrev-ref HEAD)"
+    rama="${rama_objetivo:-$rama_actual}"
+    if [[ -n "$rama_objetivo" && "$rama_objetivo" != "$rama_actual" ]]; then
+      av "cambio de rama: $rama_actual → $rama_objetivo"
+    fi
+    git checkout -B "$rama" "origin/$rama" ||
+      morir "no pude cambiar a la rama '$rama' (¿existe en el origen? ¿la escribiste bien?)"
+    ok "rama $rama · código en $(git rev-parse --short HEAD)"
     npm ci --silent || morir 'falló npm ci'
     npm run build >/dev/null 2>&1 || morir 'falló la compilación'
     ok 'compilado'

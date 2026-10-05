@@ -196,6 +196,28 @@ sudo systemctl restart 'odontocrm@*' odontocrm-gateway
 sudo odontocrm verificar
 ```
 
+### ¿Qué rama se despliega?
+
+**La que ya tiene el despliegue, nunca otra por su cuenta.** `odontocrm actualizar`
+mira en qué rama está `/opt/odontocrm` y la actualiza desde el origen: así una
+actualización **no salta de rama sola** (nada de sorpresas del tipo «el servidor se
+puso a correr una rama de trabajo»).
+
+Para saber cuál es, y para cambiarla a propósito:
+
+```bash
+git -C /opt/odontocrm branch --show-current      # ¿qué rama corre el servidor?
+sudo odontocrm actualizar                        # la actualiza (la misma)
+sudo odontocrm actualizar --rama=main            # cambia a main y se queda en ella
+```
+
+El cambio de rama se usa al cerrar una fase (pasar de `fase/10-…` a `main`) o al
+preparar algo en una rama aparte. Lo dice en pantalla cuando cambia.
+
+En el **ensayo de despliegue** (`tmp/fase10-ensayo-fedora.sh`) el criterio es otro, y
+también explícito: por defecto despliega **la rama que tengas activa en el repositorio
+de trabajo** —la que estás mirando— y se puede forzar con `--rama=<nombre>`.
+
 > **Antes de actualizar**: respaldo al día (`sudo odontocrm respaldar`) y avisar a la
 > clínica de que se corta unos segundos. **Después**: `sudo odontocrm estado` y probar
 > un acceso real (entrar y abrir la agenda).
