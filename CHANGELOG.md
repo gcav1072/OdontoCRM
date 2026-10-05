@@ -4,6 +4,18 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fedora] — `TELEGRAM_MODE` repuesto si se perdió · 2026-10-04 (después del tag `fase-10`)
+
+### Corregido
+
+- **`/etc/odontocrm/notifications.env` se quedó sin `TELEGRAM_MODE`** y el ensayo avisaba de
+  ello en cada corrida. Lo causó el traslado de secretos de una versión anterior del guion:
+  borraba las claves gestionadas y reescribía solo las que traía el repositorio, y como el
+  `.env` de desarrollo no define `TELEGRAM_MODE` (usa su valor por defecto), la clave
+  desapareció del archivo de producción. El servicio funcionaba igual (el esquema tiene
+  `auto` por defecto), pero era un aviso fijo en una corrida verde, y los avisos fijos
+  tapan los de verdad. Ahora `install.sh` la repone si falta, y es idempotente.
+
 ## [Fedora] — Los paquetes de SELinux se llaman como son · 2026-10-04
 
 ### Corregido
