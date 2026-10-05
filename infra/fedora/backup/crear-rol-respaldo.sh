@@ -30,7 +30,7 @@ set -uo pipefail
 # solo dice por stderr en qué línea se detuvo y con qué código. Cuando bash aborta por
 # `set -u`, esto imprime la línea exacta; cuando un comando falla y el guion continúa,
 # queda anotado para que nadie se quede sin saberlo.
-trap 'codigo=$?; printf "\n✖ %s: se detuvo en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
+trap 'codigo=$?; printf "\n✖ %s: un comando devolvió error en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
 
 # Y un aviso de SALIDA: se ejecuta siempre, incluso cuando bash aborta por `set -u` (ese
 # caso **no** pasa por el trap de ERR). Es el que habría dicho «el ensayo terminó con
@@ -88,7 +88,7 @@ if [[ "$existe" == "1" && "$rotar" != "1" && -z "${1:-}" ]]; then
   # El rol ya está: se reutiliza la contraseña que haya en .pgpass para no dejarlo fuera.
   if [[ -r "$pgpass" ]] && grep -q "^127.0.0.1:5432:\*:$rol:" "$pgpass"; then
     av "el rol $rol ya existe: reutilizo su contraseña de $pgpass (usa --rotar para cambiarla)"
-    password="$(grep "^127.0.0.1:5432:\*:$rol:" "$pgpass" | head -1 | awk -F: '{print $5}')"
+    password="$(grep "^127.0.0.1:5432:\*:$rol:" "$pgpass" | head -1 | awk -F: '{print $5}' || true)"
   else
     av "el rol $rol ya existe y no hay .pgpass: se le pone una contraseña nueva"
   fi

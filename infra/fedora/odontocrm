@@ -26,7 +26,7 @@ set -uo pipefail
 # solo dice por stderr en qué línea se detuvo y con qué código. Cuando bash aborta por
 # `set -u`, esto imprime la línea exacta; cuando un comando falla y el guion continúa,
 # queda anotado para que nadie se quede sin saberlo.
-trap 'codigo=$?; printf "\n✖ %s: se detuvo en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
+trap 'codigo=$?; printf "\n✖ %s: un comando devolvió error en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
 
 # Y un aviso de SALIDA: se ejecuta siempre, incluso cuando bash aborta por `set -u` (ese
 # caso **no** pasa por el trap de ERR). Es el que habría dicho «el ensayo terminó con
@@ -168,7 +168,7 @@ case "$ORDEN" in
         # darle tiempo, es que nadie la arrancó (y eso se informa abajo, como inactiva).
         systemctl is-active --quiet "$unidad.service" || continue
         pid_unidad="$(systemctl show -p MainPID --value "$unidad.service" 2>/dev/null || echo 0)"
-        pid_puerto="$(ss -lntpH "sport = :$puerto" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)"
+        pid_puerto="$(ss -lntpH "sport = :$puerto" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1 || true)"
         [[ -n "$pid_puerto" && "$pid_puerto" == "$pid_unidad" ]] || pendientes=$((pendientes + 1))
       done
       (( pendientes == 0 )) && break
@@ -203,7 +203,7 @@ case "$ORDEN" in
       unidad="odontocrm@$svc"; [[ "$svc" == "gateway" ]] && unidad="odontocrm-gateway"
       activa="$(systemctl is-active "$unidad.service" 2>/dev/null || true)"
       pid_unidad="$(systemctl show -p MainPID --value "$unidad.service" 2>/dev/null || echo 0)"
-      pid_puerto="$(ss -lntpH "sport = :$puerto" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)"
+      pid_puerto="$(ss -lntpH "sport = :$puerto" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1 || true)"
       if [[ "$activa" != "active" ]]; then
         err "$unidad: $activa"; fallos=$((fallos + 1)); continue
       fi
@@ -254,7 +254,7 @@ case "$ORDEN" in
       case "$arg" in --rama=*) rama_objetivo="${arg#*=}" ;; esac
     done
     git fetch --prune origin || morir 'no pude traer el código nuevo'
-    rama_actual="$(git rev-parse --abbrev-ref HEAD)"
+    rama_actual="$(git rev-parse --abbrev-ref HEAD || true)"
     rama="${rama_objetivo:-$rama_actual}"
     if [[ -n "$rama_objetivo" && "$rama_objetivo" != "$rama_actual" ]]; then
       av "cambio de rama: $rama_actual → $rama_objetivo"
@@ -337,9 +337,9 @@ case "$ORDEN" in
       esac
     done
 
-    IP_CA="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1)"
+    IP_CA="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1 || true)"
     [[ -n "$IP_CA" ]] || IP_CA="$(hostname -I 2>/dev/null | awk '{print $1}')"
-    NOMBRE_CA="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null | awk '{print $1}')"
+    NOMBRE_CA="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null | awk '{print $1}' || true)"
     [[ -n "$NOMBRE_CA" ]] || NOMBRE_CA="odontocrm.local"
 
     printf '%sCertificado interno (TLS)%s\n' "$C_TI" "$C_RE"
@@ -474,10 +474,10 @@ EOF
     # La IP con la que esta máquina sale a la red (la que hay que teclear desde un
     # equipo de la misma red). No es la de `hostname -I` a secas: esa puede incluir
     # interfaces virtuales (docker, virbr…).
-    IP_LAN="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1)"
+    IP_LAN="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1 || true)"
     [[ -n "$IP_LAN" ]] || IP_LAN="$(hostname -I 2>/dev/null | awk '{print $1}')"
-    RED_LAN="$(ip -o -f inet addr show dev "${IFACE_LAN:-$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)}" 2>/dev/null | awk 'NR==1 {print $4; exit}')"
-    NOMBRE="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null | awk '{print $1}')"
+    RED_LAN="$(ip -o -f inet addr show dev "${IFACE_LAN:-$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)}" 2>/dev/null | awk 'NR==1 {print $4; exit}' || true)"
+    NOMBRE="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null | awk '{print $1}' || true)"
 
     printf '%sDirecciones para entrar al sistema%s\n' "$C_TI" "$C_RE"
     printf '  %shttps://%s%s   (por el nombre; hace falta una línea en el hosts de cada equipo)\n' "$C_TI" "${NOMBRE:-odontocrm.local}" "$C_RE"
@@ -498,11 +498,11 @@ EOF
     #    La comprobación tiene que entender las dos: antes solo miraba las reglas por
     #    rango y daba por malo un firewall que estaba perfecto.
     if systemctl is-active --quiet firewalld; then
-      iface_fw="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)"
+      iface_fw="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1 || true)"
       zona_fw="$(firewall-cmd --get-zone-of-interface="${iface_fw}" 2>/dev/null || echo public)"
       [[ -n "$zona_fw" && "$zona_fw" != "no" ]] || zona_fw=public
-      servicios_zona="$(firewall-cmd --zone="$zona_fw" --list-services 2>/dev/null)"
-      reglas="$(firewall-cmd --list-rich-rules 2>/dev/null | grep '443' | head -2)"
+      servicios_zona="$(firewall-cmd --zone="$zona_fw" --list-services 2>/dev/null || true)"
+      reglas="$(firewall-cmd --list-rich-rules 2>/dev/null | grep '443' | head -2 || true)"
 
       if printf '%s' "$servicios_zona" | grep -qw https; then
         ok "firewalld: 443 abierto en la zona «$zona_fw» (sigue a la interfaz: vale en cualquier red)"
@@ -540,7 +540,7 @@ EOF
     fi
 
     # 3) CORS: ¿WEB_ORIGIN admite esa dirección? Si no, el login falla sin decir por qué.
-    origenes="$(sed -n 's/^WEB_ORIGIN=//p' /etc/odontocrm/odontocrm.env | head -1)"
+    origenes="$(sed -n 's/^WEB_ORIGIN=//p' /etc/odontocrm/odontocrm.env | head -1 || true)"
     if printf '%s' "$origenes" | grep -qF "$IP_LAN"; then
       ok 'WEB_ORIGIN admite la IP actual'
     else
@@ -550,14 +550,19 @@ EOF
 
     # 4) mDNS: ¿el nombre se resuelve solo (sin tocar el hosts de cada equipo)?
     if command -v avahi-resolve >/dev/null && systemctl is-active --quiet avahi-daemon; then
-      resuelto="$(avahi-resolve -n "${NOMBRE:-odontocrm.local}" 2>/dev/null | awk '{print $2}' | head -1)"
+      # Con tope: `avahi-resolve` puede quedarse esperando, y una sonda no puede colgar el
+      # comando. Y si no responde, **no** se concluye que avahi esté mal: en muchas redes
+      # (wifi de invitados, aislamiento de clientes) la multidifusión no pasa y el nombre no
+      # resuelve aunque todo esté bien. Decir «reinícialo» ahí mandaba a dar vueltas.
+      resuelto="$(timeout 3 avahi-resolve -n "${NOMBRE:-odontocrm.local}" 2>/dev/null | awk '{print $2}' | head -1 || true)"
       if [[ -n "$resuelto" ]]; then
         ok "mDNS: ${NOMBRE:-odontocrm.local} se resuelve solo (→ $resuelto): los equipos no necesitan tocar el hosts"
       elif [[ "$(hostname)" == "${NOMBRE:-odontocrm.local}" || "$(hostname)" == "${NOMBRE%%.*}" ]]; then
-        # El nombre es el correcto: lo que pasa es que avahi publica el que tenía al
-        # arrancar. Se arregla reiniciándolo (lo hace `--arreglar`).
-        av "avahi todavía publica $(hostname).local con el nombre viejo: reinícialo"
-        problemas=$((problemas + 1))
+        # El nombre del servidor es el correcto: lo más probable es que ESTA RED no deje pasar
+        # la multidifusión. Se dice tal cual, se ofrece la alternativa y **no** se cuenta como
+        # problema de configuración: entrando por la IP, el sistema funciona igual.
+        av 'mDNS: esta red no responde a la multidifusión (avahi no contesta por el nombre)'
+        av "  los equipos pueden entrar por https://$IP_LAN o con una línea en su hosts"
       else
         av "mDNS no publica ${NOMBRE:-odontocrm.local}: la máquina se llama $(hostname)"
         av "  se arregla con:  sudo bash $CODE_DIR/infra/fedora/instalar-base-fedora.sh --nombre-mdns=odontocrm"
@@ -597,7 +602,7 @@ EOF
     #    para un rango fijo. Así sigue funcionando cuando cambia la red —el consultorio
     #    con IP reservada, o este PC de pruebas en otro wifi— sin tocar nada.
     if systemctl is-active --quiet firewalld; then
-      iface="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)"
+      iface="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1 || true)"
       zona="$(firewall-cmd --get-zone-of-interface="${iface:-$(ip route | awk '/default/ {print $5; exit}')}" 2>/dev/null || echo public)"
       [[ -n "$zona" && "$zona" != "no" ]] || zona=public
       firewall-cmd --permanent --zone="$zona" --add-service=https >/dev/null 2>&1 || true
@@ -620,7 +625,7 @@ EOF
       if [[ "$(hostname)" == "${NOMBRE:-odontocrm.local}" || "$(hostname)" == "${NOMBRE%%.*}" ]]; then
         systemctl restart avahi-daemon >/dev/null 2>&1 || true
         sleep 1
-        if avahi-resolve -n "${NOMBRE:-odontocrm.local}" >/dev/null 2>&1; then
+        if timeout 3 avahi-resolve -n "${NOMBRE:-odontocrm.local}" >/dev/null 2>&1; then
           ok "mDNS: ${NOMBRE:-odontocrm.local} se resuelve solo (los equipos no tocan el hosts)"
         else
           av "mDNS: ${NOMBRE:-odontocrm.local} aún no resuelve; espera unos segundos y repite"

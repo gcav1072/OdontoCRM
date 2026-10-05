@@ -72,7 +72,7 @@ set -euo pipefail
 # solo dice por stderr en qué línea se detuvo y con qué código. Cuando bash aborta por
 # `set -u`, esto imprime la línea exacta; cuando un comando falla y el guion continúa,
 # queda anotado para que nadie se quede sin saberlo.
-trap 'codigo=$?; printf "\n✖ %s: se detuvo en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
+trap 'codigo=$?; printf "\n✖ %s: un comando devolvió error en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
 
 # Y un aviso de SALIDA: se ejecuta siempre, incluso cuando bash aborta por `set -u` (ese
 # caso **no** pasa por el trap de ERR). Es el que habría dicho «el ensayo terminó con
@@ -364,9 +364,9 @@ validate_dump() {
   local dir sums expected actual name
   dir="$(dirname "$file")"; sums="$dir/SHA256SUMS"; name="$(basename "$file")"
   if [[ -f "$sums" ]]; then
-    expected="$(awk -v f="$name" '{ n=$2; sub(/^\*/, "", n); if (n == f) { print $1; exit } }' "$sums")"
+    expected="$(awk -v f="$name" '{ n=$2; sub(/^\*/, "", n); if (n == f) { print $1; exit } }' "$sums" || true)"
     if [[ -n "$expected" ]]; then
-      actual="$(sha256sum "$file" | awk '{print $1}')"
+      actual="$(sha256sum "$file" | awk '{print $1}' || true)"
       if [[ "$expected" == "$actual" ]]; then
         log "suma SHA-256 correcta"
       else

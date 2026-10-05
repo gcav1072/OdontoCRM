@@ -60,7 +60,7 @@ set -euo pipefail
 # solo dice por stderr en qué línea se detuvo y con qué código. Cuando bash aborta por
 # `set -u`, esto imprime la línea exacta; cuando un comando falla y el guion continúa,
 # queda anotado para que nadie se quede sin saberlo.
-trap 'codigo=$?; printf "\n✖ %s: se detuvo en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
+trap 'codigo=$?; printf "\n✖ %s: un comando devolvió error en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
 
 # Y un aviso de SALIDA: se ejecuta siempre, incluso cuando bash aborta por `set -u` (ese
 # caso **no** pasa por el trap de ERR). Es el que habría dicho «el ensayo terminó con
@@ -337,7 +337,7 @@ PKGS_CHROMIUM=(
 # genera uno aleatorio (idempotente: la misma corrida no lo cambia dos veces).
 secreto_interno() {
   local actual
-  actual="$(sed -n 's/^INTERNAL_SERVICE_SECRET=//p' "$ETC_DIR/odontocrm.env" 2>/dev/null | head -1)"
+  actual="$(sed -n 's/^INTERNAL_SERVICE_SECRET=//p' "$ETC_DIR/odontocrm.env" 2>/dev/null | head -1 || true)"
   if [[ -n "$actual" && ! "$actual" =~ ^CAMBIAR ]]; then
     printf '%s' "$actual"
   else
@@ -727,7 +727,7 @@ corregir_valores_obsoletos() {
   archivo="/etc/odontocrm/clinical.env"
   if [[ -f "$archivo" ]] && ! grep -qE '^PUBLIC_APP_URL=' "$archivo"; then
     local web_origin
-    web_origin="$(sed -n 's/^WEB_ORIGIN=//p' /etc/odontocrm/odontocrm.env | head -1)"
+    web_origin="$(sed -n 's/^WEB_ORIGIN=//p' /etc/odontocrm/odontocrm.env | head -1 || true)"
     # `WEB_ORIGIN` admite VARIOS orígenes separados por comas, y `PUBLIC_APP_URL` es una
     # sola dirección: se toma el primero. Antes se copiaba la lista entera y el QR del
     # récipe salía como `https://a, https://b/verificar/<código>`: un papel impreso con un

@@ -28,7 +28,7 @@ set -uo pipefail
 # solo dice por stderr en qué línea se detuvo y con qué código. Cuando bash aborta por
 # `set -u`, esto imprime la línea exacta; cuando un comando falla y el guion continúa,
 # queda anotado para que nadie se quede sin saberlo.
-trap 'codigo=$?; printf "\n✖ %s: se detuvo en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
+trap 'codigo=$?; printf "\n✖ %s: un comando devolvió error en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
 
 # Y un aviso de SALIDA: se ejecuta siempre, incluso cuando bash aborta por `set -u` (ese
 # caso **no** pasa por el trap de ERR). Es el que habría dicho «el ensayo terminó con
@@ -66,7 +66,7 @@ command -v nginx >/dev/null || morir 'nginx no está instalado: sudo dnf install
 [[ -f "$CERT" && -f "$CLAVE" ]] || morir "faltan el certificado o su clave ($CERT, $CLAVE): hazlo primero (INSTALL.md §13.2)"
 
 if [[ -z "$HOST" ]]; then
-  IP="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1)"
+  IP="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1 || true)"
   [[ -n "$IP" ]] || IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
   HOST="odontocrm.local${IP:+ $IP}"
 fi

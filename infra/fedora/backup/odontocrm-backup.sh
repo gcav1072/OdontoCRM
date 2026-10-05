@@ -57,7 +57,7 @@ set -euo pipefail
 # solo dice por stderr en qué línea se detuvo y con qué código. Cuando bash aborta por
 # `set -u`, esto imprime la línea exacta; cuando un comando falla y el guion continúa,
 # queda anotado para que nadie se quede sin saberlo.
-trap 'codigo=$?; printf "\n✖ %s: se detuvo en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
+trap 'codigo=$?; printf "\n✖ %s: un comando devolvió error en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
 
 # Y un aviso de SALIDA: se ejecuta siempre, incluso cuando bash aborta por `set -u` (ese
 # caso **no** pasa por el trap de ERR). Es el que habría dicho «el ensayo terminó con
@@ -234,7 +234,7 @@ base_existe() {
 # arreglo exacto (`PGBIN_DIR`).
 comprobar_version_cliente() {
   local cliente servidor
-  cliente="$("$(pg_bin pg_dump)" --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
+  cliente="$("$(pg_bin pg_dump)" --version 2>/dev/null | grep -oE '[0-9]+' | head -1 || true)"
   servidor="$(env PGHOST="$PG_HOST" PGPORT="$PG_PORT" PGUSER="$PG_USER" ${PGPASSFILE:+PGPASSFILE="$PGPASSFILE"} \
     "$(pg_bin psql)" --no-password -d postgres -tAc "select current_setting('server_version_num')" 2>/dev/null | head -1)"
   [[ -n "$cliente" && -n "$servidor" ]] || { warn 'no pude comparar las versiones del cliente y del servidor'; return 0; }

@@ -111,7 +111,7 @@ NODE_V="$(node --version)"
 [[ "$NODE_V" == v26* ]] && ok "node $NODE_V" || av "node $NODE_V (el plan pide 26)"
 
 systemctl is-active --quiet postgresql && ok 'postgresql activo' || morir 'el servicio postgresql no está activo'
-PG_MAJOR="$(psql --version | grep -oE '[0-9]+' | head -1)"
+PG_MAJOR="$(psql --version | grep -oE '[0-9]+' | head -1 || true)"
 
 # UNA SOLA PILA A LA VEZ (ADR 0037). En la PC de pruebas pasó: los nueve puertos
 # estaban ocupados por la pila de desarrollo, los servicios de systemd quedaron en
@@ -236,10 +236,10 @@ for s in "${SERVICIOS[@]}"; do
   CLAVES='DATABASE_URL|EVENTS_DATABASE_URL|INTERNAL_SERVICE_SECRET|COOKIE_SECRET|TELEGRAM_BOT_TOKEN|TELEGRAM_BOT_USERNAME|TELEGRAM_MODE|TELEGRAM_TEST_CHAT_ID|WHATSAPP_TOKEN|WHATSAPP_PHONE_ID|WHATSAPP_VERIFY_TOKEN|WHATSAPP_APP_SECRET'
   grep -vE "^($CLAVES)=" "$destino" >"$tmp"
   for clave in ${CLAVES//|/ }; do
-    valor="$(sed -n "s/^${clave}=//p" "$origen" | head -1)"
+    valor="$(sed -n "s/^${clave}=//p" "$origen" | head -1 || true)"
     if [[ -z "$valor" || "$valor" == CAMBIAR* ]]; then
       # Lo que no trae el repositorio se queda como estaba en la plantilla.
-      valor="$(sed -n "s/^${clave}=//p" "$destino" | head -1)"
+      valor="$(sed -n "s/^${clave}=//p" "$destino" | head -1 || true)"
       [[ -z "$valor" ]] && continue
     fi
     printf '%s=%s\n' "$clave" "$valor" >>"$tmp"
@@ -248,7 +248,7 @@ for s in "${SERVICIOS[@]}"; do
   rm -f "$tmp"
 done
 # El gateway comparte el secreto interno de identity (no tiene base de datos).
-SECRETO="$(sed -n 's/^INTERNAL_SERVICE_SECRET=//p' /etc/odontocrm/identity.env)"
+SECRETO="$(sed -n 's/^INTERNAL_SERVICE_SECRET=//p' /etc/odontocrm/identity.env || true)"
 sed -i "s|^INTERNAL_SERVICE_SECRET=.*|INTERNAL_SERVICE_SECRET=${SECRETO}|" /etc/odontocrm/gateway.env
 # Permisos del plan §11: los lee systemd como root, el servicio no los toca.
 chown root:root /etc/odontocrm/*.env
@@ -258,7 +258,7 @@ ok 'secretos trasladados a /etc/odontocrm/*.env (0600 root:root)'
 # Valores que impiden arrancar: se avisan con nombre y apellido antes de migrar.
 for par in "notifications:TELEGRAM_MODE" "odontocrm:TEST_MODE" "odontocrm:ALLOW_TEST_MODE"; do
   archivo="/etc/odontocrm/${par%%:*}.env"; clave="${par##*:}"
-  valor="$(sed -n "s/^${clave}=//p" "$archivo" | head -1)"
+  valor="$(sed -n "s/^${clave}=//p" "$archivo" | head -1 || true)"
   if [[ -n "$valor" ]]; then ok "$archivo → $clave=$valor"; else av "$archivo no define $clave"; fi
 done
 
@@ -289,7 +289,7 @@ fi
 if [[ -d "$HOME_REAL/.cache/ms-playwright" ]]; then
   cp -a "$HOME_REAL/.cache/ms-playwright/." /var/lib/odontocrm/ms-playwright/ 2>/dev/null || true
   chown -R odontocrm:odontocrm /var/lib/odontocrm/ms-playwright
-  NAVEGADOR="$(find /var/lib/odontocrm/ms-playwright -maxdepth 3 -type f -name chrome -o -maxdepth 3 -type f -name headless_shell 2>/dev/null | head -1)"
+  NAVEGADOR="$(find /var/lib/odontocrm/ms-playwright -maxdepth 3 -type f -name chrome -o -maxdepth 3 -type f -name headless_shell 2>/dev/null | head -1 || true)"
   if [[ -n "$NAVEGADOR" ]] && sudo -u odontocrm test -x "$NAVEGADOR" 2>/dev/null; then
     ok "navegador de Playwright desplegado y ejecutable por odontocrm ($NAVEGADOR)"
   else
@@ -334,7 +334,7 @@ for s in "${SERVICIOS[@]}"; do
   unidad="odontocrm@$s"
   activa="$(systemctl is-active "$unidad.service" 2>/dev/null || true)"
   pid_unidad="$(systemctl show -p MainPID --value "$unidad.service" 2>/dev/null || echo 0)"
-  pid_puerto="$(ss -lntpH "sport = :$puerto" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)"
+  pid_puerto="$(ss -lntpH "sport = :$puerto" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1 || true)"
   codigo="$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "http://127.0.0.1:$puerto/health" || echo 000)"
   if [[ "$activa" != "active" ]]; then
     err "$unidad: estado $activa (no active)"; FALLOS=$((FALLOS+1))
@@ -347,7 +347,7 @@ for s in "${SERVICIOS[@]}"; do
   fi
 done
 puerto_gw="$(systemctl show -p MainPID --value odontocrm-gateway.service 2>/dev/null || echo 0)"
-pid_gw="$(ss -lntpH 'sport = :8090' 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)"
+pid_gw="$(ss -lntpH 'sport = :8090' 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1 || true)"
 if [[ "$(systemctl is-active odontocrm-gateway.service 2>/dev/null)" == "active" && "$pid_gw" == "$puerto_gw" ]]; then
   ok "odontocrm-gateway activo y sirviendo el 8090 → /health $(curl -s -o /dev/null -w '%{http_code}' --max-time 4 http://127.0.0.1:8090/health)"
 else
@@ -397,11 +397,11 @@ if [[ "$HASTA" == "tls" || "$HASTA" == "respaldos" ]]; then
 
   # Nombre e IP que van a teclear los equipos de la clínica. Por defecto, el
   # nombre bonito + la IP de la LAN de esta máquina.
-  IP_LAN="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1)"
+  IP_LAN="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1 || true)"
   [[ -n "$IP_LAN" ]] || IP_LAN="$(hostname -I 2>/dev/null | awk '{print $1}')"
   # Si no dicen la red, se usa la /24 de esta máquina (443 abierto solo ahí).
   if [[ -z "$LAN_CIDR" && -n "$IP_LAN" ]]; then
-    LAN_CIDR="$(ip -o -f inet addr show dev "${IFACE_LAN:-$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)}" 2>/dev/null | awk 'NR==1 {print $4; exit}')"
+    LAN_CIDR="$(ip -o -f inet addr show dev "${IFACE_LAN:-$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)}" 2>/dev/null | awk 'NR==1 {print $4; exit}' || true)"
     av "sin --lan-cidr: uso la red de esta máquina ($LAN_CIDR) para abrir 443"
   fi
   HOSTS_TLS=(odontocrm.local localhost 127.0.0.1)
@@ -484,7 +484,7 @@ if [[ "$HASTA" == "tls" || "$HASTA" == "respaldos" ]]; then
       firewall-cmd --permanent --add-service=http >/dev/null 2>&1 || true
       modo_fw="rango estricto $LAN_CIDR"
     else
-      IFACE_LAN="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)"
+      IFACE_LAN="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1 || true)"
       ZONA_LAN="$(firewall-cmd --get-zone-of-interface="${IFACE_LAN}" 2>/dev/null || echo public)"
       [[ -n "$ZONA_LAN" && "$ZONA_LAN" != "no" ]] || ZONA_LAN=public
       firewall-cmd --permanent --zone="$ZONA_LAN" --add-service=https >/dev/null 2>&1 || true
@@ -585,7 +585,7 @@ if [[ "$HASTA" == "respaldos" ]]; then
     err 'falló el respaldo'; tail -12 /tmp/ensayo-backup.log | sed 's/^/    /'
   fi
 
-  ULTIMO="$(ls -1dt /var/backups/odontocrm/*/ 2>/dev/null | head -1)"
+  ULTIMO="$(ls -1dt /var/backups/odontocrm/*/ 2>/dev/null | head -1 || true)"
   if [[ -n "$ULTIMO" ]]; then
     du -sh "$ULTIMO" 2>/dev/null | sed 's/^/    /'
 

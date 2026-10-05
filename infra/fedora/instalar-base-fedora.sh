@@ -33,7 +33,7 @@ set -uo pipefail
 # solo dice por stderr en qué línea se detuvo y con qué código. Cuando bash aborta por
 # `set -u`, esto imprime la línea exacta; cuando un comando falla y el guion continúa,
 # queda anotado para que nadie se quede sin saberlo.
-trap 'codigo=$?; printf "\n✖ %s: se detuvo en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
+trap 'codigo=$?; printf "\n✖ %s: un comando devolvió error en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
 
 # Y un aviso de SALIDA: se ejecuta siempre, incluso cuando bash aborta por `set -u` (ese
 # caso **no** pasa por el trap de ERR). Es el que habría dicho «el ensayo terminó con
@@ -176,7 +176,7 @@ if [[ -n "$NOMBRE_MDNS" ]]; then
     # o `<nombre>.local` no resuelve hasta el próximo arranque de la máquina.
     systemctl restart avahi-daemon >/dev/null 2>&1 || true
     sleep 1
-    if avahi-resolve -n "${NOMBRE_MDNS}.local" >/dev/null 2>&1; then
+    if timeout 3 avahi-resolve -n "${NOMBRE_MDNS}.local" >/dev/null 2>&1; then
       echo "  comprobado: ${NOMBRE_MDNS}.local se resuelve por mDNS"
     else
       echo "  (aviso) ${NOMBRE_MDNS}.local aún no responde; suele tardar unos segundos"

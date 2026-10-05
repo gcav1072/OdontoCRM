@@ -454,6 +454,55 @@ const exigir = (condicion, bien, mal) => {
     'falta el uso de tools/con-entorno.mjs en el despliegue: los .env volverían a leerse como shell',
   );
 
+  // (12) Las SONDAS no deben disparar los avisos de error. Un `x="$(… | grep …)"` devuelve 1
+  //      cuando no encuentra nada —que es una respuesta válida— y el aviso de ERR lo contaba
+  //      como si el guion se hubiera cortado: ruido que tapa los avisos de verdad (pasó al
+  //      actualizar el servidor: catorce «✖ se detuvo» con los nueve servicios en verde).
+  const sondasSinGuardar = [];
+  for (const ruta of [
+    'infra/fedora/odontocrm',
+    'infra/fedora/ensayo-despliegue.sh',
+    'infra/fedora/install.sh',
+    'infra/fedora/instalar-base-fedora.sh',
+    'infra/fedora/nginx/instalar.sh',
+    'infra/fedora/backup/odontocrm-backup.sh',
+    'infra/fedora/backup/odontocrm-restore.sh',
+    'infra/fedora/backup/crear-rol-respaldo.sh',
+  ]) {
+    for (const [indice, linea] of leer(ruta).split('\n').entries()) {
+      const esSonda =
+        /^\s*[\w[\]{}@-]+="\$\(.*(grep|awk|sed|head|ss |ip -|firewall-cmd|avahi-resolve|systemctl show).*\)"$/.test(
+          linea,
+        );
+      if (esSonda && !linea.includes('|| true') && !linea.includes('|| echo')) {
+        sondasSinGuardar.push(`${ruta}:${indice + 1}`);
+      }
+    }
+  }
+  exigir(
+    sondasSinGuardar.length === 0,
+    'las sondas (grep/ss/ip) no disparan los avisos de error',
+    `sondas sin \`|| true\` (el aviso de error las contaría como fallo): ${sondasSinGuardar.slice(0, 5).join(', ')}`,
+  );
+
+  // (13) Las sondas de red llevan tope: `avahi-resolve` puede quedarse esperando.
+  const avahiSinTope = ['infra/fedora/odontocrm', 'infra/fedora/instalar-base-fedora.sh'].filter(
+    (ruta) =>
+      leer(ruta)
+        .split('\n')
+        // Solo la LLAMADA (`avahi-resolve -n`), no el `command -v avahi-resolve` ni los
+        // comentarios que explican por qué lleva tope.
+        .some(
+          (linea) =>
+            /avahi-resolve -n/.test(linea) && !/^\s*#/.test(linea) && !/timeout /.test(linea),
+        ),
+  );
+  exigir(
+    avahiSinTope.length === 0,
+    'las sondas de mDNS llevan tope de tiempo',
+    `${avahiSinTope.join(', ')}: \`avahi-resolve\` sin \`timeout\` (puede quedarse esperando)`,
+  );
+
   // (12) La base del instalador base declara solo lo que hace (prometía pg_hba y no lo tocaba).
   exigir(
     !/pg_hba/.test(base.split('\n').slice(0, 20).join('\n')) ||
