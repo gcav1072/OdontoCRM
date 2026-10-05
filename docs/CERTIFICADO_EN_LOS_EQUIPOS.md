@@ -236,7 +236,7 @@ y `https://<IP>`) y comprueba las tres cosas:
 | :--- | :--- | :--- |
 | **`firewalld`** | La regla de 443 se puso para la red anterior (`192.168.9.0/24`), así que la nueva no entra | El mismo comando dice la red actual y el comando exacto |
 | **El certificado** | Se emitió con la IP anterior: el navegador avisa de que no es válido para esa dirección | Reemitirlo (un minuto) |
-| **`WEB_ORIGIN`** (CORS) | Solo admite el nombre y la IP anterior: entrar por la IP nueva **falla el inicio de sesión** sin decir por qué | Añadir la IP nueva a la lista |
+| **`WEB_ORIGIN`** (CORS) | Solo admite el nombre y la IP anterior. Es el CORS del gateway: con la SPA y la API en el mismo origen (nginx) **no bloquea nada**; importa si sirves la interfaz desde otro sitio | Añadir la IP nueva a la lista |
 
 Los tres se arreglan de una vez:
 

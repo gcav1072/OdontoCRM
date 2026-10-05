@@ -386,7 +386,8 @@ Dice la IP de la máquina en la red actual, las direcciones para entrar
 (`https://odontocrm.local` y `https://<IP>`) y comprueba las tres cosas que se quedan
 apuntando a la red anterior cuando el servidor cambia de wifi o de router: la regla de
 **`firewalld`**, el **certificado** (que cubre la IP con la que se emitió) y **`WEB_ORIGIN`**
-(que si no admite la dirección nueva hace fallar el inicio de sesión sin decir por qué).
+(el CORS del gateway: **solo interviene si sirves la interfaz desde otro origen**; con
+nginx sirviendo SPA y API en el mismo host, el navegador no aplica CORS).
 Si algo está desalineado, imprime el comando exacto que lo arregla.
 
 Detalle completo (y el truco de entrar siempre por el nombre): 

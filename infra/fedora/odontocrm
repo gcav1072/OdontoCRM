@@ -544,7 +544,8 @@ EOF
     if printf '%s' "$origenes" | grep -qF "$IP_LAN"; then
       ok 'WEB_ORIGIN admite la IP actual'
     else
-      av "WEB_ORIGIN no incluye https://$IP_LAN (hoy: $origenes): entrar por la IP fallará el login"
+      av "WEB_ORIGIN no incluye https://$IP_LAN (hoy: $origenes)"
+      av "  es el CORS del gateway (importa si sirves la interfaz desde OTRO origen; con nginx, no)"
       problemas=$((problemas + 1))
     fi
 

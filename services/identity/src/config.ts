@@ -47,7 +47,12 @@ export const identityEnvSchema = baseEnvSchema.extend({
     .optional()
     .transform((value) => (value === undefined || value === '' ? undefined : value)),
 
-  /** Origen permitido de la SPA (se usa en la comprobación de origen del login). */
+  /**
+   * Origen permitido de la SPA. **La identidad no lo usa** (el login no comprueba el
+   * origen): quien lo lee es el CORS del gateway (`apps/gateway/src/server.ts`). Se declara
+   * aquí porque las plantillas del despliegue y el arranque en desarrollo lo definen para
+   * los servicios, pero no tiene ningún efecto en este.
+   */
   WEB_ORIGIN: z.string().min(1).default('http://127.0.0.1:5173'),
 });
 
