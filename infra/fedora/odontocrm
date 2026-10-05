@@ -52,6 +52,10 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    Últimos registros.
   sudo odontocrm actualizar        Traer el código nuevo, compilar, migrar y reiniciar
                                    (lo mismo que RUNBOOK §8, sin acordarse de nada).
+  sudo odontocrm certificado       Muestra el certificado y el estado de la CA interna, y
+                                   exporta los archivos para instalar en tablets, móviles
+                                   y TVs (--exportar /ruta). Es lo que quita el aviso de
+                                   «conexión no privada» en los demás equipos.
   sudo odontocrm modo-test <on|off|estado>
                                    Leer o escribir el modo test (nunca en producción
                                    con datos reales: ver el ADR 0020).
@@ -164,6 +168,91 @@ case "$ORDEN" in
     }
     sleep 6
     exec "$0" verificar
+    ;;
+
+  certificado|cert)
+    necesita_root
+    CA_DIR="${CAROOT:-/root/.local/share/mkcert}"
+    CA_FIJA="$ETC_DIR/keys/odontocrm-ca.crt"
+    destino=""
+    for arg in "$@"; do
+      case "$arg" in
+        --exportar=*) destino="${arg#*=}" ;;
+        --exportar) shift; destino="${1:-}" ;;
+      esac
+    done
+
+    printf '%sCertificado interno (TLS)%s\n' "$C_TI" "$C_RE"
+    if [[ -f /etc/pki/tls/certs/odontocrm.crt ]]; then
+      ok "servidor: /etc/pki/tls/certs/odontocrm.crt"
+      openssl x509 -in /etc/pki/tls/certs/odontocrm.crt -noout \
+        -subject -dates -ext subjectAltName 2>/dev/null | sed 's/^/    /'
+    else
+      err 'no está el certificado del servidor: ejecuta la fase TLS (INSTALL.md §13.2)'
+    fi
+
+    # La CA que hay que instalar en los demás equipos.
+    origen="$CA_FIJA"
+    [[ -f "$origen" ]] || origen="$CA_DIR/rootCA.pem"
+    if [[ -f "$origen" ]]; then
+      ok "autoridad (CA) interna: $origen"
+      openssl x509 -in "$origen" -noout -subject -dates 2>/dev/null | sed 's/^/    /'
+
+      # Se deja una copia estable, que entra en el respaldo de configuración.
+      install -d -m 0755 "$ETC_DIR/keys"
+      install -m 0644 -o root -g root "$origen" "$CA_FIJA" 2>/dev/null || true
+      ok "copia estable en $CA_FIJA (entra en el respaldo: --include-config)"
+
+      if [[ -z "$destino" ]]; then
+        destino="/var/lib/odontocrm/ca-para-dispositivos"
+      fi
+      install -d -m 0755 "$destino"
+      install -m 0644 "$origen" "$destino/odontocrm-ca.crt"     # Android/Windows/Linux
+      install -m 0644 "$origen" "$destino/odontocrm-ca.pem"     # iOS/macOS/Firefox
+      ok "archivos listos en $destino: odontocrm-ca.crt y odontocrm-ca.pem"
+
+      cat <<EOF
+
+  ${C_TI}Cómo quitar el aviso en cada equipo${C_RE} (uno por uno, se hace una sola vez):
+
+    ${C_TI}Tablet o móvil Android${C_RE}
+      1. Abre https://$(hostname -I 2>/dev/null | awk '{print $1}')/ca.crt y acepta la descarga
+         (el navegador avisará antes: es normal, todavía no confía en el certificado).
+      2. Ajustes → Seguridad → Cifrado y credenciales → Instalar un certificado
+         → Certificado de CA → elige el archivo descargado.
+      3. Android pide «Instalar de todos modos» y avisa de que la red podría
+         supervisarse: es tu propio servidor, adelante.
+
+    ${C_TI}iPhone / iPad${C_RE}
+      1. Abre https://$(hostname -I 2>/dev/null | awk '{print $1}')/ca.crt y acepta «Permitir».
+      2. Ajustes → General → VPN y gestión de dispositivos → instala el perfil.
+      3. Ajustes → General → Información → Ajustes de confianza de certificados
+         → activa «odontocrm» (sin este paso el certificado se instala pero no se confía).
+
+    ${C_TI}Windows${C_RE}
+      1. Descarga odontocrm-ca.crt y ábrelo → «Instalar certificado» →
+         Equipo local → «Colocar todos los certificados en el siguiente almacén» →
+         Entidades de certificación raíz de confianza.
+
+    ${C_TI}Mac${C_RE}
+      1. Abre odontocrm-ca.pem → Llavero «Sistema» → doble clic → Confiar siempre.
+
+    ${C_TI}Smart TV${C_RE}
+      Muchas no permiten instalar una CA. Alternativa: entrar por HTTP solo para la
+      pantalla (si el televisor lo permite) o conectarle un mini-PC/tablet.
+      ${C_AV}Nunca${C_RE} desactives la validación del servidor para «que funcione»: quita
+      la protección justo donde circulan los datos clínicos.
+
+    ${C_TI}Si prefieres no instalar nada${C_RE}
+      Puedes aceptar el aviso en cada equipo («Avanzado» → «Continuar»): funciona
+      igual, pero el candado queda tachado y cualquiera que entre en la misma red
+      podría suplantar al servidor. Para la clínica, instala la CA.
+
+EOF
+    else
+      err "no encuentro la CA de mkcert (busqué $CA_FIJA y $CA_DIR/rootCA.pem)"
+      av 'se crea con: sudo mkcert -install   (INSTALL.md §13.2)'
+    fi
     ;;
 
   modo-test)

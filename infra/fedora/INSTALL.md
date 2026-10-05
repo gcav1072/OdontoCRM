@@ -1438,6 +1438,46 @@ sudo nginx -t && sudo systemctl enable --now nginx
 > `apps/web/src/lib/kiosko.ts`). La `location` correcta es esa; si algún día cambia,
 > se ajusta en el archivo versionado.
 
+### 13.3-bis Quitar el aviso de certificado en los demás equipos
+
+El navegador de la tablet, el móvil o el televisor avisa «conexión no privada» porque
+el certificado lo firma la **CA interna** del servidor (`mkcert`), que solo está
+instalada en el propio servidor. Se quita instalando esa CA en cada equipo, **una sola
+vez**:
+
+```bash
+sudo odontocrm certificado                 # estado del certificado y de la CA
+sudo odontocrm certificado --exportar /tmp/ca   # deja los archivos para copiar
+```
+
+El atajo que hace esto cómodo: el proxy **sirve la CA en `http://<servidor>/ca.crt`**
+(también por HTTP, a propósito: un equipo que todavía no confía en el certificado no
+puede descargarla por HTTPS sin pelearse antes con el aviso). Desde el propio equipo:
+
+1. Abrir `http://192.168.1.50/ca.crt` (la IP del servidor) y aceptar la descarga.
+2. Instalarla como **autoridad de certificación**:
+   - **Android**: Ajustes → Seguridad → Cifrado y credenciales → Instalar certificado → CA.
+   - **iPhone/iPad**: descargar → Ajustes → General → VPN y gestión de dispositivos →
+     instalar el perfil → **y activar la confianza** en Ajustes → General → Información →
+     Ajustes de confianza de certificados.
+   - **Windows**: doble clic al `.crt` → Instalar → Equipo local → Entidades de
+     certificación raíz de confianza.
+   - **Mac**: abrir el `.pem` en el Llavero «Sistema» → Confiar siempre.
+3. Cerrar y volver a abrir el navegador: el candado sale normal y la pantalla deja de
+   preguntar.
+
+**Si un televisor no permite instalar una CA** (pasa en muchos Smart TV), hay dos
+salidas honestas: ponerle un mini-PC o una tablet a la pantalla, o usar un dominio real
+con certificado de Let's Encrypt por DNS-01 (§13.2). Lo que **no** se hace nunca es
+desactivar la validación del servidor «para que funcione»: eso quita la protección justo
+donde circulan los datos clínicos, y en una red compartida cualquiera podría suplantar al
+servidor.
+
+> **Guarda la CA en el respaldo.** `install.sh` la copia a
+> `/etc/odontocrm/keys/odontocrm-ca.crt`, que entra en el respaldo de configuración
+> (`--include-config`). Si se pierde, hay que emitir certificados nuevos **y volver a
+> instalar la CA en todos los equipos**.
+
 ### 13.4 Caddy (ejemplo)
 
 ```caddyfile
@@ -2108,7 +2148,7 @@ exige el plan (§13, Fase 10).
 | P-09 | Socket de PostgreSQL y `pg_hba.conf` | `ls /var/run/postgresql` · `pg_hba.conf` | ✅ | **PC de pruebas:** el socket está en `/var/run/postgresql` y `postgresql-setup --initdb` deja **`ident`** en las líneas `host` (no `scram-sha-256`): con eso **ningún servicio entra por TCP** aunque la contraseña sea correcta. Hay que cambiarlas a `scram-sha-256` (§6.3). El administrador entra por el socket con `peer` (`PG_ADMIN_URL=postgres:///postgres?host=/var/run/postgresql`). |
 | P-10 | PM2 en producción: `infra/fedora/ecosystem.config.cjs` con los dos `--env-file-if-exists` y `.env` legibles por el grupo (`0640 root:odontocrm`) | §10.4 · `pm2 ls` · `pm2 logs odontocrm-identity` | ☐ | No validado en la PC de pruebas: el supervisor elegido y probado a fondo es **systemd** (§10.1). PM2 queda como alternativa documentada, sin ensayo. |
 | P-11 | Proxy elegido + SSE + SELinux | pantalla en vivo + `ausearch` | ✅ | **PC de pruebas:** nginx con el SSE de `/api/v1/screens/<pantalla>/stream` sin búfer (`proxy_buffering off`), árbol de proxy con `httpd_can_network_connect` y **sin denegaciones de SELinux** (`ausearch -m avc -ts today`). |
-| P-12 | Certificado interno y confianza en dispositivos | `openssl s_client` desde PC/tablet/TV | ☐ | |
+| P-12 | Certificado interno y confianza en dispositivos | `openssl s_client` desde PC/tablet/TV | ◐ | **PC de pruebas:** certificado emitido con el nombre y la IP, nginx sirviéndolo y **la CA descargable en `http://<servidor>/ca.crt`** (§13.3-bis) con las instrucciones por dispositivo. Falta el paso manual en cada equipo (tablet, móvil, TV), que es lo que se registra aquí al hacerlo en la clínica. |
 | P-13 | Recursos y cifrado de disco | `free -h` · `df -h` · LUKS | ◐ | **PC de pruebas:** 7,6 GiB de RAM con los 9 servicios, PostgreSQL, nginx y Chromium en marcha (4,3 GiB en uso, sin swap) y 88 GB libres en `/`. **El disco NO está cifrado** (`lsblk` sin LUKS): en la clínica hay que decidirlo antes de cargar datos reales. |
 | P-14 | Cifrado y copia externa del respaldo | `rsync` + `age`/`gpg` | ◐ | **PC de pruebas:** el respaldo diario ya se programa solo (`odontocrm-backup.timer`, 03:30 con `Persistent=true`); queda decidir el cifrado del medio externo (§15.5). |
 | P-15 | **Prueba de restauración documentada** | §16.2, con las 8 bases | ☐ | |
