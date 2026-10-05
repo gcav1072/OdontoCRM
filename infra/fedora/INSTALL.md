@@ -1531,13 +1531,28 @@ Lo que deja hecho (equivalente a mano, por si hay que revisarlo):
 
 ```sql
 -- Como superusuario: sudo -u postgres psql
+-- OJO: SIN `NOINHERIT` (ver el aviso de abajo).
 CREATE ROLE odonto_backup LOGIN PASSWORD 'CAMBIAR_password_larga_y_aleatoria'
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
-GRANT pg_read_all_data TO odonto_backup;      -- leer todas las tablas y secuencias
+  NOSUPERUSER NOCREATEDB NOCREATEROLE;
+GRANT pg_read_all_data TO odonto_backup WITH INHERIT TRUE;   -- leer todo
 
--- Por cada base (repite las 8):
+-- Por cada base (repite las 8), y dentro de cada base, por cada esquema:
 GRANT CONNECT ON DATABASE odonto_identity TO odonto_backup;
+GRANT USAGE ON SCHEMA public, drizzle, pgboss TO odonto_backup;
+GRANT SELECT ON ALL TABLES IN SCHEMA public, drizzle, pgboss TO odonto_backup;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public, drizzle, pgboss TO odonto_backup;
 ```
+
+> **`NOINHERIT` rompe el respaldo (medido en la Fase 10).** Con
+> `CREATE ROLE … NOINHERIT`, PostgreSQL 16+ registra la pertenencia a
+> `pg_read_all_data` con `inherit_option = false`, así que el rol **no recibe** esos
+> permisos y `pg_dump` muere con «permiso denegado a la tabla `__drizzle_migrations`».
+> Además, `pg_read_all_data` **no** da `USAGE` en los esquemas que no son `public`:
+> hay que concederlo (y la lectura de tablas y secuencias) esquema por esquema, como
+> arriba. El script `crear-rol-respaldo.sh` ya lo hace así y **comprueba** leyendo
+> `drizzle.__drizzle_migrations` y `pgboss.job`, que son justo las dos tablas que
+> `pg_dump` bloquea al empezar. Si el respaldo falla con «permiso denegado al esquema»
+> o «a la tabla», es esto.
 
 > **P-18 (resuelto en la Fase 10):** el esquema **no usa Row Level Security** —ninguna
 > migración crea políticas—, así que `BYPASSRLS` **no hace falta** y el respaldo trae

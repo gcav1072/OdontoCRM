@@ -74,15 +74,33 @@ if [[ "$existe" == "1" && "$rotar" != "1" && -z "${1:-}" ]]; then
 fi
 
 # ── 1. El rol ────────────────────────────────────────────────────────────────
+#
+# **Nada de `NOINHERIT` en este rol.** Medido en la Fase 10: `CREATE ROLE ... NOINHERIT`
+# hace que PostgreSQL registre la pertenencia a `pg_read_all_data` con
+# `inherit_option = false` (PG 16+), así que el rol **no recibe** ninguno de esos
+# permisos y `pg_dump` muere con «permiso denegado a la tabla __drizzle_migrations».
+# No es un aviso teórico: el respaldo falló dos veces por esto. El rol sigue siendo de
+# mínimo privilegio (sin superusuario, sin crear bases ni roles) y aquí abajo se le da
+# además lectura explícita tabla por tabla, que funciona en cualquier versión.
 if [[ "$existe" == "1" ]]; then
-  psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q -c "alter role $rol with login password '$password'" \
-    -c "grant pg_read_all_data to $rol" >/dev/null || morir "no pude actualizar el rol $rol"
-  ok "rol $rol actualizado (sin superusuario, con lectura de todas las tablas)"
+  psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+    -c "alter role $rol with login inherit password '$password'" >/dev/null ||
+    morir "no pude actualizar el rol $rol"
+  ok "rol $rol actualizado (sin superusuario, con herencia activada)"
 else
   psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
-    -c "create role $rol login password '$password' nosuperuser nocreatedb nocreaterole noinherit" \
-    -c "grant pg_read_all_data to $rol" >/dev/null || morir "no pude crear el rol $rol"
-  ok "rol $rol creado (sin superusuario, con lectura de todas las tablas)"
+    -c "create role $rol login password '$password' nosuperuser nocreatedb nocreaterole" >/dev/null ||
+    morir "no pude crear el rol $rol"
+  ok "rol $rol creado (sin superusuario; la herencia queda activada a propósito)"
+fi
+
+# La pertenencia, con herencia explícita: en PG 16+ el permiso de la pertenencia manda.
+if psql "$ADMIN_URL" -q -c "grant pg_read_all_data to $rol with inherit true" >/dev/null 2>&1; then
+  ok 'pertenencia a pg_read_all_data concedida con herencia (PG 16+)'
+else
+  psql "$ADMIN_URL" -q -c "grant pg_read_all_data to $rol" >/dev/null ||
+    av 'no pude conceder pg_read_all_data (seguirá con los permisos explícitos)'
+  av 'servidor anterior a PG 16: la pertenencia va sin opción de herencia; los permisos explícitos son los que valen'
 fi
 
 if [[ "$bypassrls" == "1" ]]; then
@@ -103,7 +121,13 @@ fi
 SQL_ESQUEMAS="DO \$\$ DECLARE s text; BEGIN
   FOR s IN SELECT nspname FROM pg_namespace
             WHERE nspname NOT LIKE 'pg\\_%' AND nspname <> 'information_schema'
-  LOOP EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', s, '$rol'); END LOOP;
+  LOOP
+    EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', s, '$rol');
+    -- Lectura explícita: no depende de la herencia ni de pg_read_all_data, y es lo
+    -- que hace que pg_dump pueda bloquear las tablas (incluidas drizzle y pgboss).
+    EXECUTE format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO %I', s, '$rol');
+    EXECUTE format('GRANT SELECT ON ALL SEQUENCES IN SCHEMA %I TO %I', s, '$rol');
+  END LOOP;
 END \$\$;"
 
 for base in "${bases[@]}"; do
@@ -143,8 +167,13 @@ for base in "${bases[@]}"; do
   # que rompía el respaldo, y se comprueba el USAGE de todos los esquemas.
   if ! PGPASSFILE="$pgpass" psql -h 127.0.0.1 -p 5432 -U "$rol" -d "$base" -tAc \
        "select count(*) from drizzle.__drizzle_migrations" >/dev/null 2>&1; then
-    av "el rol no puede leer el esquema drizzle de $base"; fallos=$((fallos+1)); continue
+    av "el rol no puede leer drizzle.__drizzle_migrations en $base (¿rol NOINHERIT?)"
+    fallos=$((fallos+1)); continue
   fi
+  # Las tablas de la cola (pgboss) son las otras que pg_dump bloquea.
+  PGPASSFILE="$pgpass" psql -h 127.0.0.1 -p 5432 -U "$rol" -d "$base" -tAc \
+    "select count(*) from pgboss.job" >/dev/null 2>&1 ||
+    { av "el rol no puede leer pgboss.job en $base"; fallos=$((fallos+1)); continue; }
   sin_usage="$(PGPASSFILE="$pgpass" psql -h 127.0.0.1 -p 5432 -U "$rol" -d "$base" -tAc \
     "select string_agg(nspname, ', ') from pg_namespace
       where nspname not like 'pg\\_%' and nspname <> 'information_schema'
