@@ -13,7 +13,6 @@ import {
 import {
   ArrowLeft,
   Eye,
-  FileText,
   IdCard,
   ShieldAlert,
   Smile,
@@ -34,6 +33,7 @@ import { LinkButton } from '../components/LinkButton';
 import { NoticeBanner } from '../components/NoticeBanner';
 import { PatientAttachments } from '../components/patients/PatientAttachments';
 import { PatientAttachmentsCard } from '../components/clinical/SessionAttachments';
+import { PatientSessionsCard } from '../components/clinical/PatientSessionsCard';
 import { PatientDeleteDialog } from '../components/patients/PatientDeleteDialog';
 import { PatientForm } from '../components/patients/PatientForm';
 import { PatientStatusDialog } from '../components/patients/PatientStatusDialog';
@@ -254,12 +254,9 @@ export const PatientDetailPage = () => {
           con su pieza. La subida se hace desde la sesión en la que se tomaron. */}
       <PatientAttachmentsCard patientId={paciente.id} />
 
-      <Card>
-        <CardContent className="flex items-start gap-2.5 pt-5 text-sm text-ink-muted">
-          <FileText className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          {t('pacientes.historia.proximamente')}
-        </CardContent>
-      </Card>
+      {/* Las sesiones clínicas del paciente, en modo lectura: se registran en
+          /consultorio y hasta ahora no había forma de volver a leerlas desde aquí. */}
+      <PatientSessionsCard patientId={paciente.id} patientName={paciente.fullName} />
 
       <PatientStatusDialog
         open={cambiandoEstado}

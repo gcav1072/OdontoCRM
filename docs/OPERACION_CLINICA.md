@@ -165,6 +165,26 @@ para verlos en grande).
 
 ---
 
+## 3-bis. Volver a leer una sesión
+
+Todo lo que se registró en una atención queda guardado y se puede volver a leer:
+
+1. **Pacientes** → se busca al paciente → su ficha.
+2. En la ficha, la tarjeta **«Sesiones clínicas»** lista sus atenciones, de la más
+   reciente a la más antigua, con la fecha, quién la firmó, su estado y un resumen.
+3. El botón **Ver** abre la sesión en **modo lectura**: motivo, anamnesis, signos
+   vitales, examen, procedimientos (con la pieza tratada), materiales, diagnóstico,
+   indicaciones, próxima cita, la nota de cierre y quién la firmó.
+
+Una sesión **cerrada no se edita**: es el documento de lo que pasó ese día. Si hay que
+corregir algo, se abre una **sesión enmendada** con su motivo, y las dos quedan
+visibles y auditadas (la enmendada lo dice en su cabecera).
+
+Las **notas internas** solo las ve quien puede escribir en la historia clínica
+(odontólogo y administrador): son las que no se imprimen ni se le muestran al paciente.
+
+---
+
 ## 4. Los récipes
 
 Se arma el récipe dentro de la sesión (medicamento, presentación, dosis, frecuencia y

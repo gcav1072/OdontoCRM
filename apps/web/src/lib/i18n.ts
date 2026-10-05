@@ -596,9 +596,29 @@ const DICCIONARIO = {
   'pacientes.adjuntos.tipo.laboratorio': 'Laboratorio',
   'pacientes.adjuntos.tipo.otro': 'Otro',
 
-  // Historial clínico y otros módulos que llegan después
-  'pacientes.historia.proximamente':
-    'La historia clínica, las sesiones y los récipes llegan en las fases 6 y 7. Aquí ya quedan los datos del paciente y sus adjuntos.',
+  // --- Sesiones clínicas en la ficha del paciente (lectura) -----------------
+  'clinica.lectura.tituloLista': 'Sesiones clínicas',
+  'clinica.lectura.titulo': 'Sesión clínica',
+  'clinica.lectura.ver': 'Ver',
+  'clinica.lectura.sinSesiones':
+    'Todavía no hay sesiones: se abren al atender al paciente, desde el consultorio o desde el flujo del día.',
+  'clinica.lectura.errorLista': 'No se pudieron cargar las sesiones de este paciente.',
+  'clinica.lectura.errorDetalle': 'No se pudo cargar la sesión. Vuelve a intentarlo.',
+  'clinica.lectura.sinDato': 'Sin registrar',
+  'clinica.lectura.sesionNumero': 'Sesión n.º {numero}',
+  'clinica.lectura.procedimientos': '{total} procedimiento(s)',
+  'clinica.lectura.paciente': 'Paciente',
+  'clinica.lectura.abierta': 'Abierta',
+  'clinica.lectura.cerrada': 'Cerrada',
+  'clinica.lectura.abiertaAun': 'Sigue abierta',
+  'clinica.lectura.abrio': 'Abrió',
+  'clinica.lectura.cerro': 'Firmó el cierre',
+  'clinica.lectura.notaCierre': 'Nota de cierre',
+  'clinica.lectura.enmendada': 'Sesión enmendada',
+  'clinica.lectura.notasInternas': 'Notas internas',
+  'clinica.lectura.notasInternasAviso':
+    'Estas notas son internas: no se imprimen ni se le muestran al paciente.',
+  'clinica.lectura.sinProcedimientos': 'No se registraron procedimientos en esta sesión.',
 
   // Lista y filtros
   'pacientes.lista.titulo': 'Pacientes',

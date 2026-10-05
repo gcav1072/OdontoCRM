@@ -4,7 +4,6 @@ import {
   CalendarRange,
   ChartColumn,
   ClipboardList,
-  ClipboardPlus,
   ContactRound,
   House,
   IdCard,
