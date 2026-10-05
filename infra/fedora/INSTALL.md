@@ -1343,14 +1343,20 @@ se sustituye `__HOST__` por el nombre **y la IP** del servidor (el certificado c
 los dos). Así la guía y lo que corre en la clínica no se separan.
 
 ```bash
-sudo install -m 0644 /opt/odontocrm/infra/fedora/nginx/odontocrm.conf \
-     /etc/nginx/conf.d/odontocrm.conf
-sudo sed -i "s|__HOST__|odontocrm.local $(hostname -I | awk '{print $1}')|g" \
-     /etc/nginx/conf.d/odontocrm.conf
-# Fedora trae un server de bienvenida en el 80 que estorba el redirect:
-sudo mv /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf.odontocrm-off
-sudo nginx -t && sudo systemctl enable --now nginx
+# Un solo comando: desactiva la página de prueba de Fedora, instala el proxy con
+# el nombre y la IP de esta máquina, comprueba la sintaxis y arranca nginx.
+sudo bash /opt/odontocrm/infra/fedora/nginx/instalar.sh
+# (o con el nombre que teclean los equipos:)
+sudo bash /opt/odontocrm/infra/fedora/nginx/instalar.sh --host="odontocrm.local 192.168.1.50"
 ```
+
+> **Ojo con el puerto 80 (medido en la Fase 10).** Fedora no pone su página de prueba
+> en `conf.d/default.conf` sino **dentro de `/etc/nginx/nginx.conf`**, con
+> `listen 80 default_server`. Mientras esté ahí, quien escriba `http://` ve el cartel
+> «Test Page for the HTTP Server on Fedora» y el redirect a HTTPS nunca ocurre (el
+> `curl` final devuelve **200** en vez de 301). El instalador comenta esas dos líneas
+> `listen` —el bloque queda inerte y el cambio se revierte a la vista— y guarda el
+> original en `/etc/nginx/nginx.conf.odontocrm-orig`.
 
 Lo que hace (y por qué), tal como quedó validado en la Fase 10:
 
