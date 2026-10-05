@@ -57,7 +57,14 @@ echo "== 3/6 · Rol superusuario para tu usuario (peer por socket) =============
 # usuario de verdad, que es el que abre la sesión (SUDO_USER).
 USUARIO_REAL="${SUDO_USER:-$USER}"
 sudo -u postgres createuser --superuser "$USUARIO_REAL" 2>/dev/null || echo "el rol $USUARIO_REAL ya existía"
-psql -h /var/run/postgresql -U "$USUARIO_REAL" -d postgres -c 'SELECT version();'
+# La comprobación va COMO ESE USUARIO, no como root: la autenticación `peer` compara el
+# usuario del sistema que conecta con el rol pedido, así que desde root falla con
+# «Peer authentication failed» aunque el rol exista. (Se veía ese error en cada corrida
+# y no significaba que el rol faltara.)
+sudo -u "$USUARIO_REAL" psql -h /var/run/postgresql -d postgres -tAc 'select version();' |
+  head -1 | sed 's/^/  /' ||
+  echo "  (aviso) no pude comprobar la conexión como $USUARIO_REAL; el rol está creado igual"
+
 
 echo
 echo "== 4/6 · Dependencias de Chromium (récipe A5 y PDF de reportes) ============"
@@ -97,7 +104,18 @@ if [[ -n "$NOMBRE_MDNS" ]]; then
     hostnamectl set-hostname "$NOMBRE_MDNS"
     echo "  nombre cambiado: $actual -> $NOMBRE_MDNS"
   fi
-  (( DRY_RUN )) || systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
+  if (( ! DRY_RUN )); then
+    systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
+    # avahi publica el nombre que tenía al arrancar: tras cambiarlo hay que reiniciarlo,
+    # o `<nombre>.local` no resuelve hasta el próximo arranque de la máquina.
+    systemctl restart avahi-daemon >/dev/null 2>&1 || true
+    sleep 1
+    if avahi-resolve -n "${NOMBRE_MDNS}.local" >/dev/null 2>&1; then
+      echo "  comprobado: ${NOMBRE_MDNS}.local se resuelve por mDNS"
+    else
+      echo "  (aviso) ${NOMBRE_MDNS}.local aún no responde; suele tardar unos segundos"
+    fi
+  fi
   echo "  los equipos entran por:  https://${NOMBRE_MDNS}.local"
 else
   echo "  (opcional, recomendado en la clinica) publica un nombre fijo para entrar:"

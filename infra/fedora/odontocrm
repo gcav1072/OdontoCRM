@@ -446,19 +446,29 @@ EOF
 
     problemas=0
 
-    # 1) Firewall: ¿está abierto 443 para ESTA red?
+    # 1) Firewall: hay DOS formas válidas de publicar el proxy:
+    #      a) `https` como SERVICIO en la zona de la interfaz → sigue a la interfaz y
+    #         vale en cualquier red (la que deja el despliegue por defecto);
+    #      b) una regla por RANGO (`--lan-cidr`) → la estricta de la clínica.
+    #    La comprobación tiene que entender las dos: antes solo miraba las reglas por
+    #    rango y daba por malo un firewall que estaba perfecto.
     if systemctl is-active --quiet firewalld; then
-      if firewall-cmd --list-rich-rules 2>/dev/null | grep -q "443"; then
-        reglas="$(firewall-cmd --list-rich-rules 2>/dev/null | grep 443 | head -2)"
-        if printf '%s' "$reglas" | grep -qF "$RED_LAN"; then
-          ok "firewalld: 443 abierto para $RED_LAN"
-        else
-          av "firewalld tiene reglas de OTRA red (esta es $RED_LAN):"
-          printf '%s\n' "$reglas" | sed 's/^/      /'
-          problemas=$((problemas + 1))
-        fi
+      iface_fw="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)"
+      zona_fw="$(firewall-cmd --get-zone-of-interface="${iface_fw}" 2>/dev/null || echo public)"
+      [[ -n "$zona_fw" && "$zona_fw" != "no" ]] || zona_fw=public
+      servicios_zona="$(firewall-cmd --zone="$zona_fw" --list-services 2>/dev/null)"
+      reglas="$(firewall-cmd --list-rich-rules 2>/dev/null | grep '443' | head -2)"
+
+      if printf '%s' "$servicios_zona" | grep -qw https; then
+        ok "firewalld: 443 abierto en la zona «$zona_fw» (sigue a la interfaz: vale en cualquier red)"
+      elif [[ -n "$reglas" ]] && printf '%s' "$reglas" | grep -qF "$RED_LAN"; then
+        ok "firewalld: 443 abierto para $RED_LAN (regla por rango)"
+      elif [[ -n "$reglas" ]]; then
+        av "firewalld tiene reglas de OTRA red (esta es $RED_LAN):"
+        printf '%s\n' "$reglas" | sed 's/^/      /'
+        problemas=$((problemas + 1))
       else
-        av 'firewalld no tiene ninguna regla para 443: nadie de la red podrá entrar'
+        av "firewalld no publica 443 (ni el servicio «https» en la zona $zona_fw ni una regla): nadie de la red podrá entrar"
         problemas=$((problemas + 1))
       fi
     else
@@ -489,9 +499,14 @@ EOF
       resuelto="$(avahi-resolve -n "${NOMBRE:-odontocrm.local}" 2>/dev/null | awk '{print $2}' | head -1)"
       if [[ -n "$resuelto" ]]; then
         ok "mDNS: ${NOMBRE:-odontocrm.local} se resuelve solo (→ $resuelto): los equipos no necesitan tocar el hosts"
+      elif [[ "$(hostname)" == "${NOMBRE:-odontocrm.local}" || "$(hostname)" == "${NOMBRE%%.*}" ]]; then
+        # El nombre es el correcto: lo que pasa es que avahi publica el que tenía al
+        # arrancar. Se arregla reiniciándolo (lo hace `--arreglar`).
+        av "avahi todavía publica $(hostname).local con el nombre viejo: reinícialo"
+        problemas=$((problemas + 1))
       else
-        av "mDNS no publica ${NOMBRE:-odontocrm.local} (esta máquina publica $(hostname).local):"
-        av "  los equipos tendrían que poner la línea en su archivo hosts"
+        av "mDNS no publica ${NOMBRE:-odontocrm.local}: la máquina se llama $(hostname)"
+        av "  se arregla con:  sudo bash $CODE_DIR/infra/fedora/instalar-base-fedora.sh --nombre-mdns=odontocrm"
         problemas=$((problemas + 1))
       fi
     else
@@ -543,6 +558,23 @@ EOF
       done
       firewall-cmd --reload >/dev/null 2>&1 || true
       ok "firewalld: 443 y 80 abiertos en la zona «$zona» (sigue a la interfaz, no a un rango)"
+    fi
+
+    # a-bis) mDNS: si el nombre del servidor es el correcto pero avahi no lo publica, es
+    #        que arrancó con el anterior. Reiniciarlo lo republica al instante.
+    if command -v avahi-resolve >/dev/null; then
+      if [[ "$(hostname)" == "${NOMBRE:-odontocrm.local}" || "$(hostname)" == "${NOMBRE%%.*}" ]]; then
+        systemctl restart avahi-daemon >/dev/null 2>&1 || true
+        sleep 1
+        if avahi-resolve -n "${NOMBRE:-odontocrm.local}" >/dev/null 2>&1; then
+          ok "mDNS: ${NOMBRE:-odontocrm.local} se resuelve solo (los equipos no tocan el hosts)"
+        else
+          av "mDNS: ${NOMBRE:-odontocrm.local} aún no resuelve; espera unos segundos y repite"
+        fi
+      else
+        av "el servidor se llama $(hostname): para publicar ${NOMBRE:-odontocrm.local} hace falta"
+        av "  sudo bash $CODE_DIR/infra/fedora/instalar-base-fedora.sh --nombre-mdns=${NOMBRE%%.*}"
+      fi
     fi
 
     # b) El proxy sirve el nombre actualizado (por si cambió).
