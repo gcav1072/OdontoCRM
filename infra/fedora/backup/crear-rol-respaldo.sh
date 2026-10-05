@@ -21,6 +21,23 @@
 # =============================================================================
 set -uo pipefail
 
+# ── Aviso de dónde se corta ──────────────────────────────────────────────────
+# Un guion que se corta EN SILENCIO es el peor fallo posible: pasó en el ensayo de la
+# Fase 10, que moría (por una variable sin definir, con `set -u`) justo antes de imprimir
+# el «Resumen» y de reiniciar, y parecía que el reinicio «no funcionaba».
+#
+# Este aviso NO cambia el comportamiento (los guiones siguen adelante donde ya lo hacían):
+# solo dice por stderr en qué línea se detuvo y con qué código. Cuando bash aborta por
+# `set -u`, esto imprime la línea exacta; cuando un comando falla y el guion continúa,
+# queda anotado para que nadie se quede sin saberlo.
+trap 'codigo=$?; printf "\n✖ %s: se detuvo en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
+
+# Y un aviso de SALIDA: se ejecuta siempre, incluso cuando bash aborta por `set -u` (ese
+# caso **no** pasa por el trap de ERR). Es el que habría dicho «el ensayo terminó con
+# error en la línea X» en vez de dejar una salida truncada que parecía un reinicio roto.
+trap 'codigo=$?; if (( codigo != 0 )) && [[ "$BASH_COMMAND" != exit* ]]; then printf "\n✖ %s terminó con error (código %s). Última orden:\n    %s\n" "${0##*/}" "$codigo" "$BASH_COMMAND" >&2; fi' EXIT
+
+
 C_OK=$'\e[32m'; C_AV=$'\e[33m'; C_ER=$'\e[31m'; C_TI=$'\e[1m'; C_RE=$'\e[0m'
 ok()   { printf '  %s✔%s %s\n' "$C_OK" "$C_RE" "$1"; }
 av()   { printf '  %s!%s %s\n' "$C_AV" "$C_RE" "$1"; }

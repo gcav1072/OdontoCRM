@@ -28,6 +28,11 @@ set -uo pipefail
 # «Resumen» y sin reiniciar, y parecía que el flag no funcionaba.
 trap 'codigo=$?; err "el ensayo se detuvo en la línea $LINENO (código $codigo):"; err "    $(sed -n "${LINENO}p" "$0" | sed "s/^ *//")"; exit $codigo' ERR
 
+# Y un aviso de SALIDA: se ejecuta siempre, incluso cuando bash aborta por `set -u` (ese
+# caso **no** pasa por el trap de ERR). Es el que habría dicho «el ensayo terminó con
+# error en la línea X» en vez de dejar una salida truncada que parecía un reinicio roto.
+trap 'codigo=$?; if (( codigo != 0 )) && [[ "$BASH_COMMAND" != exit* ]]; then printf "\n✖ %s terminó con error (código %s). Última orden:\n    %s\n" "${0##*/}" "$codigo" "$BASH_COMMAND" >&2; fi' EXIT
+
 # ── Parámetros ───────────────────────────────────────────────────────────────
 # El repositorio de trabajo es el que contiene este guion: así funciona en
 # cualquier PC sin editar rutas (se puede forzar con --origen=).
