@@ -28,6 +28,7 @@ inventarse problemas.
 
 1. [Los cinco minutos de la mañana](#1-los-cinco-minutos-de-la-mañana)
 2. [Los servicios](#2-los-servicios)
+2-bis. [Parar, recompilar y volver a arrancar](#2-bis-parar-recompilar-y-volver-a-arrancar)
 3. [Actualizar el sistema](#3-actualizar-el-sistema)
 4. [Respaldos y restauración](#4-respaldos-y-restauración)
 5. [Usuarios y contraseñas](#5-usuarios-y-contraseñas)
@@ -84,6 +85,79 @@ sudo journalctl -u 'odontocrm@*' --since today --no-pager | tail -40
 > desarrollo (`npm run dev` en el repositorio), los dos conjuntos de procesos se pelean
 > por los mismos puertos: los servicios de systemd caen en bucle y **`/health` responde
 > igual** (lo contesta el otro). El tablero lo detecta y avisa.
+
+---
+
+## 2-bis. Parar, recompilar y volver a arrancar
+
+En desarrollo esto es un comando (`npm run dev`), pero en el servidor hay **tres pasos
+con orden y con `sudo`**: si se para a medias o se arranca en desorden, la clínica ve
+errores que no lo son.
+
+```bash
+# 1) PARAR  (el gateway primero: es la puerta de entrada)
+sudo odontocrm parar
+
+# 2) COMPILAR  (TypeScript → dist/ y la SPA; no toca la base ni los servicios)
+sudo odontocrm compilar
+#    ¿hay además código nuevo en el repositorio? Entonces:  sudo odontocrm actualizar
+#    (trae, compila, MIGRA y reinicia en un paso)
+
+# 3) ARRANCAR  (en orden, y comprueba los 9)
+sudo odontocrm arrancar
+```
+
+**Qué hace cada paso y por qué en ese orden**
+
+| Paso | Comando | Qué pasa por dentro |
+| :--- | :--- | :--- |
+| Parar | `odontocrm parar` | `systemctl stop` del gateway y de los 8 servicios. **nginx y PostgreSQL se quedan** (el proxy dará 502 mientras tanto, que es lo correcto: algo tiene que contestar). Para detenerlos también: `sudo systemctl stop nginx postgresql` |
+| Compilar | `odontocrm compilar` | `npm ci` + `npm run build` dentro de `/opt/odontocrm`. Los servicios **siguen con el código viejo en memoria** hasta que se reinicien: por eso este paso va entre parar y arrancar |
+| Arrancar | `odontocrm arrancar` | `systemctl start` de PostgreSQL y nginx si hicieran falta, luego los 8 servicios, y el gateway al final. Termina comprobando los 9 con `verificar` |
+
+**Atajos que existen para no repetir:**
+
+```bash
+sudo odontocrm reiniciar     # parar + arrancar (para aplicar cambios de configuración)
+sudo odontocrm recompilar    # compilar + reiniciar (código ya en /opt, sin migraciones)
+sudo odontocrm actualizar    # traer del repositorio + compilar + migrar + reiniciar
+```
+
+**Bloque de parada y arranque de emergencia** (si el comando no estuviera instalado):
+
+```bash
+# Parar
+sudo systemctl stop odontocrm-gateway
+sudo systemctl stop 'odontocrm@identity' 'odontocrm@patients' 'odontocrm@scheduling' \
+  'odontocrm@notifications' 'odontocrm@clinical' 'odontocrm@odontogram' \
+  'odontocrm@screens' 'odontocrm@reporting'
+
+# Arrancar
+sudo systemctl start 'odontocrm@identity' 'odontocrm@patients' 'odontocrm@scheduling' \
+  'odontocrm@notifications' 'odontocrm@clinical' 'odontocrm@odontogram' \
+  'odontocrm@screens' 'odontocrm@reporting'
+sudo systemctl start odontocrm-gateway
+```
+
+### Traducción: lo que hacías en desarrollo → lo que se hace en el servidor
+
+| En desarrollo (`~/devp/OdontoCRM`) | En producción (`/opt/odontocrm`) |
+| :--- | :--- |
+| `npm run dev` | `sudo odontocrm arrancar` (unidades `systemd`, ya habilitadas) |
+| `npm run stack:down` | `sudo odontocrm parar` |
+| `npm run build` | `sudo odontocrm compilar` |
+| `npm run stack:fijo` (PM2) | **No se usa**: el supervisor es systemd |
+| `npm run db:migrate` | `sudo odontocrm con-entorno <servicio> -- node services/<servicio>/dist/db/migrate.js` (o `odontocrm actualizar`, que las corre todas) |
+| `npm run seed:users` | `sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js` |
+| `npm run estado` | `sudo odontocrm estado` |
+| `npm run e2e:clinica` | **No se ejecuta** contra la clínica: es una prueba de desarrollo |
+| `npm run db:reset` | **Nunca.** Borra las 9 bases (§11) |
+| `.env` de la raíz y de cada servicio | `/etc/odontocrm/*.env` (`0600 root:root`), y se reinicia el servicio |
+| `http://127.0.0.1:5173` (Vite) | `https://odontocrm.local` o `https://<IP>` (nginx) |
+
+> **Regla de oro:** nunca los dos a la vez. La pila de desarrollo y las unidades de
+> `systemd` pelean por los mismos puertos: los servicios caen en bucle y `/health`
+> responde igual (lo contesta el otro). El tablero lo detecta y lo dice.
 
 ---
 

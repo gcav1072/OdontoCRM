@@ -76,7 +76,19 @@ sudo ls -lh /var/backups/odontocrm | tail -5
 
 ## 2. Arrancar, parar y reiniciar
 
+> **El ciclo completo (parar → recompilar → arrancar)**, con la tabla que traduce los
+> comandos de desarrollo a los del servidor, está en
+> [`../../docs/COMANDOS_PRODUCCION.md`](../../docs/COMANDOS_PRODUCCION.md) §2-bis.
+> Aquí queda el resumen de una línea por comando.
+
 ### Con systemd (recomendado)
+
+```bash
+sudo odontocrm parar        # detener los 9 (nginx y PostgreSQL se quedan)
+sudo odontocrm arrancar     # arrancarlos en orden y verificar
+sudo odontocrm reiniciar    # para aplicar cambios de configuración
+```
+
 
 ```bash
 # Estado de todo

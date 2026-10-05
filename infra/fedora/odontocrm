@@ -52,9 +52,14 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    Últimos registros.
   sudo odontocrm actualizar        Traer el código nuevo, compilar, migrar y reiniciar
                                    (lo mismo que RUNBOOK §8, sin acordarse de nada).
-  sudo odontocrm recompilar        Volver a compilar la copia instalada y reiniciar, sin
-                                   tocar el repositorio ni la base. Para cuando el código
-                                   ya está en /opt y hace falta que los servicios lo usen.
+  sudo odontocrm parar             Detener los 9 servicios (el gateway primero: es la
+                                   puerta). nginx y PostgreSQL se quedan.
+  sudo odontocrm arrancar          Arrancarlos en orden y comprobar que los 9 responden.
+  sudo odontocrm reiniciar         Parar y arrancar (para aplicar configuración).
+  sudo odontocrm compilar          Solo compilar (TypeScript → dist/), sin tocar servicios.
+                                   El ciclo completo es: parar → compilar → arrancar.
+  sudo odontocrm recompilar        Compilar y reiniciar de una vez, sin tocar el repositorio
+                                   ni la base (atajo de lo anterior).
   sudo odontocrm certificado       Muestra el certificado y el estado de la CA interna, y
                                    exporta los archivos para instalar en tablets, móviles
                                    y TVs (--exportar /ruta). Es lo que quita el aviso de
@@ -279,6 +284,56 @@ EOF
       ETC_DIR="$ETC_DIR" SERVICIO="$servicio" ODONTOCRM_ENV_DIR="$ETC_DIR" \
       bash -c 'set -a; . "$ETC_DIR/odontocrm.env"; . "$ETC_DIR/$SERVICIO.env"; set +a; exec "$@"' \
       _ "$@"
+    ;;
+
+  parar|stop|detener)
+    necesita_root
+    # El gateway PRIMERO: es la puerta de entrada. Si se para al final, las peticiones
+    # que estén en curso se quedan colgadas contra servicios que ya no están.
+    systemctl stop odontocrm-gateway.service >/dev/null 2>&1 || true
+    ok 'gateway detenido (la puerta)'
+    parados=0
+    for s in "${SERVICIOS[@]}"; do
+      systemctl stop "odontocrm@$s.service" >/dev/null 2>&1 && parados=$((parados + 1))
+    done
+    ok "$parados servicio(s) detenido(s)"
+    av 'nginx y PostgreSQL siguen en marcha (el proxy dará 502 mientras tanto)'
+    av 'para detenerlos también:  sudo systemctl stop nginx postgresql'
+    ;;
+
+  arrancar|start)
+    necesita_root
+    systemctl is-active --quiet postgresql || systemctl start postgresql
+    systemctl is-active --quiet nginx || systemctl start nginx
+    for s in "${SERVICIOS[@]}"; do
+      systemctl start "odontocrm@$s.service" >/dev/null 2>&1 || av "no pude arrancar odontocrm@$s"
+    done
+    systemctl start odontocrm-gateway.service >/dev/null 2>&1 || av 'no pude arrancar el gateway'
+    ok 'servicios arrancados; comprobando…'
+    sleep 6
+    exec "$0" verificar
+    ;;
+
+  reiniciar|restart|reinicio)
+    necesita_root
+    systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || true
+    for s in "${SERVICIOS[@]}"; do
+      systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 || av "no pude reiniciar odontocrm@$s"
+    done
+    systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || true
+    ok 'servicios reiniciados; comprobando…'
+    sleep 6
+    exec "$0" verificar
+    ;;
+
+  compilar|build)
+    necesita_root
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    ok "versión en el disco: $(git rev-parse --short HEAD 2>/dev/null || echo 'sin git')"
+    npm ci --silent || morir 'falló npm ci'
+    npm run build >/dev/null 2>&1 || morir 'falló la compilación'
+    ok 'compilado (TypeScript → dist/ y la SPA en apps/web/dist)'
+    av 'los servicios siguen con el código anterior hasta que se reinicien: usa «odontocrm arrancar» (o «reiniciar»)'
     ;;
 
   recompilar|rebuild)
