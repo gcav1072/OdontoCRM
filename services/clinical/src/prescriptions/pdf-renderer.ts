@@ -48,6 +48,11 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
       const page = await instance.newPage();
       try {
         page.setDefaultTimeout(options.timeoutMs);
+        // Esquema de color EXPLÍCITO: el PDF es papel, no pantalla. Sin esto, un
+        // Chromium con preferencia oscura podría pintar la plantilla en oscuro (y
+        // con `printBackground` eso sale impreso). Medido en la Fase 10 con las
+        // páginas que imprime el navegador.
+        await page.emulateMedia({ colorScheme: 'light' });
         await page.setContent(html, { waitUntil: 'load', timeout: options.timeoutMs });
         // A5 exacto (148 × 210 mm) con los márgenes de la plantilla.
         return await page.pdf({

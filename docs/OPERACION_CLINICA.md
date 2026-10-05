@@ -228,6 +228,21 @@ duración, con las indicaciones generales) y se **emite**.
 
 ---
 
+## 6-bis. Imprimir el odontograma y la historia
+
+- El odontograma se imprime desde la ficha del paciente (**Odontograma** →
+  **Imprimir**); la historia clínica, desde la pestaña de la historia. Se abre una
+  pestaña limpia, sin menús, y el papel lleva el membrete y la fecha.
+- Se puede marcar la casilla del **historial** para que salga detrás la evolución con
+  sus fechas.
+- **La impresión siempre sale con la paleta clara**, aunque el equipo esté en modo
+  oscuro: en papel el fondo es blanco y así los dibujos del odontograma y los colores
+  de los hallazgos se ven como deben. (Antes, imprimiendo desde un equipo en modo
+  oscuro, las líneas salían claras sobre blanco y los dibujos casi no se veían.)
+- Cada impresión queda registrada en la auditoría con el usuario que la hizo.
+
+---
+
 ## 7. Las pantallas de la sala y del consultorio
 
 - **Sala de espera** (`/pantalla/lobby`): muestra el turno y el nombre abreviado del
