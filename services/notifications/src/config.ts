@@ -22,7 +22,14 @@ export const notificationsEnvSchema = baseEnvSchema.extend({
    * Sin token el servicio arranca en **modo simulado**: todo el flujo funciona
    * (cola, plantillas, `.ics`, reintentos) pero los mensajes no salen a Telegram.
    */
-  TELEGRAM_BOT_TOKEN: z.string().min(20).optional(),
+  TELEGRAM_BOT_TOKEN: z
+    .string()
+    .min(20)
+    .optional()
+    // Un marcador de plantilla (`CAMBIAR_TOKEN_BOTFATHER`) **no es un token**: cumple el
+    // mínimo de longitud y el servicio diría «configurado» para luego no conectar, que es
+    // un diagnóstico que cuesta media hora. Se trata como ausente y se avisa.
+    .transform((valor) => (valor === undefined || /^CAMBIAR/i.test(valor) ? undefined : valor)),
   /** Usuario del bot sin `@`, para armar el enlace `t.me/<usuario>?start=<código>`. */
   TELEGRAM_BOT_USERNAME: z.string().min(1).optional(),
   /** `auto` usa el bot real si hay token; `simulado` fuerza las pruebas sin red. */

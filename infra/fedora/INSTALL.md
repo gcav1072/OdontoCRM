@@ -755,6 +755,16 @@ emitidos, y los usuarios tendrían que volver a iniciar sesión.
 
 ### 8.5 Rotación del token del bot de Telegram
 
+> **El marcador de la plantilla NO es un token.** `CAMBIAR_TOKEN_BOTFATHER` cumple el
+> mínimo de longitud que valida el esquema, así que un servicio con el marcador dice
+> «token configurado» y **no conecta** (Telegram responde `Unauthorized`): media hora de
+> diagnóstico por un texto que nunca se cambió. Desde la Fase 10 el servicio trata los
+> valores que empiezan por `CAMBIAR` como **ausente** y la tarjeta de la bandeja dice
+> «sin token» (que es la verdad) más el detalle del error si lo hay. Si ves «token
+> configurado pero no conectado», mira el `lastError` de la tarjeta y comprueba el
+> archivo: `sudo grep -c 'TELEGRAM_BOT_TOKEN=CAMBIAR' /etc/odontocrm/notifications.env`
+> (un `1` significa que sigue el marcador).
+
 El token lo entrega BotFather **por archivo**, nunca por chat (plan §16). Rotarlo es
 editar `TELEGRAM_BOT_TOKEN` en `/etc/odontocrm/notifications.env` y reiniciar el
 servicio:

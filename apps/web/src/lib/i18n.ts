@@ -1221,6 +1221,8 @@ const DICCIONARIO = {
     'El bot de Telegram tiene token configurado y está conectado: los mensajes salen por los canales del paciente (Telegram o WhatsApp).',
   'notificaciones.bot.real.sinConexion':
     'El bot de Telegram tiene token configurado, pero ahora mismo no está conectado: los envíos quedan en cola hasta que vuelva la conexión.',
+  'notificaciones.bot.real.revisarToken':
+    'Si el detalle de abajo dice «Unauthorized» (no autorizado), Telegram está rechazando el token: revisa TELEGRAM_BOT_TOKEN en el archivo de configuración del servidor —el marcador de la plantilla no sirve— y reinicia el servicio de notificaciones.',
   'notificaciones.bot.simulado.texto':
     'No hay token configurado: los mensajes quedan registrados en la bandeja, pero no se envían. Configura el token del bot para activar los envíos reales.',
   'notificaciones.bot.modoTest.titulo': 'MODO TEST: los envíos están bloqueados',

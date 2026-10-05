@@ -173,6 +173,13 @@ export const BotStatusCard = ({
                 ? 'notificaciones.bot.real.texto'
                 : 'notificaciones.bot.real.sinConexion',
             )}
+            {/* No basta con decir «no conectado»: hay que decir dónde mirar. El
+                caso típico es el marcador de la plantilla (`CAMBIAR_TOKEN_…`), que
+                pasó en el despliegue de la Fase 10: el servicio lo daba por
+                configurado y Telegram lo rechazaba. */}
+            {!status.connected && (
+              <span className="block pt-1">{t('notificaciones.bot.real.revisarToken')}</span>
+            )}
           </Alert>
         ) : (
           <Alert variant="warning" title={t('notificaciones.bot.modo.simulado')}>
