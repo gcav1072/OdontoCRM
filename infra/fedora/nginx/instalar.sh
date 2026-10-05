@@ -97,6 +97,31 @@ chmod 0644 "$CONF_DESTINO"
 ok "instalado $CONF_DESTINO"
 grep -q 'listen 80 default_server;' "$CONF_DESTINO" && ok 'el redirect de http→https es el que decide' || true
 
+# ── 2-bis. Publicar la CA donde nginx SÍ pueda leerla ───────────────────────
+#
+# `/etc/odontocrm` es `0750 root:odontocrm` y nginx corre como usuario `nginx`: no puede
+# ni atravesarlo, así que servir la CA desde ahí daba **403 en texto plano** (error de
+# nginx, no de la aplicación). La CA es un certificado **público**, así que se copia a
+# /var/www/odontocrm/ca/ (0755) y se etiqueta para SELinux.
+CA_PUBLICA="/var/www/odontocrm/ca/odontocrm-ca.crt"
+CA_ORIGEN="$ETC_DIR/keys/odontocrm-ca.crt"
+[[ -f "$CA_ORIGEN" ]] || CA_ORIGEN="${CAROOT:-/root/.local/share/mkcert}/rootCA.pem"
+if [[ -f "$CA_ORIGEN" ]]; then
+  install -d -m 0755 /var/www/odontocrm/ca
+  install -m 0644 -o root -g root "$CA_ORIGEN" "$CA_PUBLICA"
+  ok "CA publicada en $CA_PUBLICA (legible por nginx)"
+  if command -v semanage >/dev/null && [[ "$(getenforce 2>/dev/null)" == "Enforcing" ]]; then
+    semanage fcontext -a -t httpd_sys_content_t '/var/www/odontocrm(/.*)?' 2>/dev/null ||
+      semanage fcontext -m -t httpd_sys_content_t '/var/www/odontocrm(/.*)?' 2>/dev/null || true
+    restorecon -R /var/www/odontocrm 2>/dev/null &&
+      ok 'SELinux: /var/www/odontocrm etiquetado como httpd_sys_content_t' ||
+      av 'no pude etiquetar /var/www/odontocrm (SELinux podría devolver 403)'
+  fi
+else
+  av "no encuentro la CA (busqué $ETC_DIR/keys/odontocrm-ca.crt y el almacén de mkcert)"
+  av 'créala con: sudo mkcert -install   y vuelve a ejecutar esto'
+fi
+
 # ── 3. Sintaxis y arranque ───────────────────────────────────────────────────
 if nginx -t >/tmp/odontocrm-nginx.log 2>&1; then
   ok 'nginx -t: configuración válida'
@@ -116,3 +141,11 @@ redir="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 http://127.0.0.1/ |
 [[ "$spa" == "200" ]] && ok 'la SPA se sirve por https' || err "la SPA devolvió $spa"
 [[ "$api" == "200" ]] && ok 'la API llega por el proxy' || err "la API devolvió $api"
 [[ "$redir" == "301" ]] && ok 'http redirige a https' || av "http devolvió $redir (esperaba 301)"
+
+ca_codigo="$(curl -s -o /tmp/odontocrm-ca-descargada.crt -w '%{http_code}' --max-time 6 http://127.0.0.1/ca.crt || echo 000)"
+if [[ "$ca_codigo" == "200" ]] && openssl x509 -in /tmp/odontocrm-ca-descargada.crt -noout -subject >/dev/null 2>&1; then
+  ok "la CA se descarga en http://<servidor>/ca.crt (para instalar en los equipos)"
+else
+  av "la CA responde $ca_codigo: revisa permisos de $CA_PUBLICA y las denegaciones de SELinux"
+  ausearch -m avc -ts recent 2>/dev/null | grep -i 'ca.crt\|var/www/odontocrm' | tail -3 || true
+fi

@@ -222,6 +222,19 @@ case "$ORDEN" in
       install -m 0644 -o root -g root "$origen" "$CA_FIJA" 2>/dev/null || true
       ok "copia estable en $CA_FIJA (entra en el respaldo: --include-config)"
 
+      # Y la copia PÚBLICA, que es la que nginx puede servir: /etc/odontocrm es
+      # accesible solo para root y odontocrm, y nginx corre como usuario `nginx`
+      # (servirla desde ahí daba 403 en texto plano). La CA es un certificado
+      # público: no hay nada que proteger en que sea legible.
+      install -d -m 0755 /var/www/odontocrm/ca
+      install -m 0644 -o root -g root "$origen" /var/www/odontocrm/ca/odontocrm-ca.crt
+      if command -v semanage >/dev/null && [[ "$(getenforce 2>/dev/null)" == "Enforcing" ]]; then
+        semanage fcontext -a -t httpd_sys_content_t '/var/www/odontocrm(/.*)?' 2>/dev/null ||
+          semanage fcontext -m -t httpd_sys_content_t '/var/www/odontocrm(/.*)?' 2>/dev/null || true
+        restorecon -R /var/www/odontocrm 2>/dev/null || true
+      fi
+      ok 'copia pública en /var/www/odontocrm/ca/odontocrm-ca.crt (legible por nginx)'
+
       # ¿El proxy la sirve de verdad? Si la configuración de nginx es anterior a que
       # existiera `/ca.crt`, la petición acaba en la SPA y el equipo ve la página de
       # «no encontrada» del propio sistema, que despista mucho. Pasó al probarlo desde
@@ -229,8 +242,19 @@ case "$ORDEN" in
       if ! grep -q '/ca.crt' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null; then
         av 'la configuración del proxy NO sirve /ca.crt todavía: los equipos verán «no encontrada»'
         av 'arréglalo con:  sudo bash '"$CODE_DIR"'/infra/fedora/nginx/instalar.sh'
+      elif ! grep -q '/var/www/odontocrm' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null; then
+        av 'la configuración del proxy es anterior a la corrección: apunta a /etc/odontocrm,'
+        av 'que nginx NO puede leer (daba 403). Arrégialo con:'
+        av '  sudo bash '"$CODE_DIR"'/infra/fedora/nginx/instalar.sh'
       else
-        ok 'el proxy sirve /ca.crt (los equipos pueden descargarla)'
+        ca_http="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1/ca.crt || echo 000)"
+        if [[ "$ca_http" == "200" ]]; then
+          ok "el proxy sirve /ca.crt (comprobado: 200). Página para los equipos:"
+          printf '    %shttp://%s/ca.crt%s\n' "$C_TI" "${IP_CA:-<IP-del-servidor>}" "$C_RE"
+        else
+          av "el proxy responde $ca_http en /ca.crt: revisa permisos y SELinux"
+          av 'suele ser la copia pública: sudo bash '"$CODE_DIR"'/infra/fedora/nginx/instalar.sh'
+        fi
       fi
 
       if [[ -z "$destino" ]]; then
