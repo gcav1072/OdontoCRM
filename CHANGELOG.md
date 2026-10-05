@@ -71,6 +71,11 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   tabla que traduce los de desarrollo) y **`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`**: cómo
   instalar el certificado interno en Android, iPhone/iPad, Windows, macOS, **Linux
   (Arch, Fedora, Ubuntu)** y televisores.
+- **Revisión de seguridad final** ([`docs/REVISION_SEGURIDAD_FASE_10.md`](docs/REVISION_SEGURIDAD_FASE_10.md)):
+  secretos (703 archivos sin hallazgos), dependencias (0 vulnerabilidades en
+  producción), sesiones, autorización, superficie expuesta y datos clínicos — con lo
+  que queda abierto y por qué (HSTS deliberadamente fuera, CSP pendiente de la
+  identidad de marca, copia externa del respaldo por decidir).
 - **Lectura de las sesiones clínicas desde la ficha del paciente**: la tarjeta
   «Sesiones clínicas» lista las atenciones y cada una se abre en modo lectura (motivo,
   examen, procedimientos con su pieza, diagnóstico, indicaciones, próxima cita, firma).
