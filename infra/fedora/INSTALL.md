@@ -91,8 +91,9 @@ sudo git update-index --chmod=+x infra/fedora/install.sh \
 - **Versiones exactas de los paquetes.** Fedora cambia de versión cada ~6 meses.
   `postgresql18-server`, `postgresql18-contrib` y el canal de Node.js 26 deben
   confirmarse en el Fedora que se instale.
-  > PENDIENTE FASE 10: (P-01) ejecutar `dnf list installed | grep -E 'postgresql18|nodejs|pm2'`
-  > y pegar el resultado en §20.
+  > ✅ Confirmado en el Fedora 44 de pruebas (P-01, §20): `postgresql-server-18.6-1.fc44` y
+  > `nodejs-26.10.0-1nodesource`. Ojo con Fedora 44 y posteriores: el paquete ya no se llama
+  > `postgresql18-*` (§20.1).
 - **Nombres de las variables de entorno.** Las plantillas que genera
   [`install.sh`](install.sh) ya siguen el contrato real de la Fase 0
   (`packages/kernel/src/config.ts`, `services/identity/src/config.ts`,
@@ -170,9 +171,9 @@ genérico: cada servicio lee la suya (`GATEWAY_PORT`, `IDENTITY_PORT`, …; §8.
 > reconfirmarlos con `sudo -u postgres psql -c '\du'` en el servidor real y ajustar
 > `ROLE_odonto_*` en `/etc/odontocrm/backup.env` si cambiara (§15.2).
 >
-> PENDIENTE FASE 10: (P-04) el artefacto compilado es `dist/index.js` en todos los
-> servicios (`services/<servicio>/dist/index.js` y `apps/gateway/dist/index.js`, según
-> `package.json` y `ecosystem.config.cjs`). Confirmarlo con `ls` tras compilar.
+> ✅ Confirmado (P-04, §20): el artefacto compilado es `dist/index.js` en todos los servicios
+(`services/<servicio>/dist/index.js` y `apps/gateway/dist/index.js`, según `package.json` y
+`ecosystem.config.cjs`).
 
 ### 2.3 Requisitos previos
 
@@ -219,9 +220,11 @@ el DNS de la clínica):
 echo '127.0.1.1  odontocrm.local odontocrm' | sudo tee -a /etc/hosts
 ```
 
-> PENDIENTE FASE 10: (P-12) decidir si el certificado interno se emite para
-> `odontocrm.local`, para la IP del servidor o para ambos, y cómo se reparte la CA a
-> los dispositivos (§13.5).
+> ◐ **Decidido y hecho (P-12, §20):** el certificado se emite para el **nombre**
+> (`odontocrm.local`), `localhost`, `127.0.0.1` **y** la IP del servidor, y la CA se reparte
+> descargándola en `http://<servidor>/ca.crt` (ver §13.2-bis y
+> [`CERTIFICADO_EN_LOS_EQUIPOS.md`](../../docs/CERTIFICADO_EN_LOS_EQUIPOS.md)). **Queda
+> pendiente** instalarla y probarlo en los aparatos reales de la consulta (tablet, móvil, TV).
 
 ---
 
@@ -313,9 +316,9 @@ sudo -u odontocrm test -x /var/lib/odontocrm/ms-playwright/chromium-*/chrome-lin
 > Chromium genera los PDF. El script `infra/fedora/install.sh` intenta el comando y, si
 > falla, instala la lista (por eso el intento queda en el código).
 >
-> PENDIENTE FASE 10: (P-07) confirmar que Chromium arranca bajo la unidad `systemd`
-> endurecida (§10.3) y que puede crear *user namespaces* sin privilegios. Si falla, la
-> salida documentada del plan §16 es el PDF con `pdfmake` (sin navegador).
+> ✅ Verificado (P-07, §20): Chromium arranca bajo la unidad `systemd` endurecida y crea
+> *user namespaces* sin privilegios; los récipes A5 y el PDF de reportes salen con el
+> navegador. No hizo falta el plan B (`pdfmake`).
 
 ---
 
@@ -353,9 +356,9 @@ node --version      # debe empezar por v26.
 npm --version       # debe ser 11.x (Node 26 ya no incluye Corepack; el monorepo usa npm)
 ```
 
-> PENDIENTE FASE 10: (P-02) confirmar que `setup_26.x` existe y qué versión exacta
-> entrega; si no existiera, cambiar a `--node-channel=copr` (`dnf copr enable -y
-> nodejs/nodejs26`) y anotarlo en §20.
+> ✅ Verificado (P-02, §20): `setup_26.x` existe y entrega **Node 26.10.0** (NodeSource); el
+> instalador base comprueba la huella SHA-256 del script antes de ejecutarlo. No hizo falta el
+> camino alternativo (COPR).
 
 ### 5.3 PM2 (global)
 
@@ -390,9 +393,9 @@ pg_isready -h 127.0.0.1 -p 5432
 ss -lntp | grep 5432        # debe escuchar SOLO en 127.0.0.1:5432
 ```
 
-> PENDIENTE FASE 10: (P-09) comprobar la ruta real del socket unix y el contenido por
-> defecto de `pg_hba.conf` en Fedora (`/var/lib/pgsql/data/pg_hba.conf`) y ajustar
-> `PG_HOST` en `/etc/odontocrm/backup.env` en consecuencia.
+> ✅ Verificado (P-09, §20): el socket está en `/var/run/postgresql` y Fedora trae `ident` en
+> las líneas TCP de `pg_hba.conf`; el instalador base las pasa a `scram-sha-256` (§6.3) y
+> conserva `peer` para el socket local.
 
 ### 6.2 Endurecimiento de `postgresql.conf`
 
@@ -577,9 +580,10 @@ GRANT CONNECT, CREATE, TEMPORARY ON DATABASE odonto_identity TO odonto_identity;
 Repite para `odonto_patients`, `odonto_scheduling`, `odonto_notifications`,
 `odonto_clinical`, `odonto_odontogram`, `odonto_screens`, `odonto_reporting`.
 
-> PENDIENTE FASE 10: (P-05) confirmar en el servidor el flujo exacto
-> `PG_ADMIN_URL` → `npm run db:bootstrap` → `npm run db:migrate`, y anotar quién
-> conserva el `.env` de la raíz (o si se elimina tras el bootstrap).
+> ✅ Verificado (P-05, §20): el flujo completo se corrió contra el PostgreSQL del sistema por
+> socket. El `.env` de la raíz sigue siendo el de desarrollo (vive en el repositorio de
+> trabajo) y el despliegue lee `/etc/odontocrm/*.env`; el bootstrap escribe las credenciales
+> de cada servicio en su `.env` y el ensayo las traslada.
 
 ---
 
@@ -688,11 +692,11 @@ Los nombres de las variables están tomados del **contrato real del código de l
 (`packages/kernel/src/config.ts`, `services/identity/src/config.ts`,
 `apps/gateway/src/config.ts`, `.env.example` e `infra/db/bootstrap.mjs`).
 
-> PENDIENTE FASE 10: (P-03) los servicios de las Fases 2-9 todavía no existen, así que
-> sus variables propias (`services/<servicio>/src/config.ts`) se irán añadiendo; al
-> cerrar cada fase, actualiza la plantilla de `install.sh` **y** este documento en el
-> mismo commit. Antes de la puesta en marcha, comprueba que cada servicio arranca sin
-> `ConfigError` (el kernel falla rápido si falta una variable obligatoria).
+> ⚠️ **Regla que sigue vigente:** al añadir una variable a un servicio hay que actualizar la
+> plantilla de [`install.sh`](install.sh) **y** este documento en el mismo commit, y el servicio
+> debe arrancar sin `ConfigError` (el kernel falla rápido si falta una variable obligatoria).
+> Ya no depende de la memoria: `npm run fedora:check` (dentro de `verify`) falla si un servicio
+> trae un valor por defecto relativo (`./…`) que la plantilla no pone.
 
 ### 8.2 Variables: archivo común y archivos propios
 
@@ -942,11 +946,10 @@ sudo bash -c 'set -a; source /etc/odontocrm/odontocrm.env; source /etc/odontocrm
   npm run db:migrate -- --only identity'
 ```
 
-> PENDIENTE FASE 10: (P-05) decidir y fijar **una** de las dos opciones y comprobar que
-> `npm run db:migrate` funciona con las credenciales de `/etc/odontocrm` (hoy el
-> migrador está pensado para los `.env` de desarrollo; el `.env` del gateway no lo usa
-> ninguna migración, así que no se enlaza). Antes de migrar en producción:
-> **respaldo reciente verificado** (§15).
+> ✅ Verificado (P-05, §20): se fijó la variante de **socket** para el administrador
+> (`PG_ADMIN_URL` con `host=/var/run/postgresql`) y **TCP con contraseña** para los servicios;
+> las migraciones se corren desde el código desplegado con el entorno de `/etc/odontocrm`
+> inyectado. Antes de migrar en producción: **respaldo reciente verificado** (§15).
 
 ### 9.4 Servir la SPA
 
@@ -959,7 +962,9 @@ ls -l /opt/odontocrm/apps/web/dist/index.html      # debe existir
 sudo chmod -R a+rX /opt/odontocrm/apps/web/dist
 ```
 
-> PENDIENTE FASE 10: (P-17) decidir la variante definitiva y dejarla fijada aquí.
+> ✅ Variante definitiva (P-17, §20): la **copia pública** en `/var/www/odontocrm`, con la
+etiqueta `httpd_sys_content_t`. El proxy sirve la SPA desde ahí y la CA desde su copia
+pública (§13.2-bis), porque el usuario de nginx no puede atravesar `/etc/odontocrm`.
 
 ### 9.5 Chromium para los récipes A5 (Fase 7)
 
@@ -983,10 +988,9 @@ sudo -u odontocrm env HOME=/var/lib/odontocrm \
   node -e "console.log(require('playwright').chromium.executablePath())"
 ```
 
-> PENDIENTE FASE 10: (P-07) el navegador debe poder crear *user namespaces*. No añadas
+> ✅ Verificado (P-07, §20): el navegador crea *user namespaces* bajo la unidad endurecida, así
+> que **no** hizo falta ninguna excepción. Sigue vigente el aviso: no añadas
 > `RestrictNamespaces=true` ni `MemoryDenyWriteExecute=true` a las unidades (§10.3).
-> Si Chromium no arranca bajo el endurecimiento, documenta aquí la excepción y su
-> justificación.
 
 ---
 
@@ -1205,9 +1209,8 @@ curl -fsS http://127.0.0.1:8090/health                     # gateway OK
 npm run estado                                             # tablero: los 9 en verde
 ```
 
-> PENDIENTE FASE 10: (P-16) ejecutar esta prueba y anotar fecha y resultado en §20.
-> Es un criterio de aceptación explícito («tras reiniciar la máquina los 9 servicios
-> vuelven solos», plan §13 Fase 10).
+> ✅ Verificado (P-16, §20): tras `sudo systemctl reboot`, **los 9 servicios vuelven solos**
+> (comprobado con `odontocrm verificar`). Es criterio de aceptación explícito del plan §13.
 
 ### 10.6 Observabilidad: tablero, alertas y rotación de logs
 
@@ -1270,9 +1273,9 @@ sudo logrotate --debug /etc/logrotate.d/odontocrm      # comprobar sin rotar
 sudo journalctl --disk-usage                           # el journal, por su lado
 ```
 
-> PENDIENTE FASE 10: (P-27) validar en el Fedora real que las alertas saltan de
-> verdad (parar un servicio y ver el `failed`), que el tablero funciona con los
-> entornos de `/etc/odontocrm` y que `logrotate --debug` no se queja.
+> ✅ Verificado (P-27, §20): las alertas saltan de verdad (con un servicio parado, el
+> temporizador marca `failed`), el tablero funciona leyendo `/etc/odontocrm` y
+> `logrotate --debug` no se queja.
 
 ---
 
@@ -1365,9 +1368,10 @@ sudo sealert -a /var/log/audit/audit.log | head -50
 sudo semanage permissive -a <dominio>      # p. ej. httpd_t — deja de bloquear, no desactiva SELinux
 ```
 
-> PENDIENTE FASE 10: (P-11) y (P-22) confirmar los contextos y booleanos exactos con el
-> proxy realmente elegido (nginx o Caddy) y con PM2 si se usa ese supervisor; verificar
-> que Chromium funciona con SELinux en `Enforcing`.
+> ✅ Verificado (P-11 y P-22, §20) con **nginx + systemd**: `httpd_can_network_connect` y las
+> etiquetas `httpd_sys_content_t` son los únicos ajustes necesarios, y Chromium funciona con
+> SELinux en `Enforcing` (sin denegaciones del proyecto). PM2 no se ensayó: el supervisor
+> validado es systemd.
 
 ---
 
@@ -1610,9 +1614,9 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://odontocrm.local/api/v1/health
 curl -sS -D - -o /dev/null https://odontocrm.local/api/v1/auth/login | grep -i 'set-cookie'
 ```
 
-> PENDIENTE FASE 10: (P-11) validar que el SSE atraviesa el proxy sin acumular retardo
-> (pantalla de sala actualizándose en vivo) y que las cookies `Secure` funcionan en los
-> navegadores de la clínica.
+> ✅ Verificado (P-11, §20): el SSE atraviesa nginx sin acumular retardo (pantalla de sala en
+> vivo; sin token responde 401, que es lo correcto) y las cookies `Secure` funcionan por HTTPS
+> en los navegadores de la clínica.
 
 ---
 

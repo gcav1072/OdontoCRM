@@ -28,6 +28,7 @@
  * Corre dentro de `npm run verify`: si alguien renombra una variable y no toca
  * Fedora, el commit no pasa.
  */
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -121,6 +122,61 @@ const PROHIBIDOS = [
   },
 ];
 
+/**
+ * **Valores por defecto que en producción no sirven.**
+ *
+ * Un `default('./storage/clinical')` o `default('./services/identity/.keys/…')` es cómodo
+ * en desarrollo (se resuelve relativo a la raíz del repositorio) y **roto en el servidor**:
+ * el código vive en `/opt/odontocrm`, que es de solo lectura para el servicio, así que el
+ * proceso muere al primer archivo. Nos pasó con `STORAGE_DIR` (la plantilla ponía
+ * `STORAGE_ROOT`, que ningún servicio lee) y con las claves del JWT del gateway.
+ *
+ * Esta comprobación busca esos defaults en TODOS los esquemas y exige que la variable
+ * aparezca en las plantillas de `install.sh` (o en la lista de las que pone otro paso).
+ * Así, un servicio nuevo que traiga una ruta relativa no puede colarse.
+ */
+const revisarDefaultsRelativos = () => {
+  const rutas = [
+    ...new Set(
+      execFileSync(
+        'git',
+        [
+          'ls-files',
+          'services/*/src/config.ts',
+          'apps/*/src/config.ts',
+          'packages/*/src/config.ts',
+        ],
+        {
+          cwd: ROOT,
+          encoding: 'utf8',
+        },
+      )
+        .split('\n')
+        .filter((linea) => linea !== ''),
+    ),
+  ];
+
+  for (const ruta of rutas) {
+    comprobaciones += 1;
+    const contenido = leer(ruta);
+    // `algo: z.string()...default('./…')` — el nombre y su valor relativo.
+    const relativos = [
+      ...contenido.matchAll(/^\s{2}([A-Z][A-Z0-9_]+):[\s\S]*?default\('\.\//gm),
+    ].map((m) => m[1]);
+    const pendientes = relativos.filter(
+      (variable) =>
+        !new RegExp(`^${variable}=`, 'm').test(installSh) && !LOS_PONE_OTRO_PASO.has(variable),
+    );
+    if (pendientes.length === 0) {
+      ok(`${ruta.padEnd(42)} sin rutas relativas sueltas`);
+    } else {
+      err(
+        `${ruta}: ${pendientes.join(', ')} tienen valor por defecto relativo (\`./…\`) y NO están en las plantillas: el servicio fallaría en /opt`,
+      );
+    }
+  }
+};
+
 let fallos = 0;
 let comprobaciones = 0;
 
@@ -143,6 +199,91 @@ for (const servicio of [...CON_BASE, 'gateway']) {
   comprobaciones += 1;
   if (faltan.length === 0) ok(`${servicio.padEnd(14)} todas puestas`);
   else err(`${servicio.padEnd(14)} faltan en las plantillas: ${faltan.join(', ')}`);
+}
+
+// ── 1-bis. Defaults relativos en el código ──────────────────────────────────
+console.log('\nRutas por defecto que en producción no sirven:');
+revisarDefaultsRelativos();
+
+// ── 1-ter. Ningún guion del despliegue se corta en silencio ──────────────────
+console.log('\nAvisos de corte en los guiones (un guion mudo es el peor fallo):');
+{
+  const guiones = execFileSync('git', ['ls-files', 'infra/fedora'], { cwd: ROOT, encoding: 'utf8' })
+    .split('\n')
+    .filter((linea) => linea.endsWith('.sh') || linea === 'infra/fedora/odontocrm');
+  for (const guion of guiones) {
+    comprobaciones += 1;
+    const contenido = leer(guion);
+    const tieneErr = /trap '.*ERR/.test(contenido);
+    const tieneExit = /terminó con error/.test(contenido);
+    if (tieneErr && tieneExit) {
+      ok(`${guion.padEnd(42)} avisa si se corta`);
+    } else {
+      err(
+        `${guion}: le falta ${[!tieneErr ? 'el trap de ERR' : '', !tieneExit ? 'el aviso de salida' : ''].filter(Boolean).join(' y ')} — se cortaría en silencio`,
+      );
+    }
+  }
+}
+
+// ── 1-quater. Nada de datos de ESTA máquina en los guiones ───────────────────
+console.log('\nDatos de una máquina concreta en los guiones:');
+{
+  const prohibidosMaquina = [
+    { patron: /\bgabox\b/, motivo: 'usuario de la PC de pruebas (usa $SUDO_USER o $USER)' },
+    {
+      patron: /\/home\/[a-z][a-z0-9_-]*/,
+      motivo: 'ruta de un usuario concreto (dedúcela del propio guion)',
+    },
+  ];
+  const guiones = execFileSync('git', ['ls-files', 'infra/fedora'], { cwd: ROOT, encoding: 'utf8' })
+    .split('\n')
+    .filter(
+      (linea) =>
+        linea.endsWith('.sh') || linea.endsWith('.mjs') || linea === 'infra/fedora/odontocrm',
+    );
+  for (const guion of guiones) {
+    for (const regla of prohibidosMaquina) {
+      comprobaciones += 1;
+      const contenido = leer(guion);
+      const usos = contenido
+        .split('\n')
+        .filter((linea) => regla.patron.test(linea))
+        .filter((linea) => !linea.includes('fedora:check-ok'));
+      if (usos.length === 0) {
+        ok(`${guion.padEnd(42)} sin ${String(regla.patron).slice(0, 22)}…`);
+      } else {
+        err(`${guion}: ${regla.motivo}`);
+        for (const uso of usos.slice(0, 2)) console.error(`      ${uso.trim().slice(0, 100)}`);
+      }
+    }
+  }
+}
+
+// ── 1-quinquies. La guía no puede contradecirse a sí misma ───────────────────
+// Si un punto del registro (§20.1) está marcado ✅ —verificado—, no puede seguir habiendo
+// en el cuerpo una nota que diga que está pendiente: es lo que hacía dudar de si una
+// comprobación se había hecho. Pasó con doce puntos al cerrar la fase.
+console.log('\nCoherencia entre el registro de verificación y el cuerpo de la guía:');
+{
+  const guia = leer('infra/fedora/INSTALL.md');
+  const verificados = new Set(
+    [...guia.matchAll(/^\|\s*(P-\d+)\s*\|[^\n]*\|\s*✅/gm)].map((m) => m[1]),
+  );
+  const pendientesEnCuerpo = [...guia.matchAll(/^> PENDIENTE FASE 10: \((P-\d+)\)/gm)].map(
+    (m) => m[1],
+  );
+  const contradicciones = [...new Set(pendientesEnCuerpo.filter((id) => verificados.has(id)))];
+  comprobaciones += 1;
+  if (contradicciones.length === 0) {
+    ok(
+      `${String(pendientesEnCuerpo.length).padStart(2)} nota(s) de pendiente, ninguna de un punto ya verificado`,
+    );
+  } else {
+    err(
+      `INSTALL.md: ${contradicciones.join(', ')} están marcados ✅ en §20.1 y a la vez anunciados como pendientes en el cuerpo`,
+    );
+  }
 }
 
 // ── 2. Nombres muertos que no deben volver ───────────────────────────────────
