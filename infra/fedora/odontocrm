@@ -46,7 +46,9 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
   sudo odontocrm restaurar ...     Restaurar desde un respaldo (pasa las opciones tal
                                    cual: --from /var/backups/odontocrm/<fecha> --all --yes).
   sudo odontocrm verificar         Los 9 servicios: unidad activa, puerto servido por
-                                   ELLA y /health + /ready en 200.
+                                   ELLA y /health + /ready en 200. Espera (hasta 45 s,
+                                   ODONTOCRM_ESPERA) a que todos escuchen: tras un
+                                   reinicio no tardan todos lo mismo.
   sudo odontocrm servicios         Estado de las 10 unidades de systemd.
   sudo odontocrm logs <servicio|gateway|nginx|postgres> [líneas]
                                    Últimos registros.
@@ -118,6 +120,31 @@ case "$ORDEN" in
     command -v curl >/dev/null || morir 'falta curl'
     declare -A PUERTOS=([identity]=4001 [patients]=4002 [scheduling]=4003 [notifications]=4004
                         [clinical]=4005 [odontogram]=4006 [screens]=4007 [reporting]=4008 [gateway]=8090)
+
+    # Tras un reinicio (o un `actualizar`) los servicios no tardan todos lo mismo en
+    # escuchar: notifications y clinical levantan plantillas y el navegador antes de
+    # abrir el puerto. Comprobar de inmediato daba falsos negativos —«el puerto lo sirve
+    # el PID nadie» y el /ready del gateway en 503— que parecían averías. Se espera, con
+    # tope, a que cada unidad activa esté sirviendo SU puerto.
+    limite=$(( $(date +%s) + ${ODONTOCRM_ESPERA:-45} ))
+    esperados=( "${SERVICIOS[@]}" gateway )
+    while :; do
+      pendientes=0
+      for svc in "${esperados[@]}"; do
+        puerto="${PUERTOS[$svc]}"
+        unidad="odontocrm@$svc"; [[ "$svc" == "gateway" ]] && unidad="odontocrm-gateway"
+        pid_unidad="$(systemctl show -p MainPID --value "$unidad.service" 2>/dev/null || echo 0)"
+        pid_puerto="$(ss -lntpH "sport = :$puerto" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)"
+        [[ -n "$pid_puerto" && "$pid_puerto" == "$pid_unidad" ]] || pendientes=$((pendientes + 1))
+      done
+      (( pendientes == 0 )) && break
+      if (( $(date +%s) >= limite )); then
+        av "$pendientes servicio(s) seguían sin escuchar tras ${ODONTOCRM_ESPERA:-45} s"
+        break
+      fi
+      sleep 2
+    done
+
     fallos=0
     for svc in "${SERVICIOS[@]}" gateway; do
       puerto="${PUERTOS[$svc]}"
@@ -165,15 +192,6 @@ case "$ORDEN" in
   actualizar)
     necesita_root
     cd "$CODE_DIR" || morir "no existe $CODE_DIR"
-    # El comando instalado en /usr/local/bin es una COPIA: si el repositorio trae una
-    # versión nueva, se refresca antes de seguir. Sin esto, uno arregla algo, ejecuta
-    # `actualizar` y sigue viendo el comportamiento viejo (pasó con la descarga de la
-    # CA: el código ya estaba, la copia instalada no).
-    if [[ -f "$CODE_DIR/infra/fedora/odontocrm" ]] &&
-       ! cmp -s "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm; then
-      install -m 0755 -o root -g root "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm
-      ok 'comando del servidor actualizado a la versión del repositorio'
-    fi
     git config --global --add safe.directory "$CODE_DIR" 2>/dev/null || true
     printf '%sActualizando %s%s\n' "$C_TI" "$CODE_DIR" "$C_RE"
     # Qué rama se despliega: por defecto, la que ya tiene el despliegue (así
@@ -192,6 +210,15 @@ case "$ORDEN" in
     git checkout -B "$rama" "origin/$rama" ||
       morir "no pude cambiar a la rama '$rama' (¿existe en el origen? ¿la escribiste bien?)"
     ok "rama $rama · código en $(git rev-parse --short HEAD)"
+
+    # El comando instalado en /usr/local/bin es una COPIA del que hay aquí: se refresca
+    # **después** de traer el código (si se hiciera antes, copiaría la versión vieja y
+    # uno seguiría viendo el comportamiento anterior —pasó con el filtro de SELinux—).
+    if [[ -f "$CODE_DIR/infra/fedora/odontocrm" ]] &&
+       ! cmp -s "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm; then
+      install -m 0755 -o root -g root "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm
+      av 'el comando del servidor era viejo: se refrescó (a partir de la próxima orden ya es el nuevo)'
+    fi
     npm ci --silent || morir 'falló npm ci'
     npm run build >/dev/null 2>&1 || morir 'falló la compilación'
     ok 'compilado'
@@ -456,7 +483,6 @@ EOF
     done
     systemctl start odontocrm-gateway.service >/dev/null 2>&1 || av 'no pude arrancar el gateway'
     ok 'servicios arrancados; comprobando…'
-    sleep 6
     exec "$0" verificar
     ;;
 
@@ -468,7 +494,6 @@ EOF
     done
     systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || true
     ok 'servicios reiniciados; comprobando…'
-    sleep 6
     exec "$0" verificar
     ;;
 
@@ -499,7 +524,6 @@ EOF
       systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 || av "no pude reiniciar odontocrm@$s"
     done
     systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || av 'no pude reiniciar el gateway'
-    sleep 6
     av 'no se aplicaron migraciones: si el cambio toca el esquema, usa «odontocrm actualizar»'
     exec "$0" verificar
     ;;
