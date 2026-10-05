@@ -42,10 +42,10 @@ const SESION: ClinicalSessionDetail = {
     notasInternas: 'El paciente prefiere citas por la tarde.',
     procedimientos: [
       {
-        code: 'obturacion',
+        code: 'obturacion_resina',
         detalle: null,
         toothNumber: 16,
-        surfaces: ['oclusal'],
+        surfaces: ['occlusal'],
         notas: 'Anestesia local',
       },
     ],

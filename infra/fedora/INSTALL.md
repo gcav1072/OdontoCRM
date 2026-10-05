@@ -460,6 +460,30 @@ psql "postgres:///postgres?host=/var/run/postgresql" \
 > (`pg_ident.conf` + `map=` en `pg_hba.conf`), o usar el rol de respaldo por TCP con
 > `.pgpass`. La opción recomendada es la segunda y está descrita en §15.2.
 
+### 6.4-bis Los guiones del repositorio (atajo probado)
+
+Todo lo de §4 a §6 está mecanizado en **dos guiones que viven en el repositorio** y se
+ejecutan **en el servidor** (no hay que copiarlos de ninguna parte ni teclear rutas):
+
+```bash
+# 1) Preparar la máquina: paquetes, PostgreSQL del sistema, tu rol superusuario,
+#    Node 26 (NodeSource), PM2, nginx + mkcert, dependencias de Chromium y
+#    pg_hba.conf en scram-sha-256. Idempotente.
+sudo bash infra/fedora/instalar-base-fedora.sh
+
+# 2) Desplegar y verificar de punta a punta: usuario de sistema, código en
+#    /opt/odontocrm, secretos en /etc/odontocrm, unidades systemd, TLS con nginx,
+#    respaldo y PRUEBA DE RESTAURACIÓN (con las filas comparadas una a una).
+sudo bash infra/fedora/ensayo-despliegue.sh --hasta=respaldos
+```
+
+El segundo despliega **la rama que tengas activa** en el repositorio de trabajo (o
+`--rama=<nombre>`) y comprueba cada paso en lugar de darlo por hecho: nueve unidades
+activas **sirviendo su puerto**, certificado emitido y servido, `firewalld` publicando
+solo 443, SELinux sin denegaciones, y la restauración de las ocho bases. Si algo no
+cuadra, lo dice con el comando que lo arregla. Es el mismo camino que usa el banco de
+pruebas de la Fase 10, así que **lo que corre en la clínica es lo que se probó**.
+
 ### 6.4 Crear las 8 bases y sus roles
 
 **No lo hace `install.sh` a propósito** (no debe tocar datos). El camino previsto es el

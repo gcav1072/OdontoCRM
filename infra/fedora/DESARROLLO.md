@@ -61,6 +61,10 @@ Para partir del cierre verificado de la fase anterior: `git switch --detach fase
 ## 3. Configurar y sembrar
 
 ```bash
+# La máquina se prepara con el guion del repositorio (paquetes, PostgreSQL del sistema,
+# tu rol superusuario, Node 26, nginx+mkcert y las dependencias de Chromium):
+#   sudo bash infra/fedora/instalar-base-fedora.sh
+
 cp .env.example .env
 # En Fedora lo cómodo es entrar por el socket con autenticación `peer`, sin
 # contraseñas: dale superusuario a tu usuario y apunta PG_ADMIN_URL al socket.

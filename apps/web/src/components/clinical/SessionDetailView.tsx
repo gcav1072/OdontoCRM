@@ -94,7 +94,7 @@ export const SessionDetailView = ({
             leadingIcon={<Printer className="size-4" aria-hidden="true" />}
             onClick={onPrint}
           >
-            {t('comun.imprimir')}
+            {t('comun.cerrar')}
           </Button>
         )}
       </div>
@@ -134,7 +134,7 @@ export const SessionDetailView = ({
         </Bloque>
       )}
 
-      <Bloque titulo={t('clinica.seccion.motivo')}>
+      <Bloque titulo={t('clinica.sesion.campo.motivo')}>
         <Parrafo valor={content.motivo} />
       </Bloque>
 
@@ -143,7 +143,7 @@ export const SessionDetailView = ({
       </Bloque>
 
       {vitales.length > 0 && (
-        <Bloque titulo={t('clinica.seccion.vitals')}>
+        <Bloque titulo={t('clinica.sesion.vitales')}>
           <p className="text-sm text-ink">
             {vitales
               .map(
@@ -168,7 +168,7 @@ export const SessionDetailView = ({
         )}
       </Bloque>
 
-      <Bloque titulo={t('clinica.seccion.procedimientos')}>
+      <Bloque titulo={t('clinica.sesion.procedimientos')}>
         {content.procedimientos.length === 0 ? (
           <p className="text-sm text-ink-subtle">{t('clinica.lectura.sinProcedimientos')}</p>
         ) : (
@@ -186,7 +186,7 @@ export const SessionDetailView = ({
       </Bloque>
 
       {content.materiales.length > 0 && (
-        <Bloque titulo={t('clinica.seccion.materiales')}>
+        <Bloque titulo={t('clinica.sesion.materiales')}>
           <ul className="list-disc space-y-1 pl-5 text-sm text-ink">
             {content.materiales.map((material, indice) => (
               <li key={`${material.code}-${String(indice)}`}>{sessionMaterialLine(material)}</li>
@@ -199,12 +199,12 @@ export const SessionDetailView = ({
         <Parrafo valor={content.diagnostico} />
       </Bloque>
 
-      <Bloque titulo={t('clinica.seccion.indicaciones')}>
+      <Bloque titulo={t('clinica.sesion.campo.indicaciones')}>
         <Parrafo valor={content.indicaciones} />
       </Bloque>
 
       {content.proximaCitaFecha !== null && (
-        <Bloque titulo={t('clinica.seccion.proximaCita')}>
+        <Bloque titulo={t('clinica.sesion.campo.proximaCitaFecha')}>
           <p className="text-sm text-ink">
             {formatDate(content.proximaCitaFecha)}
             {content.proximaCitaNota === null ? '' : ` — ${content.proximaCitaNota}`}
