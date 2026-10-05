@@ -1335,10 +1335,26 @@ navegadores mostrarán aviso.
 > caso, la alternativa es un dominio real con certificado Let's Encrypt vía DNS-01
 > (documentar aparte).
 
-### 13.3 nginx (ejemplo)
+### 13.3 nginx
+
+El archivo está **versionado** en el repositorio:
+[`infra/fedora/nginx/odontocrm.conf`](nginx/odontocrm.conf). Se instala tal cual y solo
+se sustituye `__HOST__` por el nombre **y la IP** del servidor (el certificado cubre
+los dos). Así la guía y lo que corre en la clínica no se separan.
+
+```bash
+sudo install -m 0644 /opt/odontocrm/infra/fedora/nginx/odontocrm.conf \
+     /etc/nginx/conf.d/odontocrm.conf
+sudo sed -i "s|__HOST__|odontocrm.local $(hostname -I | awk '{print $1}')|g" \
+     /etc/nginx/conf.d/odontocrm.conf
+# Fedora trae un server de bienvenida en el 80 que estorba el redirect:
+sudo mv /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf.odontocrm-off
+sudo nginx -t && sudo systemctl enable --now nginx
+```
+
+Lo que hace (y por qué), tal como quedó validado en la Fase 10:
 
 ```nginx
-# /etc/nginx/conf.d/odontocrm.conf
 server {
     listen 443 ssl;
     server_name odontocrm.local;
@@ -1384,8 +1400,10 @@ server {
 sudo nginx -t && sudo systemctl enable --now nginx
 ```
 
-> PENDIENTE FASE 10: (P-11) la ruta exacta del SSE la fija la Fase 5. Si cambia,
-> ajusta la última `location` (o aplica `proxy_buffering off` a todo `/api/`).
+> **P-11 (resuelto en la Fase 10):** la ruta del SSE es
+> `/api/v1/screens/<pantalla>/stream` (`services/screens/src/routes/screen-routes.ts` y
+> `apps/web/src/lib/kiosko.ts`). La `location` correcta es esa; si algún día cambia,
+> se ajusta en el archivo versionado.
 
 ### 13.4 Caddy (ejemplo)
 
