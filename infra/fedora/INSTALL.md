@@ -1717,7 +1717,11 @@ Códigos de salida: `0` correcto · `1` configuración · `2` respaldo inválido
 Secuencia exacta a ejecutar y registrar:
 
 ```bash
-# 0) Respaldar AHORA (para tener un respaldo fresco y verificable)
+# 0-a) Credenciales: el respaldo lee, pero RESTAURAR necesita además un rol con
+#      permiso para DROP/CREATE DATABASE. El script deja las dos cosas en el .pgpass.
+sudo bash /opt/odontocrm/infra/fedora/backup/crear-rol-respaldo.sh --admin-role="$USER"
+
+# 0-b) Respaldar AHORA (para tener un respaldo fresco y verificable)
 sudo /opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config
 FECHA=$(date +%Y-%m-%d)
 
@@ -1746,9 +1750,15 @@ número de tablas coincide con el origen, las tablas pertenecen al rol del servi
 
 Registra el resultado en §20 (y, si algo falla, la causa y la corrección).
 
-> PENDIENTE FASE 10: (P-15) completar esta prueba con las **8 bases** (o al menos una de
-> cada servicio) y anotar: fecha, operador, respaldo usado, resultado y tiempos.
-> El plan §13 Fase 10 lo exige como criterio de aceptación.
+> **Nota medida en la Fase 10:** si falta la credencial de administración, el
+> restablecimiento **no se cuelga** esperando que alguien teclee la contraseña: `psql`
+> corre con `-w` y falla en el acto con «no password supplied». Antes se quedaba mudo
+> (un minuto entero en el ensayo) y parecía estar trabajando. El paso 0-a lo evita.
+>
+> **P-15 (resuelto en la Fase 10):** la prueba se corre con las **8 bases** de una vez
+> (`--all --keep-verify-db`), se comparan las filas de cada tabla entre la base real y
+> la restaurada, y las `__verif` **se conservan** como evidencia hasta completar el
+> registro de §20.2 (para retirarlas después: `--limpiar-verif --yes`).
 
 ### 16.3 Restaurar la configuración y el almacenamiento
 

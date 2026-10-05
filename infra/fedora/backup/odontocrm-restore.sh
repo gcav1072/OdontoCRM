@@ -251,14 +251,20 @@ build_pgenv() {
   fi
 }
 
+# `-w` (--no-password): si falta la credencial, psql FALLA en el acto en vez de
+# quedarse esperando a que alguien teclee la contraseña. Un restablecimiento en la
+# clínica puede correr sin nadie delante: es preferible un error claro a un proceso
+# colgado que parece estar trabajando. Medido en el ensayo de la Fase 10: el
+# restablecimiento se quedó 1 minuto mudo esperando la contraseña del rol
+# administrador porque no estaba en /etc/odontocrm/.pgpass.
 psql_q() { # psql_q <usuario> <base> <consulta>  → valor sin formato
   local user="$1" db="$2" sql="$3"
-  env "${PGENV[@]}" "$(pg_bin psql)" -X -q -t -A -v ON_ERROR_STOP=1 \
+  env "${PGENV[@]}" "$(pg_bin psql)" -X -q -t -A -w -v ON_ERROR_STOP=1 \
     -U "$user" -d "$db" -c "$sql"
 }
 psql_c() { # psql_c <usuario> <comando>  → se ejecuta contra la base «postgres»
   local user="$1" sql="$2"
-  env "${PGENV[@]}" "$(pg_bin psql)" -X -q -v ON_ERROR_STOP=1 \
+  env "${PGENV[@]}" "$(pg_bin psql)" -X -q -w -v ON_ERROR_STOP=1 \
     -U "$user" -d postgres -c "$sql" >/dev/null
 }
 

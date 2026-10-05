@@ -26,6 +26,7 @@ ok()   { printf '  %s✔%s %s\n' "$C_OK" "$C_RE" "$1"; }
 av()   { printf '  %s!%s %s\n' "$C_AV" "$C_RE" "$1"; }
 err()  { printf '  %s✖%s %s\n' "$C_ER" "$C_RE" "$1"; }
 morir(){ err "$1"; exit 1; }
+# `--sin-admin` deja el .pgpass solo con el rol de respaldo.
 
 [[ $EUID -eq 0 ]] || morir 'hay que ejecutarlo como root (sudo)'
 
@@ -37,6 +38,7 @@ rol="odonto_backup"
 password=""
 rotar=0
 bypassrls=0
+admin_role="${SUDO_USER:-}"   # rol con permiso para DROP/CREATE (restauración)
 bases=(odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting)
 
 for arg in "$@"; do
@@ -44,6 +46,8 @@ for arg in "$@"; do
     --password=*) password="${arg#*=}" ;;
     --rotar) rotar=1 ;;
     --bypassrls) bypassrls=1 ;;
+    --admin-role=*) admin_role="${arg#*=}" ;;
+    --sin-admin) admin_role="" ;;
     --admin-url=*) ADMIN_URL="${arg#*=}" ;;
     *) morir "argumento no reconocido: $arg" ;;
   esac
@@ -158,6 +162,34 @@ for par in "PG_HOST:127.0.0.1" "PG_PORT:5432" "PG_USER:$rol" "PGPASSFILE:$pgpass
 done
 chown root:root "$backup_env"; chmod 0600 "$backup_env"
 ok "backup.env apunta a $rol por TCP con .pgpass"
+
+# ── 3-bis. Credencial de administración (solo para RESTAURAR) ────────────────
+#
+# DROP/CREATE DATABASE necesita un rol administrador. El respaldo no lo usa, pero la
+# restauración sí, y sin él el script se quedaba esperando la contraseña (ya no:
+# ahora falla y lo dice). Se le pone contraseña al rol del sistema que va a restaurar
+# y se añade su línea al .pgpass.
+if [[ -n "$admin_role" ]]; then
+  es_super="$(psql "$ADMIN_URL" -tAc "select coalesce((select rolsuper from pg_roles where rolname='$admin_role')::text, 'no-existe')" | tr -d ' ')"
+  case "$es_super" in
+    true)
+      admin_pass="$(openssl rand -base64 32 | tr -d '/+=' | cut -c1-32)"
+      if psql "$ADMIN_URL" -q -c "alter role $admin_role password '$admin_pass'" >/dev/null 2>&1; then
+        printf '127.0.0.1:5432:*:%s:%s\n' "$admin_role" "$admin_pass" >>"$pgpass"
+        ok "credencial de administración añadida a .pgpass para el rol $admin_role (solo la usa la restauración)"
+      else
+        av "no pude poner contraseña al rol $admin_role: la restauración pedirá credenciales a mano"
+      fi
+      ;;
+    no-existe) av "el rol $admin_role no existe: la restauración necesitará --admin-user" ;;
+    *) av "el rol $admin_role no es superusuario: la restauración puede fallar al crear bases" ;;
+  esac
+  if grep -qE '^PG_ADMIN_USER=' "$backup_env"; then
+    sed -i "s|^PG_ADMIN_USER=.*|PG_ADMIN_USER=${admin_role}|" "$backup_env"
+  else
+    printf 'PG_ADMIN_USER=%s\n' "$admin_role" >>"$backup_env"
+  fi
+fi
 
 # ── 4. Comprobación: que el rol pueda leer de verdad ─────────────────────────
 fallos=0
