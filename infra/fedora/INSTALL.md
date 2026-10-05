@@ -1560,6 +1560,39 @@ sudo odontocrm red --arreglar    # lo adapta: firewall por zona, certificado con
 `https://odontocrm.local`. La IP pasa a ser un detalle interno; lo que se teclea en los
 equipos es el nombre.
 
+### 13.2-ter El nombre en los demás equipos: cuatro caminos
+
+`.local` es el espacio de **mDNS**, y eso tiene dos consecuencias que conviene saber **antes**
+de prometerle a la clínica que se entra «por el nombre»:
+
+1. depende de que la red deje pasar la **multidifusión** (las wifi de invitados y las redes
+   con aislamiento de clientes la filtran), y
+2. depende de que el equipo sepa mDNS: Windows 10+, macOS y Linux con `nss-mdns` sí; los
+   navegadores de **Android, no** — y Android tampoco puede editar el archivo `hosts` sin root.
+
+Por eso hay cuatro caminos, y se eligen según los aparatos de la consulta:
+
+| Camino | Funciona en | Puesta en marcha | Cuándo elegirlo |
+| :--- | :--- | :--- | :--- |
+| **1. DNS propio** (dnsmasq en el servidor) | **todos**, incluidos tablets Android | `sudo bash infra/fedora/nombre/instalar-dns.sh` + decirle al router que reparta ese DNS | **Recomendado** si hay tablets o la red filtra multidifusión |
+| **2. DNS del router** | todos | Añadir en el router el nombre → IP (si lo permite) | Si el router lo ofrece: es lo más limpio |
+| **3. mDNS** (`odontocrm.local`) | Windows, macOS, Linux | `instalar-base-fedora.sh --nombre-mdns=odontocrm` | Red pequeña, sin tablets Android, con multidifusión |
+| **4. La IP** | todos | Nada (el certificado ya incluye la IP) | Siempre funciona; sirve de respaldo |
+
+```bash
+# Ver qué camino está funcionando AHORA y qué falta
+sudo odontocrm nombre
+
+# Camino 1 (el completo): DNS en el servidor para todos los equipos
+sudo bash infra/fedora/nombre/instalar-dns.sh
+#   …y en el router: DHCP → servidor DNS = la IP del servidor
+```
+
+> **Ojo con el orden:** si se cambia de nombre, el certificado tiene que cubrirlo
+> (`sudo odontocrm red --arreglar` reemite con lo que use el proxy). Y si se elige el camino
+> 1, conviene usar un nombre propio de la red (`odontocrm.home.arpa`, que la RFC 8375 reserva
+> para redes pequeñas) en vez de `.local`, que está reservado para mDNS.
+
 ### 13.3-bis Quitar el aviso de certificado en los demás equipos
 
 El navegador de la tablet, el móvil o el televisor avisa «conexión no privada» porque

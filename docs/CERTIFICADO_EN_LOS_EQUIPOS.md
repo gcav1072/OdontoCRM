@@ -244,11 +244,21 @@ Los tres se arreglan de una vez:
 sudo bash /opt/odontocrm/infra/fedora/ensayo-despliegue.sh --hasta=tls --lan-cidr=192.168.1.0/24
 ```
 
-> **Lo mejor: que el nombre funcione solo.** Si el servidor se preparó con
-> `instalar-base-fedora.sh --nombre-mdns=odontocrm`, publica `odontocrm.local` por **mDNS**
-> y los equipos de la red lo resuelven **sin tocar el archivo hosts** (tablets, móviles,
-> Windows 10+, macOS y Linux con `nss-mdns`). Entra siempre por
-> `https://odontocrm.local`: el nombre no cambia cuando cambia la red; la IP, sí.
+> **Lo mejor: que el nombre funcione solo.** Con `odontocrm.local` publicado por **mDNS**
+> (el instalador base lo hace con `--nombre-mdns=odontocrm`), los equipos lo resuelven sin
+> tocar nada… **si la red deja pasar la multidifusión y el equipo sabe mDNS**. Dos avisos
+> que importan en una consulta:
+>
+> - Los navegadores de **Android no resuelven `.local`** (y Android no puede editar el
+>   `hosts` sin root). Si en la clínica hay tablets Android, el camino es un **DNS propio**:
+>   `sudo bash infra/fedora/nombre/instalar-dns.sh` y decirle al router que reparta esa IP
+>   como DNS. Funciona en todos los aparatos, incluidos los Android.
+> - Las wifi de invitados y las redes con aislamiento de clientes **filtran la
+>   multidifusión**: ahí el nombre no resuelve aunque el servidor esté perfecto. Se
+>   comprueba con `sudo odontocrm nombre`.
+>
+> Con el nombre funcionando, entra siempre por él: no cambia cuando cambia la red; la IP, sí.
+> Y si no hay manera, **la IP siempre funciona** (el certificado la incluye).
 >
 > Y si algún equipo no resuelve mDNS (algunos Android antiguos), ahí sí toca la línea en
 > su `hosts` apuntando a la IP del momento — o mejor, reserva la IP en el router para que

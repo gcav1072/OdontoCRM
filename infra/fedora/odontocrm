@@ -469,6 +469,51 @@ EOF
     fi
     ;;
 
+  nombre|mdns|dns)
+    necesita_root
+    NOMBRE_ESPERADO="odontocrm.local"
+    [[ -f /etc/nginx/conf.d/odontocrm.conf ]] &&
+      NOMBRE_ESPERADO="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null |
+        awk '{print $1}' || true)"
+    [[ -n "$NOMBRE_ESPERADO" ]] || NOMBRE_ESPERADO=odontocrm.local
+    IP_LAN="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1 || true)"
+
+    echo "Cómo entran los demás equipos a «$NOMBRE_ESPERADO»"
+    echo
+    # ¿Qué anuncia avahi? La respuesta está en el propio proceso: `avahi-daemon: running [fedora.local]`.
+    anunciado="$(pgrep -a avahi-daemon 2>/dev/null | grep -oP 'running \[\K[^]]+' | head -1 || true)"
+    if [[ -z "$anunciado" ]]; then
+      av 'avahi no está corriendo: sin él no hay nombre por mDNS'
+      echo '      sudo systemctl enable --now avahi-daemon'
+    elif [[ "$anunciado" == "$NOMBRE_ESPERADO" ]]; then
+      ok "avahi anuncia $anunciado"
+    else
+      av "avahi anuncia «$anunciado», no «$NOMBRE_ESPERADO»: el demonio no se reinició desde el cambio de nombre"
+      echo '      sudo systemctl restart avahi-daemon && sudo odontocrm nombre'
+    fi
+    if [[ -n "$anunciado" ]] && timeout 3 avahi-resolve -n "$NOMBRE_ESPERADO" >/dev/null 2>&1; then
+      ok "el nombre se resuelve por mDNS en esta red"
+    elif [[ -n "$anunciado" && "$anunciado" == "$NOMBRE_ESPERADO" ]]; then
+      av 'esta red no responde a la multidifusión (avahi publica el nombre, pero nadie contesta)'
+    fi
+
+    echo
+    echo "  Los tres caminos, de mejor a peor:"
+    echo "    1) DNS propio o del router  → funciona en TODOS los equipos, incluidos tablets Android"
+    echo "    2) mDNS (odontocrm.local)   → sin configurar nada, pero Android no lo resuelve en el navegador"
+    echo "    3) archivo hosts por equipo → solo Windows, macOS y Linux (Android necesita root)"
+    echo "    4) la IP tal cual           → siempre funciona: el certificado ya la incluye"
+    echo
+    echo "  IP de este servidor ahora mismo: ${IP_LAN:-?}"
+    echo "  Certificado de la CA para instalar en cada equipo:  http://${IP_LAN:-<IP>}/ca.crt"
+    echo
+    echo "  Con la IP (lo más simple si son pocos equipos):"
+    echo "      https://${IP_LAN:-<IP>}"
+    echo
+    echo "  Si un equipo no resuelve el nombre y quieres el camino 1, en ESTE servidor:"
+    echo "      sudo bash $CODE_DIR/infra/fedora/nombre/instalar-dns.sh"
+    ;;
+
   red|ip|lan)
     necesita_root
     # La IP con la que esta máquina sale a la red (la que hay que teclear desde un
@@ -550,28 +595,28 @@ EOF
     fi
 
     # 4) mDNS: ¿el nombre se resuelve solo (sin tocar el hosts de cada equipo)?
-    if command -v avahi-resolve >/dev/null && systemctl is-active --quiet avahi-daemon; then
-      # Con tope: `avahi-resolve` puede quedarse esperando, y una sonda no puede colgar el
-      # comando. Y si no responde, **no** se concluye que avahi esté mal: en muchas redes
-      # (wifi de invitados, aislamiento de clientes) la multidifusión no pasa y el nombre no
-      # resuelve aunque todo esté bien. Decir «reinícialo» ahí mandaba a dar vueltas.
-      resuelto="$(timeout 3 avahi-resolve -n "${NOMBRE:-odontocrm.local}" 2>/dev/null | awk '{print $2}' | head -1 || true)"
-      if [[ -n "$resuelto" ]]; then
-        ok "mDNS: ${NOMBRE:-odontocrm.local} se resuelve solo (→ $resuelto): los equipos no necesitan tocar el hosts"
-      elif [[ "$(hostname)" == "${NOMBRE:-odontocrm.local}" || "$(hostname)" == "${NOMBRE%%.*}" ]]; then
-        # El nombre del servidor es el correcto: lo más probable es que ESTA RED no deje pasar
-        # la multidifusión. Se dice tal cual, se ofrece la alternativa y **no** se cuenta como
-        # problema de configuración: entrando por la IP, el sistema funciona igual.
-        av 'mDNS: esta red no responde a la multidifusión (avahi no contesta por el nombre)'
-        av "  los equipos pueden entrar por https://$IP_LAN o con una línea en su hosts"
-      else
-        av "mDNS no publica ${NOMBRE:-odontocrm.local}: la máquina se llama $(hostname)"
-        av "  se arregla con:  sudo bash $CODE_DIR/infra/fedora/instalar-base-fedora.sh --nombre-mdns=odontocrm"
-        problemas=$((problemas + 1))
-      fi
+    #
+    # Hay TRES causas distintas que se ven iguales desde fuera («el nombre no resuelve»):
+    #   a) avahi sigue anunciando el nombre viejo porque no se reinició de verdad desde el
+    #      cambio de nombre —pasó en la PC de pruebas: el servicio decía «reiniciado» y el
+    #      proceso seguía con `fedora.local`—;
+    #   b) la red no deja pasar la multidifusión (wifi de invitados, aislamiento de clientes);
+    #   c) el equipo que consulta no sabe mDNS (los navegadores de Android, casi siempre).
+    # Se distinguen mirando lo que anuncia el propio proceso, que es lo único fiable aquí.
+    anunciado="$(pgrep -a avahi-daemon 2>/dev/null | grep -oP 'running \[\K[^]]+' | head -1 || true)"
+    if ! command -v avahi-resolve >/dev/null || [[ -z "$anunciado" ]]; then
+      av 'sin avahi en marcha: el nombre solo funcionaría con una línea en el hosts de cada equipo'
+      av '  se activa con:  sudo systemctl enable --now avahi-daemon'
+    elif [[ "$anunciado" != "${NOMBRE:-odontocrm.local}" ]]; then
+      av "avahi anuncia «$anunciado» y no «${NOMBRE:-odontocrm.local}»: no se reinició desde el cambio de nombre"
+      av '  se arregla con:  sudo systemctl restart avahi-daemon    (y repetir: sudo odontocrm red)'
+    elif timeout 3 avahi-resolve -n "${NOMBRE:-odontocrm.local}" >/dev/null 2>&1; then
+      ok "mDNS: avahi anuncia $anunciado y el nombre se resuelve en esta red"
     else
-      av 'sin avahi: el nombre solo funciona con una línea en el hosts de cada equipo'
-      problemas=$((problemas + 1))
+      av 'mDNS: avahi publica el nombre, pero esta red no responde a la multidifusión'
+      av "  los equipos pueden entrar por https://$IP_LAN o con una línea en su hosts"
+      av '  para que el nombre funcione en TODOS los equipos (incluidos tablets Android):'
+      av "      sudo bash $CODE_DIR/infra/fedora/nombre/instalar-dns.sh"
     fi
 
     echo
@@ -624,12 +669,22 @@ EOF
     #        que arrancó con el anterior. Reiniciarlo lo republica al instante.
     if command -v avahi-resolve >/dev/null; then
       if [[ "$(hostname)" == "${NOMBRE:-odontocrm.local}" || "$(hostname)" == "${NOMBRE%%.*}" ]]; then
-        systemctl restart avahi-daemon >/dev/null 2>&1 || true
-        sleep 1
-        if timeout 3 avahi-resolve -n "${NOMBRE:-odontocrm.local}" >/dev/null 2>&1; then
-          ok "mDNS: ${NOMBRE:-odontocrm.local} se resuelve solo (los equipos no tocan el hosts)"
+        # `systemctl restart` no siempre reemplaza el proceso (se vio en la PC de pruebas: el
+        # servicio decía «Started» y el demonio seguía anunciando el nombre viejo). Se para y
+        # se arranca, y se comprueba **lo que anuncia el proceso**, que es lo que importa.
+        systemctl stop avahi-daemon.socket avahi-daemon.service >/dev/null 2>&1 || true
+        systemctl start avahi-daemon.socket avahi-daemon.service >/dev/null 2>&1 || true
+        for _ in $(seq 1 10); do
+          anunciado_ahora="$(pgrep -a avahi-daemon 2>/dev/null | grep -oP 'running \[\K[^]]+' | head -1 || true)"
+          [[ "$anunciado_ahora" == "${NOMBRE:-odontocrm.local}" ]] && break
+          sleep 1
+        done
+        if [[ "${anunciado_ahora:-}" == "${NOMBRE:-odontocrm.local}" ]]; then
+          ok "mDNS: avahi anuncia ${NOMBRE:-odontocrm.local} (los equipos no necesitan tocar el hosts)"
+          timeout 3 avahi-resolve -n "${NOMBRE:-odontocrm.local}" >/dev/null 2>&1 ||
+            av '  (esta red no responde a la multidifusión: los equipos pueden entrar por la IP)'
         else
-          av "mDNS: ${NOMBRE:-odontocrm.local} aún no resuelve; espera unos segundos y repite"
+          av "avahi sigue anunciando «${anunciado_ahora:-nada}»; reinícialo a mano: sudo systemctl restart avahi-daemon"
         fi
       else
         av "el servidor se llama $(hostname): para publicar ${NOMBRE:-odontocrm.local} hace falta"

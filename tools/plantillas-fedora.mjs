@@ -485,6 +485,26 @@ const exigir = (condicion, bien, mal) => {
     `sondas sin \`|| true\` (el aviso de error las contaría como fallo): ${sondasSinGuardar.slice(0, 5).join(', ')}`,
   );
 
+  // (13-bis) El nombre en los demás equipos: la guía tiene que avisar de que Android no
+  //          resuelve `.local` y ofrecer el camino del DNS propio. Si no, se repite el
+  //          problema que apareció al probar con otros equipos de la red.
+  exigir(
+    /Android/.test(guia) && /instalar-dns\.sh/.test(guia),
+    'la guía explica que Android no resuelve .local y ofrece el DNS propio',
+    'INSTALL.md no avisa de la limitación de Android ni menciona infra/fedora/nombre/instalar-dns.sh',
+  );
+  exigir(
+    existsSync(join(ROOT, 'infra/fedora/nombre/instalar-dns.sh')),
+    'existe el instalador de nombre por DNS (infra/fedora/nombre/instalar-dns.sh)',
+    'falta infra/fedora/nombre/instalar-dns.sh: los equipos sin mDNS se quedarían sin nombre',
+  );
+  // Y el comando que lo diagnostica.
+  exigir(
+    /nombre\|mdns\|dns\)/.test(odontocrm),
+    '`odontocrm nombre` diagnostica cómo entran los demás equipos',
+    'falta la orden `odontocrm nombre` (el diagnóstico del nombre en la red)',
+  );
+
   // (13) Las sondas de red llevan tope: `avahi-resolve` puede quedarse esperando.
   const avahiSinTope = ['infra/fedora/odontocrm', 'infra/fedora/instalar-base-fedora.sh'].filter(
     (ruta) =>

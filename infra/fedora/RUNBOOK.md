@@ -85,6 +85,7 @@ sudo ls -lh /var/backups/odontocrm | tail -5
 ### Con systemd (recomendado)
 
 ```bash
+sudo odontocrm nombre          # ¿los equipos entran por nombre? ¿qué falta?
 sudo odontocrm red             # ¿en qué IP está y qué apunta a la red anterior?
 sudo odontocrm red --arreglar  # adaptarlo (firewall, certificado y CORS) a la red actual
 sudo odontocrm parar           # detener los 9 (nginx y PostgreSQL se quedan)

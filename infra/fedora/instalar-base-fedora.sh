@@ -172,14 +172,28 @@ if [[ -n "$NOMBRE_MDNS" ]]; then
   fi
   if (( ! DRY_RUN )); then
     systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
-    # avahi publica el nombre que tenía al arrancar: tras cambiarlo hay que reiniciarlo,
-    # o `<nombre>.local` no resuelve hasta el próximo arranque de la máquina.
-    systemctl restart avahi-daemon >/dev/null 2>&1 || true
-    sleep 1
-    if timeout 3 avahi-resolve -n "${NOMBRE_MDNS}.local" >/dev/null 2>&1; then
-      echo "  comprobado: ${NOMBRE_MDNS}.local se resuelve por mDNS"
+    # avahi publica el nombre que tenía **al arrancar**: tras cambiarlo hay que reiniciarlo,
+    # o `<nombre>.local` no resuelve en ningún equipo. Ojo: `systemctl restart` no siempre
+    # reemplaza el proceso —en la PC de pruebas el servicio decía «Started» y el demonio
+    # seguía anunciando `fedora.local`—, así que se para, se arranca y se comprueba **lo que
+    # anuncia el proceso**, que es lo que de verdad ven los demás equipos.
+    systemctl stop avahi-daemon.socket avahi-daemon.service >/dev/null 2>&1 || true
+    systemctl start avahi-daemon.socket avahi-daemon.service >/dev/null 2>&1 || true
+    anunciado=""
+    for _ in $(seq 1 10); do
+      anunciado="$(pgrep -a avahi-daemon 2>/dev/null | grep -oP 'running \[\K[^]]+' | head -1 || true)"
+      [[ "$anunciado" == "${NOMBRE_MDNS}.local" ]] && break
+      sleep 1
+    done
+    if [[ "$anunciado" == "${NOMBRE_MDNS}.local" ]]; then
+      echo "  comprobado: avahi anuncia ${NOMBRE_MDNS}.local"
+      if ! timeout 3 avahi-resolve -n "${NOMBRE_MDNS}.local" >/dev/null 2>&1; then
+        echo "  (aviso) esta red no responde a la multidifusión: los equipos pueden entrar"
+        echo "          por la IP, o con un DNS propio (infra/fedora/nombre/instalar-dns.sh)"
+      fi
     else
-      echo "  (aviso) ${NOMBRE_MDNS}.local aún no responde; suele tardar unos segundos"
+      echo "  (aviso) avahi sigue anunciando «${anunciado:-nada}»; reinícialo a mano:"
+      echo "          sudo systemctl restart avahi-daemon"
     fi
   fi
   echo "  los equipos entran por:  https://${NOMBRE_MDNS}.local"
