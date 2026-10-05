@@ -311,6 +311,20 @@ código viejo.
 
 ## 8. Actualizar el sistema
 
+Dos caminos, y conviene saber cuál toca:
+
+```bash
+sudo odontocrm actualizar                      # rutina: trae, aplica unidades y plantillas,
+                                               # compila, migra, reinicia y verifica
+sudo bash infra/fedora/ensayo-despliegue.sh --hasta=servicios   # lo mismo, paso a paso y
+                                               # con los secretos re-sincronizados
+```
+
+El **ensayo** es el que se usó para validar la fase 10 y el que deja evidencia; el
+`actualizar` es el atajo para el día a día. Cuando la actualización toca algo sensible
+(antes de que la clínica abra, o si vienes de cambiar certificados o unidades), usa el
+ensayo: cuenta cada paso y comprueba en vez de suponer.
+
 Con la clínica cerrada (o en la pausa del mediodía), y **siempre** con un respaldo
 verificado del día:
 

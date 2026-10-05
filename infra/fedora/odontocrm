@@ -53,10 +53,13 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
   sudo odontocrm logs <servicio|gateway|nginx|postgres> [líneas]
                                    Últimos registros.
   sudo odontocrm actualizar [--rama=<nombre>]
-                                   Traer el código nuevo, compilar, migrar y reiniciar
-                                   (lo mismo que RUNBOOK §8, sin acordarse de nada).
-                                   Sigue la rama que ya tiene el despliegue; con
-                                   `--rama=main` cambia a esa (y se queda en ella).
+                                   Actualización de rutina: trae el código, pone al día
+                                   unidades y plantillas, compila, migra, reinicia y
+                                   verifica. Sigue la rama del despliegue (con
+                                   `--rama=main` cambia a esa y se queda en ella).
+                                   Para el despliegue COMPLETO con evidencia (TLS,
+                                   firewall, SELinux, respaldo y restauración probada)
+                                   está `infra/fedora/ensayo-despliegue.sh`.
   sudo odontocrm parar             Detener los 9 servicios (el gateway primero: es la
                                    puerta). nginx y PostgreSQL se quedan.
   sudo odontocrm arrancar          Arrancarlos en orden y comprobar que los 9 responden.
@@ -211,13 +214,18 @@ case "$ORDEN" in
       morir "no pude cambiar a la rama '$rama' (¿existe en el origen? ¿la escribiste bien?)"
     ok "rama $rama · código en $(git rev-parse --short HEAD)"
 
-    # El comando instalado en /usr/local/bin es una COPIA del que hay aquí: se refresca
-    # **después** de traer el código (si se hiciera antes, copiaría la versión vieja y
-    # uno seguiría viendo el comportamiento anterior —pasó con el filtro de SELinux—).
-    if [[ -f "$CODE_DIR/infra/fedora/odontocrm" ]] &&
-       ! cmp -s "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm; then
-      install -m 0755 -o root -g root "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm
-      av 'el comando del servidor era viejo: se refrescó (a partir de la próxima orden ya es el nuevo)'
+    # Plantillas de /etc/odontocrm, unidades de systemd, logrotate, temporizadores y
+    # **el propio comando** del servidor: `install.sh` es idempotente y nunca
+    # sobrescribe secretos ni archivos existentes. Se ejecuta DESPUÉS de traer el código
+    # (si se hiciera antes, copiaría la versión vieja: pasó con el filtro de SELinux y
+    # con la espera de `verificar`). Sin este paso, un cambio en una unidad o en una
+    # plantilla no llegaría con `actualizar` —que era justo lo que sí hacía el ensayo—.
+    if bash "$CODE_DIR/infra/fedora/install.sh" --apply --supervisor=systemd --enable-services \
+         >/tmp/odontocrm-install.log 2>&1; then
+      ok 'unidades, plantillas, temporizadores y comando del servidor al día'
+    else
+      tail -15 /tmp/odontocrm-install.log
+      av 'install.sh falló: el código se actualiza, pero revisa las unidades y las plantillas'
     fi
     npm ci --silent || morir 'falló npm ci'
     npm run build >/dev/null 2>&1 || morir 'falló la compilación'

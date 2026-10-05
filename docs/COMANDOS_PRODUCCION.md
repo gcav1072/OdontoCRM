@@ -180,6 +180,18 @@ sudo odontocrm recompilar
 
 No aplica migraciones a propósito: si el cambio toca el esquema, usa `actualizar`.
 
+**¿`actualizar` o el ensayo?** Los dos son válidos; hacen cosas distintas:
+
+| Cuándo | Qué usar | Qué hace |
+| :--- | :--- | :--- |
+| **Actualización de rutina** (un arreglo, una mejora) | `sudo odontocrm actualizar` | Trae el código, pone al día **unidades, plantillas y temporizadores** (`install.sh`), compila, migra, reinicia y **verifica esperando** a que los 9 escuchen |
+| **Quieres verlo paso a paso** | `sudo bash infra/fedora/ensayo-despliegue.sh --hasta=servicios` | Lo mismo **contando cada paso**, re-sincronizando los secretos desde el repositorio de trabajo y con el detalle de cada comprobación |
+| **Cambios de despliegue** (TLS, firewall, SELinux, respaldos) | `… --hasta=respaldos` o `--hasta=tls` | Además: certificado, `nginx`, `firewalld`, SELinux, respaldo y **prueba de restauración comparada fila a fila** |
+
+El ensayo es el que se usó para validar la fase 10 y es el que **deja evidencia**; por eso
+el RUNBOOK lo prefiere cuando hay algo sensible de por medio (una actualización antes de
+que la clínica abra, por ejemplo).
+
 Equivalente a mano (por si hay que mirar el paso que falla):
 
 ```bash
