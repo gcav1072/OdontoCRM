@@ -25,7 +25,15 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
    * `listen EACCES`. Si tu máquina lo tiene libre, cámbialo en el `.env`.
    */
   GATEWAY_PORT: z.coerce.number().int().min(1).max(65_535).default(8090),
-  /** Origen permitido para la SPA (CORS). */
+  /**
+   * Origen(es) permitidos para la SPA (CORS).
+   *
+   * Admite **varios separados por comas**: en la clínica se entra tanto por el
+   * nombre (`https://odontocrm.local`) como por la IP de la LAN
+   * (`https://192.168.1.50`), y el navegador manda uno u otro según lo que se
+   * teclee. Con un solo valor, entrar por el otro obligaba a cambiar la
+   * configuración y reiniciar; con la lista, funcionan los dos.
+   */
   WEB_ORIGIN: z.string().min(1).default('http://127.0.0.1:5173'),
 
   /** Clave pública EdDSA con la que se verifica el JWT de acceso. */
@@ -48,3 +56,10 @@ export const loadGatewayConfig = (env: Record<string, string | undefined> = proc
 
 export const jwtPublicKeyPath = (config: GatewayConfig): string =>
   resolveFromRepoRoot(config.JWT_PUBLIC_KEY_PATH);
+
+/** Los orígenes permitidos, ya separados y sin espacios (`WEB_ORIGIN`). */
+export const origenesPermitidos = (webOrigin: string): string[] =>
+  webOrigin
+    .split(',')
+    .map((origen) => origen.trim())
+    .filter((origen) => origen !== '');

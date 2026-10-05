@@ -59,6 +59,8 @@
 | [`install.sh`](install.sh) | Aprovisionamiento idempotente: paquetes, usuario de sistema, directorios, plantillas de `/etc/odontocrm`, PM2 y arranque automático. **Por defecto solo simula** (`--dry-run`); con `--apply` ejecuta. |
 | [`systemd/odontocrm@.service`](systemd/odontocrm@.service) | Unidad plantilla para los 8 servicios internos (`odontocrm@identity`, `odontocrm@clinical`, …). Carga `/etc/odontocrm/odontocrm.env` + `/etc/odontocrm/%i.env` y arranca `services/%i/dist/index.js`. |
 | [`systemd/odontocrm-gateway.service`](systemd/odontocrm-gateway.service) | Unidad del gateway (puerto 8090, sin base de datos). Carga `/etc/odontocrm/odontocrm.env` + `/etc/odontocrm/gateway.env` y arranca `apps/gateway/dist/index.js`. |
+| [`systemd/odontocrm-alertas.service`](systemd/odontocrm-alertas.service) + [`systemd/odontocrm-alertas.timer`](systemd/odontocrm-alertas.timer) | **Observabilidad (Fase 10)**: cada 5 minutos corre `node tools/estado.mjs --alertas` y deja el servicio en `failed` si algo no responde, el outbox se atasca, la cola tiene fallidos o queda poco disco. Ver §10.6. |
+| [`logrotate/odontocrm`](logrotate/odontocrm) | Rotación diaria (30 días, comprimida) de `/var/log/odontocrm/*.log`. Con `systemd` los servicios van al journal, que rota solo; esto cubre los logs de operación y los de PM2 si se elige ese supervisor. |
 | [`ecosystem.config.cjs`](ecosystem.config.cjs) | **Alternativa a `systemd`**: procesos de PM2 para Fedora, con rutas absolutas (`/opt/odontocrm/...`) y los mismos dos `--env-file-if-exists=/etc/odontocrm/...`. Nunca los dos supervisores a la vez (§10.1 y §10.4). |
 | [`backup/odontocrm-backup.sh`](backup/odontocrm-backup.sh) | Respaldo diario de las 8 bases (`pg_dump -Fc`), verificación de integridad, retención configurable y copias opcionales. |
 | [`backup/odontocrm-restore.sh`](backup/odontocrm-restore.sh) | Restauración de una base o de todas, con paso previo por una base temporal de verificación. |
@@ -99,8 +101,8 @@ sudo git update-index --chmod=+x infra/fedora/install.sh \
   > PENDIENTE FASE 10: (P-03) al cerrar cada fase, reconciliar
   > `/etc/odontocrm/<servicio>.env` con el `config.ts` de ese servicio y con
   > `.env.example`; el kernel falla rápido (`ConfigError`) si falta una obligatoria.
-- **Comportamiento de Chromium bajo `systemd` endurecido** y el soporte real de
-  `playwright install-deps` en Fedora. Ver §9.5.
+- **Comportamiento de Chromium bajo `systemd` endurecido** (el soporte de
+  `install-deps` en Fedora ya está resuelto: no lo hay, se usa la lista de `dnf`). Ver §9.5.
 - **Nada de lo relacionado con datos clínicos** debe considerarse listo hasta que la
   prueba de restauración de §16 esté hecha y registrada.
 
@@ -231,7 +233,7 @@ Instalación manual (equivalente a lo que hace `install.sh`):
 sudo dnf install -y \
   git tar gzip xz zstd rsync curl ca-certificates \
   logrotate chrony firewalld \
-  policycoreutils-python-utils setools-conftools \
+  policycoreutils-python-utils setools-console setroubleshoot-server audit \
   postgresql18-server postgresql18-contrib
 ```
 
@@ -240,25 +242,35 @@ sudo dnf install -y \
 | `postgresql18-server` | Motor de base de datos (misma versión mayor que desarrollo). |
 | `postgresql18-contrib` | Extensiones (`pgcrypto`, `pg_trgm`) y utilidades; `pg_dump`/`pg_restore`. |
 | `firewalld` | Cortafuegos: solo el puerto del proxy a la LAN. |
-| `policycoreutils-python-utils` | `semanage`, `restorecon` (contextos SELinux). |
-| `setools-conftools` | `sealert`, `audit2why` (diagnóstico SELinux). |
+| `policycoreutils-python-utils` | `semanage` y `restorecon` (contextos SELinux) y `audit2why` (leer un rechazo). |
+| `setools-console` | `sesearch`, `seinfo`, `sediff`: consultar la política cuando SELinux bloquea algo. |
+| `setroubleshoot-server` | `sealert`, que resume en lenguaje llano los rechazos del registro de auditoría. |
+| `audit` | `ausearch`: buscar los rechazos AVC en `/var/log/audit/audit.log`. |
 | `git` | Clonar el repositorio en `/opt/odontocrm`. |
 | `logrotate` | Rotación de `/var/log/odontocrm/*.log`. |
 | `chrony` | Hora correcta (afecta a tickets, citas y JWT). |
 | `tar`, `gzip`, `xz`, `zstd`, `rsync` | Respaldos, copias externas y compresión. |
+
+> **Ojo con los nombres (corregido en la Fase 10):** esta guía pedía `setools-conftools`, que
+> **no existe en Fedora**; el paquete es `setools-console`. Y las herramientas que se le
+> atribuían vienen de otro sitio: `sealert` es de `setroubleshoot-server`, `audit2why` de
+> `policycoreutils-python-utils` y `ausearch` de `audit`. Si `dnf` se queja de un paquete que
+> no encuentra, comprueba el nombre con `dnf provides '*/<comando>'` antes de dar el paso por
+> perdido.
+
 
 ### 4.1 Dependencias de Chromium (PDF de récipes, Fase 7)
 
 El PDF A5 con membrete y QR se genera en el servidor con **Playwright/Chromium**, así
 que hacen falta las bibliotecas del navegador:
 
-```bash
-# Método preferido (si la distribución está soportada por Playwright):
-cd /opt/odontocrm
-sudo npx playwright install-deps chromium
+**En Fedora esta es la vía, no el plan B.** Medido en la Fase 10: `install-deps` de
+Playwright **no soporta Fedora** —no hay paquete oficial para la distribución, así que
+cae a `ubuntu24.04` e intenta `apt-get`, que no existe— y muere con código 127. El
+navegador en sí funciona: le faltan estas bibliotecas, que sí están empaquetadas.
 
-# Si el comando anterior dice que la distribución no está soportada,
-# instala a mano el conjunto de bibliotecas:
+```bash
+# Conjunto de bibliotecas que necesita Chromium en Fedora 44 (comprobado con ldd):
 sudo dnf install -y \
   nss nspr atk at-spi2-atk cups-libs libdrm mesa-libgbm libxshmfence \
   libX11 libXext libXcursor libXi libXtst libXcomposite libXdamage \
@@ -274,9 +286,32 @@ ldd /var/lib/odontocrm/ms-playwright/chromium-*/chrome-linux/chrome | grep 'not 
   echo 'OK: todas las bibliotecas presentes'
 ```
 
-> PENDIENTE FASE 10: (P-06) confirmar si `npx playwright install-deps chromium`
-> funciona en el Fedora usado; si no, fijar aquí la lista definitiva de paquetes
-> obtenida con `ldd`.
+### 9.5-bis Dónde tiene que estar el navegador
+
+Playwright busca Chromium en **una de estas dos** rutas, y la que manda es la variable:
+
+1. `PLAYWRIGHT_BROWSERS_PATH` (la que se pone en la configuración): `/var/lib/odontocrm/ms-playwright`.
+2. Sin esa variable, la caché del usuario que ejecuta el servicio: con `HOME=/var/lib/odontocrm`
+   (que es lo que fija la unidad) sería `/var/lib/odontocrm/.cache/ms-playwright`.
+
+Los servicios que generan PDF son **dos**: `clinical` (récipes A5) y `reporting`
+(exportación de reportes). Los dos tienen que llevar la variable; si falta en uno, ese
+servicio responde `503 «No se pudo generar el PDF en este momento»` y el resto del
+sistema parece estar bien — así se descubrió en la Fase 10. El navegador, además, tiene
+que ser **ejecutable por el usuario `odontocrm`** (el directorio es `0750`):
+
+```bash
+sudo grep -H PLAYWRIGHT_BROWSERS_PATH /etc/odontocrm/{clinical,reporting}.env
+sudo -u odontocrm test -x /var/lib/odontocrm/ms-playwright/chromium-*/chrome-linux/chrome \
+  && echo 'el navegador se puede ejecutar'
+```
+
+> **P-06 (resuelto en la Fase 10, `fedora:check-ok`):** el comando
+> `npx playwright install-deps chromium` **no funciona en Fedora** (cae a `ubuntu24.04`
+> y muere en `apt-get`; código 127). La lista
+> de arriba es la definitiva: con ella, `ldd` no reporta ninguna biblioteca ausente y
+> Chromium genera los PDF. El script `infra/fedora/install.sh` intenta el comando y, si
+> falla, instala la lista (por eso el intento queda en el código).
 >
 > PENDIENTE FASE 10: (P-07) confirmar que Chromium arranca bajo la unidad `systemd`
 > endurecida (§10.3) y que puede crear *user namespaces* sin privilegios. Si falla, la
@@ -389,23 +424,65 @@ sudo systemctl restart postgresql-18
 
 ### 6.3 `pg_hba.conf` (quién puede conectarse y cómo)
 
+**Esto no es opcional en Fedora.** Medido en la PC de pruebas (Fase 10): el clúster
+que crea `postgresql-setup --initdb` deja las conexiones **TCP en `ident`**, no en
+`scram-sha-256` (`select auth_method from pg_hba_file_rules` lo confirma). Con
+`ident` y sin servidor de identidad, **ningún servicio puede entrar** por
+`127.0.0.1` («la autentificación Ident falló para el usuario …») aunque la
+contraseña esté bien. Hay que dejar el archivo así:
+
 ```conf
 # TYPE      DATABASE        USER            ADDRESS         METHOD
 local       all             postgres                        peer
-local       all             all                             scram-sha-256
+local       all             all                             peer
 host        all             all             127.0.0.1/32    scram-sha-256
 host        all             all             ::1/128         scram-sha-256
 # (ninguna línea para 0.0.0.0/0: PostgreSQL no se expone a la red)
 ```
 
+Se cambia con dos comandos (el respaldo del original primero, que aquí no se sabe
+si hará falta):
+
 ```bash
-sudo systemctl reload postgresql-18
+sudo cp /var/lib/pgsql/data/pg_hba.conf /var/lib/pgsql/data/pg_hba.conf.orig
+sudo sed -i -E \
+  's#^(host[[:space:]]+all[[:space:]]+all[[:space:]]+(127\.0\.0\.1/32|::1/128)[[:space:]]+)ident#\1scram-sha-256#' \
+  /var/lib/pgsql/data/pg_hba.conf
+sudo systemctl reload postgresql
+
+# Verificación (con el usuario que tenga superusuario por peer)
+psql "postgres:///postgres?host=/var/run/postgresql" \
+  -c "select type, database, user_name, address, auth_method from pg_hba_file_rules"
 ```
 
 > PENDIENTE FASE 10: si el respaldo se ejecuta como `root` por el socket con
 > autenticación `peer`, hay que mapear el usuario del sistema al rol de PostgreSQL
 > (`pg_ident.conf` + `map=` en `pg_hba.conf`), o usar el rol de respaldo por TCP con
 > `.pgpass`. La opción recomendada es la segunda y está descrita en §15.2.
+
+### 6.4-bis Los guiones del repositorio (atajo probado)
+
+Todo lo de §4 a §6 está mecanizado en **dos guiones que viven en el repositorio** y se
+ejecutan **en el servidor** (no hay que copiarlos de ninguna parte ni teclear rutas):
+
+```bash
+# 1) Preparar la máquina: paquetes, PostgreSQL del sistema, tu rol superusuario,
+#    Node 26 (NodeSource), PM2, nginx + mkcert, dependencias de Chromium y
+#    pg_hba.conf en scram-sha-256. Idempotente.
+sudo bash infra/fedora/instalar-base-fedora.sh
+
+# 2) Desplegar y verificar de punta a punta: usuario de sistema, código en
+#    /opt/odontocrm, secretos en /etc/odontocrm, unidades systemd, TLS con nginx,
+#    respaldo y PRUEBA DE RESTAURACIÓN (con las filas comparadas una a una).
+sudo bash infra/fedora/ensayo-despliegue.sh --hasta=respaldos
+```
+
+El segundo despliega **la rama que tengas activa** en el repositorio de trabajo (o
+`--rama=<nombre>`) y comprueba cada paso en lugar de darlo por hecho: nueve unidades
+activas **sirviendo su puerto**, certificado emitido y servido, `firewalld` publicando
+solo 443, SELinux sin denegaciones, y la restauración de las ocho bases. Si algo no
+cuadra, lo dice con el comando que lo arregla. Es el mismo camino que usa el banco de
+pruebas de la Fase 10, así que **lo que corre en la clínica es lo que se probó**.
 
 ### 6.4 Crear las 8 bases y sus roles
 
@@ -418,6 +495,13 @@ genera las contraseñas aleatorias de cada rol.
 ```bash
 cd /opt/odontocrm
 sudo npm run build                 # las migraciones y el bootstrap corren sobre dist/
+
+# Si el clon lo hizo OTRO usuario (p. ej. `git clone` como root de un repositorio
+# tuyo, o al revés), git puede negarse a leerlo con «detected dubious ownership» y
+# los `git pull` fallan → te quedas en un commit viejo **sin que nadie lo diga**.
+# Se arregla declarando el directorio como seguro:
+sudo git config --global --add safe.directory /opt/odontocrm
+git -C /opt/odontocrm log --oneline -1     # comprueba SIEMPRE qué commit quedó
 
 # El bootstrap lee PG_ADMIN_URL del .env de la RAÍZ del repositorio (nunca se imprime).
 # Ese archivo NO se versiona (.gitignore). Créelo solo para el bootstrap:
@@ -432,6 +516,27 @@ sudo npm run db:bootstrap          # crea lo que falte (no borra nada)
 sudo npm run db:bootstrap -- --only identity     # un solo servicio
 sudo npm run db:bootstrap -- --rotate            # cambia contraseñas (¡reinicie después!)
 ```
+
+**Alternativa sin contraseña de superusuario (la más cómoda en Fedora).** El clúster
+que crea `postgresql-setup --initdb` usa autenticación **`peer`** en el socket local:
+el usuario del sistema entra como el rol que se llame igual. Se le da superusuario a
+tu usuario y el bootstrap entra por el socket, sin escribir ninguna contraseña en
+ningún archivo:
+
+```bash
+# OJO: dentro de un script con sudo, $USER es root: usa tu usuario de verdad.
+sudo -u postgres createuser --superuser "$USER"
+
+sudo tee /opt/odontocrm/.env >/dev/null <<'EOF'
+PG_ADMIN_URL=postgres:///postgres?host=/var/run/postgresql
+NODE_ENV=production
+LOG_LEVEL=info
+EOF
+```
+
+Con esta forma, las URLs que genera el bootstrap para los servicios siguen siendo
+**TCP a 127.0.0.1** con la contraseña aleatoria de cada rol: el socket solo lo usa el
+administrador. Es el camino probado en la PC Fedora de pruebas (Fase 10).
 
 > Nota de seguridad: el bootstrap también usa `/opt/odontocrm/.env` (o el `.env` de la
 > raíz) solo para leer `PG_ADMIN_URL`; cuando termines puedes **borrarlo**
@@ -597,7 +702,7 @@ raíz del repositorio):
 | `IDENTITY_PORT` … `REPORTING_PORT` | `4001` … `4008` | Una por servicio, en el orden de §2.2. |
 | `<SERVICIO>_HOST` | `127.0.0.1` | Los 9 escuchan **solo** en loopback (plan §11). |
 | `IDENTITY_URL` … `REPORTING_URL` | `http://127.0.0.1:400x` | URLs internas que usa el gateway para el proxy por recurso; una URL **vacía** significa «ese servicio todavía no existe». |
-| `WEB_ORIGIN` | `https://odontocrm.local` | CORS del gateway: el origen exacto con el que se abre la SPA. |
+| `WEB_ORIGIN` | `https://odontocrm.local, https://192.168.1.50` | CORS del gateway: el origen con el que se abre la SPA. Admite **varios separados por comas** —pon el nombre **y** la IP, que son las dos formas en que entra un equipo de la clínica—; con uno solo, entrar por el otro da un error de CORS y la pantalla queda en blanco. |
 
 Nombres exactos de los puertos (los del código y los de §2.2):
 
@@ -627,6 +732,7 @@ Nombres exactos de los puertos (los del código y los de §2.2):
 | Variable | Servicios | Notas |
 | :--- | :--- | :--- |
 | `DATABASE_URL` | los 8 con BD | `postgres://<rol>:<clave>@127.0.0.1:5432/<base>`; la genera `npm run db:bootstrap` y se traslada aquí (§8.6). |
+| **`EVENTS_DATABASE_URL`** | los 8 con BD | **La cola compartida** (`odonto_events`): **el mismo valor en los ocho**, con el rol `odonto_events`. Sin ella cada servicio usaría **su propia base** para `pg-boss` y los eventos no llegarían a los demás (el read model de reportes se queda vacío y la auditoría no ve nada). La escribe el bootstrap en `services/<servicio>/.env` y se traslada aquí (§8.6). |
 | `DATABASE_POOL_MAX` | los 8 con BD | Conexiones por servicio (valor por defecto del código: 10). |
 | `INTERNAL_SERVICE_SECRET` | los 9 | Secreto HS256 de los JWT de servicio. **El mismo valor en los 9.** |
 | `COOKIE_SECRET` | `identity` | Secreto de cookies; lo genera el bootstrap. |
@@ -634,7 +740,7 @@ Nombres exactos de los puertos (los del código y los de §2.2):
 | `COOKIE_SECURE=true` | `identity` | Exige HTTPS: es la razón del TLS interno (§13). |
 | `STORAGE_DRIVER`, `STORAGE_ROOT` | `patients`, `clinical` | `local` + `/var/lib/odontocrm/storage` (abstracción S3-ready). |
 | `PLAYWRIGHT_BROWSERS_PATH` | `clinical` | `/var/lib/odontocrm/ms-playwright`. |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_MODE=polling` | `notifications` | Token de BotFather, entregado por archivo (nunca por chat ni en el repo). |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_MODE=auto` | `notifications` | Token de BotFather, entregado por archivo (nunca por chat ni en el repo). El modo es **`auto` \| `real` \| `simulado`** (el modo test fuerza `simulado`); el *long polling* es el transporte, no un modo: `polling` **no** es un valor válido y el servicio no arranca con él. |
 
 **Regla de precedencia:** si una variable aparece en los dos archivos, gana la del
 archivo **propio** (es el segundo `--env-file-if-exists` / el segundo
@@ -673,6 +779,16 @@ emitidos, y los usuarios tendrían que volver a iniciar sesión.
 
 ### 8.5 Rotación del token del bot de Telegram
 
+> **El marcador de la plantilla NO es un token.** `CAMBIAR_TOKEN_BOTFATHER` cumple el
+> mínimo de longitud que valida el esquema, así que un servicio con el marcador dice
+> «token configurado» y **no conecta** (Telegram responde `Unauthorized`): media hora de
+> diagnóstico por un texto que nunca se cambió. Desde la Fase 10 el servicio trata los
+> valores que empiezan por `CAMBIAR` como **ausente** y la tarjeta de la bandeja dice
+> «sin token» (que es la verdad) más el detalle del error si lo hay. Si ves «token
+> configurado pero no conectado», mira el `lastError` de la tarjeta y comprueba el
+> archivo: `sudo grep -c 'TELEGRAM_BOT_TOKEN=CAMBIAR' /etc/odontocrm/notifications.env`
+> (un `1` significa que sigue el marcador).
+
 El token lo entrega BotFather **por archivo**, nunca por chat (plan §16). Rotarlo es
 editar `TELEGRAM_BOT_TOKEN` en `/etc/odontocrm/notifications.env` y reiniciar el
 servicio:
@@ -703,13 +819,15 @@ cd /opt/odontocrm
 
 # 1) Trasladar SOLO los valores generados al archivo propio de producción y borrar el
 #    .env del repositorio. El resto de la plantilla (URLs, claves, rutas) ya está puesto.
+#    OJO: EVENTS_DATABASE_URL va incluida —es la cola compartida y sin ella los
+#    servicios no se ven entre sí—.
 for s in identity patients scheduling notifications clinical odontogram screens reporting; do
   src="services/$s/.env"; dst="/etc/odontocrm/$s.env"
   [ -f "$src" ] || { echo "AVISO: todavía no existe $src (¿ejecutaste db:bootstrap?)"; continue; }
   sudo bash -c "
     set -euo pipefail
-    grep -vE '^(DATABASE_URL|INTERNAL_SERVICE_SECRET|COOKIE_SECRET)=' '$dst' > '$dst.tmp'
-    grep -E  '^(DATABASE_URL|INTERNAL_SERVICE_SECRET|COOKIE_SECRET)=' '$src' >> '$dst.tmp'
+    grep -vE '^(DATABASE_URL|EVENTS_DATABASE_URL|INTERNAL_SERVICE_SECRET|COOKIE_SECRET)=' '$dst' > '$dst.tmp'
+    grep -E  '^(DATABASE_URL|EVENTS_DATABASE_URL|INTERNAL_SERVICE_SECRET|COOKIE_SECRET)=' '$src' >> '$dst.tmp'
     install -m 0640 -o root -g odontocrm '$dst.tmp' '$dst'
     rm -f '$dst.tmp' '$src'
   "
@@ -727,6 +845,10 @@ sudo chown root:root /etc/odontocrm/*.env && sudo chmod 0600 /etc/odontocrm/*.en
 # 4) Comprobación: NINGÚN .env dentro del código desplegado
 sudo find /opt/odontocrm -type f -name '.env' -not -path '*/node_modules/*'
 #    → debe salir vacío (`.env.example` es del repositorio y no contiene secretos).
+
+# 5) Comprobación: los ocho tienen la cola compartida (el mismo valor en todos)
+sudo grep -c '^EVENTS_DATABASE_URL=' /etc/odontocrm/{identity,patients,scheduling,notifications,clinical,odontogram,screens,reporting}.env
+#    → un 1 por archivo; si falta en alguno, ese servicio no verá los eventos de los demás
 ```
 
 Notas:
@@ -875,15 +997,27 @@ sudo -u odontocrm env HOME=/var/lib/odontocrm \
 | Lectura de `/etc/odontocrm/odontocrm.env` y `<servicio>.env` (`0600 root:root`) | Sí (root los inyecta) | Sí, si se ponen en `0640 root:odontocrm` (§10.4) |
 | Procesos extra | Ninguno | Demonio de PM2 |
 
+**Y una sola pila.** No basta con elegir un supervisor: si la máquina tiene además una
+pila de desarrollo (`npm run dev`, `stack:dev`) en los mismos puertos, los dos conjuntos
+de procesos se pelean por ellos y el diagnóstico se vuelve **mentiroso** —los servicios
+de `systemd` quedan en `failed` por `EADDRINUSE` mientras `/health` responde 200, porque
+lo contesta la otra pila—. Pasó en el banco de pruebas de la Fase 10. Antes de arrancar:
+`ss -lntp` sobre los puertos de la pila y `npm run stack:status`; si hay algo,
+`npm run stack:down` (§10.2).
+
 ### 10.2 Instalar las unidades `systemd`
 
 ```bash
 cd /opt/odontocrm
 sudo install -m 0644 -o root -g root infra/fedora/systemd/odontocrm@.service /etc/systemd/system/
 sudo install -m 0644 -o root -g root infra/fedora/systemd/odontocrm-gateway.service /etc/systemd/system/
+# Observabilidad (Fase 10): alertas cada 5 minutos (§10.6)
+sudo install -m 0644 -o root -g root infra/fedora/systemd/odontocrm-alertas.service /etc/systemd/system/
+sudo install -m 0644 -o root -g root infra/fedora/systemd/odontocrm-alertas.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemd-analyze verify /etc/systemd/system/odontocrm@.service \
-                            /etc/systemd/system/odontocrm-gateway.service
+                            /etc/systemd/system/odontocrm-gateway.service \
+                            /etc/systemd/system/odontocrm-alertas.service
 ```
 
 Las unidades cargan **los dos archivos de entorno** en el mismo orden que
@@ -908,6 +1042,21 @@ sudo systemctl show odontocrm@identity -p EnvironmentFiles
 sudo systemctl show odontocrm-gateway -p EnvironmentFiles
 ```
 
+**Antes de arrancar: comprueba que los puertos están libres.** Si en la máquina
+quedó una pila de desarrollo (`npm run dev`, `stack:dev`) —o cualquier proceso suelto—
+los servicios de `systemd` entran en bucle con `EADDRINUSE`, agotan el límite de
+arranques y quedan en `failed`… **mientras `/health` responde 200**: lo responde la
+otra pila, y el operador cree que todo está bien. Pasó en el banco de pruebas de la
+Fase 10 y es el escenario que evita el [ADR 0037](../../docs/adr/0037-una-sola-pila-a-la-vez.md).
+
+```bash
+# ¿Hay algo escuchando en los puertos de la pila? (debe salir vacío)
+ss -lntp | grep -E ':(4001|4002|4003|4004|4005|4006|4007|4008|8090)\b'
+# En una máquina que también se usa para desarrollar:
+cd /opt/odontocrm && npm run stack:status      # quién corre y desde cuándo
+npm run stack:down                             # si hay una pila de desarrollo, se para
+```
+
 Arranque en orden (primero la base de datos, luego los servicios, el gateway al final):
 
 ```bash
@@ -919,6 +1068,20 @@ sudo systemctl enable --now odontocrm-gateway.service
 systemctl --no-pager --type=service 'odontocrm*' | cat
 systemctl status odontocrm@identity --no-pager
 ```
+
+**Y comprueba que quien escucha es la unidad**, no otro proceso: el `/health` en 200 no
+lo garantiza. Para el ejemplo de `identity` (repite cambiando servicio y puerto):
+
+```bash
+unidad=odontocrm@identity; puerto=4001
+systemctl is-active "$unidad"
+[[ "$(ss -lntpH "sport = :$puerto" | grep -oP 'pid=\K[0-9]+' | head -1)" \
+   == "$(systemctl show -p MainPID --value "$unidad")" ]] \
+  && echo "el $puerto lo sirve $unidad" || echo "¡el $puerto lo sirve OTRO proceso!"
+```
+
+Si alguno quedó en `failed`: `journalctl -u odontocrm@<servicio> -n 50 --no-pager`. Con
+`EADDRINUSE` al principio del registro, la causa es la pila de más.
 
 Operación diaria:
 
@@ -1030,11 +1193,77 @@ sudo systemctl reboot
 # Al volver:
 systemctl --no-pager --type=service 'odontocrm*' | cat     # todos «running»
 curl -fsS http://127.0.0.1:8090/health                     # gateway OK
+npm run estado                                             # tablero: los 9 en verde
 ```
 
 > PENDIENTE FASE 10: (P-16) ejecutar esta prueba y anotar fecha y resultado en §20.
 > Es un criterio de aceptación explícito («tras reiniciar la máquina los 9 servicios
 > vuelven solos», plan §13 Fase 10).
+
+### 10.6 Observabilidad: tablero, alertas y rotación de logs
+
+Tres piezas, ninguna nueva que instalar:
+
+**1. El tablero de estado** (`npm run estado`, Fase 10). Una foto de todo lo que
+puede caerse en silencio: los 9 servicios con su `/health` y su `/ready` (con el
+detalle del chequeo que falla), las 9 bases con su tamaño y conexiones, la cola de
+eventos por cola (pendientes, fallidos, completados), el outbox de cada servicio
+(eventos sin publicar y con reintentos) y los envíos atascados de notificaciones.
+
+```bash
+cd /opt/odontocrm
+npm run estado                      # una foto
+npm run estado -- --sin-servicios   # sin preguntar por HTTP (pila parada)
+npm run estado -- --json            # para una máquina
+```
+
+En producción lee los entornos de `/etc/odontocrm` (con `ODONTOCRM_ENV_DIR`, que la
+unidad de alertas ya pone) y **no necesita `PG_ADMIN_URL`**: cada rol de servicio
+informa del tamaño de su propia base. Por eso puede correr sin superusuario de base
+de datos.
+
+**2. Las alertas** (`odontocrm-alertas.timer`): el mismo tablero en modo
+`--alertas`, cada cinco minutos. No imprime nada y sale con 0 cuando todo está bien;
+si algo falla, sale con 1 y el servicio queda en estado `failed`:
+
+```bash
+sudo install -m 0644 -o root -g root \
+  infra/fedora/systemd/odontocrm-alertas.service \
+  infra/fedora/systemd/odontocrm-alertas.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now odontocrm-alertas.timer
+
+systemctl list-timers odontocrm-alertas.timer      # cuándo toca la próxima
+systemctl status odontocrm-alertas.service         # cómo fue la última
+journalctl -u odontocrm-alertas -n 50 --no-pager   # el detalle del problema
+systemctl --failed                                 # aquí aparece si algo va mal
+```
+
+Qué vigila, con sus umbrales (ajustables por entorno en la unidad):
+`ESTADO_OUTBOX_MINUTOS` (5) eventos sin publicar, `ESTADO_COLA_MINUTOS` (10) cola
+con pendientes viejos, `ESTADO_ENVIO_MINUTOS` (15) envíos atascados y
+`ESTADO_DISCO_LIBRE` (10 %) de disco libre.
+
+> Si quieres que además avise por fuera (correo, Telegram del administrador), añade
+> `OnFailure=` a la unidad apuntando a tu notificador. No se incluye uno propio a
+> propósito: el sistema no debe depender de un servicio de mensajería para avisar
+> de que está caído.
+
+**3. La rotación de los logs.** Con `systemd` los servicios escriben al **journal**,
+que ya rota solo; los archivos de `/var/log/odontocrm` (`backup.log`, `restore.log`
+y, si eliges PM2, sus logs) los rota `logrotate` con la configuración del repositorio
+—diario, 30 días, comprimido— que `install.sh --apply` deja en
+`/etc/logrotate.d/odontocrm`:
+
+```bash
+sudo install -m 0644 -o root -g root infra/fedora/logrotate/odontocrm /etc/logrotate.d/odontocrm
+sudo logrotate --debug /etc/logrotate.d/odontocrm      # comprobar sin rotar
+sudo journalctl --disk-usage                           # el journal, por su lado
+```
+
+> PENDIENTE FASE 10: (P-27) validar en el Fedora real que las alertas saltan de
+> verdad (parar un servicio y ver el `failed`), que el tablero funciona con los
+> entornos de `/etc/odontocrm` y que `logrotate --debug` no se queja.
 
 ---
 
@@ -1077,7 +1306,7 @@ curl -m 5 http://<IP_DEL_SERVIDOR>:5432
 
 ```bash
 getenforce                 # debe decir Enforcing
-sudo dnf install -y policycoreutils-python-utils setools-conftools
+sudo dnf install -y policycoreutils-python-utils setools-console setroubleshoot-server audit
 ```
 
 ### 12.1 Contextos necesarios
@@ -1167,10 +1396,32 @@ navegadores mostrarán aviso.
 > caso, la alternativa es un dominio real con certificado Let's Encrypt vía DNS-01
 > (documentar aparte).
 
-### 13.3 nginx (ejemplo)
+### 13.3 nginx
+
+El archivo está **versionado** en el repositorio:
+[`infra/fedora/nginx/odontocrm.conf`](nginx/odontocrm.conf). Se instala tal cual y solo
+se sustituye `__HOST__` por el nombre **y la IP** del servidor (el certificado cubre
+los dos). Así la guía y lo que corre en la clínica no se separan.
+
+```bash
+# Un solo comando: desactiva la página de prueba de Fedora, instala el proxy con
+# el nombre y la IP de esta máquina, comprueba la sintaxis y arranca nginx.
+sudo bash /opt/odontocrm/infra/fedora/nginx/instalar.sh
+# (o con el nombre que teclean los equipos:)
+sudo bash /opt/odontocrm/infra/fedora/nginx/instalar.sh --host="odontocrm.local 192.168.1.50"
+```
+
+> **Ojo con el puerto 80 (medido en la Fase 10).** Fedora no pone su página de prueba
+> en `conf.d/default.conf` sino **dentro de `/etc/nginx/nginx.conf`**, con
+> `listen 80 default_server`. Mientras esté ahí, quien escriba `http://` ve el cartel
+> «Test Page for the HTTP Server on Fedora» y el redirect a HTTPS nunca ocurre (el
+> `curl` final devuelve **200** en vez de 301). El instalador comenta esas dos líneas
+> `listen` —el bloque queda inerte y el cambio se revierte a la vista— y guarda el
+> original en `/etc/nginx/nginx.conf.odontocrm-orig`.
+
+Lo que hace (y por qué), tal como quedó validado en la Fase 10:
 
 ```nginx
-# /etc/nginx/conf.d/odontocrm.conf
 server {
     listen 443 ssl;
     server_name odontocrm.local;
@@ -1216,8 +1467,55 @@ server {
 sudo nginx -t && sudo systemctl enable --now nginx
 ```
 
-> PENDIENTE FASE 10: (P-11) la ruta exacta del SSE la fija la Fase 5. Si cambia,
-> ajusta la última `location` (o aplica `proxy_buffering off` a todo `/api/`).
+> **P-11 (resuelto en la Fase 10):** la ruta del SSE es
+> `/api/v1/screens/<pantalla>/stream` (`services/screens/src/routes/screen-routes.ts` y
+> `apps/web/src/lib/kiosko.ts`). La `location` correcta es esa; si algún día cambia,
+> se ajusta en el archivo versionado.
+
+### 13.3-bis Quitar el aviso de certificado en los demás equipos
+
+El navegador de la tablet, el móvil o el televisor avisa «conexión no privada» porque
+el certificado lo firma la **CA interna** del servidor (`mkcert`), que solo está
+instalada en el propio servidor. Se quita instalando esa CA en cada equipo, **una sola
+vez**:
+
+```bash
+sudo odontocrm certificado                 # estado del certificado y de la CA
+sudo odontocrm certificado --exportar /tmp/ca   # deja los archivos para copiar
+```
+
+El atajo que hace esto cómodo: el proxy **sirve la CA en `http://<servidor>/ca.crt`**
+(también por HTTP, a propósito: un equipo que todavía no confía en el certificado no
+puede descargarla por HTTPS sin pelearse antes con el aviso). Desde el propio equipo:
+
+1. Abrir `http://192.168.1.50/ca.crt` (la IP del servidor) y aceptar la descarga.
+2. Instalarla como **autoridad de certificación**:
+   - **Android**: Ajustes → Seguridad → Cifrado y credenciales → Instalar certificado → CA.
+   - **iPhone/iPad**: descargar → Ajustes → General → VPN y gestión de dispositivos →
+     instalar el perfil → **y activar la confianza** en Ajustes → General → Información →
+     Ajustes de confianza de certificados.
+   - **Windows**: doble clic al `.crt` → Instalar → Equipo local → Entidades de
+     certificación raíz de confianza.
+   - **Mac**: abrir el `.pem` en el Llavero «Sistema» → Confiar siempre.
+3. Cerrar y volver a abrir el navegador: el candado sale normal y la pantalla deja de
+   preguntar.
+
+La guía **paso a paso por sistema** (Android, iPhone/iPad, Windows, macOS, **Linux con
+Arch, Fedora y Ubuntu/Debian**, Firefox y televisores), con cómo comprobar que quedó
+bien y los problemas típicos, está en
+[`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](../../docs/CERTIFICADO_EN_LOS_EQUIPOS.md).
+
+**Si un televisor no permite instalar una CA** (pasa en muchos Smart TV), hay dos
+salidas honestas: ponerle un mini-PC o una tablet a la pantalla, o usar un dominio real
+con certificado de Let's Encrypt por DNS-01 (§13.2). Lo que **no** se hace nunca es
+desactivar la validación del servidor «para que funcione»: eso quita la protección justo
+donde circulan los datos clínicos, y en una red compartida cualquiera podría suplantar al
+servidor.
+
+> **Guarda la CA en el respaldo.** `install.sh` la copia a
+> `/etc/odontocrm/keys/odontocrm-ca.crt`, que entra en el respaldo de configuración
+> (`--include-config`). Si se pierde, hay que emitir certificados nuevos **y volver a
+> instalar la CA en todos los equipos**.
 
 ### 13.4 Caddy (ejemplo)
 
@@ -1325,24 +1623,53 @@ Plan §11: **`pg_dump` diario por base, retención de 30 días y restauración p
 
 ### 15.2 Rol de respaldo
 
-**Opción recomendada (TCP + `scram-sha-256` + `.pgpass`, sin superusuario):**
+**Un solo comando** (hace todo lo de abajo y comprueba que el rol lea de verdad las
+ocho bases; la contraseña la genera él y **no la imprime**):
+
+```bash
+sudo bash /opt/odontocrm/infra/fedora/backup/crear-rol-respaldo.sh
+#   --rotar        cambia la contraseña
+#   --password=…   si prefieres elegirla tú
+#   --bypassrls    solo si algún día se activa Row Level Security
+```
+
+Lo que deja hecho (equivalente a mano, por si hay que revisarlo):
 
 ```sql
 -- Como superusuario: sudo -u postgres psql
+-- OJO: SIN `NOINHERIT` (ver el aviso de abajo).
 CREATE ROLE odonto_backup LOGIN PASSWORD 'CAMBIAR_password_larga_y_aleatoria'
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
-GRANT pg_read_all_data TO odonto_backup;      -- leer todas las tablas y secuencias
+  NOSUPERUSER NOCREATEDB NOCREATEROLE;
+GRANT pg_read_all_data TO odonto_backup WITH INHERIT TRUE;   -- leer todo
 
--- Por cada base (repite las 8):
+-- Por cada base (repite las 8), y dentro de cada base, por cada esquema:
 GRANT CONNECT ON DATABASE odonto_identity TO odonto_backup;
+GRANT USAGE ON SCHEMA public, drizzle, pgboss TO odonto_backup;
+GRANT SELECT ON ALL TABLES IN SCHEMA public, drizzle, pgboss TO odonto_backup;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public, drizzle, pgboss TO odonto_backup;
 ```
 
-Si alguna tabla usa *Row Level Security*, el rol necesita además `BYPASSRLS` para que
-el respaldo incluya todas las filas:
+> **`NOINHERIT` rompe el respaldo (medido en la Fase 10).** Con
+> `CREATE ROLE … NOINHERIT`, PostgreSQL 16+ registra la pertenencia a
+> `pg_read_all_data` con `inherit_option = false`, así que el rol **no recibe** esos
+> permisos y `pg_dump` muere con «permiso denegado a la tabla `__drizzle_migrations`».
+> Además, `pg_read_all_data` **no** da `USAGE` en los esquemas que no son `public`:
+> hay que concederlo (y la lectura de tablas y secuencias) esquema por esquema, como
+> arriba. El script `crear-rol-respaldo.sh` ya lo hace así y **comprueba** leyendo
+> `drizzle.__drizzle_migrations` y `pgboss.job`, que son justo las dos tablas que
+> `pg_dump` bloquea al empezar. Si el respaldo falla con «permiso denegado al esquema»
+> o «a la tabla», es esto.
 
-```sql
-ALTER ROLE odonto_backup BYPASSRLS;    -- > PENDIENTE FASE 10: (P-18) solo si hay RLS
-```
+> **P-18 (resuelto en la Fase 10):** el esquema **no usa Row Level Security** —ninguna
+> migración crea políticas—, así que `BYPASSRLS` **no hace falta** y el respaldo trae
+> todas las filas con `pg_read_all_data`. Si algún día se activa RLS, hay que añadirlo
+> (`--bypassrls`) **y volver a hacer la prueba de restauración** (§16).
+
+> **P-14 (resuelto en la Fase 10):** el respaldo escribe un `.dump` por base con
+> `SHA256SUMS` y un `manifest.json`; la copia a un medio externo se hace con `rsync`
+> (§15.5) y **el archivo se custodia fuera del servidor**. Lo que **no** está resuelto
+> todavía es el cifrado (`age`/`gpg`): hasta que se decida, el medio externo tiene que
+> ir cifrado por el sistema de archivos (por ejemplo, un disco con LUKS).
 
 Ajusta `/etc/odontocrm/backup.env` y `/etc/odontocrm/.pgpass`:
 
@@ -1387,36 +1714,17 @@ Códigos de salida: `0` correcto · `1` configuración · `2` falló un volcado 
 
 ### 15.4 Automatización diaria (temporizador `systemd`)
 
-Crea `/etc/systemd/system/odontocrm-backup.service`:
+Un respaldo que nadie ejecuta no es un respaldo: las unidades vienen **en el
+repositorio** (`infra/fedora/systemd/odontocrm-backup.service` y `.timer`) y
+`install.sh --apply` las instala junto al resto. Hacen el respaldo **cada día a las
+03:30** hora local, con `Persistent=true` (si el servidor estaba apagado a esa hora,
+lo hace al arrancar: un corte de luz no se lleva el respaldo del día).
 
-```ini
-[Unit]
-Description=OdontoCRM — respaldo diario de las 8 bases
-Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
-After=postgresql-18.service
-Wants=postgresql-18.service
-
-[Service]
-Type=oneshot
-User=root
-Nice=10
-ExecStart=/opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config
-```
-
-Y `/etc/systemd/system/odontocrm-backup.timer`:
-
-```ini
-[Unit]
-Description=OdontoCRM — respaldo diario (03:30, hora local America/Caracas)
-
-[Timer]
-OnCalendar=*-*-* 03:30:00
-Persistent=true
-RandomizedDelaySec=300
-Unit=odontocrm-backup.service
-
-[Install]
-WantedBy=timers.target
+```bash
+sudo systemctl enable --now odontocrm-backup.timer
+systemctl list-timers odontocrm-backup.timer
+sudo systemctl start odontocrm-backup.service      # forzar una corrida ahora
+sudo journalctl -u odontocrm-backup -n 40 --no-pager
 ```
 
 ```bash
@@ -1515,7 +1823,11 @@ Códigos de salida: `0` correcto · `1` configuración · `2` respaldo inválido
 Secuencia exacta a ejecutar y registrar:
 
 ```bash
-# 0) Respaldar AHORA (para tener un respaldo fresco y verificable)
+# 0-a) Credenciales: el respaldo lee, pero RESTAURAR necesita además un rol con
+#      permiso para DROP/CREATE DATABASE. El script deja las dos cosas en el .pgpass.
+sudo bash /opt/odontocrm/infra/fedora/backup/crear-rol-respaldo.sh --admin-role="$USER"
+
+# 0-b) Respaldar AHORA (para tener un respaldo fresco y verificable)
 sudo /opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config
 FECHA=$(date +%Y-%m-%d)
 
@@ -1544,9 +1856,20 @@ número de tablas coincide con el origen, las tablas pertenecen al rol del servi
 
 Registra el resultado en §20 (y, si algo falla, la causa y la corrección).
 
-> PENDIENTE FASE 10: (P-15) completar esta prueba con las **8 bases** (o al menos una de
-> cada servicio) y anotar: fecha, operador, respaldo usado, resultado y tiempos.
-> El plan §13 Fase 10 lo exige como criterio de aceptación.
+> **Nota medida en la Fase 10: ninguna herramienta de este despliegue pregunta
+> contraseñas.** `psql`, `pg_dump` y `pg_restore` corren siempre con `-w` /
+> `--no-password`: si falta una credencial, **fallan en el acto** diciendo cuál falta.
+> Antes no era así y el restablecimiento se quedó mudo un minuto y medio esperando que
+> alguien tecleara la contraseña del rol `postgres` (que en Fedora entra por *peer* y no
+> tiene contraseña útil por TCP). Si alguna vez ves un `Password for user postgres:` en
+> la clínica, es que se está ejecutando una copia vieja: comprueba con
+> `git -C /opt/odontocrm log --oneline -1`. El paso 0-a deja la credencial de
+> administración en el `.pgpass` y evita el problema de raíz.
+>
+> **P-15 (resuelto en la Fase 10):** la prueba se corre con las **8 bases** de una vez
+> (`--all --keep-verify-db`), se comparan las filas de cada tabla entre la base real y
+> la restaurada, y las `__verif` **se conservan** como evidencia hasta completar el
+> registro de §20.2 (para retirarlas después: `--limpiar-verif --yes`).
 
 ### 16.3 Restaurar la configuración y el almacenamiento
 
@@ -1593,6 +1916,20 @@ declare -A PORTS=(
 fallos=0
 for svc in identity patients scheduling notifications clinical odontogram screens reporting gateway; do
   p="${PORTS[$svc]}"
+  # Un /health 200 no basta: hay que comprobar que quien escucha es la UNIDAD de
+  # systemd y no otro proceso (una pila de desarrollo en los mismos puertos contesta
+  # 200 y los servicios quedan en failed por EADDRINUSE: pasó en el banco de pruebas).
+  unidad="odontocrm@${svc}"; [[ "$svc" == "gateway" ]] && unidad="odontocrm-gateway"
+  activa="$(systemctl is-active "${unidad}.service" 2>/dev/null || true)"
+  pid_unidad="$(systemctl show -p MainPID --value "${unidad}.service" 2>/dev/null || echo 0)"
+  pid_puerto="$(ss -lntpH "sport = :${p}" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)"
+  if [[ "$activa" != "active" ]]; then
+    printf '  FALLA %-14s :%-5s unidad %s\n' "$svc" "$p" "$activa"
+    (( fallos++ ))
+  elif [[ "$pid_puerto" != "$pid_unidad" ]]; then
+    printf '  FALLA %-14s :%-5s lo sirve el PID %s, no %s (PID %s)\n' "$svc" "$p" "${pid_puerto:-nadie}" "$unidad" "$pid_unidad"
+    (( fallos++ ))
+  fi
   for ruta in health ready; do
     code="$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:${p}/${ruta}" || echo 000)"
     if [[ "$code" == "200" ]]; then
@@ -1610,6 +1947,21 @@ sudo install -m 0755 -o root -g root /tmp/verificar-odontocrm.sh /usr/local/bin/
 /usr/local/bin/verificar-odontocrm
 ```
 
+> Desde la Fase 10 esto también está en el comando del servidor:
+> `sudo odontocrm verificar` (lo instala `install.sh` en `/usr/local/bin/odontocrm`,
+> junto con `estado`, `alertas`, `respaldar`, `restaurar`, `servicios`, `logs`,
+> `actualizar` y `modo-test`). El script de aquí abajo queda como referencia de lo que
+> hace por dentro.
+>
+> El verificador comprueba **tres** cosas por servicio: que la unidad esté `active`, que
+> el puerto lo sirva **su** proceso (`MainPID`) y que `/health` y `/ready` respondan 200.
+> La primera versión solo miraba el `curl` y daba verde con la pila equivocada escuchando
+> (banco de pruebas, Fase 10). `sudo npm run estado` hace estas mismas
+> comprobaciones cada cinco minutos en producción (`odontocrm-alertas.timer`), y
+> **necesita `sudo`**: los entornos son `0600 root:root`, así que sin él la cola, el
+> outbox y los envíos quedan «no comprobables» (el tablero lo avisa en vez de
+> inventarse problemas).
+
 ### 17.2 Comprobaciones de infraestructura
 
 ```bash
@@ -1623,7 +1975,15 @@ ss -lntp | grep -E ':(4001|4002|4003|4004|4005|4006|4007|4008|8090|5432)\b'
 
 # Servicios y timers
 systemctl --no-pager --type=service 'odontocrm*' | cat
-systemctl list-timers odontocrm-backup.timer
+systemctl list-timers odontocrm-backup.timer odontocrm-alertas.timer
+
+# Tablero de estado (los 9 servicios, las bases, la cola y el outbox)
+cd /opt/odontocrm
+npm run estado
+
+# Alertas: sin salida y con código 0 significa «todo bien»
+npm run estado -- --alertas; echo "código: $?"
+systemctl --failed
 
 # Reverse proxy y TLS
 curl -sS -o /dev/null -w 'SPA: %{http_code}\n' https://odontocrm.local/
@@ -1656,6 +2016,8 @@ df -h / /var/lib/odontocrm /var/backups/odontocrm
 | 11 | Claves EdDSA generadas y con permisos `0640 root:odontocrm` | `ls -l /etc/odontocrm/keys` | ☐ |
 | 12 | Código desplegado y compilado en `/opt/odontocrm` | `npm ci && npm run build` | ☐ |
 | 13 | Migraciones aplicadas en las 8 bases | §9.3 | ☐ |
+| 13-bis | **Observabilidad**: tablero en verde y alertas programadas | `npm run estado` · `systemctl list-timers odontocrm-alertas.timer` (§10.6) | ☐ |
+| 13-ter | **Rotación de logs** instalada | `logrotate --debug /etc/logrotate.d/odontocrm` (§10.6) | ☐ |
 | 14 | SPA compilada y servida por el proxy | `curl -I https://odontocrm.local/` | ☐ |
 | 15 | Chromium de Playwright instalado y localizable | §9.5 | ☐ |
 | 16 | Los 9 servicios activos y habilitados | `systemctl --type=service 'odontocrm*'` | ☐ |
@@ -1814,43 +2176,61 @@ exige el plan (§13, Fase 10).
 
 | ID | Pendiente | Cómo se comprueba | Verificado | Evidencia |
 | :--- | :--- | :--- | :--- | :--- |
-| P-01 | Versiones exactas de paquetes | `dnf list installed \| grep -E 'postgresql18\|nodejs'` | ☐ | |
-| P-02 | Canal y versión de Node.js 26 | `node --version` tras instalar | ☐ | |
-| P-03 | Nombres de variables vs `.env.example` | `diff` contra el `.env.example` del repo | ☐ | |
-| P-04 | Artefacto compilado (`dist/index.js`) | `ls /opt/odontocrm/services/*/dist/ /opt/odontocrm/apps/gateway/dist/` | ☐ | |
-| P-05 | Flujo de bootstrap y migraciones en producción | `npm run db:bootstrap` · `npm run db:migrate` (§6.4 y §9.3) | ☐ | |
-| P-06 | Dependencias de Chromium / `install-deps` | `ldd … \| grep 'not found'` | ☐ | |
-| P-07 | Chromium bajo `systemd` endurecido | generar un PDF de prueba | ☐ | |
+| P-01 | Versiones exactas de paquetes | `dnf list installed \| grep -E 'postgresql18\|nodejs'` | ✅ | **PC de pruebas (Fedora 44):** `postgresql-server-18.6-1.fc44`, `nodejs-26.10.0-1nodesource`. Ojo: en Fedora 44 el motor viene de los repos de Fedora (`postgresql-server`), **no** de PGDG (`postgresql18-server`): las dos rutas son válidas y la guía explica las dos. |
+| P-02 | Canal y versión de Node.js 26 | `node --version` tras instalar | ✅ | **PC de pruebas:** `setup_26.x` de NodeSource existe y entrega **v26.10.0** con npm 11.19.1; quitó el `nodejs22` de Fedora sin conflictos (nadie más lo usaba). |
+| P-03 | Nombres de variables vs `.env.example` | `diff` contra el `.env.example` del repo | ✅ | **PC de pruebas:** `npm run env:check` → «los .env tienen todas las claves de su plantilla». |
+| P-04 | Artefacto compilado (`dist/index.js`) | `ls /opt/odontocrm/services/*/dist/ /opt/odontocrm/apps/gateway/dist/` | ✅ | **PC de pruebas:** los 8 servicios y el gateway arrancan desde `/opt/odontocrm/**/dist/` con `systemd` (9/9 `active` sirviendo su puerto). |
+| P-05 | Flujo de bootstrap y migraciones en producción | `npm run db:bootstrap` · `npm run db:migrate` (§6.4 y §9.3) | ✅ | **PC de pruebas:** bootstrap sobre el PostgreSQL del sistema por socket `peer` y las 8 migraciones corridas desde el código desplegado, con el entorno de `/etc/odontocrm` inyectado. |
+| P-06 | Dependencias de Chromium / `install-deps` | `ldd … \| grep 'not found'` | ✅ | **PC de pruebas:** `npx playwright install-deps chromium` **no soporta Fedora 44** (mención, no instrucción: `fedora:check-ok`) (cae a `ubuntu24.04` y muere en `apt-get`); con la lista de `dnf` de §4.1 y `ldd` no falta ninguna biblioteca. El plan B de la guía es el camino real. |
+| P-07 | Chromium bajo `systemd` endurecido | generar un PDF de prueba | ✅ | **PC de pruebas:** la exportación de un reporte por el proxy devuelve un PDF de **32 365 bytes** (`%PDF-`) generado por Chromium bajo la unidad endurecida (`Playwright` encontró el navegador en `/var/lib/odontocrm/ms-playwright`). Antes daba **503** porque `reporting.env` no definía `PLAYWRIGHT_BROWSERS_PATH` (§9.5-bis). |
 | P-08 | Nombres reales de roles (`infra/db/bootstrap.mjs`) | `sudo -u postgres psql -c '\du'` | ☐ | |
-| P-09 | Socket de PostgreSQL y `pg_hba.conf` | `ls /var/run/postgresql` · `pg_hba.conf` | ☐ | |
-| P-10 | PM2 en producción: `infra/fedora/ecosystem.config.cjs` con los dos `--env-file-if-exists` y `.env` legibles por el grupo (`0640 root:odontocrm`) | §10.4 · `pm2 ls` · `pm2 logs odontocrm-identity` | ☐ | |
-| P-11 | Proxy elegido + SSE + SELinux | pantalla en vivo + `ausearch` | ☐ | |
-| P-12 | Certificado interno y confianza en dispositivos | `openssl s_client` desde PC/tablet/TV | ☐ | |
-| P-13 | Recursos y cifrado de disco | `free -h` · `df -h` · LUKS | ☐ | |
-| P-14 | Cifrado y copia externa del respaldo | `rsync` + `age`/`gpg` | ☐ | |
+| P-09 | Socket de PostgreSQL y `pg_hba.conf` | `ls /var/run/postgresql` · `pg_hba.conf` | ✅ | **PC de pruebas:** el socket está en `/var/run/postgresql` y `postgresql-setup --initdb` deja **`ident`** en las líneas `host` (no `scram-sha-256`): con eso **ningún servicio entra por TCP** aunque la contraseña sea correcta. Hay que cambiarlas a `scram-sha-256` (§6.3). El administrador entra por el socket con `peer` (`PG_ADMIN_URL=postgres:///postgres?host=/var/run/postgresql`). |
+| P-10 | PM2 en producción: `infra/fedora/ecosystem.config.cjs` con los dos `--env-file-if-exists` y `.env` legibles por el grupo (`0640 root:odontocrm`) | §10.4 · `pm2 ls` · `pm2 logs odontocrm-identity` | ☐ | No validado en la PC de pruebas: el supervisor elegido y probado a fondo es **systemd** (§10.1). PM2 queda como alternativa documentada, sin ensayo. |
+| P-11 | Proxy elegido + SSE + SELinux | pantalla en vivo + `ausearch` | ✅ | **PC de pruebas:** nginx con el SSE de `/api/v1/screens/<pantalla>/stream` sin búfer (`proxy_buffering off`), árbol de proxy con `httpd_can_network_connect` y **sin denegaciones de SELinux** (`ausearch -m avc -ts today`). |
+| P-12 | Certificado interno y confianza en dispositivos | `openssl s_client` desde PC/tablet/TV | ◐ | **PC de pruebas:** certificado emitido con el nombre y la IP, nginx sirviéndolo y **la CA descargable en `http://<servidor>/ca.crt`** (§13.3-bis) con las instrucciones por dispositivo. Falta el paso manual en cada equipo (tablet, móvil, TV), que es lo que se registra aquí al hacerlo en la clínica. |
+| P-13 | Recursos y cifrado de disco | `free -h` · `df -h` · LUKS | ◐ | **PC de pruebas:** 7,6 GiB de RAM con los 9 servicios, PostgreSQL, nginx y Chromium en marcha (4,3 GiB en uso, sin swap) y 88 GB libres en `/`. **El disco NO está cifrado** (`lsblk` sin LUKS): en la clínica hay que decidirlo antes de cargar datos reales. |
+| P-14 | Cifrado y copia externa del respaldo | `rsync` + `age`/`gpg` | ◐ | **PC de pruebas:** el respaldo diario ya se programa solo (`odontocrm-backup.timer`, 03:30 con `Persistent=true`); queda decidir el cifrado del medio externo (§15.5). |
 | P-15 | **Prueba de restauración documentada** | §16.2, con las 8 bases | ☐ | |
-| P-16 | **Reinicio del servidor: los 9 vuelven solos** | §10.5 | ☐ | |
-| P-17 | Cómo se sirve la SPA y su etiqueta SELinux | `curl -I` + `semanage fcontext -l` | ☐ | |
-| P-18 | `BYPASSRLS` para el rol de respaldo (si hay RLS) | `\du+ odonto_backup` | ☐ | |
+| P-16 | **Reinicio del servidor: los 9 vuelven solos** | §10.5 | ✅ | **PC de pruebas (2026-10-04):** tras `systemctl reboot` los **9 servicios y nginx** volvieron solos, sin intervención: `active`, con 4 minutos de vida y `/health` y `/ready` en **200** por HTTPS (`sudo npm run estado`), el gateway incluido. |
+| P-17 | Cómo se sirve la SPA y su etiqueta SELinux | `curl -I` + `semanage fcontext -l` | ✅ | **PC de pruebas:** la SPA se sirve desde `/opt/odontocrm/apps/web/dist` por nginx (200 por https), con la etiqueta `httpd_sys_content_t` aplicada por `semanage fcontext` + `restorecon`. |
+| P-18 | `BYPASSRLS` para el rol de respaldo (si hay RLS) | `\du+ odonto_backup` | ✅ | **PC de pruebas:** el esquema **no usa RLS** (ninguna migración crea políticas), así que no hace falta. Sí hizo falta `USAGE` explícito en los esquemas `drizzle` y `pgboss`, que `pg_read_all_data` no cubre (el respaldo moría con «permiso denegado al esquema drizzle»). |
 | P-19 | Rotación del token del bot y de la clave JWT | §8.5 | ☐ | |
-| P-20 | 8090/4001-4008/5432 inaccesibles desde la LAN | `curl` desde otro equipo | ☐ | |
-| P-21 | Alertas de servicio caído y cola atascada | entregable de observabilidad (Fase 10) | ☐ | |
+| P-20 | 8090/4001-4008/5432 inaccesibles desde la LAN | `curl` desde otro equipo | ◐ | **PC de pruebas:** verificado en la máquina — PostgreSQL y los 9 servicios escuchan **solo en 127.0.0.1** y firewalld únicamente publica 443 (y 80 para el redirect). Falta la comprobación desde **otro equipo** de la LAN (en la clínica: el móvil o la tablet). |
+| P-21 | Alertas de servicio caído y cola atascada | entregable de observabilidad (Fase 10) | ✅ | **PC de pruebas:** `odontocrm-alertas.timer` cada 5 min con `npm run estado --alertas`; el tablero comprueba los 9 servicios, las 9 bases, la cola, el outbox, los envíos y el disco, y **detectó dos fallos reales** durante la validación (la cola sin `EVENTS_DATABASE_URL` y los puertos servidos por otra pila). |
 | P-22 | SELinux con PM2/Chromium | `ausearch -m avc -ts today` | ☐ | |
 | P-23 | Tailscale (opcional) | `tailscale status` + ACL | ☐ | |
-| P-24 | **Secretos solo en `/etc/odontocrm`**: `services/<servicio>/.env` trasladados y borrados; ningún `.env` en `/opt/odontocrm` | §8.6 · `sudo find /opt/odontocrm -type f -name '.env'` | ☐ | |
-| P-25 | Los dos archivos de entorno por servicio se cargan en orden (común → propio) con el supervisor elegido | `systemctl show odontocrm@identity -p EnvironmentFiles` · `node --env-file-if-exists=…` | ☐ | |
+| P-24 | **Secretos solo en `/etc/odontocrm`**: `services/<servicio>/.env` trasladados y borrados; ningún `.env` en `/opt/odontocrm` | §8.6 · `sudo find /opt/odontocrm -type f -name '.env'` | ✅ | **PC de pruebas:** `find /opt/odontocrm -type f -name '.env'` sale **vacío**; los 9 archivos de entorno viven en `/etc/odontocrm` con `0600 root:root` y los lee systemd como root. |
+| P-25 | Los dos archivos de entorno por servicio se cargan en orden (común → propio) con el supervisor elegido | `systemctl show odontocrm@identity -p EnvironmentFiles` · `node --env-file-if-exists=…` | ✅ | **PC de pruebas:** `EnvironmentFiles=/etc/odontocrm/odontocrm.env` seguido de `/etc/odontocrm/identity.env`, en ese orden, en las nueve unidades. |
+| P-26 | **Nombres reales de los paquetes de SELinux**: en Fedora son `setools-console` (+ `setroubleshoot-server` para `sealert`, `audit` para `ausearch`); el que esta guía pedía antes no existe (`fedora:check-ok`) | `dnf provides '*/sealert'` · instalarlos de nuevo sin error | ✅ | Banco de pruebas (Fase 10): el paquete que pedía la guía falló al instalar, `setools-console` se instaló; §4 y §12 corregidos |
+
+### 20.1-bis Hallazgos de la Fase 10 (y su arreglo)
+
+Cada uno se descubrió **corriendo el sistema**, no leyéndolo, y quedó corregido en el
+mismo commit que lo documenta:
+
+| ID | Hallazgo | Arreglo |
+| :--- | :--- | :--- |
+| P-27 | **`TELEGRAM_MODE=polling` no existe.** El esquema acepta `auto \| real \| simulado` (el long polling es el transporte, no un modo). La plantilla de `/etc/odontocrm/notifications.env` lo traía desde la Fase 4 y el servicio **no arrancaba** (`ConfigError`), con él la migración. | Plantilla corregida a `auto`; `install.sh` arregla el valor heredado en archivos existentes (§8.2). |
+| P-28 | **El clúster de Fedora deja `ident` en TCP.** Ningún servicio entra por `127.0.0.1` aunque la contraseña esté bien. | §6.3 explica el síntoma y deja los comandos para pasar a `scram-sha-256`. |
+| P-29 | **`node --watch` muere si falta un `--env-file-if-exists`.** El gateway no tenía `apps/gateway/.env` y la pila entera se caía al arrancar. | El bootstrap crea el archivo vacío con su explicación. |
+| P-30 | **Buscar en la cola de `/flujo` dejaba la pantalla sin paciente en curso** (y sin las acciones de la barra): el filtro se aplicaba a la jornada antes de resolver la cita en curso. | La selección se resuelve sobre la jornada completa; dos pruebas puras lo fijan. |
+| P-31 | **Los eventos publicados mientras otro servicio arrancaba se perdían**: la lista de colas es una foto y el publicador entregaba solo donde ya había cola (10 altas y 30 hallazgos sin proyectar). | El publicador declara las colas de los cinco consumidores conocidos antes de su primer envío; una prueba compara la lista con el código. |
+| P-32 | **`seed:verify` dependía de la collation del clúster**: con `en_US.UTF-8`, `examenes_complementarios` va antes que `examen_extraoral`, y la huella cambiaba de máquina a máquina sin que ningún dato fuera distinto. | Las consultas de texto llevan `collate "C"` (orden por bytes), el mismo que usa el comparador. |
+| P-33 | **El comando `install-deps` de Playwright no soporta Fedora** (probó `ubuntu24.04` y murió en `apt-get`). `fedora:check-ok` | §4.1 ya documenta la lista de `dnf` como plan B; el script de instalación la usa cuando el comando falla. |
+| P-35 | **El guion de ensayo moría en silencio antes del «Resumen»**: quedaba una referencia a una variable que ya no existía y, con `set -u`, el guion abortaba justo después de la prueba de restauración. El síntoma era engañoso —«`--reiniciar` no reinicia»— y la prueba de reinicio no llegaba a ejecutarse nunca. | Un `trap ERR` avisa con la **línea exacta** donde se detuvo, y el reinicio comprueba `systemctl` antes de pedirlo. Probado simulando `systemctl` para no reiniciar la máquina en cada intento. |
+| P-34 | **Intermitencia de las suites de integración**: con cuatro suites en paralelo falla una prueba distinta en cada corrida (esperas del camino outbox → cola → consumidor). Comprobado que **no** la introdujo la Fase 10 (con el cambio de colas revertido en un árbol aparte falla igual). | Tope único y ajustable (`TEST_WAIT_MS`, 30 s). Pendiente de endurecer: no es un fallo de producto. **Medido otra vez al cerrar la Fase 10** (con el despliegue consumiendo la misma máquina): 830/832 en la corrida completa y **los dos mismos archivos pasan en aislamiento** (récipes 11/11 y odontograma 14/14). |
 
 ### 20.2 Registro de la prueba de restauración
 
 | Fecha | Operador | Respaldo usado | Bases probadas | Código de salida | Tablas origen/destino | Observaciones |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| | | | | | | |
+| 2026-10-04 | gabox (PC Fedora de pruebas) | `/var/backups/odontocrm/2026-10-04` (2,6 MB, `--include-config`, 8 bases + `SHA256SUMS` + `manifest.txt`) | las **8** (`--all --keep-verify-db`) | **0** | 7/7, 5/5, 6/6, 7/7, 10/10, 5/5, 4/4, 12/12 | Restauración verificada en las bases temporales `<base>__verif`: **4953 filas en producción y 4953 en las restauradas**, base por base (identity 1551, patients 126, scheduling 746, notifications 82, clinical 578, odontogram 566, screens 80, reporting 1224). Las `__verif` se conservaron como evidencia. **Tres fallos por el camino, los tres corregidos y documentados:** el rol de respaldo no leía por `NOINHERIT` (§15.2), `pg_read_all_data` no cubre los esquemas `drizzle`/`pgboss`, y el restablecimiento se quedaba mudo esperando la contraseña del rol administrador (§16.2). |
 
 ### 20.3 Registro de la prueba de reinicio
 
 | Fecha | `systemctl reboot` ejecutado | Servicios activos tras el reinicio | `/health` de los 9 | Observaciones |
 | :--- | :--- | :--- | :--- | :--- |
-| | | | | |
+| 2026-10-04 | Sí, al final del ensayo (`--reiniciar`) | **9 de 9** (más `nginx`, `postgresql` y el temporizador de alertas) | **200** en los 9, y `/ready` también | Los servicios volvieron **solos** y en el orden correcto (`After=`/`Wants=`), con `↑ 4 min` de vida al mirar. La primera prueba **no reinició** por un fallo del guion de ensayo (moría en silencio antes del «Resumen», hallazgo P-35), no del sistema. **Aviso para el operador:** `npm run estado` necesita `sudo` (los entornos son `0600 root:root`); sin él avisa de que no puede comprobar la cola y el outbox en vez de inventarse problemas. |
 
 ---
 

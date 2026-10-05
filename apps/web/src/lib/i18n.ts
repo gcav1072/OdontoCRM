@@ -30,6 +30,13 @@ const DICCIONARIO = {
   'app.lema': 'Gestión del consultorio odontológico',
   'app.pie': 'Sistema interno del consultorio · Acceso restringido',
 
+  // --- Modo test (ADR 0020) ------------------------------------------------
+  // El banner tiene que decir de un vistazo qué pasa y qué no hacer.
+  'modoTest.titulo': 'MODO TEST',
+  'modoTest.detalle':
+    'Datos ficticios y envíos simulados: no uses esta instalación con pacientes reales.',
+  'modoTest.semilla': 'Semilla {semilla}',
+
   // --- Comunes -------------------------------------------------------------
   'comun.cargando': 'Cargando…',
   'comun.guardando': 'Guardando…',
@@ -244,10 +251,9 @@ const DICCIONARIO = {
   'reportes.formato.pdf': 'PDF',
 
   // --- Módulos en construcción --------------------------------------------
-  'placeholder.titulo': 'Módulo en construcción',
+  'placeholder.titulo': 'Sección en preparación',
   'placeholder.texto':
-    'Este módulo se construye en la Fase {fase} del plan. La navegación y los permisos ya están listos; la funcionalidad se conecta en esa fase.',
-  'placeholder.fase': 'Fase {fase}',
+    'Esta sección todavía no está disponible en tu instalación. La navegación y los permisos ya están listos; la funcionalidad llegará en una próxima actualización.',
   'placeholder.permiso': 'Permiso que lo habilita',
   'placeholder.ruta': 'Ruta',
   'placeholder.disponible': 'Disponible',
@@ -590,9 +596,29 @@ const DICCIONARIO = {
   'pacientes.adjuntos.tipo.laboratorio': 'Laboratorio',
   'pacientes.adjuntos.tipo.otro': 'Otro',
 
-  // Historial clínico y otros módulos que llegan después
-  'pacientes.historia.proximamente':
-    'La historia clínica, las sesiones y los récipes llegan en las fases 6 y 7. Aquí ya quedan los datos del paciente y sus adjuntos.',
+  // --- Sesiones clínicas en la ficha del paciente (lectura) -----------------
+  'clinica.lectura.tituloLista': 'Sesiones clínicas',
+  'clinica.lectura.titulo': 'Sesión clínica',
+  'clinica.lectura.ver': 'Ver',
+  'clinica.lectura.sinSesiones':
+    'Todavía no hay sesiones: se abren al atender al paciente, desde el consultorio o desde el flujo del día.',
+  'clinica.lectura.errorLista': 'No se pudieron cargar las sesiones de este paciente.',
+  'clinica.lectura.errorDetalle': 'No se pudo cargar la sesión. Vuelve a intentarlo.',
+  'clinica.lectura.sinDato': 'Sin registrar',
+  'clinica.lectura.sesionNumero': 'Sesión n.º {numero}',
+  'clinica.lectura.procedimientos': '{total} procedimiento(s)',
+  'clinica.lectura.paciente': 'Paciente',
+  'clinica.lectura.abierta': 'Abierta',
+  'clinica.lectura.cerrada': 'Cerrada',
+  'clinica.lectura.abiertaAun': 'Sigue abierta',
+  'clinica.lectura.abrio': 'Abrió',
+  'clinica.lectura.cerro': 'Firmó el cierre',
+  'clinica.lectura.notaCierre': 'Nota de cierre',
+  'clinica.lectura.enmendada': 'Sesión enmendada',
+  'clinica.lectura.notasInternas': 'Notas internas',
+  'clinica.lectura.notasInternasAviso':
+    'Estas notas son internas: no se imprimen ni se le muestran al paciente.',
+  'clinica.lectura.sinProcedimientos': 'No se registraron procedimientos en esta sesión.',
 
   // Lista y filtros
   'pacientes.lista.titulo': 'Pacientes',
@@ -1084,8 +1110,8 @@ const DICCIONARIO = {
   // Marcar atendido
   'programacion.atendido.titulo': 'Marcar atendido a {paciente}',
   'programacion.atendido.texto':
-    'La historia clínica y las sesiones llegan en la Fase 6. Mientras tanto, marcar «atendido» exige un motivo que queda registrado en la auditoría; cuando exista la sesión clínica cerrada, se enlazará sola.',
-  'programacion.atendido.motivo': 'Motivo (obligatorio mientras no haya historia clínica)',
+    'Si el paciente se atendió sin abrir su historia clínica, escribe el motivo: queda registrado en la auditoría y, cuando exista la sesión clínica cerrada, se enlazará sola.',
+  'programacion.atendido.motivo': 'Motivo (si no hay sesión clínica abierta)',
   'programacion.atendido.motivoCorto': 'Escribe el motivo (mínimo 3 caracteres)',
   'programacion.atendido.motivoAyuda':
     'Por ejemplo: sesión clínica en papel, control de ortodoncia.',
@@ -1214,8 +1240,13 @@ const DICCIONARIO = {
     'El bot de Telegram tiene token configurado y está conectado: los mensajes salen por los canales del paciente (Telegram o WhatsApp).',
   'notificaciones.bot.real.sinConexion':
     'El bot de Telegram tiene token configurado, pero ahora mismo no está conectado: los envíos quedan en cola hasta que vuelva la conexión.',
+  'notificaciones.bot.real.revisarToken':
+    'Si el detalle de abajo dice «Unauthorized» (no autorizado), Telegram está rechazando el token: revisa TELEGRAM_BOT_TOKEN en el archivo de configuración del servidor —el marcador de la plantilla no sirve— y reinicia el servicio de notificaciones.',
   'notificaciones.bot.simulado.texto':
     'No hay token configurado: los mensajes quedan registrados en la bandeja, pero no se envían. Configura el token del bot para activar los envíos reales.',
+  'notificaciones.bot.modoTest.titulo': 'MODO TEST: los envíos están bloqueados',
+  'notificaciones.bot.modoTest.texto':
+    'Aunque el bot tenga token, en modo test ningún mensaje sale a un paciente: se registran como simulados en la bandeja.',
   'notificaciones.bot.canales': 'Canales',
   'notificaciones.bot.canal.sinConfigurar': 'sin configurar',
   'notificaciones.bot.conectado': 'Conectado',
@@ -1564,7 +1595,7 @@ const DICCIONARIO = {
   'pantalla.consultorio.motivo': 'Motivo de la consulta',
   'pantalla.consultorio.criticos': 'Datos críticos',
   'pantalla.consultorio.sinCriticos':
-    'Aún no hay datos clínicos de este paciente: llegan con la historia clínica (Fase 6).',
+    'Sin datos críticos registrados: todavía no se ha abierto la historia clínica de este paciente.',
   'pantalla.consultorio.espera': 'Desde {hora}',
   'pantalla.sala.count': 'En sala: {total}',
 
@@ -1653,8 +1684,7 @@ const DICCIONARIO = {
   'clinica.seccion.consentimiento': 'Consentimiento informado',
   'clinica.seccion.consentimiento.ayuda': 'Riesgos y alternativas que se informaron al paciente.',
   'clinica.seccion.evolucion': 'Evolución clínica',
-  'clinica.seccion.evolucion.ayuda':
-    'Resumen de la atención. Las sesiones clínicas se registran en la Fase 7.',
+  'clinica.seccion.evolucion.ayuda': 'Resumen de la atención de esta visita.',
 
   'clinica.estado.borrador': 'Borrador',
   'clinica.estado.firmada': 'Firmada',

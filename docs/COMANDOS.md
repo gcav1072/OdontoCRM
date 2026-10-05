@@ -8,6 +8,10 @@
 > Referencias: [`README.md`](../README.md) · [`PLAN_MAESTRO_FASES.md`](PLAN_MAESTRO_FASES.md) ·
 > [`SEGURIDAD_SECRETOS.md`](SEGURIDAD_SECRETOS.md) · [ADRs](adr/README.md)
 
+> **¿Buscas los comandos del servidor de la clínica?** Este documento es para
+> **desarrollo** (levantar la pila local, pruebas, seeds). Para el sistema en marcha está
+> [`COMANDOS_PRODUCCION.md`](COMANDOS_PRODUCCION.md).
+
 ## Índice
 
 1. [Los cinco comandos del día a día](#1-los-cinco-comandos-del-día-a-día)
@@ -15,6 +19,7 @@
 3. [Calidad y pruebas](#3-calidad-y-pruebas)
 4. [Base de datos y migraciones](#4-base-de-datos-y-migraciones)
 5. [Datos de prueba (seeds)](#5-datos-de-prueba-seeds)
+5-bis. [Estado del sistema (observabilidad)](#5-bis-estado-del-sistema-observabilidad)
 6. [Arrancar y parar servicios](#6-arrancar-y-parar-servicios)
 7. [Pruebas de humo](#7-pruebas-de-humo)
 8. [Operación en Windows (PM2) y Fedora](#8-operación-en-windows-pm2-y-fedora)
@@ -232,10 +237,42 @@ Si el `.env` quedó con una línea de ceros conservada por el bootstrap, se pued
 | `npm run seed:users` | `admin`, `recepcion` y **un odontólogo por cada uno de `CLINIC.dentists`** (`packages/contracts/src/clinic.ts`) con contraseña temporal | `-- --reset` regenera las contraseñas · `-- --print` **recuerda** las claves sin tocar nada |
 | `npm run seed:demo` | Pacientes ficticios deterministas (cédulas 90.000.000+, `is_fictitious`) | `-- --count 5000`, `-- --reset` (borra **solo** lo ficticio) |
 | `npm run seed:agenda` | Solicitudes y citas de ejemplo en el próximo día de consulta | `-- --reset` (las borra) |
+| **`npm run seed:test`** | **Mundo de prueba completo del modo test** (Fase 10): 40 pacientes, sus solicitudes y citas (atendidas, inasistencias, canceladas, reprogramadas y la jornada de hoy), historias firmadas, sesiones cerradas, odontogramas, récipes emitidos, cupos del mes **y los eventos** que alimentan reportes, auditoría y pantallas | `-- --anchor 2026-10-02` fija el día de referencia · `-- --solo clinical` siembra una parte · `-- --dry-run` explica sin tocar nada |
+| **`npm run seed:verify`** | No crea nada: comprueba por **huellas** que lo sembrado es exactamente el mundo | `-- --con-proyeccion` comprueba además el read model de reportes (necesita la pila arriba) |
+| **`npm run seed:reset`** | Borra **solo** el mundo de `seed:test` (pacientes, citas, historias, sesiones, récipes y sus PDF, odontogramas, avisos, proyección, auditoría del seed y sus eventos) | — |
 
 > Los tres `--reset` quitan **solo datos de prueba**: pacientes ficticios, sus citas y las
 > contraseñas. La clínica (historias, sesiones, récipes, odontogramas) y la auditoría se quedan.
 > Para una base limpia de verdad: [`npm run db:reset`](#empezar-de-cero-dbreset).
+
+### El modo test (Fase 10)
+
+`seed:test` es el seed determinista del [ADR 0020](adr/0020-modo-test.md) y **solo corre con el
+modo test activo**:
+
+```bash
+# En el .env de la raíz (nunca en la instalación de la clínica)
+TEST_MODE=true
+ALLOW_TEST_MODE=true
+
+npm run build          # los seeds corren sobre dist/: compila primero
+npm run seed:test      # siembra (repetirlo no duplica: es idempotente)
+npm run seed:verify    # comprueba que lo sembrado es el mundo
+npm run seed:reset     # lo borra y deja las secuencias como estaban
+```
+
+- **Con `NODE_ENV=production` los tres comandos se niegan a correr**, aunque las banderas estén
+  en `true`: es el criterio de aceptación de la fase.
+- Los datos llevan cédulas **90.000.000+**, tickets y récipes del rango reservado **900.000+** y
+  la nota «MODO TEST»; la interfaz pinta el banner rojo y los envíos reales quedan bloqueados.
+- El día de referencia es **hoy** (hora de Venezuela) salvo que se fije con `--anchor`: así la
+  jornada siempre tiene sala de espera y consultorio, y los reportes tienen semanas de historia.
+- **Los eventos se entregan cuando la pila está arriba** (el outbox de cada servicio los publica y
+  los consumidores proyectan). Con la pila parada, `seed:verify` valida las bases operativas pero
+  el read model de reportes queda vacío hasta que arranques.
+
+Los tres comandos anteriores (`seed:users`, `seed:demo`, `seed:agenda`) siguen existiendo y
+**no emiten eventos**: son para poblar a mano. El mundo del modo test es el camino completo.
 
 ### ¿Cuál era la clave del admin?
 
@@ -274,6 +311,38 @@ Detalles que conviene saber:
 - `seed:agenda` necesita pacientes ficticios: si no hay, lo dice y no hace nada.
 - Las pruebas de humo cambian la contraseña del administrador. Después:
   `npm run seed:users -- --reset`.
+
+---
+
+## 5-bis. Estado del sistema (observabilidad)
+
+```bash
+npm run estado                      # una foto: 9 servicios, bases, cola, outbox, envíos
+npm run estado -- --alertas         # solo los problemas; sale con 1 si hay alguno
+npm run estado -- --json            # la foto en JSON (para una máquina)
+npm run estado -- --sin-servicios   # sin preguntar por HTTP (pila parada)
+npm run estado -- --vigilar 5       # refresca cada 5 s (terminal abierta)
+```
+
+Qué mira, y por qué importa cada cosa:
+
+| Sección | Qué dice | Cuándo es un problema |
+| :--- | :--- | :--- |
+| Servicios | `/health` y `/ready` de los 9, con la latencia y el chequeo que falla | alguno no responde o no está listo |
+| Bases | versión, tamaño y conexiones | no se puede conectar |
+| Cola | `pg-boss`: pendientes, fallidos y completados por cola | hay fallidos o pendientes viejos |
+| Outbox | eventos sin publicar, con reintentos y último error | lleva más de 5 min sin publicar (el publicador no corre) |
+| Envíos | mensajes en cola, fallidos y sin canal | hay envíos atascados (> 15 min) o fallidos |
+| Reportes | eventos proyectados y último refresco | el último refresco falló |
+| Disco | espacio libre en la raíz | queda menos del 10 % |
+
+**Modo test**: si está activo, el tablero lo avisa en la primera línea (los datos son
+ficticios y los envíos están bloqueados).
+
+En Fedora, `infra/fedora/systemd/odontocrm-alertas.timer` ejecuta
+`npm run estado -- --alertas` cada cinco minutos: sin salida y con código 0 significa
+«todo bien»; si algo falla, el servicio queda en `failed` y se ve con
+`systemctl --failed`. Detalle en [INSTALL.md §10.6](../infra/fedora/INSTALL.md).
 
 ---
 

@@ -14,6 +14,7 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
+import { TEST_WAIT_MS } from '@odontocrm/testing';
 import { and, eq, like, sql } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -765,7 +766,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     );
     await flush();
 
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + TEST_WAIT_MS;
     let rows: {
       action: string;
       summary: string | null;

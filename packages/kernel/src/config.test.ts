@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 
-import { baseEnvSchema, ConfigError, isProduction, loadConfig } from './config.js';
+import {
+  baseEnvSchema,
+  ConfigError,
+  isProduction,
+  loadConfig,
+  testModeEnabled,
+  testModeStatus,
+} from './config.js';
 
 const serviceSchema = baseEnvSchema.extend({
   DATABASE_URL: z.string().min(1),
@@ -77,5 +84,68 @@ describe('loadConfig', () => {
     });
 
     expect(isProduction(config)).toBe(true);
+  });
+
+  it('el modo test viene apagado por defecto', () => {
+    const config = loadConfig({
+      service: 'prueba',
+      schema: serviceSchema,
+      env: { DATABASE_URL: 'postgres://ejemplo', PORT: '4001' },
+    });
+
+    expect(config.TEST_MODE).toBe(false);
+    expect(config.ALLOW_TEST_MODE).toBe(false);
+    expect(testModeEnabled(config)).toBe(false);
+  });
+
+  it('el modo test se enciende solo en desarrollo y con las dos banderas', () => {
+    const conPermiso = loadConfig({
+      service: 'prueba',
+      schema: serviceSchema,
+      env: {
+        DATABASE_URL: 'postgres://ejemplo',
+        PORT: '4001',
+        TEST_MODE: 'true',
+        ALLOW_TEST_MODE: 'true',
+      },
+    });
+
+    expect(testModeEnabled(conPermiso)).toBe(true);
+
+    const sinPermiso = loadConfig({
+      service: 'prueba',
+      schema: serviceSchema,
+      env: { DATABASE_URL: 'postgres://ejemplo', PORT: '4001', TEST_MODE: 'true' },
+    });
+
+    expect(testModeEnabled(sinPermiso)).toBe(false);
+    expect(testModeStatus(sinPermiso).state).toBe('needs_allow');
+  });
+
+  it('en producción el modo test queda bloqueado aunque se pida y se permita', () => {
+    const config = loadConfig({
+      service: 'prueba',
+      schema: serviceSchema,
+      env: {
+        DATABASE_URL: 'postgres://ejemplo',
+        PORT: '4001',
+        NODE_ENV: 'production',
+        TEST_MODE: 'true',
+        ALLOW_TEST_MODE: 'true',
+      },
+    });
+
+    expect(testModeEnabled(config)).toBe(false);
+    expect(testModeStatus(config).state).toBe('blocked_in_production');
+  });
+
+  it('una bandera con un valor raro no se interpreta como verdadera: falla al arrancar', () => {
+    expect(() =>
+      loadConfig({
+        service: 'prueba',
+        schema: serviceSchema,
+        env: { DATABASE_URL: 'postgres://ejemplo', PORT: '4001', TEST_MODE: 'si' },
+      }),
+    ).toThrowError(ConfigError);
   });
 });

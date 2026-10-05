@@ -1,0 +1,514 @@
+#!/usr/bin/env bash
+# =============================================================================
+# OdontoCRM · comandos del servidor (una sola puerta)
+#
+#   sudo odontocrm                 # ayuda
+#   sudo odontocrm estado          # tablero completo (con el entorno de producción)
+#   sudo odontocrm alertas         # solo los problemas; código 1 si hay alguno
+#   sudo odontocrm respaldar       # respaldo ahora (bases + configuración)
+#   sudo odontocrm verificar       # los 9 servicios: unidad, puerto y /health
+#   sudo odontocrm servicios       # estado de las 10 unidades
+#   sudo odontocrm logs clinical   # últimos registros de un servicio
+#   sudo odontocrm actualizar      # traer el código nuevo y reiniciar (RUNBOOK §8)
+#
+# Existe para que en la clínica no haya que recordar rutas, `sudo`, variables de
+# entorno ni en qué orden se carga todo. Cada orden delega en el script que ya está
+# probado: aquí solo se pone el entorno correcto y se dice qué se está haciendo.
+# =============================================================================
+set -uo pipefail
+
+CODE_DIR="${CODE_DIR:-/opt/odontocrm}"
+ETC_DIR="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}"
+SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting)
+
+C_OK=$'\e[32m'; C_AV=$'\e[33m'; C_ER=$'\e[31m'; C_TI=$'\e[1m'; C_RE=$'\e[0m'
+ok()   { printf '  %s✔%s %s\n' "$C_OK" "$C_RE" "$1"; }
+av()   { printf '  %s!%s %s\n' "$C_AV" "$C_RE" "$1"; }
+err()  { printf '  %s✖%s %s\n' "$C_ER" "$C_RE" "$1"; }
+morir(){ err "$1"; exit 1; }
+
+necesita_root() {
+  [[ $EUID -eq 0 ]] && return 0
+  err "esta orden necesita sudo: sudo odontocrm $ORDEN"
+  exit 1
+}
+
+ayuda() {
+  cat <<EOF
+${C_TI}OdontoCRM · comandos del servidor${C_RE}
+
+  sudo odontocrm estado            Tablero completo: servicios, unidades, bases, cola,
+                                   outbox, envíos, reportes y alertas.
+  sudo odontocrm alertas           Solo los problemas. Sale con 1 si hay alguno
+                                   (es lo que ejecuta el temporizador cada 5 minutos).
+  sudo odontocrm respaldar         Respaldo ahora mismo de las 8 bases y de la
+                                   configuración (/etc/odontocrm, CONTIENE SECRETOS).
+  sudo odontocrm restaurar ...     Restaurar desde un respaldo (pasa las opciones tal
+                                   cual: --from /var/backups/odontocrm/<fecha> --all --yes).
+  sudo odontocrm verificar         Los 9 servicios: unidad activa, puerto servido por
+                                   ELLA y /health + /ready en 200.
+  sudo odontocrm servicios         Estado de las 10 unidades de systemd.
+  sudo odontocrm logs <servicio|gateway|nginx|postgres> [líneas]
+                                   Últimos registros.
+  sudo odontocrm actualizar [--rama=<nombre>]
+                                   Traer el código nuevo, compilar, migrar y reiniciar
+                                   (lo mismo que RUNBOOK §8, sin acordarse de nada).
+                                   Sigue la rama que ya tiene el despliegue; con
+                                   `--rama=main` cambia a esa (y se queda en ella).
+  sudo odontocrm parar             Detener los 9 servicios (el gateway primero: es la
+                                   puerta). nginx y PostgreSQL se quedan.
+  sudo odontocrm arrancar          Arrancarlos en orden y comprobar que los 9 responden.
+  sudo odontocrm reiniciar         Parar y arrancar (para aplicar configuración).
+  sudo odontocrm compilar          Solo compilar (TypeScript → dist/), sin tocar servicios.
+                                   El ciclo completo es: parar → compilar → arrancar.
+  sudo odontocrm recompilar        Compilar y reiniciar de una vez, sin tocar el repositorio
+                                   ni la base (atajo de lo anterior).
+  sudo odontocrm certificado       Muestra el certificado y el estado de la CA interna, y
+                                   exporta los archivos para instalar en tablets, móviles
+                                   y TVs (--exportar /ruta). Es lo que quita el aviso de
+                                   «conexión no privada» en los demás equipos.
+  sudo odontocrm selinux           Denegaciones de SELinux de hoy, con la causa más
+                                   probable y el comando que lo arregla. «Sin
+                                   denegaciones» es lo que quieres ver.
+  sudo odontocrm con-entorno <servicio> -- <comando>
+                                   Ejecuta cualquier herramienta con el entorno de
+                                   producción ya cargado (común + del servicio). Los
+                                   secretos no se escriben en la línea de comandos.
+                                   Ej.: sudo odontocrm con-entorno identity -- \
+                                        node services/identity/dist/seed.js --reset
+  sudo odontocrm modo-test <on|off|estado>
+                                   Leer o escribir el modo test (nunca en producción
+                                   con datos reales: ver el ADR 0020).
+
+Directorio del código: $CODE_DIR
+Configuración:         $ETC_DIR
+EOF
+}
+
+ORDEN="${1:-ayuda}"
+shift || true
+
+case "$ORDEN" in
+  ayuda|-h|--help|help) ayuda ;;
+
+  estado)
+    necesita_root
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    ODONTOCRM_ENV_DIR="$ETC_DIR" exec node tools/estado.mjs "$@"
+    ;;
+
+  alertas)
+    necesita_root
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    ODONTOCRM_ENV_DIR="$ETC_DIR" exec node tools/estado.mjs --alertas "$@"
+    ;;
+
+  respaldar|respaldo)
+    necesita_root
+    exec bash "$CODE_DIR/infra/fedora/backup/odontocrm-backup.sh" --include-config "$@"
+    ;;
+
+  restaurar)
+    necesita_root
+    exec bash "$CODE_DIR/infra/fedora/backup/odontocrm-restore.sh" "$@"
+    ;;
+
+  verificar)
+    necesita_root
+    command -v curl >/dev/null || morir 'falta curl'
+    declare -A PUERTOS=([identity]=4001 [patients]=4002 [scheduling]=4003 [notifications]=4004
+                        [clinical]=4005 [odontogram]=4006 [screens]=4007 [reporting]=4008 [gateway]=8090)
+    fallos=0
+    for svc in "${SERVICIOS[@]}" gateway; do
+      puerto="${PUERTOS[$svc]}"
+      unidad="odontocrm@$svc"; [[ "$svc" == "gateway" ]] && unidad="odontocrm-gateway"
+      activa="$(systemctl is-active "$unidad.service" 2>/dev/null || true)"
+      pid_unidad="$(systemctl show -p MainPID --value "$unidad.service" 2>/dev/null || echo 0)"
+      pid_puerto="$(ss -lntpH "sport = :$puerto" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)"
+      if [[ "$activa" != "active" ]]; then
+        err "$unidad: $activa"; fallos=$((fallos + 1)); continue
+      fi
+      if [[ "$pid_puerto" != "$pid_unidad" ]]; then
+        err "el puerto $puerto lo sirve el PID ${pid_puerto:-nadie}, no $unidad (PID $pid_unidad)"
+        fallos=$((fallos + 1)); continue
+      fi
+      for ruta in health ready; do
+        codigo="$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:$puerto/$ruta" || echo 000)"
+        if [[ "$codigo" == "200" ]]; then ok "$svc :$puerto /$ruta 200"
+        else err "$svc :$puerto /$ruta → $codigo"; fallos=$((fallos + 1)); fi
+      done
+    done
+    echo
+    if (( fallos == 0 )); then ok 'los 9 servicios están bien'; else err "$fallos comprobación(es) con problemas"; fi
+    exit $(( fallos > 0 ))
+    ;;
+
+  servicios)
+    necesita_root
+    systemctl --no-pager --type=service --all 'odontocrm*' | cat
+    echo
+    systemctl --no-pager --type=service --all 'nginx*' 'postgresql*' | cat
+    ;;
+
+  logs)
+    necesita_root
+    que="${1:-clinical}"; shift || true
+    lineas="${1:-50}"
+    case "$que" in
+      gateway) exec journalctl -u odontocrm-gateway -n "$lineas" --no-pager ;;
+      nginx)   exec journalctl -u nginx -n "$lineas" --no-pager ;;
+      postgres|postgresql) exec journalctl -u postgresql -n "$lineas" --no-pager ;;
+      *)       exec journalctl -u "odontocrm@$que" -n "$lineas" --no-pager ;;
+    esac
+    ;;
+
+  actualizar)
+    necesita_root
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    # El comando instalado en /usr/local/bin es una COPIA: si el repositorio trae una
+    # versión nueva, se refresca antes de seguir. Sin esto, uno arregla algo, ejecuta
+    # `actualizar` y sigue viendo el comportamiento viejo (pasó con la descarga de la
+    # CA: el código ya estaba, la copia instalada no).
+    if [[ -f "$CODE_DIR/infra/fedora/odontocrm" ]] &&
+       ! cmp -s "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm; then
+      install -m 0755 -o root -g root "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm
+      ok 'comando del servidor actualizado a la versión del repositorio'
+    fi
+    git config --global --add safe.directory "$CODE_DIR" 2>/dev/null || true
+    printf '%sActualizando %s%s\n' "$C_TI" "$CODE_DIR" "$C_RE"
+    # Qué rama se despliega: por defecto, la que ya tiene el despliegue (así
+    # `actualizar` es predecible: nunca salta de rama solo). Con `--rama=<nombre>` se
+    # cambia a propósito —por ejemplo, al pasar de una rama de fase a `main`—.
+    rama_objetivo=""
+    for arg in "$@"; do
+      case "$arg" in --rama=*) rama_objetivo="${arg#*=}" ;; esac
+    done
+    git fetch --prune origin || morir 'no pude traer el código nuevo'
+    rama_actual="$(git rev-parse --abbrev-ref HEAD)"
+    rama="${rama_objetivo:-$rama_actual}"
+    if [[ -n "$rama_objetivo" && "$rama_objetivo" != "$rama_actual" ]]; then
+      av "cambio de rama: $rama_actual → $rama_objetivo"
+    fi
+    git checkout -B "$rama" "origin/$rama" ||
+      morir "no pude cambiar a la rama '$rama' (¿existe en el origen? ¿la escribiste bien?)"
+    ok "rama $rama · código en $(git rev-parse --short HEAD)"
+    npm ci --silent || morir 'falló npm ci'
+    npm run build >/dev/null 2>&1 || morir 'falló la compilación'
+    ok 'compilado'
+    for s in "${SERVICIOS[@]}"; do
+      env -i PATH="$PATH" HOME=/root NODE_ENV=production \
+        bash -c "set -a; source '$ETC_DIR/odontocrm.env'; source '$ETC_DIR/$s.env'; set +a; \
+                 cd '$CODE_DIR' && node services/$s/dist/db/migrate.js" >"/tmp/odontocrm-migrar-$s.log" 2>&1 ||
+        { tail -5 "/tmp/odontocrm-migrar-$s.log"; morir "fallaron las migraciones de $s"; }
+    done
+    ok 'migraciones aplicadas'
+    systemctl restart postgresql >/dev/null 2>&1 || true
+    systemctl restart odontocrm.target 2>/dev/null || {
+      for s in "${SERVICIOS[@]}"; do systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 || true; done
+      systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || true
+    }
+    sleep 6
+    exec "$0" verificar
+    ;;
+
+  certificado|cert)
+    necesita_root
+    CA_DIR="${CAROOT:-/root/.local/share/mkcert}"
+    CA_FIJA="$ETC_DIR/keys/odontocrm-ca.crt"
+    destino=""
+    for arg in "$@"; do
+      case "$arg" in
+        --exportar=*) destino="${arg#*=}" ;;
+        --exportar) shift; destino="${1:-}" ;;
+      esac
+    done
+
+    IP_CA="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1)"
+    [[ -n "$IP_CA" ]] || IP_CA="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    NOMBRE_CA="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null | awk '{print $1}')"
+    [[ -n "$NOMBRE_CA" ]] || NOMBRE_CA="odontocrm.local"
+
+    printf '%sCertificado interno (TLS)%s\n' "$C_TI" "$C_RE"
+    if [[ -f /etc/pki/tls/certs/odontocrm.crt ]]; then
+      ok "servidor: /etc/pki/tls/certs/odontocrm.crt"
+      openssl x509 -in /etc/pki/tls/certs/odontocrm.crt -noout \
+        -subject -dates -ext subjectAltName 2>/dev/null | sed 's/^/    /'
+    else
+      err 'no está el certificado del servidor: ejecuta la fase TLS (INSTALL.md §13.2)'
+    fi
+
+    # La CA que hay que instalar en los demás equipos.
+    origen="$CA_FIJA"
+    [[ -f "$origen" ]] || origen="$CA_DIR/rootCA.pem"
+    if [[ -f "$origen" ]]; then
+      ok "autoridad (CA) interna: $origen"
+      openssl x509 -in "$origen" -noout -subject -dates 2>/dev/null | sed 's/^/    /'
+
+      # Se deja una copia estable, que entra en el respaldo de configuración.
+      install -d -m 0755 "$ETC_DIR/keys"
+      install -m 0644 -o root -g root "$origen" "$CA_FIJA" 2>/dev/null || true
+      ok "copia estable en $CA_FIJA (entra en el respaldo: --include-config)"
+
+      # Y la copia PÚBLICA, que es la que nginx puede servir: /etc/odontocrm es
+      # accesible solo para root y odontocrm, y nginx corre como usuario `nginx`
+      # (servirla desde ahí daba 403 en texto plano). La CA es un certificado
+      # público: no hay nada que proteger en que sea legible.
+      install -d -m 0755 /var/www/odontocrm/ca
+      install -m 0644 -o root -g root "$origen" /var/www/odontocrm/ca/odontocrm-ca.crt
+      if command -v semanage >/dev/null && [[ "$(getenforce 2>/dev/null)" == "Enforcing" ]]; then
+        semanage fcontext -a -t httpd_sys_content_t '/var/www/odontocrm(/.*)?' 2>/dev/null ||
+          semanage fcontext -m -t httpd_sys_content_t '/var/www/odontocrm(/.*)?' 2>/dev/null || true
+        restorecon -R /var/www/odontocrm 2>/dev/null || true
+      fi
+      ok 'copia pública en /var/www/odontocrm/ca/odontocrm-ca.crt (legible por nginx)'
+
+      # ¿El proxy la sirve de verdad? Si la configuración de nginx es anterior a que
+      # existiera `/ca.crt`, la petición acaba en la SPA y el equipo ve la página de
+      # «no encontrada» del propio sistema, que despista mucho. Pasó al probarlo desde
+      # otro dispositivo: el código estaba, la config instalada no.
+      if ! grep -q '/ca.crt' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null; then
+        av 'la configuración del proxy NO sirve /ca.crt todavía: los equipos verán «no encontrada»'
+        av 'arréglalo con:  sudo bash '"$CODE_DIR"'/infra/fedora/nginx/instalar.sh'
+      elif ! grep -q '/var/www/odontocrm' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null; then
+        av 'la configuración del proxy es anterior a la corrección: apunta a /etc/odontocrm,'
+        av 'que nginx NO puede leer (daba 403). Arrégialo con:'
+        av '  sudo bash '"$CODE_DIR"'/infra/fedora/nginx/instalar.sh'
+      else
+        ca_http="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1/ca.crt || echo 000)"
+        if [[ "$ca_http" == "200" ]]; then
+          ok "el proxy sirve /ca.crt (comprobado: 200). Página para los equipos:"
+          printf '    %shttp://%s/ca.crt%s\n' "$C_TI" "${IP_CA:-<IP-del-servidor>}" "$C_RE"
+        else
+          av "el proxy responde $ca_http en /ca.crt: revisa permisos y SELinux"
+          av 'suele ser la copia pública: sudo bash '"$CODE_DIR"'/infra/fedora/nginx/instalar.sh'
+        fi
+      fi
+
+      if [[ -z "$destino" ]]; then
+        destino="/var/lib/odontocrm/ca-para-dispositivos"
+      fi
+      install -d -m 0755 "$destino"
+      install -m 0644 "$origen" "$destino/odontocrm-ca.crt"     # Android/Windows/Linux
+      install -m 0644 "$origen" "$destino/odontocrm-ca.pem"     # iOS/macOS/Firefox
+      ok "archivos listos en $destino: odontocrm-ca.crt y odontocrm-ca.pem"
+
+      cat <<EOF
+
+  ${C_TI}Cómo quitar el aviso en cada equipo${C_RE} (uno por uno, se hace una sola vez):
+
+    ${C_TI}LA PÁGINA QUE HAY QUE ABRIR EN CADA EQUIPO${C_RE}
+
+        http://${IP_CA:-<IP-del-servidor>}/ca.crt
+        (aquí: http://${IP_CA}/ca.crt — escríbela tal cual en el navegador del equipo)
+
+      La aplicación, después de instalarla:  https://${NOMBRE_CA:-odontocrm.local}  o  https://${IP_CA}
+
+    ${C_TI}Tablet o móvil Android${C_RE}
+      1. Abre https://$(hostname -I 2>/dev/null | awk '{print $1}')/ca.crt y acepta la descarga
+         (el navegador avisará antes: es normal, todavía no confía en el certificado).
+      2. Ajustes → Seguridad → Cifrado y credenciales → Instalar un certificado
+         → Certificado de CA → elige el archivo descargado.
+      3. Android pide «Instalar de todos modos» y avisa de que la red podría
+         supervisarse: es tu propio servidor, adelante.
+
+    ${C_TI}iPhone / iPad${C_RE}
+      1. Abre https://$(hostname -I 2>/dev/null | awk '{print $1}')/ca.crt y acepta «Permitir».
+      2. Ajustes → General → VPN y gestión de dispositivos → instala el perfil.
+      3. Ajustes → General → Información → Ajustes de confianza de certificados
+         → activa «odontocrm» (sin este paso el certificado se instala pero no se confía).
+
+    ${C_TI}Windows${C_RE}
+      1. Descarga odontocrm-ca.crt y ábrelo → «Instalar certificado» →
+         Equipo local → «Colocar todos los certificados en el siguiente almacén» →
+         Entidades de certificación raíz de confianza.
+
+    ${C_TI}Mac${C_RE}
+      1. Abre odontocrm-ca.pem → Llavero «Sistema» → doble clic → Confiar siempre.
+
+    ${C_TI}Linux (Arch, Fedora, Ubuntu…)${C_RE}
+      Arch:    sudo trust anchor --store odontocrm-ca.crt
+               (o: sudo cp odontocrm-ca.crt /etc/ca-certificates/trust-source/anchors/ && sudo update-ca-trust)
+      Fedora:  sudo cp odontocrm-ca.crt /etc/pki/ca-trust/source/anchors/ && sudo update-ca-trust
+      Ubuntu:  sudo cp odontocrm-ca.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates
+      Comprobar sin -k:  curl -sI https://${IP_CA:-<IP>}/ | head -1
+      Firefox va aparte: about:config → security.enterprise_roots.enabled = true
+
+    ${C_TI}Smart TV${C_RE}
+      Muchas no permiten instalar una CA. Alternativa: entrar por HTTP solo para la
+      pantalla (si el televisor lo permite) o conectarle un mini-PC/tablet.
+      ${C_AV}Nunca${C_RE} desactives la validación del servidor para «que funcione»: quita
+      la protección justo donde circulan los datos clínicos.
+
+    ${C_TI}La guía completa, sistema por sistema${C_RE}
+      docs/CERTIFICADO_EN_LOS_EQUIPOS.md  (Android, iPhone/iPad, Windows, macOS,
+      Linux con Arch/Fedora/Ubuntu, Firefox y televisores)
+
+    ${C_TI}Si prefieres no instalar nada${C_RE}
+      Puedes aceptar el aviso en cada equipo («Avanzado» → «Continuar»): funciona
+      igual, pero el candado queda tachado y cualquiera que entre en la misma red
+      podría suplantar al servidor. Para la clínica, instala la CA.
+
+EOF
+    else
+      err "no encuentro la CA de mkcert (busqué $CA_FIJA y $CA_DIR/rootCA.pem)"
+      av 'se crea con: sudo mkcert -install   (INSTALL.md §13.2)'
+    fi
+    ;;
+
+  selinux)
+    necesita_root
+    command -v getenforce >/dev/null || morir 'este sistema no usa SELinux'
+    estado="$(getenforce)"
+    printf '%sSELinux: %s%s\n' "$C_TI" "$estado" "$C_RE"
+    if [[ "$estado" != "Enforcing" ]]; then
+      av 'SELinux no está en Enforcing: no puede estar bloqueando nada'
+    fi
+
+    # Etiquetas de las rutas del proyecto (para comparar con las denegaciones).
+    if command -v semanage >/dev/null; then
+      echo '  Etiquetas del proyecto:'
+      semanage fcontext -l 2>/dev/null | grep -E '/opt/odontocrm|/var/www/odontocrm|/var/lib/odontocrm|/var/log/odontocrm|/etc/odontocrm' |
+        sed 's/^/    /' || av 'sin etiquetas propias (se aplican con install.sh y nginx/instalar.sh)'
+    fi
+
+    command -v ausearch >/dev/null || morir 'falta ausearch (paquete audit)'
+    denegaciones="$(ausearch -m avc -ts today 2>/dev/null | grep -c 'denied' || true)"
+    echo
+    if [[ "${denegaciones:-0}" == "0" ]]; then
+      ok 'sin denegaciones hoy: SELinux no está bloqueando nada'
+      exit 0
+    fi
+
+    av "$denegaciones denegación(es) hoy. Últimas diez:"
+    ausearch -m avc -ts today 2>/dev/null | grep 'denied' | tail -10 |
+      sed -E 's/.*(denied[^\n]*)/    \1/' | cut -c1-160
+
+    echo
+    echo "  ${C_TI}Causas típicas y su arreglo${C_RE}"
+    echo "    · nginx no puede leer un archivo (avc: denied { read } ... path=/…):"
+    echo "        sudo semanage fcontext -a -t httpd_sys_content_t '<ruta>(/.*)?' && sudo restorecon -R <ruta>"
+    echo "    · nginx no puede conectarse al gateway (name_connect ... port=8090):"
+    echo "        sudo setsebool -P httpd_can_network_connect on"
+    echo "    · Chromium/Playwright (execmod, execmem) o un archivo en /tmp:"
+    echo "        revisa que el servicio use /var/lib/odontocrm y no escriba en /opt"
+    echo "    · Si son de ANTES de un arreglo, quita el ruido y vuelve a probar:"
+    echo "        sudo ausearch -m avc -ts today --raw | audit2allow -a   (solo para LEER, no lo apliques a ciegas)"
+    echo
+    av 'nunca desactives SELinux para «que funcione»: se etiqueta la ruta, que es lo correcto'
+    exit 2
+    ;;
+
+  con-entorno|env)
+    necesita_root
+    servicio="${1:-}"; shift || true
+    [[ "${1:-}" == "--" ]] && shift
+    [[ -n "$servicio" && -f "$ETC_DIR/$servicio.env" ]] ||
+      morir "uso: odontocrm con-entorno <servicio> -- <comando>   (servicios: ${SERVICIOS[*]}, gateway)"
+    [[ $# -gt 0 ]] || morir 'falta el comando que hay que ejecutar después de «--»'
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    # Los secretos se leen de los archivos y se pasan por entorno, nunca como
+    # argumentos (en `ps` los vería cualquiera de la máquina).
+    export SERVICIO="$servicio" ETC_DIR="$ETC_DIR"
+    exec env -i PATH="$PATH" HOME=/root NODE_ENV=production TZ="${TZ:-America/Caracas}" \
+      ETC_DIR="$ETC_DIR" SERVICIO="$servicio" ODONTOCRM_ENV_DIR="$ETC_DIR" \
+      bash -c 'set -a; . "$ETC_DIR/odontocrm.env"; . "$ETC_DIR/$SERVICIO.env"; set +a; exec "$@"' \
+      _ "$@"
+    ;;
+
+  parar|stop|detener)
+    necesita_root
+    # El gateway PRIMERO: es la puerta de entrada. Si se para al final, las peticiones
+    # que estén en curso se quedan colgadas contra servicios que ya no están.
+    systemctl stop odontocrm-gateway.service >/dev/null 2>&1 || true
+    ok 'gateway detenido (la puerta)'
+    parados=0
+    for s in "${SERVICIOS[@]}"; do
+      systemctl stop "odontocrm@$s.service" >/dev/null 2>&1 && parados=$((parados + 1))
+    done
+    ok "$parados servicio(s) detenido(s)"
+    av 'nginx y PostgreSQL siguen en marcha (el proxy dará 502 mientras tanto)'
+    av 'para detenerlos también:  sudo systemctl stop nginx postgresql'
+    ;;
+
+  arrancar|start)
+    necesita_root
+    systemctl is-active --quiet postgresql || systemctl start postgresql
+    systemctl is-active --quiet nginx || systemctl start nginx
+    for s in "${SERVICIOS[@]}"; do
+      systemctl start "odontocrm@$s.service" >/dev/null 2>&1 || av "no pude arrancar odontocrm@$s"
+    done
+    systemctl start odontocrm-gateway.service >/dev/null 2>&1 || av 'no pude arrancar el gateway'
+    ok 'servicios arrancados; comprobando…'
+    sleep 6
+    exec "$0" verificar
+    ;;
+
+  reiniciar|restart|reinicio)
+    necesita_root
+    systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || true
+    for s in "${SERVICIOS[@]}"; do
+      systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 || av "no pude reiniciar odontocrm@$s"
+    done
+    systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || true
+    ok 'servicios reiniciados; comprobando…'
+    sleep 6
+    exec "$0" verificar
+    ;;
+
+  compilar|build)
+    necesita_root
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    if [[ -f "$CODE_DIR/infra/fedora/odontocrm" ]] &&
+       ! cmp -s "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm; then
+      install -m 0755 -o root -g root "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm
+      av 'el comando del servidor estaba viejo: se actualizó (vuelve a ejecutar si no ves los cambios)'
+    fi
+    ok "versión en el disco: $(git rev-parse --short HEAD 2>/dev/null || echo 'sin git')"
+    npm ci --silent || morir 'falló npm ci'
+    npm run build >/dev/null 2>&1 || morir 'falló la compilación'
+    ok 'compilado (TypeScript → dist/ y la SPA en apps/web/dist)'
+    av 'los servicios siguen con el código anterior hasta que se reinicien: usa «odontocrm arrancar» (o «reiniciar»)'
+    ;;
+
+  recompilar|rebuild)
+    necesita_root
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    printf '%sRecompilando %s%s\n' "$C_TI" "$CODE_DIR" "$C_RE"
+    ok "versión en el disco: $(git rev-parse --short HEAD 2>/dev/null || echo 'sin git')"
+    npm ci --silent || morir 'falló npm ci'
+    npm run build >/dev/null 2>&1 || morir 'falló la compilación'
+    ok 'compilado (TypeScript → dist/)'
+    for s in "${SERVICIOS[@]}"; do
+      systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 || av "no pude reiniciar odontocrm@$s"
+    done
+    systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || av 'no pude reiniciar el gateway'
+    sleep 6
+    av 'no se aplicaron migraciones: si el cambio toca el esquema, usa «odontocrm actualizar»'
+    exec "$0" verificar
+    ;;
+
+  modo-test)
+    necesita_root
+    accion="${1:-estado}"; archivo="$ETC_DIR/odontocrm.env"
+    case "$accion" in
+      on|off)
+        valor=$([[ "$accion" == "on" ]] && echo true || echo false)
+        sed -i "s|^TEST_MODE=.*|TEST_MODE=${valor}|; s|^ALLOW_TEST_MODE=.*|ALLOW_TEST_MODE=${valor}|" "$archivo"
+        if [[ "$valor" == "true" && "${NODE_ENV:-production}" == "production" ]]; then
+          av 'ojo: con NODE_ENV=production el modo test sigue bloqueado (ADR 0020)'
+        fi
+        ok "modo test $accion en $archivo (reinicia los servicios para que lo lean)"
+        for s in "${SERVICIOS[@]}"; do systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 || true; done
+        systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || true
+        ;;
+      estado)
+        grep -E '^(TEST_MODE|ALLOW_TEST_MODE)=' "$archivo" 2>/dev/null | sed 's/^/  /' || av 'no encuentro el archivo común'
+        curl -s --max-time 4 http://127.0.0.1:8090/api/v1/meta 2>/dev/null |
+          python3 -c 'import json,sys; print("  el gateway dice:", json.load(sys.stdin).get("testMode"))' 2>/dev/null || true
+        ;;
+      *) morir 'uso: odontocrm modo-test <on|off|estado>' ;;
+    esac
+    ;;
+
+  *) err "orden desconocida: $ORDEN"; echo; ayuda; exit 2 ;;
+esac

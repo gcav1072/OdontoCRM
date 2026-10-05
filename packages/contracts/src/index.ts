@@ -20,5 +20,6 @@ export * from './domain/reporting.js';
 export * from './domain/scheduling.js';
 export * from './domain/screens.js';
 export * from './domain/state-machine.js';
+export * from './domain/system.js';
 export * from './domain/ticket.js';
 export * from './domain/user.js';

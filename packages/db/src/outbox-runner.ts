@@ -1,7 +1,7 @@
 import type { PgBoss } from 'pg-boss';
 import type pg from 'pg';
 
-import { enqueueDomainEvent } from './boss.js';
+import { enqueueDomainEvent, ensureConsumerQueues } from './boss.js';
 import { dispatchOutbox, type DispatchOutboxResult } from './outbox.js';
 
 export interface OutboxRunnerOptions {
@@ -52,8 +52,23 @@ export const createOutboxRunner = (options: OutboxRunnerOptions): OutboxRunner =
   const intervalMs = Math.max(500, options.intervalMs ?? 2_000);
   let timer: NodeJS.Timeout | undefined;
   let running: Promise<DispatchOutboxResult> | undefined;
+  let preparado: Promise<void> | undefined;
+
+  /**
+   * Garantiza las colas de los consumidores **antes del primer envío** (una sola
+   * vez por proceso). Sin esto, lo que este servicio publicara mientras otro
+   * arrancaba se perdía para ese consumidor: la lista de colas es una foto.
+   */
+  const preparar = (): Promise<void> => {
+    preparado ??= ensureConsumerQueues(
+      options.boss,
+      options.consumerQueue === undefined ? undefined : [options.consumerQueue],
+    );
+    return preparado;
+  };
 
   const flush = async (): Promise<DispatchOutboxResult> => {
+    await preparar();
     const client = await options.pool.connect();
     try {
       return await dispatchOutbox({

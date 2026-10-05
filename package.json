@@ -41,6 +41,7 @@
     "stack:fijo": "node tools/stack.mjs fijo",
     "stack:down": "node tools/stack.mjs down",
     "stack:guard": "node tools/stack.mjs guard",
+    "estado": "node tools/estado.mjs",
     "check:web": "node tools/check-web.mjs",
     "audit": "node tools/audit-conexiones.mjs",
     "telegram:menu": "node tools/telegram-menu.mjs",
@@ -82,6 +83,7 @@
     "reports:latencia": "node tools/reportes-latencia.mjs",
     "e2e:flujo": "node tools/e2e-flujo.mjs",
     "e2e:reportes": "node tools/e2e-reportes.mjs",
+    "e2e:clinica": "node tools/e2e-clinica.mjs",
     "check-secrets": "node tools/check-secrets.mjs",
     "db:bootstrap": "node infra/db/bootstrap.mjs",
     "db:migrate": "node tools/migrate-all.mjs",
@@ -99,7 +101,11 @@
     "seed:users": "node --env-file-if-exists=.env --env-file-if-exists=services/identity/.env services/identity/dist/seed.js",
     "seed:demo": "node --env-file-if-exists=.env --env-file-if-exists=services/patients/.env services/patients/dist/seed.js",
     "seed:agenda": "node --env-file-if-exists=.env --env-file-if-exists=services/scheduling/.env services/scheduling/dist/seed.js",
-    "verify": "npm run check-secrets && npm run lint && npm run format:check && npm run typecheck && npm run build && npm run test"
+    "seed:test": "node tools/seed-test.mjs",
+    "seed:reset": "node tools/seed-test.mjs --reset",
+    "seed:verify": "node tools/seed-verify.mjs",
+    "verify": "npm run check-secrets && npm run fedora:check && npm run lint && npm run format:check && npm run typecheck && npm run build && npm run test",
+    "fedora:check": "node tools/plantillas-fedora.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

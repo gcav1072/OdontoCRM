@@ -12,6 +12,7 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
+import { TEST_WAIT_MS } from '@odontocrm/testing';
 import { ConflictError } from '@odontocrm/kernel';
 import { createDiskBlobStore, type BlobStore } from '@odontocrm/storage';
 import { eq, sql } from 'drizzle-orm';
@@ -168,7 +169,7 @@ describeWithDatabases('récipes y adjuntos: número, PDF A5, QR y auditoría', (
   const waitForAudit = async (
     predicate: (rows: Awaited<ReturnType<typeof auditRows>>) => boolean,
   ): Promise<Awaited<ReturnType<typeof auditRows>>> => {
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + TEST_WAIT_MS;
     let rows = await auditRows();
     while (!predicate(rows) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 250));

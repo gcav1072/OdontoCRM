@@ -6,7 +6,7 @@ import {
   NOTIFICATION_MAX_ATTEMPTS,
   NOTIFICATION_RETRY_DELAYS_SECONDS,
 } from '@odontocrm/contracts';
-import { baseEnvSchema, loadConfig } from '@odontocrm/kernel';
+import { baseEnvSchema, loadConfig, testModeEnabled } from '@odontocrm/kernel';
 import { z } from 'zod';
 
 export const notificationsEnvSchema = baseEnvSchema.extend({
@@ -22,7 +22,14 @@ export const notificationsEnvSchema = baseEnvSchema.extend({
    * Sin token el servicio arranca en **modo simulado**: todo el flujo funciona
    * (cola, plantillas, `.ics`, reintentos) pero los mensajes no salen a Telegram.
    */
-  TELEGRAM_BOT_TOKEN: z.string().min(20).optional(),
+  TELEGRAM_BOT_TOKEN: z
+    .string()
+    .min(20)
+    .optional()
+    // Un marcador de plantilla (`CAMBIAR_TOKEN_BOTFATHER`) **no es un token**: cumple el
+    // mínimo de longitud y el servicio diría «configurado» para luego no conectar, que es
+    // un diagnóstico que cuesta media hora. Se trata como ausente y se avisa.
+    .transform((valor) => (valor === undefined || /^CAMBIAR/i.test(valor) ? undefined : valor)),
   /** Usuario del bot sin `@`, para armar el enlace `t.me/<usuario>?start=<código>`. */
   TELEGRAM_BOT_USERNAME: z.string().min(1).optional(),
   /** `auto` usa el bot real si hay token; `simulado` fuerza las pruebas sin red. */
@@ -83,9 +90,17 @@ export type NotificationsConfig = z.infer<typeof notificationsEnvSchema>;
 export const loadNotificationsConfig = (env: Record<string, string | undefined> = process.env) =>
   loadConfig({ service: 'notifications', schema: notificationsEnvSchema, env });
 
-/** Modo efectivo del bot: con token y sin forzar simulado, es el bot real. */
+/**
+ * Modo efectivo del bot: con token y sin forzar simulado, es el bot real.
+ *
+ * **Modo test (ADR 0020):** con el modo test activo el bot es **siempre**
+ * simulado, aunque haya token configurado. Es el bloqueo que pide el plan:
+ * mientras se enseña o se prueba el sistema, ningún mensaje sale a un paciente.
+ */
 export const telegramMode = (config: NotificationsConfig): 'real' | 'simulado' =>
-  config.TELEGRAM_MODE === 'simulado' || config.TELEGRAM_BOT_TOKEN === undefined
+  config.TELEGRAM_MODE === 'simulado' ||
+  config.TELEGRAM_BOT_TOKEN === undefined ||
+  testModeEnabled(config)
     ? 'simulado'
     : 'real';
 

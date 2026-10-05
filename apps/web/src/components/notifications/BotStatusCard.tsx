@@ -158,12 +158,27 @@ export const BotStatusCard = ({
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/* Modo test (ADR 0020): primero de todo, porque cambia lo que significa
+            el resto de la tarjeta: los envíos no salen, se registran simulados. */}
+        {status.testMode && (
+          <Alert variant="danger" title={t('notificaciones.bot.modoTest.titulo')}>
+            {t('notificaciones.bot.modoTest.texto')}
+          </Alert>
+        )}
+
         {esReal ? (
           <Alert variant={status.connected ? 'success' : 'warning'}>
             {t(
               status.connected
                 ? 'notificaciones.bot.real.texto'
                 : 'notificaciones.bot.real.sinConexion',
+            )}
+            {/* No basta con decir «no conectado»: hay que decir dónde mirar. El
+                caso típico es el marcador de la plantilla (`CAMBIAR_TOKEN_…`), que
+                pasó en el despliegue de la Fase 10: el servicio lo daba por
+                configurado y Telegram lo rechazaba. */}
+            {!status.connected && (
+              <span className="block pt-1">{t('notificaciones.bot.real.revisarToken')}</span>
             )}
           </Alert>
         ) : (

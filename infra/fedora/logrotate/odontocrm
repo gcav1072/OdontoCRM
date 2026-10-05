@@ -1,0 +1,33 @@
+# Rotación de los logs de OdontoCRM (Fedora).
+#
+# Se instala en /etc/logrotate.d/odontocrm (lo hace infra/fedora/install.sh --apply)
+# y lo ejecuta el temporizador de logrotate que trae el sistema.
+#
+# ¿Qué logs son estos? Los de la operación —`backup.log`, `restore.log` y lo que
+# escriban los scripts— más los de PM2 si se elige ese supervisor
+# (`/var/log/odontocrm/pm2-*.log`). Con **systemd** los servicios escriben al
+# journal, que ya rota solo (`journalctl --vacuum-time=30d` si hace falta): este
+# archivo no los toca.
+#
+# Los respaldos **no** se rotan aquí: su retención la lleva el propio script
+# (`odontocrm-backup.sh --keep N`), que borra los más viejos por fecha.
+
+/var/log/odontocrm/*.log {
+    daily
+    rotate 30
+    missingok
+    notifempty
+    compress
+    delaycompress
+    dateext
+    dateformat -%Y%m%d
+    create 0640 odontocrm odontocrm
+    sharedscripts
+    postrotate
+        # PM2 sigue escribiendo en el mismo descriptor: hay que pedirle que
+        # reabra sus archivos. Si PM2 no está instalado, no pasa nada.
+        if command -v pm2 >/dev/null 2>&1; then
+            su -s /bin/sh odontocrm -c 'PM2_HOME=/var/lib/odontocrm/.pm2 pm2 reloadLogs' >/dev/null 2>&1 || true
+        fi
+    endscript
+}

@@ -363,6 +363,16 @@ try {
   await fila.waitFor();
   check('la cita del día aparece en la cola', await fila.isVisible());
 
+  /**
+   * Se **pulsa la fila** antes de actuar: es lo que hace la doctora (busca al
+   * paciente y lo elige en la cola) y, además, la pantalla puede estar mostrando
+   * otro paciente en curso —en una jornada con gente en sala y en consultorio, el
+   * centro abre con esa cita—. La barra de acciones trabaja siempre sobre la cita
+   * seleccionada.
+   */
+  await fila.click();
+  await page.getByRole('button', { name: `Registrar llegada: ${nombrePaciente}` }).waitFor();
+
   // El botón del lobby solo aparece si la cita admite el llamado ahora mismo; se
   // registra la llegada desde la barra superior.
   await page.getByRole('button', { name: `Registrar llegada: ${nombrePaciente}` }).click();
@@ -392,7 +402,7 @@ try {
 
   /* 3.4 El expediente se abre en el centro, sin cambiar de ruta. */
   paso = 'expediente';
-  await fila.click();
+  // La fila sigue seleccionada desde el paso anterior: el expediente ya está abierto.
   await page.getByRole('tab', { name: /Sesión clínica/ }).waitFor();
   check(
     'el expediente del paciente se abre en el centro de `/flujo`',

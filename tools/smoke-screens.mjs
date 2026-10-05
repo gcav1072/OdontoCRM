@@ -278,9 +278,12 @@ check(
 );
 controlador.abort();
 
-const nombreAbreviado = `${String(patient.fullName).split(/\s+/)[0] ?? ''} ${(
-  String(patient.fullName).split(/\s+/)[1] ?? ' '
-).charAt(0)}.`;
+// La regla de la pantalla vive en `abbreviateName` (contratos): primera palabra y
+// la **inicial en mayúscula** de la segunda. Se replica aquí a propósito —el humo
+// comprueba lo que ve la sala, no lo que dice una función— pero con la misma regla:
+// un nombre como «Alexander de Jesús Peña» se abrevia «Alexander D.».
+const partes = String(patient.fullName).split(/\s+/);
+const nombreAbreviado = `${partes[0] ?? ''} ${(partes[1] ?? ' ').charAt(0).toLocaleUpperCase('es-VE')}.`;
 
 const llamadoLobby = (await screenCall('/api/v1/screens/lobby')).body?.calls?.[0];
 check(

@@ -4,6 +4,137 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fedora] — Los paquetes de SELinux se llaman como son · 2026-10-04
+
+### Corregido
+
+- **`setools-conftools` no existe en Fedora.** La guía de instalación (§4 y §12) y `install.sh`
+  pedían ese paquete, que `dnf` rechaza con «no hay coincidencias». El paquete real es
+  **`setools-console`**, y las herramientas que la guía le atribuía vienen de otros sitios:
+  `sealert` de **`setroubleshoot-server`**, `audit2why` de **`policycoreutils-python-utils`** y
+  `ausearch` de **`audit`** —los tres añadidos a la lista de paquetes base—. Lo destapó la primera
+  instalación en el Fedora del banco de pruebas y queda anotado como **P-26** en el registro de la
+  Fase 10.
+- La tabla de paquetes de §4 ahora dice **qué trae cada uno** y añade el recurso para no volver a
+  tropezar: `dnf provides '*/<comando>'` dice a qué paquete pertenece una herramienta antes de darla
+  por perdida.
+
+## [Fase 10] — Modo test, observabilidad y endurecimiento · 2026-10-04 · tag `fase-10`
+
+### Añadido
+
+- **Modo test (ADR 0020)**: `TEST_MODE` + `ALLOW_TEST_MODE` en el contrato, con las
+  reglas en un solo sitio (`resolveTestMode`). Se activa pidiéndolo **y**
+  permitiéndolo, y queda **bloqueado con `NODE_ENV=production`** aunque las dos
+  banderas estén en `true`. `GET /api/v1/meta` publica el estado del sistema sin
+  sesión, la SPA pinta el **banner rojo «MODO TEST»** en toda la interfaz (acceso y
+  pantallas kiosko incluidas) y el servicio de notificaciones pasa a **simulado**
+  aunque tenga token: en modo test **ningún mensaje sale a un paciente**.
+- **Seed determinista del mundo de prueba**: `npm run seed:test`, `seed:reset` y
+  `seed:verify` ([ADR 0042](docs/adr/0042-el-seed-escribe-filas-y-eventos.md)). Un
+  mundo puro (`packages/testing/src/test-world`) genera 40 pacientes ficticios
+  (cédulas 90.000.000+), 46 solicitudes con ticket, 42 citas (27 atendidas, 4
+  inasistencias, cancelada, reprogramada y la jornada de hoy con sala y consultorio),
+  22 historias firmadas, 27 sesiones cerradas, 22 récipes y 156 hallazgos — **y los
+  593 eventos** que el sistema habría publicado, con fecha histórica. Con eso el
+  **read model de reportes se llena por el camino real** (la deuda que dejó anotada la
+  Fase 9), la auditoría tiene el recorrido completo y `seed:verify` comprueba por
+  huellas que lo sembrado es el mundo. Repetirlo no duplica nada; los consecutivos
+  van al rango reservado 900.000+ y las secuencias quedan apuntando al último número
+  real.
+- **Observabilidad**: `npm run estado`, el tablero que mira los 9 servicios (con
+  `/health` y `/ready` y el detalle del chequeo que falla), las 9 bases, la cola por
+  cola, el outbox de cada servicio, los envíos atascados y el disco. Con `--alertas`
+  no imprime nada y sale 0 cuando todo va bien: eso es lo que vigila
+  `odontocrm-alertas.timer` en Fedora cada cinco minutos (el servicio queda en
+  `failed` si algo falla). El `/ready` del gateway ahora **pregunta a sus servicios**
+  y responde 503 con el nombre del que no contesta. Rotación de logs con
+  `infra/fedora/logrotate/odontocrm` (diaria, 30 días, comprimida).
+- **Aceptación del flujo completo**: `npm run e2e:clinica` encadena las once pruebas
+  del día de la clínica —acceso, bot, agenda, pantallas, pacientes, historia y sesión,
+  odontograma, récipes, reportes y auditoría, y las dos de navegador— y da un solo
+  veredicto. Con `--sin-bot` la parte del bot se marca como **pendiente** en lugar de
+  fallar (para una máquina sin token); sin esa bandera, no tenerlo es un fallo.
+- **Runbook de operación** ([`infra/fedora/RUNBOOK.md`](infra/fedora/RUNBOOK.md)) y
+  **guía para el consultorio** ([`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md)).
+- **Despliegue Fedora validado en el banco de pruebas**, con el registro de verificación
+  en [`INSTALL.md` §20](infra/fedora/INSTALL.md): los 9 servicios con `systemd` (unidad
+  activa **y** sirviendo su puerto), nginx con TLS interno y `firewalld` publicando solo
+  443, SELinux en `Enforcing` sin denegaciones, respaldo + **restauración probada fila a
+  fila** (4953 → 4953 en las 8 bases) y la **prueba de reinicio** (los 9 vuelven solos).
+- **Un solo comando para el servidor** (`/usr/local/bin/odontocrm`): `estado`, `alertas`,
+  `respaldar`, `restaurar`, `verificar`, `servicios`, `logs`, `actualizar`, `parar`,
+  `arrancar`, `reiniciar`, `compilar`, `recompilar`, `certificado`, `selinux`,
+  `con-entorno` y `modo-test`. Cada orden delega en el script ya probado, pone el entorno
+  correcto y **avisa si falta `sudo`** en vez de hacer media faena.
+- **`docs/COMANDOS_PRODUCCION.md`**: los comandos del sistema en marcha (incluida la
+  tabla que traduce los de desarrollo) y **`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`**: cómo
+  instalar el certificado interno en Android, iPhone/iPad, Windows, macOS, **Linux
+  (Arch, Fedora, Ubuntu)** y televisores.
+- **Lectura de las sesiones clínicas desde la ficha del paciente**: la tarjeta
+  «Sesiones clínicas» lista las atenciones y cada una se abre en modo lectura (motivo,
+  examen, procedimientos con su pieza, diagnóstico, indicaciones, próxima cita, firma).
+  Antes se veía que había sesiones, pero no se podía leer ninguna.
+
+### Corregido
+
+- **Buscar en la cola de `/flujo` dejaba la pantalla sin paciente en curso** y, con
+  él, sin las acciones de la barra: el filtro se aplicaba a la jornada entera antes de
+  resolver qué cita estaba en curso. Ahora el filtro es de la lista y la selección se
+  resuelve sobre la jornada completa (lo destapó la aceptación con una jornada
+  sembrada de verdad).
+- **Los eventos publicados mientras otro servicio arrancaba se perdían.** La lista de
+  colas es una foto y el publicador entregaba solo donde ya había cola: con la pila
+  recién levantada, 10 altas de paciente y 30 hallazgos se quedaron sin proyectar en
+  reportes (y el mismo agujero alcanzaba a la auditoría y a las pantallas). Ahora el
+  publicador declara las colas de los consumidores conocidos **antes** de su primer
+  envío, y la lista es la de los cinco servicios que de verdad consumen (una prueba la
+  compara con el código).
+- **El número del récipe viajaba como entero** en los eventos del seed y el
+  consumidor de reportes lo descartaba como carga inválida: el reporte de recetas
+  quedaba en cero. Ahora viaja formateado (`RX-900001`), como lo publica el servicio.
+- **El gateway moría al arrancar** si faltaba `apps/gateway/.env`: `node --watch` no
+  tolera un `--env-file-if-exists` inexistente (medido con Node 22 en Fedora). El
+  bootstrap lo crea vacío.
+- **La impresión en modo oscuro salía con los colores del tema**: las páginas
+  imprimibles usan los mismos tokens que la aplicación, así que un equipo en modo oscuro
+  imprimía el odontograma con líneas claras sobre blanco y los dibujos casi invisibles.
+  Ahora la página imprimible fuerza la paleta clara mientras está montada (y devuelve el
+  tema al salir), el papel es blanco pase lo que pase y los PDF del servidor fijan el
+  esquema de color explícitamente.
+- **En la interfaz ya no se habla de fases**: las tarjetas de módulo llevaban un badge
+  «Fase N» y varios textos decían «llega en la Fase 6» cuando esa funcionalidad ya
+  existía. Se quitaron del código visible, se reescribieron esos textos y `/recepcion`
+  (que caía en «módulo en construcción») redirige a Secretaría.
+- **`/secretaría` no mostraba el nombre abreviado** del paciente cuando su segundo
+  nombre empieza en minúscula («Alexander de Jesús Peña» → «Alexander D.»): la prueba
+  de humo replicaba mal la regla real (`abbreviateName`).
+
+### Lo que destapó la validación real (28 hallazgos)
+
+Los ocho primeros de la lista están en el registro de
+[`INSTALL.md` §20.1-bis](infra/fedora/INSTALL.md); el resto salió al desplegar, probar
+desde otros equipos y usar el sistema como se usa en un consultorio. Los que más
+importan, porque **no se ven leyendo el código**:
+
+- `pg_hba.conf` de Fedora deja `ident` en TCP: **ningún servicio entra por la red**
+  aunque la contraseña sea correcta.
+- `TELEGRAM_MODE=polling` no existe (el *long polling* es el transporte, no un modo) y
+  el servicio no arrancaba con él.
+- Faltaba `EVENTS_DATABASE_URL` en el despliegue: cada servicio habría usado **su** base
+  para la cola y los eventos no habrían llegado a los demás.
+- `STORAGE_ROOT` y `STORAGE_MAX_UPLOAD_MB` no los lee nadie (los reales son
+  `STORAGE_DIR` y `MAX_FILE_BYTES`): el almacén quedaba en `/opt`, de solo lectura.
+- La exportación de reportes a PDF respondía **503** porque `reporting` no definía
+  `PLAYWRIGHT_BROWSERS_PATH`.
+- El rol de respaldo no leía nada por crearse `NOINHERIT` (la pertenencia a
+  `pg_read_all_data` queda sin efecto), y `pg_read_all_data` no cubre los esquemas
+  `drizzle`/`pgboss`.
+- El restablecimiento se quedaba **mudo** esperando una contraseña; ahora ninguna
+  herramienta del despliegue pregunta y, si falta una credencial, falla diciendo cuál.
+- El tablero sin `sudo` inventaba nueve alertas falsas (no podía leer los entornos).
+- Buscar en la cola de `/flujo` dejaba la pantalla sin paciente en curso.
+
 ## [Fase 9] — Reportes, KPIs y auditoría · 2026-10-04 · tag `fase-9`
 
 ### Añadido

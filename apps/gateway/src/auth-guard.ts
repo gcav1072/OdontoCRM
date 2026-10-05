@@ -12,14 +12,17 @@ import {
 import type { FastifyInstance } from 'fastify';
 
 /**
- * Rutas que no exigen token: salud y el ciclo de autenticación. `logout` es
- * público a propósito: un usuario con el token de acceso caducado debe poder
- * cerrar sesión con su cookie. El **login de pantalla kiosko** también lo es: la
- * pantalla no tiene usuario ni cookie, cambia su token de dispositivo por un JWT.
+ * Rutas que no exigen token: salud, **el estado del sistema** y el ciclo de
+ * autenticación. `logout` es público a propósito: un usuario con el token de
+ * acceso caducado debe poder cerrar sesión con su cookie. El **login de pantalla
+ * kiosko** también lo es: la pantalla no tiene usuario ni cookie, cambia su token
+ * de dispositivo por un JWT. `/api/v1/meta` lo es porque el banner de MODO TEST
+ * tiene que verse **antes** de iniciar sesión, y no revela nada del consultorio.
  */
 export const PUBLIC_PATHS: readonly string[] = [
   '/health',
   '/ready',
+  '/api/v1/meta',
   '/api/v1/auth/login',
   '/api/v1/auth/refresh',
   '/api/v1/auth/logout',

@@ -2,7 +2,7 @@
   "name": "@odontocrm/testing",
   "version": "0.1.0",
   "private": true,
-  "description": "Utilidades de prueba: generador pseudoaleatorio determinista y fábricas de datos",
+  "description": "Utilidades de prueba: generador pseudoaleatorio determinista, fábricas de datos y el mundo del modo test",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,6 +19,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@odontocrm/contracts": "*"
+    "@odontocrm/contracts": "*",
+    "@odontocrm/events": "*"
   }
 }

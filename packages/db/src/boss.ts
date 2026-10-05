@@ -56,6 +56,44 @@ export const ensureDomainEventsQueue = async (
 /** Cola propia de un consumidor concreto (`domain-events.<servicio>`). */
 export const consumerQueueName = (service: string): string => `${DOMAIN_EVENTS_QUEUE}.${service}`;
 
+/**
+ * Servicios que **consumen** eventos: los que registran un manejador de la cola
+ * (`registerDomainEventHandler`). Son cinco; `scheduling`, `clinical` y
+ * `odontogram` solo publican, y el gateway es borde puro.
+ *
+ * La lista tiene que ser exacta en los dos sentidos: si falta un consumidor, sus
+ * eventos se pierden cuando la pila arranca desordenada; si sobra uno, se le crea
+ * una cola que nadie trabaja y el tablero de estado la denuncia para siempre. Hay
+ * una prueba que la compara con el código de los servicios (`boss.test.ts`).
+ */
+export const EVENT_CONSUMERS: readonly string[] = [
+  'identity',
+  'patients',
+  'notifications',
+  'screens',
+  'reporting',
+];
+
+/**
+ * Declara **todas** las colas de consumidores antes de publicar.
+ *
+ * Existe por un fallo medido en la puesta en marcha del 2026-10-04: la lista de
+ * colas es una foto y `enqueueDomainEvent` publica solo donde ya hay cola, así que
+ * los eventos que un servicio publicaba **mientras otro todavía arrancaba** no
+ * llegaban nunca a ese consumidor (con la pila recién levantada, los 10 primeros
+ * altas de paciente y los 30 primeros hallazgos se quedaron sin proyectar en
+ * reportes; el mismo agujero afectaba a la auditoría y a las pantallas). Ahora el
+ * publicador garantiza las colas conocidas **antes** de su primer envío, y el
+ * orden de arranque deja de importar.
+ */
+export const ensureConsumerQueues = async (
+  boss: PgBoss,
+  /** Nombres de cola **completos**; por defecto, la de cada consumidor conocido. */
+  queues: readonly string[] = EVENT_CONSUMERS.map(consumerQueueName),
+): Promise<void> => {
+  await Promise.all(queues.map((queue) => ensureDomainEventsQueue(boss, queue)));
+};
+
 /** Lo mínimo que necesita el publicador: así se puede probar con un doble. */
 export interface DomainEventQueueClient {
   getQueues(): Promise<{ name: string }[]>;

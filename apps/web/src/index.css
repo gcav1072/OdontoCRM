@@ -35,6 +35,20 @@
     outline-offset: 2px;
   }
 
+  /*
+   * Al imprimir, el papel es blanco. Las páginas imprimibles quitan la clase `dark`
+   * mientras están montadas (ver `lib/impresion.ts`), pero si alguien imprime con
+   * Ctrl+P desde una pantalla en modo oscuro, esto evita que salga un fondo oscuro.
+   * Los tokens siguen siendo los del tema; para eso está el hook.
+   */
+  @media print {
+    html,
+    body {
+      background: #fff !important;
+      color: #000;
+    }
+  }
+
   /* Los diálogos nativos heredan el velo del tema. */
   dialog::backdrop {
     background-color: var(--color-overlay);

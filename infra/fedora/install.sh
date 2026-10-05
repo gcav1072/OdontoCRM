@@ -96,6 +96,7 @@ readonly SERVICES=(
   "reporting:4008:odonto_reporting"
 )
 readonly GATEWAY_PORT=8090
+readonly PLAYWRIGHT_DIR="/var/lib/odontocrm/ms-playwright"   # navegadores (Fase 7)
 readonly GATEWAY_DB=""
 
 # -----------------------------------------------------------------------------
@@ -259,7 +260,10 @@ PKGS_BASE=(
   git tar gzip xz zstd rsync curl ca-certificates
   logrotate chrony
   firewalld
-  policycoreutils-python-utils setools-conftools
+  # SELinux: `semanage`/`restorecon` y `audit2why` vienen en policycoreutils-python-utils,
+  # `sesearch`/`seinfo` en setools-console, `sealert` en setroubleshoot-server y
+  # `ausearch` en audit. El nombre `setools-conftools` que traía la guía no existe en Fedora.
+  policycoreutils-python-utils setools-console setroubleshoot-server audit
 )
 PKGS_PG=(
   "postgresql${PG_MAJOR}-server"
@@ -269,7 +273,9 @@ PKGS_PG=(
 # > PENDIENTE FASE 10: la lista exacta puede variar según la versión de Fedora y
 #   de Playwright. Verificación recomendada tras instalar el navegador:
 #     ldd /var/lib/odontocrm/ms-playwright/chromium-*/chrome-linux/chrome | grep 'not found'
-#   y `npx playwright install-deps chromium` (si la distribución es soportada).
+#   y `npx playwright install-deps chromium` (si la distribución es soportada; en
+#   Fedora NO lo está y se instala la lista de abajo). El intento se deja a propósito.
+#   (fedora:check-ok)
 PKGS_CHROMIUM=(
   nss nspr atk at-spi2-atk cups-libs
   libdrm mesa-libgbm libxshmfence
@@ -561,9 +567,11 @@ EOF
   cat <<EOF
 
 # --- Origen permitido de la SPA (CORS del gateway) ---------------------------
-# WEB_ORIGIN debe ser EXACTAMENTE el origen con el que se abre la SPA en el
-# navegador (esquema + host + puerto), o el CORS la bloqueará.
-WEB_ORIGIN=https://CAMBIAR_HOST_O_IP_DEL_SERVIDOR
+# WEB_ORIGIN: el origen con el que se abre la SPA en el navegador (esquema + host +
+# puerto), o el CORS la bloqueará. Admite VARIOS separados por comas: pon el nombre y
+# la IP con los que entran los equipos de la clínica, porque el navegador manda el que
+# se teclee.
+WEB_ORIGIN=https://CAMBIAR_HOST, https://CAMBIAR_IP_DEL_SERVIDOR
 EOF
 }
 
@@ -580,6 +588,10 @@ env_service_body() {
 # .env del repositorio se BORRA: no debe quedar ninguno dentro de ${CODE_DIR}
 # (INSTALL.md §8.6). No la escriba a mano salvo que sepa lo que hace.
 DATABASE_URL=postgres://CAMBIAR_USUARIO_DB:CAMBIAR_PASSWORD_DB@127.0.0.1:5432/${db}
+# EVENTS_DATABASE_URL (la cola compartida, odonto_events) NO se pone aquí: la escribe
+# `npm run db:bootstrap` en services/<servicio>/.env y se traslada a este archivo en
+# INSTALL.md §8.6. Sin ella, cada servicio usaría su propia base para la cola y los
+# eventos no llegarían a los demás.
 DATABASE_POOL_MAX=10
 EOF
   fi
@@ -591,6 +603,80 @@ EOF
 # en el .env del repositorio (o genérelo con: openssl rand -base64 48).
 INTERNAL_SERVICE_SECRET=CAMBIAR_SECRETO_INTERNO_COMPARTIDO
 EOF
+}
+
+# Arregla valores heredados que impiden arrancar. `install.sh` nunca sobrescribe un
+# archivo existente, así que una plantilla con un valor inválido se queda para
+# siempre: aquí se corrige el único caso conocido.
+#
+# `TELEGRAM_MODE=polling` venía en la plantilla de las Fases 4-9: el esquema acepta
+# `auto | real | simulado` (el long polling es el transporte, no un modo), así que el
+# servicio de notificaciones moría con `ConfigError: valor no permitido` — y con él la
+# migración. Medido en el ensayo de la Fase 10.
+corregir_valores_obsoletos() {
+  local archivo
+
+  # 1) notifications.env: TELEGRAM_MODE=polling no es un valor válido.
+  archivo="/etc/odontocrm/notifications.env"
+  if [[ -f "$archivo" ]] && grep -qE '^TELEGRAM_MODE=polling[[:space:]]*$' "$archivo"; then
+    if (( APPLY )); then
+      sed -i 's|^TELEGRAM_MODE=polling[[:space:]]*$|TELEGRAM_MODE=auto|' "$archivo"
+      ok "corregido TELEGRAM_MODE=polling → auto en $archivo (con 'polling' el servicio no arranca)"
+    else
+      printf '       %s[dry-run] sed -i s/TELEGRAM_MODE=polling/TELEGRAM_MODE=auto/ %s%s\n' "$C_DIM" "$archivo" "$C_RESET"
+    fi
+  fi
+
+  # 2) patients/clinical: la variable del almacén se llamaba STORAGE_ROOT, que
+  #    ningún servicio lee; el servicio caía a `./storage/…` sobre /opt (solo
+  #    lectura con ProtectSystem=strict) y moría en bucle. Se renombra conservando
+  #    el valor que hubiera.
+  local almacen="/var/lib/odontocrm/storage"
+  for archivo in /etc/odontocrm/patients.env /etc/odontocrm/clinical.env; do
+    [[ -f "$archivo" ]] || continue
+    if ! grep -qE '^STORAGE_DIR=' "$archivo"; then
+      if grep -qE '^STORAGE_ROOT=' "$archivo"; then
+        (( APPLY )) && sed -i -E "s|^STORAGE_ROOT=(.*)$|STORAGE_DIR=\1|" "$archivo"
+        ok "renombrado STORAGE_ROOT → STORAGE_DIR en $archivo (el servicio lee STORAGE_DIR)"
+      else
+        (( APPLY )) && printf '\nSTORAGE_DIR=%s\n' "$almacen" >>"$archivo"
+        ok "añadido STORAGE_DIR=$almacen en $archivo"
+      fi
+    fi
+    if ! grep -qE '^MAX_FILE_BYTES=' "$archivo"; then
+      (( APPLY )) && printf 'MAX_FILE_BYTES=20971520\n' >>"$archivo"
+      ok "añadido MAX_FILE_BYTES=20971520 (20 MB) en $archivo (STORAGE_MAX_UPLOAD_MB no lo lee nadie)"
+    fi
+    (( APPLY )) && sed -i '/^STORAGE_MAX_UPLOAD_MB=/d' "$archivo" || true
+  done
+
+  # 3) clinical: la URL pública (QR del récipe) tiene que ser la del proxy, no localhost.
+  archivo="/etc/odontocrm/clinical.env"
+  if [[ -f "$archivo" ]] && ! grep -qE '^PUBLIC_APP_URL=' "$archivo"; then
+    local web_origin
+    web_origin="$(sed -n 's/^WEB_ORIGIN=//p' /etc/odontocrm/odontocrm.env | head -1)"
+    (( APPLY )) && printf 'PUBLIC_APP_URL=%s\n' "${web_origin:-https://CAMBIAR_HOST_O_IP_DEL_SERVIDOR}" >>"$archivo"
+    ok "añadido PUBLIC_APP_URL=${web_origin:-CAMBIAR…} en $archivo (lo usa el QR de verificación del récipe)"
+  fi
+
+  # 3-bis) clinical y reporting generan PDF con Playwright: sin la ruta, el
+  #    navegador se busca en la caché del usuario del servicio y la exportación
+  #    responde 503. (Medido en la Fase 10: los récipes salían y la exportación no.)
+  for archivo in /etc/odontocrm/clinical.env /etc/odontocrm/reporting.env; do
+    [[ -f "$archivo" ]] || continue
+    if ! grep -qE '^PLAYWRIGHT_BROWSERS_PATH=' "$archivo"; then
+      (( APPLY )) && printf '\nPLAYWRIGHT_BROWSERS_PATH=%s\n' "$PLAYWRIGHT_DIR" >>"$archivo"
+      ok "añadido PLAYWRIGHT_BROWSERS_PATH en $archivo (Chromium para los PDF)"
+    fi
+  done
+
+  # 4) gateway: sin la clave pública del JWT no arranca (su valor por defecto es
+  #    relativo al código, que en producción no tiene las claves).
+  archivo="/etc/odontocrm/gateway.env"
+  if [[ -f "$archivo" ]] && ! grep -qE '^JWT_PUBLIC_KEY_PATH=' "$archivo"; then
+    (( APPLY )) && printf 'JWT_PUBLIC_KEY_PATH=/etc/odontocrm/keys/jwt-public.pem\n' >>"$archivo"
+    ok "añadido JWT_PUBLIC_KEY_PATH en $archivo (sin él el gateway muere con ENOENT)"
+  fi
 }
 
 write_env_templates() {
@@ -622,10 +708,13 @@ EOF
       patients)
         extra=$(cat <<'EOF'
 # --- Almacenamiento de archivos (abstracción S3-ready, Fase 2/7) -------------
-# > PENDIENTE FASE 10: confirmar los nombres contra services/patients/src/config.ts.
-STORAGE_DRIVER=local
-STORAGE_ROOT=/var/lib/odontocrm/storage
-STORAGE_MAX_UPLOAD_MB=20
+# Los nombres son los que LEE services/patients/src/config.ts. Con STORAGE_DIR mal
+# puesto el servicio cae al valor por defecto (`./storage/patients`, relativo a
+# /opt/odontocrm), que con ProtectSystem=strict es de SOLO LECTURA: el proceso muere
+# al primer archivo y systemd lo reintenta en bucle. Medido en la Fase 10.
+STORAGE_DIR=/var/lib/odontocrm/storage
+# Tamaño máximo por archivo, en BYTES (20 MB).
+MAX_FILE_BYTES=20971520
 EOF
 )
         ;;
@@ -636,7 +725,9 @@ EOF
 # Debe haber UN ÚNICO poller (si hay dos, Telegram responde 409 Conflict).
 TELEGRAM_BOT_TOKEN=CAMBIAR_TOKEN_BOTFATHER
 TELEGRAM_BOT_USERNAME=CAMBIAR_USUARIO_DEL_BOT
-TELEGRAM_MODE=polling
+# El modo es auto | real | simulado (el long polling es el transporte, no un modo):
+# con 'auto' el bot usa el real si hay token y el simulado si no lo hay.
+TELEGRAM_MODE=auto
 TELEGRAM_TEST_CHAT_ID=CAMBIAR_CHAT_ID_DE_PRUEBAS
 EOF
 )
@@ -645,13 +736,26 @@ EOF
         extra=$(cat <<'EOF'
 # --- Récipes A5 con Playwright/Chromium (Fase 7) -----------------------------
 # La caché de navegadores va FUERA del HOME y dentro de ReadWritePaths (§10.3).
+# Playwright la usa por sí solo; PDF_CHROMIUM_PATH solo hace falta para apuntar a
+# un Chrome del sistema en vez del navegador de Playwright.
 PLAYWRIGHT_BROWSERS_PATH=/var/lib/odontocrm/ms-playwright
-STORAGE_ROOT=/var/lib/odontocrm/storage
-# > PENDIENTE FASE 10: confirmar contra services/clinical/src/config.ts la ruta
-#   de las plantillas del PDF y las variables del membrete (logo, RIF, MPPS).
-PDF_TEMPLATE_DIR=/opt/odontocrm/services/clinical/templates
-CLINIC_NAME=Consultorio Odontológico
-CLINIC_ADDRESS=Av. Luis del Valle García, C.E. Nueva Esparta, Planta Baja, Local 1-2
+STORAGE_DIR=/var/lib/odontocrm/storage
+# Tamaño máximo por adjunto, en BYTES (20 MB).
+MAX_FILE_BYTES=20971520
+# URL con la que se abre la aplicación: la usa el QR de verificación del récipe
+# (impreso en el papel). Con el valor por defecto apuntaría a `localhost`, que en el
+# móvil del paciente no existe: tiene que ser la del proxy inverso (§13).
+PUBLIC_APP_URL=https://CAMBIAR_HOST_O_IP_DEL_SERVIDOR
+EOF
+)
+        ;;
+      reporting)
+        extra=$(cat <<'EOF'
+# --- Exportación de reportes a PDF con Playwright/Chromium (Fase 7) ----------
+# La MISMA ruta que en clinical: sin esto, Playwright busca el navegador en la
+# caché por defecto del usuario del servicio (HOME=/var/lib/odontocrm) y la
+# exportación a PDF responde 503 «no se pudo generar el PDF». Medido en la Fase 10.
+PLAYWRIGHT_BROWSERS_PATH=/var/lib/odontocrm/ms-playwright
 EOF
 )
         ;;
@@ -672,7 +776,14 @@ ${extra}"
   write_if_missing "$ETC_DIR/gateway.env" 0600 \
     "$(env_header gateway)
 
-$(env_service_body gateway "$GATEWAY_DB")"
+$(env_service_body gateway "$GATEWAY_DB")
+
+# --- Verificación del JWT -----------------------------------------------------
+# El gateway valida el token de acceso con la clave PÚBLICA. Su valor por defecto
+# es relativo al código (`./services/identity/.keys/…`), que en producción NO
+# existe: las claves viven en /etc/odontocrm/keys y el código no se escribe. Sin
+# esta línea el gateway muere al arrancar con ENOENT. Medido en la Fase 10.
+JWT_PUBLIC_KEY_PATH=/etc/odontocrm/keys/jwt-public.pem"
 
   # --- Archivo COMÚN de los 9 servicios --------------------------------------
   # Va después para que el resumen de salida lo muestre al final; el orden de
@@ -730,6 +841,49 @@ localhost:5432:*:CAMBIAR_USUARIO_DE_RESPALDO:CAMBIAR_PASSWORD_DE_RESPALDO"
 }
 
 # -----------------------------------------------------------------------------
+# 5-bis. Rotación de logs (logrotate)
+# -----------------------------------------------------------------------------
+# Una sola puerta para las tareas del servidor: `sudo odontocrm estado`, `respaldar`,
+# `verificar`… Así en la clínica no hay que recordar rutas, `sudo` ni variables.
+install_comando() {
+  step "8/9 · Comando del servidor (/usr/local/bin/odontocrm)"
+
+  if [[ ! -f "$SCRIPT_DIR/odontocrm" ]]; then
+    warn "no encuentro $SCRIPT_DIR/odontocrm: se omite"
+    return 0
+  fi
+  if (( APPLY )); then
+    install -m 0755 -o root -g root "$SCRIPT_DIR/odontocrm" /usr/local/bin/odontocrm
+    ok "instalado /usr/local/bin/odontocrm (prueba: sudo odontocrm ayuda)"
+  else
+    printf '       %s[dry-run] install -m 0755 %s/odontocrm /usr/local/bin/odontocrm%s\n' \
+      "$C_DIM" "$SCRIPT_DIR" "$C_RESET"
+  fi
+}
+
+install_logrotate() {
+  step "5-bis/9 · Rotación de logs"
+
+  local src="$SCRIPT_DIR/logrotate/odontocrm" dst="/etc/logrotate.d/odontocrm"
+  if [[ ! -f "$src" ]]; then
+    warn "no se encontró $src; se omite la rotación de logs"
+    return 0
+  fi
+
+  if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+    ok "logrotate ya actualizado, sin cambios: $dst"
+    return 0
+  fi
+
+  if (( APPLY )); then
+    install -m 0644 -o root -g root "$src" "$dst"
+    ok "logrotate instalado: $dst (diario, 30 días, comprimido)"
+  else
+    printf '       %s[dry-run] install -m 0644 %s %s%s\n' "$C_DIM" "$src" "$dst" "$C_RESET"
+  fi
+}
+
+# -----------------------------------------------------------------------------
 # 6. Unidades systemd
 # -----------------------------------------------------------------------------
 install_systemd_units() {
@@ -743,7 +897,14 @@ install_systemd_units() {
 
   install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm@.service" "/etc/systemd/system/odontocrm@.service"
   install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-gateway.service" "/etc/systemd/system/odontocrm-gateway.service"
+  # Observabilidad (Fase 10): el tablero de estado cada 5 minutos. Es un
+  # temporizador, no un servicio de la pila: no depende del supervisor elegido.
+  install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-backup.service" "/etc/systemd/system/odontocrm-backup.service"
+  install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-backup.timer" "/etc/systemd/system/odontocrm-backup.timer"
+  install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-alertas.service" "/etc/systemd/system/odontocrm-alertas.service"
+  install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-alertas.timer" "/etc/systemd/system/odontocrm-alertas.timer"
   run systemctl daemon-reload
+  run systemctl enable --now odontocrm-alertas.timer
 
   if (( ENABLE_SERVICES )); then
     log "habilitando servicios (no se arrancan en este paso)"
@@ -923,6 +1084,9 @@ main() {
   install_pm2
   create_user_and_dirs
   write_env_templates
+  corregir_valores_obsoletos
+  install_comando
+  install_logrotate
   install_systemd_units
   configure_firewall
   configure_selinux

@@ -1,0 +1,37 @@
+[Unit]
+Description=OdontoCRM · respaldo diario de las 8 bases y de la configuración
+Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
+
+# El respaldo tiene que correr con las bases arriba y, si están caídas, esperar.
+After=postgresql.service network-online.target
+Wants=postgresql.service network-online.target
+ConditionPathExists=/etc/odontocrm/backup.env
+
+[Service]
+Type=oneshot
+User=root
+
+# --include-config copia /etc/odontocrm (CONTINENE SECRETOS): el archivo resultante
+# va cifrado o en un medio protegido, nunca suelto en un directorio compartido.
+ExecStart=/opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config
+
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3600
+
+# Endurecimiento: el respaldo lee la base y escribe en /var/backups (nada más).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/backups/odontocrm /var/log/odontocrm
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+# Si un respaldo falla, el fallo tiene que verse: queda en journald y en el
+# registro de la unidad (y el tablero de estado avisa del respaldo más viejo).
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=odontocrm-backup

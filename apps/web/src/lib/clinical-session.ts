@@ -17,6 +17,7 @@ import {
   toothKind,
   TOOTH_SURFACES_BY_KIND,
   type ClinicalSessionContent,
+  type ClinicalSessionVitals,
   type SessionMaterial,
   type SessionProcedure,
   type ToothSurface,
@@ -33,8 +34,10 @@ import { t, type TranslationKey } from './i18n';
  */
 
 export interface SessionFieldSpec {
-  name: string;
-  labelKey: string;
+  /** Nombre del campo en el contrato de la sesión (se usa para indexar). */
+  name: keyof ClinicalSessionVitals;
+  /** Clave de traducción: el compilador comprueba que existe. */
+  labelKey: TranslationKey;
   /** Unidad visible («mmHg», «°C»…), si la tiene. */
   unit?: string;
   decimals?: number;

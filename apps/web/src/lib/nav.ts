@@ -4,7 +4,6 @@ import {
   CalendarRange,
   ChartColumn,
   ClipboardList,
-  ClipboardPlus,
   ContactRound,
   House,
   IdCard,
@@ -19,14 +18,16 @@ import type { LucideIcon } from 'lucide-react';
 import type { TranslationKey } from './i18n';
 
 /**
- * Catálogo de módulos del shell. Cada módulo declara la ruta, el permiso que lo
- * habilita y la fase del plan en la que se construye: de aquí salen el menú
- * lateral, los accesos del tablero y los placeholders de lo que aún no existe.
+ * Catálogo de módulos del shell. Cada módulo declara la ruta y el permiso que lo
+ * habilita: de aquí salen el menú lateral y los accesos del tablero.
+ *
+ * Las fases del plan **no** aparecen aquí: son un detalle interno del desarrollo y en
+ * la interfaz confundían al personal («Fase 3», «Fase 9» no significan nada para quien
+ * atiende el consultorio). Se quitaron en la Fase 10.
  */
 
 export type ModuleId =
   | 'inicio'
-  | 'recepcion'
   | 'registro'
   | 'pacientes'
   | 'programacion'
@@ -47,8 +48,6 @@ export interface ModuleDefinition {
   icon: LucideIcon;
   /** Permiso necesario para ver el módulo; `null` = basta con tener sesión. */
   permission: Permission | null;
-  /** Fase del plan en la que se construye la funcionalidad. */
-  phase: number;
 }
 
 export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
@@ -59,16 +58,6 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     descriptionKey: 'modulo.inicio.descripcion',
     icon: House,
     permission: null,
-    phase: 1,
-  },
-  recepcion: {
-    id: 'recepcion',
-    path: '/recepcion',
-    labelKey: 'modulo.recepcion.titulo',
-    descriptionKey: 'modulo.recepcion.descripcion',
-    icon: ClipboardPlus,
-    permission: 'scheduling:write',
-    phase: 3,
   },
   registro: {
     id: 'registro',
@@ -78,7 +67,6 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     icon: IdCard,
     // El módulo registra pacientes además de consultarlos (Fase 2).
     permission: 'patients:write',
-    phase: 2,
   },
   pacientes: {
     id: 'pacientes',
@@ -88,7 +76,6 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     icon: ContactRound,
     // Consultar la ficha no exige poder registrarla: el odontólogo entra aquí.
     permission: 'patients:read',
-    phase: 2,
   },
   programacion: {
     id: 'programacion',
@@ -99,7 +86,6 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     // Consultar la jornada basta para entrar (el odontólogo la lee); las
     // acciones de escritura se comprueban dentro de la pantalla.
     permission: 'scheduling:read',
-    phase: 3,
   },
   notificaciones: {
     id: 'notificaciones',
@@ -111,7 +97,6 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     // reintentar, editar plantillas y desvincular exigen `scheduling:notify` y
     // se comprueban dentro de la pantalla.
     permission: 'scheduling:read',
-    phase: 4,
   },
   secretaria: {
     id: 'secretaria',
@@ -120,7 +105,6 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     descriptionKey: 'modulo.secretaria.descripcion',
     icon: ClipboardList,
     permission: 'scheduling:read',
-    phase: 5,
   },
   consultorio: {
     id: 'consultorio',
@@ -129,7 +113,6 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     descriptionKey: 'modulo.consultorio.descripcion',
     icon: Stethoscope,
     permission: 'clinical:read',
-    phase: 6,
   },
   flujo: {
     id: 'flujo',
@@ -141,7 +124,6 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     // llamados y estados) y la clínica (historia y sesión). Sin `clinical:read`
     // el centro de la pantalla no tendría nada que mostrar.
     permission: 'clinical:read',
-    phase: 8,
   },
   reportes: {
     id: 'reportes',
@@ -150,7 +132,6 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     descriptionKey: 'modulo.reportes.descripcion',
     icon: ChartColumn,
     permission: 'reports:read',
-    phase: 9,
   },
   auditoria: {
     id: 'auditoria',
@@ -159,7 +140,6 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     descriptionKey: 'modulo.auditoria.descripcion',
     icon: ScrollText,
     permission: 'audit:read',
-    phase: 9,
   },
   usuarios: {
     id: 'usuarios',
@@ -168,7 +148,6 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     descriptionKey: 'modulo.usuarios.descripcion',
     icon: Users,
     permission: 'users:manage',
-    phase: 1,
   },
   pantallas: {
     id: 'pantallas',
@@ -177,7 +156,6 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     descriptionKey: 'modulo.pantallas.descripcion',
     icon: MonitorPlay,
     permission: 'screens:manage',
-    phase: 5,
   },
 };
 
@@ -192,7 +170,6 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     titleKey: 'menu.seccion.operacion',
     modules: [
       'flujo',
-      'recepcion',
       'registro',
       'pacientes',
       'programacion',

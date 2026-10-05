@@ -5,7 +5,9 @@ import { buildServer, isProduction, loadPublicKey } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 
 import { registerAuthGuard } from './auth-guard.js';
-import { jwtPublicKeyPath, type GatewayConfig } from './config.js';
+import { jwtPublicKeyPath, origenesPermitidos, type GatewayConfig } from './config.js';
+import { buildSystemMeta } from './meta.js';
+import { buildUpstreamChecks } from './upstreams.js';
 import { buildProxyRoutes } from './routes.js';
 
 export interface CreateGatewayServerOptions {
@@ -33,14 +35,16 @@ export const createGatewayServer = async (
     logLevel: config.LOG_LEVEL,
     prettyLogs: config.LOG_PRETTY,
     production: isProduction(config),
-    checks: [],
+    // El `/ready` de la puerta mira a sus servicios: sin ellos no hay nada que
+    // enrutar y el tablero de estado tiene que verlo (Fase 10).
+    checks: buildUpstreamChecks(config),
   });
 
   const publicKey = options.publicKey ?? (await loadPublicKey(jwtPublicKeyPath(config)));
   registerAuthGuard(app, publicKey);
 
   await app.register(cors, {
-    origin: [config.WEB_ORIGIN],
+    origin: origenesPermitidos(config.WEB_ORIGIN),
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   });
@@ -49,6 +53,13 @@ export const createGatewayServer = async (
     max: 600,
     timeWindow: '1 minute',
   });
+
+  /**
+   * Estado del sistema, público y propio de la puerta (no se proxya a ningún
+   * servicio): la interfaz lo pide al arrancar para saber si tiene que pintar el
+   * banner de MODO TEST, incluso en la pantalla de acceso.
+   */
+  app.get('/api/v1/meta', async () => buildSystemMeta(config));
 
   for (const route of buildProxyRoutes(config)) {
     // Cada ruta en su propio ámbito para poder declarar el mismo plugin varias

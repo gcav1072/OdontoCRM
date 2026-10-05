@@ -6,6 +6,7 @@ import { useParams } from 'react-router-dom';
 
 import { MedicalRecordDocument } from '../components/clinical/MedicalRecordDocument';
 import { apiErrorMessage } from '../lib/api';
+import { useTemaClaroParaImprimir } from '../lib/impresion';
 import { clinicalApi } from '../lib/endpoints';
 import { t } from '../lib/i18n';
 
@@ -18,6 +19,9 @@ import { t } from '../lib/i18n';
  * falla, la impresión sale igual: primero está el papel.
  */
 export const MedicalRecordPrintPage = () => {
+  // El informe se imprime con la paleta clara aunque la pantalla esté en modo
+  // oscuro: el papel es blanco (ver lib/impresion.ts).
+  useTemaClaroParaImprimir();
   const { id } = useParams<{ id: string }>();
   const [aviso, setAviso] = useState<string | null>(null);
 

@@ -22,6 +22,9 @@ export default defineConfig({
       'packages/*/src/**/*.test.ts',
       'services/*/src/**/*.test.ts',
       'apps/*/src/**/*.test.ts',
+      // Herramientas de consola: las reglas puras (alertas del tablero de estado)
+      // se prueban sin base de datos ni pila.
+      'tools/**/*.test.mjs',
     ],
     reporters: process.env.CI ? ['default'] : ['default'],
     testTimeout: 10_000,

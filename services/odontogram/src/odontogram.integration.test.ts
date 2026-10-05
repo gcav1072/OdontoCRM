@@ -16,6 +16,7 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
+import { TEST_WAIT_MS } from '@odontocrm/testing';
 import { ConflictError, NotFoundError } from '@odontocrm/kernel';
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
@@ -140,7 +141,7 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
   const waitForAudit = async (
     predicate: (rows: Awaited<ReturnType<typeof auditRows>>) => boolean,
   ): Promise<Awaited<ReturnType<typeof auditRows>>> => {
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + TEST_WAIT_MS;
     let rows = await auditRows();
     while (!predicate(rows) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 250));

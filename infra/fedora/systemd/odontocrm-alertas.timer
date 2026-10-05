@@ -1,0 +1,33 @@
+# =============================================================================
+# OdontoCRM · temporizador de alertas (cada 5 minutos)
+# Archivo : infra/fedora/systemd/odontocrm-alertas.timer
+# Destino : /etc/systemd/system/odontocrm-alertas.timer
+#
+# Lanza `odontocrm-alertas.service` cada cinco minutos: si algún servicio no
+# responde, si el outbox lleva más de cinco minutos sin publicar, si la cola tiene
+# trabajos fallidos o si queda poco disco, el servicio queda en estado `failed` y
+# se ve con `systemctl --failed`. Cuando todo va bien, no dice nada.
+#
+# Instalación:
+#   sudo install -m 0644 -o root -g root \
+#     infra/fedora/systemd/odontocrm-alertas.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now odontocrm-alertas.timer
+# =============================================================================
+
+[Unit]
+Description=OdontoCRM · comprobar el estado cada 5 minutos
+Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
+
+[Timer]
+# Tres minutos después del arranque (deja que los servicios se levanten) y luego
+# cada cinco minutos. `Persistent` recupera la comprobación si la máquina estuvo
+# apagada; `AccuracySec` agrupa el trabajo para no despertar la CPU de más.
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=odontocrm-alertas.service
+
+[Install]
+WantedBy=timers.target

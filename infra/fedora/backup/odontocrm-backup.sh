@@ -261,7 +261,7 @@ verify_dump() {
 
   if (( VERIFY )); then
     local tmplist="$RUN_DIR/.pg_restore-list.txt"
-    if ! "$(pg_bin pg_restore)" --list "$file" >"$tmplist" 2>"$RUN_DIR/.pg_restore-list.err"; then
+    if ! "$(pg_bin pg_restore)" --no-password --list "$file" >"$tmplist" 2>"$RUN_DIR/.pg_restore-list.err"; then
       err "$label: pg_restore --list falló (ver $RUN_DIR/.pg_restore-list.err)"
       return 1
     fi
@@ -302,7 +302,11 @@ dump_databases() {
     local -a pgenv=(PGHOST="$PG_HOST" PGPORT="$PG_PORT" PGUSER="$PG_USER" PGCONNECT_TIMEOUT=15)
     [[ -n "${PGPASSFILE:-}" ]] && pgenv+=(PGPASSFILE="$PGPASSFILE")
 
-    if ! env "${pgenv[@]}" "$(pg_bin pg_dump)" --format=custom --compress=gzip:6 \
+    # `--no-password`: si falta la credencial, pg_dump falla en el acto. Un respaldo
+    # desatendido (temporizador de las 03:30) no puede quedarse esperando a que
+    # alguien teclee una contraseña: se quedaría mudo toda la noche. Medido en la
+    # Fase 10 con el restablecimiento, que sí se quedó esperando.
+    if ! env "${pgenv[@]}" "$(pg_bin pg_dump)" --no-password --format=custom --compress=gzip:6 \
         --file="$file" --dbname="$db" 2>"$RUN_DIR/${db}.dump.err"; then
       err "falló el volcado de $db:"
       sed 's/^/       /' "$RUN_DIR/${db}.dump.err" >&2 || true

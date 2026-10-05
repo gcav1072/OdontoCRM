@@ -6,6 +6,7 @@ import { useParams } from 'react-router-dom';
 
 import { OdontogramDocument } from '../components/odontogram/OdontogramDocument';
 import { apiErrorMessage } from '../lib/api';
+import { useTemaClaroParaImprimir } from '../lib/impresion';
 import { t } from '../lib/i18n';
 import { odontogramApi } from '../lib/odontogram-api';
 
@@ -25,6 +26,9 @@ const LIMITE_HISTORIAL = 500;
  */
 export const OdontogramPrintPage = () => {
   const { patientId } = useParams<{ patientId: string }>();
+  // El informe se imprime con la paleta clara aunque la pantalla esté en modo
+  // oscuro: el papel es blanco (ver lib/impresion.ts).
+  useTemaClaroParaImprimir();
   const [aviso, setAviso] = useState<string | null>(null);
   const [conHistorial, setConHistorial] = useState(false);
 

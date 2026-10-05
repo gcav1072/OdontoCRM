@@ -64,6 +64,8 @@ describe('mapa de rutas del gateway', () => {
 
   it('clasifica las rutas públicas (salud, ciclo de autenticación, webhooks y verificación)', () => {
     expect(isPublicPath('/health')).toBe(true);
+    // El estado del sistema lo pide la SPA antes de iniciar sesión (banner MODO TEST).
+    expect(isPublicPath('/api/v1/meta')).toBe(true);
     expect(isPublicPath('/api/v1/auth/login')).toBe(true);
     expect(isPublicPath('/api/v1/auth/refresh')).toBe(true);
     expect(isPublicPath('/api/v1/auth/logout')).toBe(true);
@@ -173,6 +175,39 @@ describe('gateway: proxy y guardia de autenticación', () => {
     const response = await fetch(`${gatewayUrl}/health`);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ service: 'gateway' });
+  });
+
+  it('publica /api/v1/meta sin sesión y sin pasar por el proxy', async () => {
+    const response = await fetch(`${gatewayUrl}/api/v1/meta`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      service: 'gateway',
+      environment: 'development',
+      testMode: { enabled: false, state: 'disabled' },
+      fixtures: { seed: 'odontocrm-2026' },
+    });
+  });
+
+  it('con el modo test activo, /api/v1/meta lo dice', async () => {
+    const conModoTest = await createGatewayServer({
+      config: loadGatewayConfig({
+        ...baseEnv,
+        TEST_MODE: 'true',
+        ALLOW_TEST_MODE: 'true',
+      }),
+      publicKey: await importPublicKeyPem((await generateKeyPairPem()).publicPem),
+    });
+    const url = await conModoTest.listen({ port: 0, host: '127.0.0.1' });
+
+    try {
+      const response = await fetch(`${url}/api/v1/meta`);
+      await expect(response.json()).resolves.toMatchObject({
+        testMode: { enabled: true, state: 'enabled' },
+      });
+    } finally {
+      await conModoTest.close();
+    }
   });
 
   it('exige token en las rutas de la API (401 en problem+json)', async () => {
