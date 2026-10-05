@@ -96,6 +96,16 @@ sudo odontocrm actualizar
 Hace los seis pasos en orden y termina verificando: trae el código nuevo, compila,
 aplica las migraciones de los 8 servicios, reinicia y comprueba los 9.
 
+**Si el código ya está en `/opt/odontocrm`** (por ejemplo lo copiaste o lo editaste ahí)
+y solo hace falta que los servicios lo usen, esto compila y reinicia **sin tocar el
+repositorio ni la base**:
+
+```bash
+sudo odontocrm recompilar
+```
+
+No aplica migraciones a propósito: si el cambio toca el esquema, usa `actualizar`.
+
 Equivalente a mano (por si hay que mirar el paso que falla):
 
 ```bash
