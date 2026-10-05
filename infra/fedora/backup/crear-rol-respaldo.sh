@@ -197,15 +197,23 @@ for base in "${bases[@]}"; do
   psql "$ADMIN_URL" -tAc "select 1 from pg_database where datname='$base'" | grep -q 1 || continue
   # No basta con `public`: se lee a propósito el esquema de migraciones, que es el
   # que rompía el respaldo, y se comprueba el USAGE de todos los esquemas.
-  if ! PGPASSFILE="$pgpass" psql -h 127.0.0.1 -p 5432 -U "$rol" -d "$base" -tAc \
+  # Solo se prueban los esquemas que EXISTEN en esa base: `pgboss` lo crea quien
+  # consume la cola, así que en patients y clinical no está y preguntar por él daba
+  # un falso «no puede leer» (visto en el ensayo).
+  esquemas="$(PGPASSFILE="$pgpass" psql -h 127.0.0.1 -p 5432 -U "$rol" -d "$base" -tAc \
+    "select coalesce(string_agg(nspname, ' '), '') from pg_namespace
+      where nspname in ('drizzle', 'pgboss')" 2>/dev/null)"
+  if [[ "$esquemas" == *drizzle* ]] &&
+     ! PGPASSFILE="$pgpass" psql -h 127.0.0.1 -p 5432 -U "$rol" -d "$base" -tAc \
        "select count(*) from drizzle.__drizzle_migrations" >/dev/null 2>&1; then
     av "el rol no puede leer drizzle.__drizzle_migrations en $base (¿rol NOINHERIT?)"
     fallos=$((fallos+1)); continue
   fi
-  # Las tablas de la cola (pgboss) son las otras que pg_dump bloquea.
-  PGPASSFILE="$pgpass" psql -h 127.0.0.1 -p 5432 -U "$rol" -d "$base" -tAc \
-    "select count(*) from pgboss.job" >/dev/null 2>&1 ||
-    { av "el rol no puede leer pgboss.job en $base"; fallos=$((fallos+1)); continue; }
+  if [[ "$esquemas" == *pgboss* ]] &&
+     ! PGPASSFILE="$pgpass" psql -h 127.0.0.1 -p 5432 -U "$rol" -d "$base" -tAc \
+       "select count(*) from pgboss.job" >/dev/null 2>&1; then
+    av "el rol no puede leer pgboss.job en $base"; fallos=$((fallos+1)); continue
+  fi
   sin_usage="$(PGPASSFILE="$pgpass" psql -h 127.0.0.1 -p 5432 -U "$rol" -d "$base" -tAc \
     "select string_agg(nspname, ', ') from pg_namespace
       where nspname not like 'pg\\_%' and nspname <> 'information_schema'
