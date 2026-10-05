@@ -96,6 +96,7 @@ readonly SERVICES=(
   "reporting:4008:odonto_reporting"
 )
 readonly GATEWAY_PORT=8090
+readonly PLAYWRIGHT_DIR="/var/lib/odontocrm/ms-playwright"   # navegadores (Fase 7)
 readonly GATEWAY_DB=""
 
 # -----------------------------------------------------------------------------
@@ -656,6 +657,17 @@ corregir_valores_obsoletos() {
     ok "añadido PUBLIC_APP_URL=${web_origin:-CAMBIAR…} en $archivo (lo usa el QR de verificación del récipe)"
   fi
 
+  # 3-bis) clinical y reporting generan PDF con Playwright: sin la ruta, el
+  #    navegador se busca en la caché del usuario del servicio y la exportación
+  #    responde 503. (Medido en la Fase 10: los récipes salían y la exportación no.)
+  for archivo in /etc/odontocrm/clinical.env /etc/odontocrm/reporting.env; do
+    [[ -f "$archivo" ]] || continue
+    if ! grep -qE '^PLAYWRIGHT_BROWSERS_PATH=' "$archivo"; then
+      (( APPLY )) && printf '\nPLAYWRIGHT_BROWSERS_PATH=%s\n' "$PLAYWRIGHT_DIR" >>"$archivo"
+      ok "añadido PLAYWRIGHT_BROWSERS_PATH en $archivo (Chromium para los PDF)"
+    fi
+  done
+
   # 4) gateway: sin la clave pública del JWT no arranca (su valor por defecto es
   #    relativo al código, que en producción no tiene las claves).
   archivo="/etc/odontocrm/gateway.env"
@@ -732,6 +744,16 @@ MAX_FILE_BYTES=20971520
 # (impreso en el papel). Con el valor por defecto apuntaría a `localhost`, que en el
 # móvil del paciente no existe: tiene que ser la del proxy inverso (§13).
 PUBLIC_APP_URL=https://CAMBIAR_HOST_O_IP_DEL_SERVIDOR
+EOF
+)
+        ;;
+      reporting)
+        extra=$(cat <<'EOF'
+# --- Exportación de reportes a PDF con Playwright/Chromium (Fase 7) ----------
+# La MISMA ruta que en clinical: sin esto, Playwright busca el navegador en la
+# caché por defecto del usuario del servicio (HOME=/var/lib/odontocrm) y la
+# exportación a PDF responde 503 «no se pudo generar el PDF». Medido en la Fase 10.
+PLAYWRIGHT_BROWSERS_PATH=/var/lib/odontocrm/ms-playwright
 EOF
 )
         ;;

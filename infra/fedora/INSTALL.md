@@ -286,6 +286,26 @@ ldd /var/lib/odontocrm/ms-playwright/chromium-*/chrome-linux/chrome | grep 'not 
   echo 'OK: todas las bibliotecas presentes'
 ```
 
+### 9.5-bis Dónde tiene que estar el navegador
+
+Playwright busca Chromium en **una de estas dos** rutas, y la que manda es la variable:
+
+1. `PLAYWRIGHT_BROWSERS_PATH` (la que se pone en la configuración): `/var/lib/odontocrm/ms-playwright`.
+2. Sin esa variable, la caché del usuario que ejecuta el servicio: con `HOME=/var/lib/odontocrm`
+   (que es lo que fija la unidad) sería `/var/lib/odontocrm/.cache/ms-playwright`.
+
+Los servicios que generan PDF son **dos**: `clinical` (récipes A5) y `reporting`
+(exportación de reportes). Los dos tienen que llevar la variable; si falta en uno, ese
+servicio responde `503 «No se pudo generar el PDF en este momento»` y el resto del
+sistema parece estar bien — así se descubrió en la Fase 10. El navegador, además, tiene
+que ser **ejecutable por el usuario `odontocrm`** (el directorio es `0750`):
+
+```bash
+sudo grep -H PLAYWRIGHT_BROWSERS_PATH /etc/odontocrm/{clinical,reporting}.env
+sudo -u odontocrm test -x /var/lib/odontocrm/ms-playwright/chromium-*/chrome-linux/chrome \
+  && echo 'el navegador se puede ejecutar'
+```
+
 > **P-06 (resuelto en la Fase 10, `fedora:check-ok`):** el comando
 > `npx playwright install-deps chromium` **no funciona en Fedora** (cae a `ubuntu24.04`
 > y muere en `apt-get`; código 127). La lista
@@ -2074,7 +2094,7 @@ exige el plan (§13, Fase 10).
 | P-04 | Artefacto compilado (`dist/index.js`) | `ls /opt/odontocrm/services/*/dist/ /opt/odontocrm/apps/gateway/dist/` | ☐ | |
 | P-05 | Flujo de bootstrap y migraciones en producción | `npm run db:bootstrap` · `npm run db:migrate` (§6.4 y §9.3) | ☐ | |
 | P-06 | Dependencias de Chromium / `install-deps` | `ldd … \| grep 'not found'` | ✅ | **PC de pruebas:** `npx playwright install-deps chromium` **no soporta Fedora 44** (mención, no instrucción: `fedora:check-ok`) (cae a `ubuntu24.04` y muere en `apt-get`); con la lista de `dnf` de §4.1 y `ldd` no falta ninguna biblioteca. El plan B de la guía es el camino real. |
-| P-07 | Chromium bajo `systemd` endurecido | generar un PDF de prueba | ☐ | |
+| P-07 | Chromium bajo `systemd` endurecido | generar un PDF de prueba | ◐ | **PC de pruebas:** `clinical` genera sus récipes, pero la **exportación a PDF de `reporting` devolvía 503** porque su plantilla no definía `PLAYWRIGHT_BROWSERS_PATH`: Playwright buscaba el navegador en la caché del usuario del servicio. Corregido en la plantilla y en la migración; el ensayo ahora exporta un reporte por el proxy y comprueba que el archivo empieza por `%PDF-`. |
 | P-08 | Nombres reales de roles (`infra/db/bootstrap.mjs`) | `sudo -u postgres psql -c '\du'` | ☐ | |
 | P-09 | Socket de PostgreSQL y `pg_hba.conf` | `ls /var/run/postgresql` · `pg_hba.conf` | ✅ | **PC de pruebas:** el socket está en `/var/run/postgresql` y `postgresql-setup --initdb` deja **`ident`** en las líneas `host` (no `scram-sha-256`): con eso **ningún servicio entra por TCP** aunque la contraseña sea correcta. Hay que cambiarlas a `scram-sha-256` (§6.3). El administrador entra por el socket con `peer` (`PG_ADMIN_URL=postgres:///postgres?host=/var/run/postgresql`). |
 | P-10 | PM2 en producción: `infra/fedora/ecosystem.config.cjs` con los dos `--env-file-if-exists` y `.env` legibles por el grupo (`0640 root:odontocrm`) | §10.4 · `pm2 ls` · `pm2 logs odontocrm-identity` | ☐ | |
