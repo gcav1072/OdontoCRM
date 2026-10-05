@@ -87,6 +87,7 @@ ALL=0
 ASSUME_YES=0
 DRY_RUN=0
 LIST_ONLY=0
+LIMPIAR_VERIF=0
 KEEP_VERIFY_DB=0
 KEEP_OLD=0
 SKIP_VERIFY=0
@@ -162,6 +163,10 @@ CONEXIÓN Y RUTAS
 
 DIAGNÓSTICO
   --list                  Lista los respaldos disponibles y termina.
+  --limpiar-verif         Borra las bases temporales <base>${VERIFY_SUFFIX} que deja la
+                          verificación (con --keep-verify-db se conservan a propósito
+                          como evidencia; este flag las retira cuando ya no hacen
+                          falta). Requiere --yes.
   --dry-run               Explica lo que haría sin modificar ninguna base
                           (deja el registro de la corrida en el log).
   -h, --help              Esta ayuda.
@@ -207,6 +212,7 @@ parse_args() {
       --dest)             BACKUP_DIR="${2:?}"; shift ;;
       --dest=*)           BACKUP_DIR="${1#*=}" ;;
       --list)             LIST_ONLY=1 ;;
+      --limpiar-verif)    LIMPIAR_VERIF=1 ;;
       -h|--help)          usage; exit 0 ;;
       *) err "opción no reconocida: $1"; usage; exit 1 ;;
     esac
@@ -514,6 +520,24 @@ restore_in_place() {
 # -----------------------------------------------------------------------------
 # Programa principal
 # -----------------------------------------------------------------------------
+# Borra las bases temporales que deja la verificación en las 8 bases conocidas.
+limpiar_verificacion() {
+  if (( ! ASSUME_YES )); then
+    err "--limpiar-verif borra bases: añade --yes para confirmarlo"
+    exit 10
+  fi
+  local base borradas=0
+  log "Limpiando bases temporales ${VERIFY_SUFFIX}…"
+  for base in $DATABASES; do
+    if [[ "$(psql_q "$PG_ADMIN_USER" postgres "SELECT 1 FROM pg_database WHERE datname='${base}${VERIFY_SUFFIX}'")" == "1" ]]; then
+      psql_c "$PG_ADMIN_USER" "DROP DATABASE IF EXISTS \"${base}${VERIFY_SUFFIX}\" WITH (FORCE);" >/dev/null 2>&1 &&
+        { log "  ${base}${VERIFY_SUFFIX} borrada"; borradas=$((borradas + 1)); } ||
+        warn "  no pude borrar ${base}${VERIFY_SUFFIX} (¿hay conexiones abiertas?)"
+    fi
+  done
+  log "Bases temporales borradas: ${borradas}"
+}
+
 main() {
   parse_args "$@"
   load_config
@@ -521,6 +545,11 @@ main() {
 
   if (( LIST_ONLY )); then
     list_backups
+    exit 0
+  fi
+
+  if (( LIMPIAR_VERIF )); then
+    limpiar_verificacion
     exit 0
   fi
 

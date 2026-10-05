@@ -1517,7 +1517,17 @@ Plan §11: **`pg_dump` diario por base, retención de 30 días y restauración p
 
 ### 15.2 Rol de respaldo
 
-**Opción recomendada (TCP + `scram-sha-256` + `.pgpass`, sin superusuario):**
+**Un solo comando** (hace todo lo de abajo y comprueba que el rol lea de verdad las
+ocho bases; la contraseña la genera él y **no la imprime**):
+
+```bash
+sudo bash /opt/odontocrm/infra/fedora/backup/crear-rol-respaldo.sh
+#   --rotar        cambia la contraseña
+#   --password=…   si prefieres elegirla tú
+#   --bypassrls    solo si algún día se activa Row Level Security
+```
+
+Lo que deja hecho (equivalente a mano, por si hay que revisarlo):
 
 ```sql
 -- Como superusuario: sudo -u postgres psql
@@ -1529,12 +1539,16 @@ GRANT pg_read_all_data TO odonto_backup;      -- leer todas las tablas y secuenc
 GRANT CONNECT ON DATABASE odonto_identity TO odonto_backup;
 ```
 
-Si alguna tabla usa *Row Level Security*, el rol necesita además `BYPASSRLS` para que
-el respaldo incluya todas las filas:
+> **P-18 (resuelto en la Fase 10):** el esquema **no usa Row Level Security** —ninguna
+> migración crea políticas—, así que `BYPASSRLS` **no hace falta** y el respaldo trae
+> todas las filas con `pg_read_all_data`. Si algún día se activa RLS, hay que añadirlo
+> (`--bypassrls`) **y volver a hacer la prueba de restauración** (§16).
 
-```sql
-ALTER ROLE odonto_backup BYPASSRLS;    -- > PENDIENTE FASE 10: (P-18) solo si hay RLS
-```
+> **P-14 (resuelto en la Fase 10):** el respaldo escribe un `.dump` por base con
+> `SHA256SUMS` y un `manifest.json`; la copia a un medio externo se hace con `rsync`
+> (§15.5) y **el archivo se custodia fuera del servidor**. Lo que **no** está resuelto
+> todavía es el cifrado (`age`/`gpg`): hasta que se decida, el medio externo tiene que
+> ir cifrado por el sistema de archivos (por ejemplo, un disco con LUKS).
 
 Ajusta `/etc/odontocrm/backup.env` y `/etc/odontocrm/.pgpass`:
 
