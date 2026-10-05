@@ -49,6 +49,10 @@ const minutosDesde = (instante, ahora) => (ahora.getTime() - new Date(instante).
 
 /** Lista de problemas de una foto del sistema. Vacía = todo bien. */
 export const alertasDe = (foto, ahora = new Date(), limites = LIMITES) => {
+  // Si el tablero no pudo leer los entornos (corre sin sudo y son 0600 root:root),
+  // la cola, el outbox y los envíos quedan «no comprobables»: eso NO es un problema
+  // y no debe sonar como alarma. Se avisa una vez, en la pantalla del tablero.
+  const sinPermisos = foto.permisos?.envLegible === false;
   const problemas = [];
 
   for (const servicio of foto.servicios ?? []) {
@@ -89,7 +93,7 @@ export const alertasDe = (foto, ahora = new Date(), limites = LIMITES) => {
     problemas.push(`base de datos: ${String(foto.bases.error)}`);
   }
 
-  if (foto.cola?.error !== undefined) {
+  if (!sinPermisos && foto.cola?.error !== undefined) {
     problemas.push(`cola de eventos: ${String(foto.cola.error)}`);
   } else {
     for (const cola of foto.cola?.colas ?? []) {
@@ -106,7 +110,7 @@ export const alertasDe = (foto, ahora = new Date(), limites = LIMITES) => {
     }
   }
 
-  for (const outbox of foto.outbox ?? []) {
+  for (const outbox of sinPermisos ? [] : (foto.outbox ?? [])) {
     if (outbox.error !== undefined) {
       problemas.push(`outbox de ${outbox.name}: ${String(outbox.error)}`);
       continue;

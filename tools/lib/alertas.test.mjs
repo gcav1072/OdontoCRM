@@ -282,6 +282,39 @@ describe('alertas del sistema', () => {
     expect(alertasDe(foto({ systemd: { disponible: false, unidades: [] } }), AHORA)).toEqual([]);
   });
 
+  /**
+   * Tras el reinicio de la Fase 10, el tablero ejecutado sin `sudo` no podía leer
+   * `/etc/odontocrm` (0600 root:root) y reportaba nueve alertas falsas: «sin
+   * DATABASE_URL», «falta EVENTS_DATABASE_URL». No poder comprobar algo no es un
+   * problema, y una alarma falsa cada mañana enseña a ignorar las de verdad.
+   */
+  it('sin permisos para leer los entornos no inventa problemas', () => {
+    const sinPermisos = foto({
+      permisos: { envLegible: false, raiz: '/etc/odontocrm', esRoot: false },
+      cola: { error: 'no comprobable sin sudo (no puedo leer los entornos)' },
+      outbox: [
+        { name: 'identity', error: 'sin DATABASE_URL' },
+        { name: 'patients', error: 'sin DATABASE_URL' },
+      ],
+      envios: { error: 'no comprobable sin sudo (no puedo leer los entornos)' },
+      reportes: { error: 'no comprobable sin sudo (no puedo leer los entornos)' },
+    });
+
+    expect(alertasDe(sinPermisos, AHORA)).toEqual([]);
+  });
+
+  it('con permisos, los mismos datos sí son problemas', () => {
+    const conPermisos = foto({
+      permisos: { envLegible: true, raiz: '/etc/odontocrm', esRoot: true },
+      cola: { error: 'falta EVENTS_DATABASE_URL' },
+      outbox: [{ name: 'identity', error: 'sin DATABASE_URL' }],
+    });
+
+    const problemas = alertasDe(conPermisos, AHORA);
+    expect(problemas.length).toBeGreaterThan(0);
+    expect(problemas.join(' ')).toContain('EVENTS_DATABASE_URL');
+  });
+
   it('una base inalcanzable se reporta una vez, no por cada servicio', () => {
     const problemas = alertasDe(
       foto({

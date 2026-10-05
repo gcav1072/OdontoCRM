@@ -5,9 +5,15 @@
 > No hace falta saber programar: cada tarea dice **qué se hace, cómo se comprueba y
 > qué significa lo que se ve**.
 >
-> **Antes de tocar nada**: `npm run estado`. Ese comando dice, en una pantalla, si los
-> nueve servicios están vivos, si la cola de eventos avanza, si el respaldo corrió y
-> cuánto disco queda. Casi todo lo de este documento empieza y termina ahí.
+> **Antes de tocar nada**: `sudo npm run estado` desde `/opt/odontocrm`. Ese comando
+> dice, en una pantalla, si los nueve servicios están vivos, si la cola de eventos
+> avanza, si el respaldo corrió y cuánto disco queda. Casi todo lo de este documento
+> empieza y termina ahí.
+>
+> **Con `sudo`, siempre.** Los archivos de entorno son `0600 root:root` (los lee
+> systemd como root): sin `sudo`, el tablero *no puede* mirar la cola, el outbox ni los
+> envíos, y lo dice con un aviso en vez de inventarse problemas. Si alguna vez ves
+> nueve cruces rojas de «sin DATABASE_URL», es que se ejecutó sin `sudo`.
 
 - Instalación desde cero: [`INSTALL.md`](INSTALL.md)
 - Comandos del día a día: [`docs/COMANDOS.md`](../../docs/COMANDOS.md)
@@ -32,7 +38,7 @@
 
 ```bash
 cd /opt/odontocrm
-npm run estado
+sudo npm run estado
 ```
 
 Lo que tiene que decir:
@@ -150,7 +156,7 @@ sudo systemctl start odontocrm@{identity,patients,scheduling,notifications,clini
 sudo systemctl start odontocrm-gateway.service
 
 # 3) Comprobar
-npm run estado
+sudo npm run estado
 ```
 
 La prueba de restauración completa (base limpia, contar filas y anotarlo) está en
@@ -214,14 +220,14 @@ contesta); los avisos quedan en cola y se reintentan solos.
 Empieza siempre por el tablero y los registros:
 
 ```bash
-cd /opt/odontocrm && npm run estado
+cd /opt/odontocrm && sudo npm run estado
 journalctl -p err --since '1 hour ago' --no-pager | tail -40
 sudo tail -n 50 /var/log/odontocrm/backup.log
 ```
 
 | Síntoma | Qué mirar | Qué hacer |
 | :--- | :--- | :--- |
-| La clínica no entra (navegador) | `npm run estado`, `systemctl status odontocrm-gateway`, `systemctl status nginx` (o `caddy`) | Reiniciar el proxy y la puerta. Si el certificado venció, renovarlo ([INSTALL.md §13](INSTALL.md)) |
+| La clínica no entra (navegador) | `sudo npm run estado`, `systemctl status odontocrm-gateway`, `systemctl status nginx` (o `caddy`) | Reiniciar el proxy y la puerta. Si el certificado venció, renovarlo ([INSTALL.md §13](INSTALL.md)) |
 | Un servicio en rojo en el tablero | `systemctl status odontocrm@<servicio>`, `journalctl -u odontocrm@<servicio> -n 50` | Reiniciarlo. Si dice `ConfigError`, falta una variable en `/etc/odontocrm/<servicio>.env` |
 | `/ready` en 503 pero `/health` en 200 | El detalle del chequeo que falla (lo dice el tablero) | Es una dependencia: PostgreSQL caído, cola inalcanzable o el bot sin token |
 | «outbox de X sin publicar» | `systemctl status odontocrm@X`, disco | El publicador no corre (servicio caído) o el disco está lleno |
@@ -291,7 +297,7 @@ sudo npm ci                                                     # 3. dependencia
 sudo npm run build                                              # 4. compilar
 sudo npm run db:migrate                                         # 5. esquema (idempotente)
 sudo systemctl restart 'odontocrm@*' odontocrm-gateway.service # 6. reiniciar
-npm run estado                                                  # 7. comprobar
+sudo npm run estado                                                  # 7. comprobar
 ```
 
 Si algo sale mal: `sudo git checkout fase-(N-1)`, `sudo npm ci && sudo npm run build`,

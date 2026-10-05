@@ -1871,8 +1871,11 @@ sudo install -m 0755 -o root -g root /tmp/verificar-odontocrm.sh /usr/local/bin/
 > El verificador comprueba **tres** cosas por servicio: que la unidad esté `active`, que
 > el puerto lo sirva **su** proceso (`MainPID`) y que `/health` y `/ready` respondan 200.
 > La primera versión solo miraba el `curl` y daba verde con la pila equivocada escuchando
-> (banco de pruebas, Fase 10). `npm run estado` hace estas mismas comprobaciones cada
-> cinco minutos en producción (`odontocrm-alertas.timer`).
+> (banco de pruebas, Fase 10). `sudo npm run estado` hace estas mismas
+> comprobaciones cada cinco minutos en producción (`odontocrm-alertas.timer`), y
+> **necesita `sudo`**: los entornos son `0600 root:root`, así que sin él la cola, el
+> outbox y los envíos quedan «no comprobables» (el tablero lo avisa en vez de
+> inventarse problemas).
 
 ### 17.2 Comprobaciones de infraestructura
 

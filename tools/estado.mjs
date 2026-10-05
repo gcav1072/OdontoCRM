@@ -28,6 +28,7 @@
  * nadie lea una tabla.
  */
 import { execFileSync } from 'node:child_process';
+import { accessSync, constants, existsSync } from 'node:fs';
 import { statfs } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -144,12 +145,43 @@ const revisarServicios = async (entorno) => {
   return { servicios: resultados, puertoGateway };
 };
 
+/**
+ * ¿Puedo leer los archivos de entorno del despliegue?
+ *
+ * En producción son `0600 root:root` (systemd los lee como root). Si el tablero se
+ * ejecuta sin `sudo`, **no puede leerlos** —y eso no significa que falte la
+ * variable—. Antes se confundía: `npm run estado` sin sudo reportaba nueve alertas
+ * falsas («sin DATABASE_URL», «falta EVENTS_DATABASE_URL»). Medido tras el reinicio
+ * de la Fase 10, que es justo cuando la clínica mira el tablero.
+ */
+const revisarPermisos = () => {
+  const raiz = process.env['ODONTOCRM_ENV_DIR'];
+  if (raiz === undefined || raiz === '') return { envLegible: true, raiz: null };
+  const archivo = resolve(raiz, 'odontocrm.env');
+  const legible =
+    existsSync(archivo) &&
+    (() => {
+      try {
+        accessSync(archivo, constants.R_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+  return {
+    envLegible: legible,
+    raiz,
+    esRoot: typeof process.getuid === 'function' && process.getuid() === 0,
+  };
+};
+
 const conectar = (url, applicationName) => {
   const client = new Client({ connectionString: url, application_name: applicationName });
   return client;
 };
 
-const revisarCola = async () => {
+const revisarCola = async (entornoLegible) => {
+  if (!entornoLegible) return { error: 'no comprobable sin sudo (no puedo leer los entornos)' };
   const url = leerEnv(rutaEnvDe(SERVICIOS.find((s) => s.name === 'identity'))).EVENTS_DATABASE_URL;
   if (url === undefined) return { error: 'falta EVENTS_DATABASE_URL' };
 
@@ -290,7 +322,8 @@ const resumirBasesDeServicios = (datos, aviso) => {
   };
 };
 
-const revisarEnvios = async () => {
+const revisarEnvios = async (entornoLegible) => {
+  if (!entornoLegible) return { error: 'no comprobable sin sudo (no puedo leer los entornos)' };
   const url = leerEnv(rutaEnvDe(SERVICIOS.find((s) => s.name === 'notifications'))).DATABASE_URL;
   if (url === undefined) return { error: 'sin DATABASE_URL' };
 
@@ -319,7 +352,8 @@ const revisarEnvios = async () => {
   }
 };
 
-const revisarReportes = async () => {
+const revisarReportes = async (entornoLegible) => {
+  if (!entornoLegible) return { error: 'no comprobable sin sudo (no puedo leer los entornos)' };
   const url = leerEnv(rutaEnvDe(SERVICIOS.find((s) => s.name === 'reporting'))).DATABASE_URL;
   if (url === undefined) return { error: 'sin DATABASE_URL' };
 
@@ -449,13 +483,14 @@ export const tomarFoto = async () => {
     ? { servicios: [], puertoGateway: puertoDe(PROCESOS[PROCESOS.length - 1], entorno) }
     : await revisarServicios(entorno);
 
-  const datos = await revisarDatos();
+  const permisos = revisarPermisos();
+  const datos = permisos.envLegible ? await revisarDatos() : [];
   const systemd = revisarSystemd();
   const [bases, cola, envios, reportes, disco] = await Promise.all([
     revisarBases(entorno, datos),
-    revisarCola(),
-    revisarEnvios(),
-    revisarReportes(),
+    revisarCola(permisos.envLegible),
+    revisarEnvios(permisos.envLegible),
+    revisarReportes(permisos.envLegible),
     revisarDisco(),
   ]);
 
@@ -467,6 +502,7 @@ export const tomarFoto = async () => {
     cola,
     outbox: datos,
     systemd,
+    permisos,
     envios,
     reportes,
     disco,
@@ -547,9 +583,17 @@ const tablero = (foto) => {
     );
   }
 
+  // Cuando el tablero corre sin sudo no puede leer /etc/odontocrm (0600 root:root).
+  // Eso NO es un problema: es «no comprobable», y se dice una vez por sección en
+  // lugar de llenar la pantalla de cruces rojas que asustan a quien mira.
+  const sinPermisos = foto.permisos?.envLegible === false;
+  const notaSinSudo = `${color.tenue('omitido')} — no puedo leer ${String(foto.permisos?.raiz ?? '/etc/odontocrm')} sin sudo`;
+
   lineas.push('');
   lineas.push(color.titulo('── Cola de eventos ───────────────────────────────────────────────'));
-  if (foto.cola.error !== undefined) {
+  if (sinPermisos) {
+    lineas.push(`  ${color.tenue('·')} ${notaSinSudo}`);
+  } else if (foto.cola.error !== undefined) {
     lineas.push(`  ${color.error('✖')} ${String(foto.cola.error)}`);
   } else if (foto.cola.colas.length === 0) {
     lineas.push(`  ${color.tenue('(sin trabajos: nadie ha publicado todavía)')}`);
@@ -569,7 +613,8 @@ const tablero = (foto) => {
 
   lineas.push('');
   lineas.push(color.titulo('── Outbox (eventos sin publicar) ─────────────────────────────────'));
-  for (const outbox of foto.outbox) {
+  if (sinPermisos) lineas.push(`  ${color.tenue('·')} ${notaSinSudo}`);
+  for (const outbox of sinPermisos ? [] : foto.outbox) {
     if (outbox.error !== undefined) {
       lineas.push(`  ${color.error('✖')} ${outbox.name.padEnd(14)} ${String(outbox.error)}`);
       continue;
@@ -584,12 +629,13 @@ const tablero = (foto) => {
 
   lineas.push('');
   lineas.push(color.titulo('── Notificaciones y reportes ─────────────────────────────────────'));
-  if (foto.envios?.error === undefined && foto.envios !== undefined) {
+  if (sinPermisos) lineas.push(`  ${color.tenue('·')} ${notaSinSudo}`);
+  if (!sinPermisos && foto.envios?.error === undefined && foto.envios !== undefined) {
     lineas.push(
       `  ${color.ok('✔')} envíos: ${String(foto.envios.enCola)} en cola · ${String(foto.envios.fallidos)} fallidos · ${String(foto.envios.sinCanal)} sin canal`,
     );
   }
-  if (foto.reportes?.error === undefined && foto.reportes !== undefined) {
+  if (!sinPermisos && foto.reportes?.error === undefined && foto.reportes !== undefined) {
     lineas.push(
       `  ${color.ok('✔')} reportes: ${String(foto.reportes.eventosProyectados)} evento(s) proyectado(s)` +
         (foto.reportes.ultimoRefresco === null
@@ -600,6 +646,12 @@ const tablero = (foto) => {
 
   lineas.push('');
   lineas.push(color.titulo('── Alertas ───────────────────────────────────────────────────────'));
+  if (sinPermisos) {
+    lineas.push(
+      `  ${color.aviso('!')} faltan permisos para comprobar cola, outbox y envíos: ejecútame con ` +
+        `sudo (sudo -E ODONTOCRM_ENV_DIR=${String(foto.permisos?.raiz ?? '/etc/odontocrm')} node tools/estado.mjs)`,
+    );
+  }
   if (problemas.length === 0) {
     lineas.push(`  ${color.ok('✔')} nada que reportar.`);
   } else {
@@ -612,6 +664,14 @@ const tablero = (foto) => {
 
 const imprimirAlertas = (foto) => {
   const problemas = alertasDe(foto);
+  // El aviso de permisos se imprime aunque no haya problemas: el silencio de un
+  // `--alertas` sin sudo no debe confundirse con «todo comprobado y bien».
+  if (foto.permisos?.envLegible === false) {
+    console.log(
+      `${color.aviso('!')} sin permisos para leer ${String(foto.permisos.raiz ?? '/etc/odontocrm')}: ` +
+        'no se comprobaron cola, outbox ni envíos (ejecútame con sudo)',
+    );
+  }
   if (comoJson) {
     console.log(JSON.stringify({ generadoEn: foto.generadoEn, problemas }, null, 2));
     return problemas.length;
