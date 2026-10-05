@@ -294,6 +294,11 @@ apunta a `/etc/odontocrm`: nginx corre como usuario `nginx` y ese directorio es
 deja el instalador del proxy. Se arregla igual:
 
 ```bash
+# 1) Asegúrate de que /opt tiene el código nuevo (y de que el comando instalado no es
+#    una copia vieja: `actualizar` ya se refresca a sí mismo).
+sudo odontocrm actualizar
+
+# 2) Regenera la configuración del proxy y publica la CA donde nginx puede leerla.
 sudo bash /opt/odontocrm/infra/fedora/nginx/instalar.sh
 curl -sI http://127.0.0.1/ca.crt | head -1     # 200 OK
 ```

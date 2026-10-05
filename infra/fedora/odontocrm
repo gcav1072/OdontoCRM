@@ -159,6 +159,15 @@ case "$ORDEN" in
   actualizar)
     necesita_root
     cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    # El comando instalado en /usr/local/bin es una COPIA: si el repositorio trae una
+    # versión nueva, se refresca antes de seguir. Sin esto, uno arregla algo, ejecuta
+    # `actualizar` y sigue viendo el comportamiento viejo (pasó con la descarga de la
+    # CA: el código ya estaba, la copia instalada no).
+    if [[ -f "$CODE_DIR/infra/fedora/odontocrm" ]] &&
+       ! cmp -s "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm; then
+      install -m 0755 -o root -g root "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm
+      ok 'comando del servidor actualizado a la versión del repositorio'
+    fi
     git config --global --add safe.directory "$CODE_DIR" 2>/dev/null || true
     printf '%sActualizando %s%s\n' "$C_TI" "$CODE_DIR" "$C_RE"
     git fetch --prune origin || morir 'no pude traer el código nuevo'
@@ -376,6 +385,11 @@ EOF
   compilar|build)
     necesita_root
     cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    if [[ -f "$CODE_DIR/infra/fedora/odontocrm" ]] &&
+       ! cmp -s "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm; then
+      install -m 0755 -o root -g root "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm
+      av 'el comando del servidor estaba viejo: se actualizó (vuelve a ejecutar si no ves los cambios)'
+    fi
     ok "versión en el disco: $(git rev-parse --short HEAD 2>/dev/null || echo 'sin git')"
     npm ci --silent || morir 'falló npm ci'
     npm run build >/dev/null 2>&1 || morir 'falló la compilación'
