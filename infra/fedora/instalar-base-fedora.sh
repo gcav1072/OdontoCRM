@@ -73,12 +73,22 @@ echo "== 3/6 · Rol superusuario para tu usuario (peer por socket) =============
 # OJO: dentro de un script con sudo, $USER es root. El rol hay que crearlo para el
 # usuario de verdad, que es el que abre la sesión (SUDO_USER).
 USUARIO_REAL="${SUDO_USER:-$USER}"
-sudo -u postgres createuser --superuser "$USUARIO_REAL" 2>/dev/null || echo "el rol $USUARIO_REAL ya existía"
+if sudo -u postgres psql -tAc "select 1 from pg_roles where rolname = '$USUARIO_REAL'" | grep -q 1; then
+  echo "el rol $USUARIO_REAL ya existía"
+elif sudo -u postgres createuser --superuser "$USUARIO_REAL"; then
+  echo "rol $USUARIO_REAL creado (superusuario por socket)"
+else
+  echo "ERROR: no pude crear el rol $USUARIO_REAL. Comprueba que PostgreSQL está arrancado" >&2
+  echo "       y que puedes entrar como el usuario postgres (sudo -u postgres psql)." >&2
+  exit 1
+fi
 # Y también para root: en el despliegue el bootstrap y las migraciones se ejecutan con
 # `sudo` (el código de /opt pertenece a root), y con autenticación `peer` el usuario del
 # sistema tiene que tener su propio rol. Sin esto, `sudo npm run db:bootstrap` falla en
 # una máquina recién preparada con «Peer authentication failed for user "root"».
-sudo -u postgres createuser --superuser root 2>/dev/null || echo "el rol root ya existía"
+sudo -u postgres psql -tAc "select 1 from pg_roles where rolname = 'root'" | grep -q 1 ||
+  sudo -u postgres createuser --superuser root ||
+  { echo "ERROR: no pude crear el rol root (lo necesita el bootstrap cuando se ejecuta con sudo)" >&2; exit 1; }
 echo "  roles superusuario por socket: $USUARIO_REAL y root (peer)"
 # La comprobación va COMO ESE USUARIO, no como root: la autenticación `peer` compara el
 # usuario del sistema que conecta con el rol pedido, así que desde root falla con
@@ -90,8 +100,39 @@ sudo -u "$USUARIO_REAL" psql -h /var/run/postgresql -d postgres -tAc 'select ver
 
 
 echo
+echo "== 3-bis/6 · pg_hba.conf: TCP con contraseña (scram-sha-256) =============="
+# `postgresql-setup --initdb` deja `ident` en las líneas de TCP: el servidor compara el
+# usuario del SISTEMA con el rol pedido, así que los 8 servicios —que entran por
+# 127.0.0.1 con su contraseña— fallan con «Peer authentication failed» y systemd los
+# reintenta en bucle. Se cambia SOLO eso: el socket local conserva `peer`, que es lo que
+# permite administrar sin contraseñas guardadas.
+PG_HBA="$(sudo -u postgres psql -tAc 'show hba_file' 2>/dev/null || echo /var/lib/pgsql/data/pg_hba.conf)"
+if [[ -f "$PG_HBA" ]]; then
+  metodos="$(sudo -u postgres psql -tAc \
+    "select coalesce(string_agg(distinct auth_method, ','), '?') from pg_hba_file_rules where type = 'host'" 2>/dev/null || echo '?')"
+  if (( DRY_RUN )); then
+    echo "  [dry-run] $PG_HBA: sed host 127.0.0.1/32 y ::1/128 → scram-sha-256  (hoy: $metodos)"
+  elif [[ "$metodos" == *ident* || "$metodos" == *trust* ]]; then
+    cp -a "$PG_HBA" "${PG_HBA}.antes-de-odontocrm"
+    sed -i -E 's|^(host[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+(127\.0\.0\.1/32|::1/128)[[:space:]]+)(ident|trust)|\1scram-sha-256|' "$PG_HBA"
+    systemctl reload postgresql
+    nuevos="$(sudo -u postgres psql -tAc \
+      "select coalesce(string_agg(distinct auth_method, ','), '?') from pg_hba_file_rules where type = 'host' and address in ('127.0.0.1/32', '::1/128')" 2>/dev/null)"
+    if [[ "$nuevos" == *scram-sha-256* ]]; then
+      echo "  TCP con contraseña: $metodos → $nuevos (copia previa: ${PG_HBA}.antes-de-odontocrm)"
+    else
+      echo "  (aviso) no pude confirmar el cambio en $PG_HBA; revisa a mano (INSTALL.md §6.3)"
+    fi
+  else
+    echo "  ya estaba con contraseña ($metodos): no se toca"
+  fi
+else
+  echo "  (aviso) no encuentro pg_hba.conf; revisa INSTALL.md §6.3"
+fi
+
+echo
 echo "== 4/6 · Dependencias de Chromium (récipe A5 y PDF de reportes) ============"
-cd "$(dirname "$0")/.." || exit 1
+cd "$(dirname "$0")/../.." || exit 1   # la raíz del repositorio, no infra/
 if ! sudo npx playwright install-deps chromium; then
   echo "install-deps no soporta esta distribución: instalo la lista a mano"
   sudo dnf install -y nss nspr atk at-spi2-atk cups-libs libdrm mesa-libgbm \
@@ -103,7 +144,9 @@ fi
 echo
 echo "== 5/6 · Node.js 26 (NodeSource) en lugar del Node 22 de Fedora ==========="
 sudo dnf remove -y 'nodejs22*'
-curl -fsSL -o /tmp/nodesource-setup_26.x.sh https://rpm.nodesource.com/setup_26.x
+curl -fsSL --retry 3 -o /tmp/nodesource-setup_26.x.sh https://rpm.nodesource.com/setup_26.x &&
+  test -s /tmp/nodesource-setup_26.x.sh ||
+  { echo "ERROR: no pude descargar el instalador de Node 26 (¿sin red?). Revisa la conexión y repite." >&2; exit 1; }
 sha256sum /tmp/nodesource-setup_26.x.sh
 sudo bash /tmp/nodesource-setup_26.x.sh
 sudo dnf install -y nodejs

@@ -4,6 +4,58 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fedora] — Auditoría de portabilidad: 20 fallos corregidos y 12 guardias nuevas · 2026-10-05 (después del tag `fase-10`)
+
+### Corregido
+
+Tres auditorías en paralelo (despliegue, bases y respaldos, configuración y documentación)
+buscando todo lo que asumiera la PC de pruebas. Lo que habría roto una instalación nueva:
+
+- **Nombres de PostgreSQL**: `postgresql-18.service` y `postgresql-18-setup` no existen en
+  Fedora 43/44, y systemd **ignora en silencio** una unidad inexistente en `After=`/`Wants=`
+  (los 8 servicios podían arrancar antes que la base y morir en bucle). Las unidades nombran
+  las dos convenciones y los mensajes detectan el sabor instalado.
+- **El puerto 80 no se abría**: por ahí cada equipo descarga la CA
+  (`http://<servidor>/ca.crt`); las comprobaciones daban verde porque se hacían desde
+  127.0.0.1, que firewalld no filtra.
+- **`install.sh --apply` usaba PM2**: plantillas 0600 que PM2 no puede leer y un ecosistema
+  con 3 de los 9 servicios. Ahora el supervisor por defecto es systemd (el validado).
+- **El respaldo diario nunca se programaba** (solo el temporizador de alertas): la clínica se
+  habría quedado sin respaldos, y el RUNBOOK decía que sí se programaba.
+- **El bootstrap por socket con usuario** (lo que recomienda la propia guía) escribía 8
+  `DATABASE_URL` rotas y dejaba de ser idempotente.
+- **`INTERNAL_SERVICE_SECRET`** traía un valor del repositorio que pasaba el `min(16)` del
+  esquema: ahora se genera uno aleatorio. Y `PUBLIC_APP_URL` se copiaba entero de
+  `WEB_ORIGIN` (que admite varios orígenes), así que el QR del récipe salía roto.
+- **`source` sobre los `.env`**: vaciaba `WEB_ORIGIN` (por el espacio tras la coma) y
+  expandía las contraseñas con `$`. Se sustituye por `tools/con-entorno.mjs`.
+- **La cola `odonto_events` no se respaldaba** en ningún sitio: tras restaurar, los eventos
+  ya marcados como publicados no vuelven. Ahora está en las tres listas.
+- **El RUNBOOK enseñaba a restaurar** con banderas que no existen y, sin `--keep-old`,
+  borrando la base actual. Reescrito con las banderas reales.
+- **Documentos que llevaban al desastre**: `STORAGE_ROOT`/`STORAGE_DRIVER` (ningún servicio
+  los lee), la recuperación de la contraseña del administrador (imposible como estaba),
+  `git checkout fase-9` (dejaba HEAD desprendido) y la falta de un paso para cambiar los
+  **datos del consultorio** (`packages/contracts/src/clinic.ts`, nueva §8.0).
+
+### Añadido
+
+- **12 guardias nuevas** en `npm run fedora:check` (**63 comprobaciones**): temporizadores,
+  `source` sobre `.env`, supervisor por defecto, puerto 80, nombres de PostgreSQL, CIDR a
+  mano, banderas de los documentos, datos del consultorio, coherencia de la lista de bases,
+  marcadores `CAMBIAR_*`, cargador de entorno y honestidad de la cabecera del instalador base.
+- **`odontocrm verificar` avisa de los marcadores `CAMBIAR_*`** sin sustituir en
+  `/etc/odontocrm` (el fallo más silencioso: el servicio arranca con un valor del repositorio).
+- **`tools/con-entorno.mjs`**: carga los `.env` sin interpretarlos como shell.
+- **`pg_hba.conf` se cambia de verdad** en el instalador base (conserva `peer` para el socket
+  y pone `scram-sha-256` en TCP), comprobándolo con `pg_hba_file_rules`.
+
+### Pendiente (registrado en INSTALL.md §20.2, P-36…P-42)
+
+Plantillas que no se actualizan (P-36), flags de rutas sin propagar (P-37), camino PM2 a
+medias (P-38), metadatos de la base al restaurar (P-39), huella de datos entre máquinas
+(P-40), extensiones en bases restauradas (P-41) y `env-check` que da verde sin `.env` (P-42).
+
 ## [Fedora] — `TELEGRAM_MODE` repuesto si se perdió · 2026-10-04 (después del tag `fase-10`)
 
 ### Corregido
