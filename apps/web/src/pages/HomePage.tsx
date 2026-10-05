@@ -41,9 +41,7 @@ export const HomePage = () => {
 
   const modulos = Object.values(MODULES).filter(
     (modulo) =>
-      modulo.id !== 'inicio' &&
-      modulo.phase > 1 &&
-      (modulo.permission === null || hasPermission(modulo.permission)),
+      modulo.id !== 'inicio' && (modulo.permission === null || hasPermission(modulo.permission)),
   );
 
   const permisosHeredados = roles.flatMap((rol) => [...ROLE_PERMISSIONS[rol]]);
@@ -110,9 +108,6 @@ export const HomePage = () => {
                         <p className="truncate text-sm font-semibold text-ink">
                           {t(modulo.labelKey)}
                         </p>
-                        <Badge variant="info" className="ml-auto">
-                          {t('placeholder.fase', { fase: modulo.phase })}
-                        </Badge>
                       </div>
                       <p className="text-xs text-ink-muted">{t(modulo.descriptionKey)}</p>
                       <LinkButton

@@ -270,6 +270,11 @@ export const App = () => {
             }
           />
 
+          {/* `/recepcion` fue el nombre del módulo en las primeras fases; su función
+              vive en Secretaría (`/secretaria`). Se mantiene la ruta redirigiendo para
+              que los enlaces y marcadores viejos sigan funcionando. */}
+          <Route path="recepcion" element={<Navigate to="/secretaria" replace />} />
+
           {modulosFuturos.map((modulo) => (
             <Route
               key={modulo.id}

@@ -43,12 +43,11 @@ export const ModulePlaceholder = ({ module }: ModulePlaceholderProps) => {
             <CardTitle as="h2">{t(definicion.labelKey)}</CardTitle>
             <CardDescription>{t(definicion.descriptionKey)}</CardDescription>
           </div>
-          <Badge variant="info">{t('placeholder.fase', { fase: definicion.phase })}</Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <Alert variant="info" title={t('placeholder.titulo')}>
-          {t('placeholder.texto', { fase: definicion.phase })}
+          {t('placeholder.texto')}
         </Alert>
 
         <dl className="grid gap-3 text-sm sm:grid-cols-2">

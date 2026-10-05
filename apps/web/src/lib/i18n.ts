@@ -251,10 +251,9 @@ const DICCIONARIO = {
   'reportes.formato.pdf': 'PDF',
 
   // --- Módulos en construcción --------------------------------------------
-  'placeholder.titulo': 'Módulo en construcción',
+  'placeholder.titulo': 'Sección en preparación',
   'placeholder.texto':
-    'Este módulo se construye en la Fase {fase} del plan. La navegación y los permisos ya están listos; la funcionalidad se conecta en esa fase.',
-  'placeholder.fase': 'Fase {fase}',
+    'Esta sección todavía no está disponible en tu instalación. La navegación y los permisos ya están listos; la funcionalidad llegará en una próxima actualización.',
   'placeholder.permiso': 'Permiso que lo habilita',
   'placeholder.ruta': 'Ruta',
   'placeholder.disponible': 'Disponible',
@@ -1091,8 +1090,8 @@ const DICCIONARIO = {
   // Marcar atendido
   'programacion.atendido.titulo': 'Marcar atendido a {paciente}',
   'programacion.atendido.texto':
-    'La historia clínica y las sesiones llegan en la Fase 6. Mientras tanto, marcar «atendido» exige un motivo que queda registrado en la auditoría; cuando exista la sesión clínica cerrada, se enlazará sola.',
-  'programacion.atendido.motivo': 'Motivo (obligatorio mientras no haya historia clínica)',
+    'Si el paciente se atendió sin abrir su historia clínica, escribe el motivo: queda registrado en la auditoría y, cuando exista la sesión clínica cerrada, se enlazará sola.',
+  'programacion.atendido.motivo': 'Motivo (si no hay sesión clínica abierta)',
   'programacion.atendido.motivoCorto': 'Escribe el motivo (mínimo 3 caracteres)',
   'programacion.atendido.motivoAyuda':
     'Por ejemplo: sesión clínica en papel, control de ortodoncia.',
@@ -1576,7 +1575,7 @@ const DICCIONARIO = {
   'pantalla.consultorio.motivo': 'Motivo de la consulta',
   'pantalla.consultorio.criticos': 'Datos críticos',
   'pantalla.consultorio.sinCriticos':
-    'Aún no hay datos clínicos de este paciente: llegan con la historia clínica (Fase 6).',
+    'Sin datos críticos registrados: todavía no se ha abierto la historia clínica de este paciente.',
   'pantalla.consultorio.espera': 'Desde {hora}',
   'pantalla.sala.count': 'En sala: {total}',
 
@@ -1665,8 +1664,7 @@ const DICCIONARIO = {
   'clinica.seccion.consentimiento': 'Consentimiento informado',
   'clinica.seccion.consentimiento.ayuda': 'Riesgos y alternativas que se informaron al paciente.',
   'clinica.seccion.evolucion': 'Evolución clínica',
-  'clinica.seccion.evolucion.ayuda':
-    'Resumen de la atención. Las sesiones clínicas se registran en la Fase 7.',
+  'clinica.seccion.evolucion.ayuda': 'Resumen de la atención de esta visita.',
 
   'clinica.estado.borrador': 'Borrador',
   'clinica.estado.firmada': 'Firmada',
