@@ -252,6 +252,7 @@ sudo tail -n 50 /var/log/odontocrm/backup.log
 
 | Síntoma | Qué mirar | Qué hacer |
 | :--- | :--- | :--- |
+| Un equipo nuevo avisa «conexión no privada» | Nada roto: ese equipo no conoce el certificado | En **ese** equipo, abrir `http://<IP-del-servidor>/ca.crt`, instalarlo como autoridad de certificación y reabrir el navegador (INSTALL §13.3-bis) |
 | La clínica no entra (navegador) | `sudo npm run estado`, `systemctl status odontocrm-gateway`, `systemctl status nginx` (o `caddy`) | Reiniciar el proxy y la puerta. Si el certificado venció, renovarlo ([INSTALL.md §13](INSTALL.md)) |
 | Un servicio en rojo en el tablero | `systemctl status odontocrm@<servicio>`, `journalctl -u odontocrm@<servicio> -n 50` | Reiniciarlo. Si dice `ConfigError`, falta una variable en `/etc/odontocrm/<servicio>.env` |
 | `/ready` en 503 pero `/health` en 200 | El detalle del chequeo que falla (lo dice el tablero) | Es una dependencia: PostgreSQL caído, cola inalcanzable o el bot sin token |

@@ -24,8 +24,28 @@
 
 ## 1. Entrar
 
-Se abre el navegador en la dirección del consultorio (por ejemplo
-`https://odontocrm.local`) y se entra con **usuario y contraseña propios**.
+Se abre el navegador en la dirección del consultorio y se entra con **usuario y
+contraseña propios**. Hay dos direcciones y las dos funcionan:
+
+- **`https://odontocrm.local`** (el nombre; hay que escribirlo en el archivo *hosts* de
+  cada equipo la primera vez, o pedir que lo ponga el DNS de la red).
+- **`https://192.168.1.50`** (la **IP del servidor**, que la dice quien administra;
+  sirve en cualquier equipo sin tocar nada).
+
+> **Si el navegador avisa «La conexión no es privada»**, es porque ese equipo todavía no
+> conoce el certificado del consultorio. Se arregla **una sola vez por equipo**, abriendo
+> esta página y siguiendo los pasos (`INSTALL.md` §13.3-bis):
+>
+> ### 👉 `http://<IP-del-servidor>/ca.crt`
+>
+> Por ejemplo: **`http://192.168.1.50/ca.crt`**. El equipo descarga un archivo pequeñito
+> (`odontocrm-ca.crt`) que hay que **instalar como «autoridad de certificación»**; después
+> se cierra el navegador, se vuelve a abrir la dirección del consultorio y el candado
+> sale normal. La misma página funciona por HTTP **a propósito**: hay que poder descargar
+> el certificado antes de que el navegador confíe en él.
+>
+> La IP exacta de tu instalación la imprime el servidor con
+> `sudo odontocrm certificado`.
 
 - La primera vez el sistema pide **cambiar la contraseña temporal**: se escribe una
   nueva (mínimo 10 caracteres) y se repite.
@@ -156,6 +176,11 @@ duración, con las indicaciones generales) y se **emite**.
   consulta y sus **datos críticos en semáforo** (alergias, anticoagulantes, diabetes…).
 - Cada televisor o monitor se registra una vez en `/pantallas` con su token y se
   desactiva cuando se retira.
+- **Antes de eso, el televisor tiene que conocer el certificado** (si no, la pantalla
+  queda en blanco o con el aviso de conexión no privada): se abre
+  `http://<IP-del-servidor>/ca.crt` **en el propio televisor** y se instala como
+  autoridad de certificación. Muchos Smart TV no lo permiten; en ese caso se le pone un
+  mini-PC o una tablet a la pantalla.
 
 ---
 

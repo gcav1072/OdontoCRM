@@ -196,6 +196,11 @@ case "$ORDEN" in
       esac
     done
 
+    IP_CA="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1)"
+    [[ -n "$IP_CA" ]] || IP_CA="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    NOMBRE_CA="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null | awk '{print $1}')"
+    [[ -n "$NOMBRE_CA" ]] || NOMBRE_CA="odontocrm.local"
+
     printf '%sCertificado interno (TLS)%s\n' "$C_TI" "$C_RE"
     if [[ -f /etc/pki/tls/certs/odontocrm.crt ]]; then
       ok "servidor: /etc/pki/tls/certs/odontocrm.crt"
@@ -228,6 +233,13 @@ case "$ORDEN" in
       cat <<EOF
 
   ${C_TI}Cómo quitar el aviso en cada equipo${C_RE} (uno por uno, se hace una sola vez):
+
+    ${C_TI}LA PÁGINA QUE HAY QUE ABRIR EN CADA EQUIPO${C_RE}
+
+        http://${IP_CA:-<IP-del-servidor>}/ca.crt
+        (aquí: http://${IP_CA}/ca.crt — escríbela tal cual en el navegador del equipo)
+
+      La aplicación, después de instalarla:  https://${NOMBRE_CA:-odontocrm.local}  o  https://${IP_CA}
 
     ${C_TI}Tablet o móvil Android${C_RE}
       1. Abre https://$(hostname -I 2>/dev/null | awk '{print $1}')/ca.crt y acepta la descarga

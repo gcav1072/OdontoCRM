@@ -272,9 +272,20 @@ sudo odontocrm certificado                  # estado + archivos para copiar
 sudo odontocrm certificado --exportar /tmp/ca
 ```
 
-Y en el equipo nuevo (tablet, móvil, TV): abrir `http://<IP-del-servidor>/ca.crt`,
-instalarla como **autoridad de certificación** y reabrir el navegador. Los pasos por
-sistema están en INSTALL §13.3-bis y los imprime el propio comando.
+Y en el equipo nuevo (tablet, móvil, TV) se abre esta página **en ese equipo**:
+
+```
+http://<IP-del-servidor>/ca.crt
+```
+
+Por ejemplo `http://192.168.1.50/ca.crt` (la IP la imprime `sudo odontocrm certificado`).
+Descarga un archivo pequeño que hay que **instalar como «autoridad de certificación»**;
+después se cierra el navegador, se vuelve a abrir `https://odontocrm.local` (o la IP) y el
+candado sale normal. Va por HTTP **a propósito**: hay que poder descargarlo antes de que
+el equipo confíe en el certificado.
+
+Los pasos por sistema operativo (Android, iPhone/iPad, Windows, Mac y qué hacer con un
+Smart TV que no admite CA) están en INSTALL §13.3-bis, y el comando los imprime.
 
 ---
 
