@@ -49,7 +49,16 @@ REINICIAR=0
 
 for arg in "$@"; do
   case "$arg" in
-    --hasta=*) HASTA="${arg#*=}" ;;
+    --hasta=*)
+      HASTA="${arg#*=}"
+      # Un typo aquí es peligroso: `--hasta=tls` escrito mal hacía que el ensayo se saltara
+      # el TLS y los respaldos… y el «Resumen» salía igual, como si hubiera ido todo. Se
+      # valida contra la lista de fases.
+      case "$HASTA" in
+        precondiciones|usuario|codigo|config|migraciones|servicios|tls|respaldos|todo) ;;
+        *) echo "--hasta=$HASTA no es una fase: precondiciones | usuario | codigo | config | migraciones | servicios | tls | respaldos | todo" >&2; exit 2 ;;
+      esac
+      ;;
     --lan-cidr=*) LAN_CIDR="${arg#*=}" ;;
     --reiniciar) REINICIAR=1 ;;
     --origen=*) ORIGEN="${arg#*=}" ;;
@@ -292,9 +301,11 @@ fi
 paso "4/7 · Migraciones"
 for s in "${SERVICIOS[@]}"; do
   # Se inyecta el entorno del servicio (los .env del código NO viven en /opt).
-  env -i PATH="$PATH" HOME=/root NODE_ENV=production \
-    bash -c "set -a; source /etc/odontocrm/odontocrm.env; source /etc/odontocrm/$s.env; set +a; \
-             cd '$DESTINO' && node services/$s/dist/db/migrate.js" >/tmp/ensayo-migrar-$s.log 2>&1 ||
+  # `tools/con-entorno.mjs` carga los .env sin interpretarlos como shell (ver el encabezado
+  # de ese archivo: `source` vaciaba WEB_ORIGIN por el espacio tras la coma, y expandía las
+  # contraseñas con `$`).
+  (cd "$DESTINO" && NODE_ENV=production node tools/con-entorno.mjs /etc/odontocrm "$s" -- \
+    node "services/$s/dist/db/migrate.js") >/tmp/ensayo-migrar-$s.log 2>&1 ||
     { echo "    --- /tmp/ensayo-migrar-$s.log ---"; tail -25 "/tmp/ensayo-migrar-$s.log" | sed 's/^/    /'; morir "fallaron las migraciones de $s"; }
   ok "migraciones de $s"
 done
@@ -390,7 +401,7 @@ if [[ "$HASTA" == "tls" || "$HASTA" == "respaldos" ]]; then
   [[ -n "$IP_LAN" ]] || IP_LAN="$(hostname -I 2>/dev/null | awk '{print $1}')"
   # Si no dicen la red, se usa la /24 de esta máquina (443 abierto solo ahí).
   if [[ -z "$LAN_CIDR" && -n "$IP_LAN" ]]; then
-    LAN_CIDR="$(printf '%s' "$IP_LAN" | awk -F. '{printf "%s.%s.%s.0/24", $1, $2, $3}')"
+    LAN_CIDR="$(ip -o -f inet addr show dev "${IFACE_LAN:-$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)}" 2>/dev/null | awk 'NR==1 {print $4; exit}')"
     av "sin --lan-cidr: uso la red de esta máquina ($LAN_CIDR) para abrir 443"
   fi
   HOSTS_TLS=(odontocrm.local localhost 127.0.0.1)

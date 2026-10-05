@@ -17,7 +17,8 @@
 > sudo odontocrm logs clinical
 > ```
 >
-> **Antes de tocar nada**: `sudo npm run estado` desde `/opt/odontocrm`. Ese comando
+> **Antes de tocar nada**: `sudo odontocrm estado` (lee `/etc/odontocrm`; `npm run estado`
+> a secas busca los `.env` del repositorio, que en producción se borran). Ese comando
 > dice, en una pantalla, si los nueve servicios están vivos, si la cola de eventos
 > avanza, si el respaldo corrió y cuánto disco queda. Casi todo lo de este documento
 > empieza y termina ahí.
@@ -51,7 +52,7 @@
 
 ```bash
 cd /opt/odontocrm
-sudo npm run estado
+sudo odontocrm estado
 ```
 
 Lo que tiene que decir:
@@ -176,21 +177,35 @@ ese día no sirve: mira el error, arréglalo y lanza uno a mano.
 Primero se **ensaya** (el script restaura en una base temporal y comprueba que los
 datos entran), y solo después se restaura de verdad:
 
-```bash
-# 1) Ensayo: restaura el respaldo en una base temporal y la borra
-sudo /opt/odontocrm/infra/fedora/backup/odontocrm-restore.sh \
-  --file /var/backups/odontocrm/odontocrm-AAAAMMDD.tar.gz --verify
+Los respaldos son **un archivo por base y por día** (`<BACKUP_DIR>/AAAA-MM-DD/<base>_<marca>.dump`),
+no un `.tar.gz`. Las banderas reales del guion son `--from`, `--db`, `--keep-verify-db`,
+`--keep-old` y `--yes` (comprueba con `--help` antes de improvisar):
 
-# 2) Restauración real de una base (la clínica debe estar parada)
+```bash
+# 1) Ensayo en seco: dice qué haría, sin tocar nada
+sudo /opt/odontocrm/infra/fedora/backup/odontocrm-restore.sh \
+  --from /var/backups/odontocrm/2026-10-04 --dry-run
+
+# 2) Ensayo real de UNA base: restaura en odonto_patients__verif y compara filas.
+#    Así se ve que el respaldo sirve sin arriesgar la base buena.
+sudo /opt/odontocrm/infra/fedora/backup/odontocrm-restore.sh \
+  --from /var/backups/odontocrm/2026-10-04 --db odonto_patients --keep-verify-db --yes
+
+# 3) Restauración de verdad (la clínica debe estar parada).
+#    `--keep-old` guarda la base actual como «__antes_de_restaurar»: sin él, se ELIMINA.
 sudo systemctl stop odontocrm-gateway.service 'odontocrm@*'
 sudo /opt/odontocrm/infra/fedora/backup/odontocrm-restore.sh \
-  --file /var/backups/odontocrm/odontocrm-AAAAMMDD.tar.gz --database odonto_patients
-sudo systemctl start odontocrm@{identity,patients,scheduling,notifications,clinical,odontogram,screens,reporting}.service
-sudo systemctl start odontocrm-gateway.service
+  --from /var/backups/odontocrm/2026-10-04 --db odonto_patients --keep-old --yes
+sudo systemctl start 'odontocrm@*' odontocrm-gateway.service
 
-# 3) Comprobar
-sudo npm run estado
+# 4) Comprobar
+sudo odontocrm estado
+sudo odontocrm verificar
 ```
+
+> `--yes` es obligatorio a propósito (sin él el guion sale con código 10 y **no hace nada**):
+> restaurar es destructivo. Y antes de restaurar en producción, un **respaldo reciente
+> verificado** ([[INSTALL.md §15]]).
 
 La prueba de restauración completa (base limpia, contar filas y anotarlo) está en
 [`INSTALL.md` §16](INSTALL.md) y es un **criterio de aceptación de la Fase 10**: sin
@@ -204,13 +219,20 @@ Las cuentas se crean desde la aplicación (`/usuarios`, permiso `users:manage`, 
 el administrador) o con el seed, que es lo que se usa en la puesta en marcha:
 
 ```bash
+# Crea lo que falte (no toca lo que ya existe). En producción el seed EXIGE la contraseña
+# en el entorno (`SEED_PASSWORD_<USUARIO>`), así que se pasa en la misma línea que el
+# comando; `con-entorno` la reenvía al proceso.
 cd /opt/odontocrm
-# Crea lo que falte (no toca lo que ya existe) y dice la contraseña temporal
-sudo -u odontocrm npm run seed:users
+sudo SEED_PASSWORD_ADMIN='la-que-quieras-poner' \
+  odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset
 
-# ¿Cuál era la clave del admin y sigue valiendo?
-sudo -u odontocrm npm run seed:users -- --print
+# ¿Qué usuarios hay y quiénes tienen contraseña temporal?
+sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js --print
 ```
+
+> La contraseña nueva nace **temporal**: el sistema obliga a cambiarla al entrar. Para
+> reponer la del administrador cuando se ha olvidado, el comando de arriba es el camino
+> (en producción el seed **no** acepta las claves de desarrollo).
 
 - Toda contraseña nueva nace **temporal**: el sistema obliga a cambiarla en el primer
   acceso.
@@ -231,7 +253,7 @@ chat ni se pega en el repositorio.
 
 ```bash
 # Comprobar que está vivo
-npm run telegram:menu                     # registra el menú de comandos en Telegram
+sudo odontocrm con-entorno notifications -- node tools/telegram-menu.mjs   # menú del bot
 
 # Rotar el token (BotFather → /revoke → token nuevo)
 sudo nano /etc/odontocrm/notifications.env     # TELEGRAM_BOT_TOKEN=…
@@ -253,7 +275,7 @@ contesta); los avisos quedan en cola y se reintentan solos.
 Empieza siempre por el tablero y los registros:
 
 ```bash
-cd /opt/odontocrm && sudo npm run estado
+sudo odontocrm estado
 journalctl -p err --since '1 hour ago' --no-pager | tail -40
 sudo tail -n 50 /var/log/odontocrm/backup.log
 ```
@@ -261,13 +283,13 @@ sudo tail -n 50 /var/log/odontocrm/backup.log
 | Síntoma | Qué mirar | Qué hacer |
 | :--- | :--- | :--- |
 | Un equipo nuevo avisa «conexión no privada» | Nada roto: ese equipo no conoce el certificado | En **ese** equipo, abrir `http://<IP-del-servidor>/ca.crt`, instalarlo como autoridad de certificación y reabrir el navegador ([paso a paso por sistema](../../docs/CERTIFICADO_EN_LOS_EQUIPOS.md)) |
-| La clínica no entra (navegador) | `sudo npm run estado`, `systemctl status odontocrm-gateway`, `systemctl status nginx` (o `caddy`) | Reiniciar el proxy y la puerta. Si el certificado venció, renovarlo ([INSTALL.md §13](INSTALL.md)) |
+| La clínica no entra (navegador) | `sudo odontocrm estado`, `systemctl status odontocrm-gateway`, `systemctl status nginx` (el proxy del proyecto es nginx) | Reiniciar el proxy y la puerta. Si el certificado venció, renovarlo ([INSTALL.md §13](INSTALL.md)) |
 | Un servicio en rojo en el tablero | `systemctl status odontocrm@<servicio>`, `journalctl -u odontocrm@<servicio> -n 50` | Reiniciarlo. Si dice `ConfigError`, falta una variable en `/etc/odontocrm/<servicio>.env` |
 | `/ready` en 503 pero `/health` en 200 | El detalle del chequeo que falla (lo dice el tablero) | Es una dependencia: PostgreSQL caído, cola inalcanzable o el bot sin token |
 | «outbox de X sin publicar» | `systemctl status odontocrm@X`, disco | El publicador no corre (servicio caído) o el disco está lleno |
 | «cola … trabajo(s) fallido(s)» | `journalctl -u odontocrm@reporting -n 100` (o el consumidor que sea) | Un evento con carga inválida: se corrige y se vuelve a publicar; los fallidos no se pierden |
 | «cola de envíos atascada» | `/notificaciones` (bandeja), `journalctl -u odontocrm@notifications` | Los mensajes esperan al bot; revisa el token y la conexión |
-| Poco disco | `df -h`, `du -sh /var/lib/odontocrm/storage /var/backups/odontocrm` | Vaciar respaldos viejos (`--keep`), mover radiografías, ampliar disco |
+| Poco disco | `df -h`, `du -sh /var/lib/odontocrm/storage /var/backups/odontocrm` | Vaciar respaldos viejos (`--retention N`, o `--clean`), mover radiografías, ampliar disco |
 | Los PDF (récipe, reportes) fallan | `journalctl -u odontocrm@clinical -n 50`, `ldd` del navegador | Chromium sin dependencias o ruta mal puesta (`PLAYWRIGHT_BROWSERS_PATH`) |
 | «el refresco del read model falló» | `journalctl -u odontocrm@reporting -n 50`, `POST /internal/v1/reporting/refresh` | Un refresco a mano lo arregla; si vuelve, mira el espacio en disco |
 | Todo lento | `uptime`, `free -h`, `sudo -u postgres psql -c 'select * from pg_stat_activity'` | Reiniciar el servicio que consuma de más; revisar consultas lentas en el registro de PostgreSQL |
@@ -290,7 +312,7 @@ los comandos siguientes no hacían nada y todo parecía «no avanzar».
 **Qué mirar, en este orden:**
 
 ```bash
-pgrep -af 'fase10-ensayo|[o]dontocrm-restore|[o]dontocrm-backup'   # ¿hay algo vivo?
+pgrep -af '[o]dontocrm-restore|[o]dontocrm-backup|[e]nsayo-despliegue'   # ¿hay algo vivo?
 psql -d "postgres:///postgres?host=/var/run/postgresql" \
   -c "select pid, state, wait_event, left(query,60) from pg_stat_activity where datname is not null"
 tail -20 /var/log/odontocrm/backup.log        # o restore_<fecha>.log
@@ -343,9 +365,9 @@ sudo git fetch --all --tags
 sudo git checkout fase-N                                        # 2. la versión nueva
 sudo npm ci                                                     # 3. dependencias
 sudo npm run build                                              # 4. compilar
-sudo npm run db:migrate                                         # 5. esquema (idempotente)
+sudo odontocrm actualizar      # 5. trae el código, compila y aplica el esquema (idempotente)
 sudo systemctl restart 'odontocrm@*' odontocrm-gateway.service # 6. reiniciar
-sudo npm run estado                                                  # 7. comprobar
+sudo odontocrm verificar                                       # 7. comprobar
 ```
 
 Si algo sale mal: `sudo git checkout fase-(N-1)`, `sudo npm ci && sudo npm run build`,

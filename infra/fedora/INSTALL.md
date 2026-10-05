@@ -1,26 +1,10 @@
 # OdontoCRM — Guía de instalación en Fedora (servidor de producción)
 
-> **Estado: BORRADOR de la Fase 0.** Este documento se **completa y se prueba** en la
-> Fase 10 del [plan maestro](../../docs/PLAN_MAESTRO_FASES.md) (§13, Fase 10). Ninguna
-> afirmación marcada con `> PENDIENTE FASE 10:` está verificada todavía: son puntos
-> que deben comprobarse contra el Fedora real antes de usar el sistema con datos de
-> pacientes.
->
-> **Destino:** Fedora 43 o superior, servidor local de la clínica (LAN), **nunca
-> expuesto a internet**. El desarrollo se hace en Windows; la producción es Fedora.
->
-> **Decisiones que esta guía respeta** (no se proponen alternativas):
-> nativo sin Docker (§1.1) · PostgreSQL 18 local, una base y un rol por servicio
-> (§1.2) · outbox + `pg-boss` sobre el mismo PostgreSQL, sin RabbitMQ ni Redis
-> (§1.3) · 9 servicios Node escuchando en `127.0.0.1` (§2.2) · JWT EdDSA + refresh
-> rotativo en cookie `Secure` (§1.5, §11) · PM2 o unidades `systemd` (§1.1, §11) ·
-> secretos en `/etc/odontocrm` — **dos archivos por servicio**
-> (`odontocrm.env` común + `<servicio>.env` propio, como el `.env` de la raíz y
-> `services/<servicio>/.env` del desarrollo), con `0600` y propietario `root`,
-> cargados con `EnvironmentFile=` (§11, §8.1) · almacenamiento de archivos con
-> abstracción S3-ready (§2.2, Fase 7) · récipes A5 con Playwright/Chromium (§1.15) ·
-> acceso remoto por VPN mesh tipo Tailscale (§1.21) · respaldos `pg_dump` diarios con
-> retención de 30 días y restauración probada (§11).
+> **Estado: guía verificada.** El registro de verificación es la tabla de §20.1: 17 puntos
+> comprobados en un Fedora real (marcados ✅) y los que siguen abiertos (☐) o a medias (◐),
+> cada uno con su evidencia. Las notas `> PENDIENTE FASE 10:` que queden en el cuerpo son
+> **solo** de puntos no verificados — `npm run fedora:check` falla si un punto ✅ aparece
+> anunciado como pendiente.
 
 ---
 
@@ -158,7 +142,7 @@ Reglas que no se negocian:
 | 4006 | `odontogram` | `127.0.0.1` | `odonto_odontogram` | `odonto_odontogram` | `odontocrm@odontogram.service` | `odontocrm-odontogram` |
 | 4007 | `screens` | `127.0.0.1` | `odonto_screens` | `odonto_screens` | `odontocrm@screens.service` | `odontocrm-screens` |
 | 4008 | `reporting` | `127.0.0.1` | `odonto_reporting` | `odonto_reporting` | `odontocrm@reporting.service` | `odontocrm-reporting` |
-| 5432 | PostgreSQL 18 | `127.0.0.1` | — | — | `postgresql-18.service` | — |
+| 5432 | PostgreSQL 18 | `127.0.0.1` | — | — | `postgresql.service` (Fedora) o `postgresql-18.service` (PGDG) | — |
 
 Los nombres de PM2 son `odontocrm-<servicio>` en las dos plataformas
 (`infra/windows/ecosystem.config.cjs` para desarrollo y `infra/fedora/ecosystem.config.cjs`
@@ -217,12 +201,13 @@ Añade el nombre al archivo `hosts` del propio servidor (y en tus equipos client
 el DNS de la clínica):
 
 ```bash
-echo '127.0.1.1  odontocrm.local odontocrm' | sudo tee -a /etc/hosts
+# (idempotente: si ya está, no se repite — `tee -a` a secas lo duplicaría)
+grep -q odontocrm.local /etc/hosts || echo '127.0.1.1  odontocrm.local odontocrm' | sudo tee -a /etc/hosts
 ```
 
 > ◐ **Decidido y hecho (P-12, §20):** el certificado se emite para el **nombre**
 > (`odontocrm.local`), `localhost`, `127.0.0.1` **y** la IP del servidor, y la CA se reparte
-> descargándola en `http://<servidor>/ca.crt` (ver §13.2-bis y
+> descargándola en `http://<servidor>/ca.crt` (ver §13.3-bis y
 > [`CERTIFICADO_EN_LOS_EQUIPOS.md`](../../docs/CERTIFICADO_EN_LOS_EQUIPOS.md)). **Queda
 > pendiente** instalarla y probarlo en los aparatos reales de la consulta (tablet, móvil, TV).
 
@@ -383,9 +368,9 @@ PM2 se usa como **alternativa** al `systemd` nativo (§10.4). El plan acepta amb
 ### 6.1 Inicializar el clúster y arrancarlo
 
 ```bash
-sudo postgresql-18-setup --initdb          # crea /var/lib/pgsql/data (solo si no existe)
-sudo systemctl enable --now postgresql-18
-systemctl status postgresql-18 --no-pager
+sudo postgresql-setup --initdb             # crea /var/lib/pgsql/data (solo si no existe)
+sudo systemctl enable --now postgresql
+systemctl status postgresql --no-pager      # Fedora; con PGDG sería postgresql-18
 
 # Verificación
 sudo -u postgres psql -c 'SELECT version();'
@@ -419,7 +404,7 @@ max_connections = 120               # 9 servicios + pg-boss + psql + respaldos
 ```
 
 ```bash
-sudo systemctl restart postgresql-18
+sudo systemctl restart postgresql
 ```
 
 > PENDIENTE FASE 10: (P-13) estos valores son de partida; ajustarlos tras medir con
@@ -683,7 +668,10 @@ pendiente lleva el marcador `CAMBIAR_*`. Nunca sobrescribe un archivo existente.
 
 ```bash
 sudo ./infra/fedora/install.sh --dry-run     # ver qué haría (no cambia nada)
-sudo ./infra/fedora/install.sh --apply       # crear usuario, directorios y plantillas
+# Crear usuario, directorios, plantillas y unidades. `--supervisor=systemd` es lo que se
+# validó en la fase 10 (y desde entonces es el valor por defecto); `--enable-services`
+# arranca los servicios y **programa los dos temporizadores** (alertas y respaldo diario).
+sudo ./infra/fedora/install.sh --apply --supervisor=systemd --enable-services
 sudo ls -l /etc/odontocrm/                   # odontocrm.env + <servicio>.env
 sudo grep -c CAMBIAR /etc/odontocrm/*.env    # valores por reemplazar
 ```
@@ -748,11 +736,11 @@ Nombres exactos de los puertos (los del código y los de §2.2):
 | **`EVENTS_DATABASE_URL`** | los 8 con BD | **La cola compartida** (`odonto_events`): **el mismo valor en los ocho**, con el rol `odonto_events`. Sin ella cada servicio usaría **su propia base** para `pg-boss` y los eventos no llegarían a los demás (el read model de reportes se queda vacío y la auditoría no ve nada). La escribe el bootstrap en `services/<servicio>/.env` y se traslada aquí (§8.6). |
 | `DATABASE_POOL_MAX` | los 8 con BD | Conexiones por servicio (valor por defecto del código: 10). |
 | `INTERNAL_SERVICE_SECRET` | los 9 | Secreto HS256 de los JWT de servicio. **El mismo valor en los 9.** |
-| `COOKIE_SECRET` | `identity` | Secreto de cookies; lo genera el bootstrap. |
 | `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH` | `identity` | Claves EdDSA (§8.4). |
 | `COOKIE_SECURE=true` | `identity` | Exige HTTPS: es la razón del TLS interno (§13). |
-| `STORAGE_DRIVER`, `STORAGE_ROOT` | `patients`, `clinical` | `local` + `/var/lib/odontocrm/storage` (abstracción S3-ready). |
-| `PLAYWRIGHT_BROWSERS_PATH` | `clinical` | `/var/lib/odontocrm/ms-playwright`. |
+| `STORAGE_DIR` | `patients`, `clinical` | `/var/lib/odontocrm/storage`. **Obligatoria**: su valor por defecto es relativo (`./storage/…`) y en `/opt` el servicio no puede escribir. |
+| `MAX_FILE_BYTES` | `patients`, `clinical` | Tamaño máximo de un archivo (por defecto 20 MB ≈ `20971520`). |
+| `PLAYWRIGHT_BROWSERS_PATH` | `clinical`, `reporting` | `/var/lib/odontocrm/ms-playwright` (el récipe A5 **y** el PDF de reportes). |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_MODE=auto` | `notifications` | Token de BotFather, entregado por archivo (nunca por chat ni en el repo). El modo es **`auto` \| `real` \| `simulado`** (el modo test fuerza `simulado`); el *long polling* es el transporte, no un modo: `polling` **no** es un valor válido y el servicio no arranca con él. |
 
 **Regla de precedencia:** si una variable aparece en los dos archivos, gana la del
@@ -878,6 +866,43 @@ Notas:
 
 ---
 
+## 8.0 Los datos del consultorio (antes de la primera puesta en marcha)
+
+La identidad de la clínica —nombre, dirección, RIF, teléfonos y **odontólogos con su
+MPPS**— vive en el código versionado:
+
+    packages/contracts/src/clinic.ts
+
+Trae los valores de una clínica concreta. **En otra clínica hay que cambiarlos** y
+recompilar, porque con ellos se generan:
+
+- el membrete y los datos del profesional en los **récipes A5** y en la historia clínica,
+- el **QR de verificación** de cada récipe (apunta a `PUBLIC_APP_URL`),
+- los avisos del bot y los encabezados de las pantallas de sala,
+- y el **usuario clínico sembrado** (`npm run seed:users` crea una cuenta por odontólogo de
+  esa lista: hoy `egomez`).
+
+```bash
+# 1) Editar los datos reales de la clínica
+$EDITOR packages/contracts/src/clinic.ts
+
+# 2) Recompilar (los servicios leen el paquete compilado)
+npm run build
+
+# 3) Volver a sembrar los usuarios para que aparezcan los odontólogos nuevos
+npm run seed:users
+```
+
+> Sin recompilar, `clinic.ts` admite sobrescribir el **nombre, la dirección y el correo**
+> con `CLINIC_NAME`, `CLINIC_ADDRESS` y `CLINIC_EMAIL` en el entorno del servicio
+> (`/etc/odontocrm/<servicio>.env`). Los **odontólogos** (y su MPPS) solo se cambian en el
+> código: están en la lista y se siembran como usuarios.
+
+**Apúntalo en la lista de comprobación** (§17.3): una instalación con los datos de otra
+clínica imprime récipes con el membrete equivocado.
+
+---
+
 ## 9. Despliegue del código y compilación
 
 ### 9.1 Traer el código a `/opt/odontocrm`
@@ -885,7 +910,7 @@ Notas:
 ```bash
 sudo git clone <URL_DEL_REPOSITORIO> /opt/odontocrm
 cd /opt/odontocrm
-sudo git checkout fase-9          # etiqueta de la última fase cerrada (plan §14)
+sudo git checkout main            # la rama del despliegue (los tags son para el rollback)
 sudo git log --oneline -1
 sudo chown -R root:root /opt/odontocrm
 sudo chmod -R go-w /opt/odontocrm      # el código no se modifica en producción
@@ -964,7 +989,9 @@ sudo chmod -R a+rX /opt/odontocrm/apps/web/dist
 
 > ✅ Variante definitiva (P-17, §20): la **copia pública** en `/var/www/odontocrm`, con la
 etiqueta `httpd_sys_content_t`. El proxy sirve la SPA desde ahí y la CA desde su copia
-pública (§13.2-bis), porque el usuario de nginx no puede atravesar `/etc/odontocrm`.
+pública (§13.3-bis), porque el usuario de nginx no puede atravesar `/etc/odontocrm`. La **SPA**
+se sirve desde `/opt/odontocrm/apps/web/dist` (es lo que apunta el `nginx.conf` del
+repositorio); `/var/www/odontocrm` se usa solo para la copia pública de la CA.
 
 ### 9.5 Chromium para los récipes A5 (Fase 7)
 
@@ -1073,7 +1100,7 @@ npm run stack:down                             # si hay una pila de desarrollo, 
 Arranque en orden (primero la base de datos, luego los servicios, el gateway al final):
 
 ```bash
-sudo systemctl enable --now postgresql-18
+sudo systemctl enable --now postgresql
 sudo systemctl enable --now \
   odontocrm@{identity,patients,scheduling,notifications,clinical,odontogram,screens,reporting}.service
 sudo systemctl enable --now odontocrm-gateway.service
@@ -1136,7 +1163,7 @@ Errores típicos al arrancar:
 | El proceso muere al escribir en `$HOME` | `HOME` fuera de `ReadWritePaths` | Añadir la ruta a `ReadWritePaths` o usar `/var/lib/odontocrm` |
 | `EnvironmentFile=... No such file` | Falta `odontocrm.env` o `<servicio>.env` | `install.sh --apply` (§8.1) y luego rellenar secretos (§8.6) |
 | `ConfigError: Configuración inválida …` en el journal | Falta una variable obligatoria (`DATABASE_URL`, `IDENTITY_URL`, …) | El kernel falla rápido a propósito: completa `/etc/odontocrm/<servicio>.env` |
-| El proceso muere al escribir en `logs/` o `.keys/` | Ruta relativa a la raíz del repo (solo lectura) | Usar rutas absolutas en las variables (p. ej. `STORAGE_ROOT`) |
+| El proceso muere al escribir en `logs/` o `.keys/` | Ruta relativa a la raíz del repo (solo lectura) | Poner las rutas absolutas en su variable: `STORAGE_DIR` (almacén) y `JWT_PRIVATE_KEY_PATH`/`JWT_PUBLIC_KEY_PATH` (§8.2) |
 
 ### 10.4 Alternativa con PM2
 
@@ -1292,6 +1319,12 @@ sudo firewall-cmd --list-all
 # Abrir 443/tcp SOLO a la red de la clínica (ajusta el CIDR a tu LAN)
 sudo firewall-cmd --permanent --add-rich-rule=\
 'rule family="ipv4" source address="192.168.1.0/24" port port="443" protocol="tcp" accept'
+# El 80 NO es opcional: por ahí cada equipo descarga el certificado de la CA
+# (`http://<servidor>/ca.crt`, §13.3-bis) y por ahí se redirige a HTTPS. Sin el 80, los
+# demás equipos no pueden ni instalar el certificado ni entrar tecleando `http://…`.
+# (Las comprobaciones desde el propio servidor dan verde igual, porque firewalld no
+# filtra loopback: hay que abrirlo a propósito.)
+sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --reload
 sudo firewall-cmd --list-all                          # verificación
 ```
@@ -1721,7 +1754,7 @@ GRANT SELECT ON ALL SEQUENCES IN SCHEMA public, drizzle, pgboss TO odonto_backup
 > (`--bypassrls`) **y volver a hacer la prueba de restauración** (§16).
 
 > **P-14 (resuelto en la Fase 10):** el respaldo escribe un `.dump` por base con
-> `SHA256SUMS` y un `manifest.json`; la copia a un medio externo se hace con `rsync`
+> `SHA256SUMS` y un `manifest.txt`; la copia a un medio externo se hace con `rsync`
 > (§15.5) y **el archivo se custodia fuera del servidor**. Lo que **no** está resuelto
 > todavía es el cifrado (`age`/`gpg`): hasta que se decida, el medio externo tiene que
 > ir cifrado por el sistema de archivos (por ejemplo, un disco con LUKS).
@@ -2062,7 +2095,7 @@ df -h / /var/lib/odontocrm /var/backups/odontocrm
 | 2 | Zona horaria y hora sincronizadas | `timedatectl` · `chronyc tracking` | ☐ |
 | 3 | Paquetes instalados (P-01) | `dnf list installed \| grep -E 'postgresql18\|nodejs'` | ☐ |
 | 4 | Node.js 26 y npm 11 | `node --version` · `npm --version` | ☐ |
-| 5 | PostgreSQL 18 inicializado y activo | `postgresql-18-setup --initdb` · `systemctl status postgresql-18` | ☐ |
+| 5 | PostgreSQL 18 inicializado y activo | `postgresql-setup --initdb` · `systemctl status postgresql` | ☐ |
 | 6 | PostgreSQL solo en `127.0.0.1` | `ss -lntp \| grep 5432` | ☐ |
 | 7 | Las 8 bases y los 8 roles creados | `sudo -u postgres psql -c '\l'` · `'\du'` | ☐ |
 | 8 | Usuario `odontocrm` sin login | `getent passwd odontocrm` | ☐ |
@@ -2303,7 +2336,7 @@ journalctl -u odontocrm@identity -f
 journalctl -u 'odontocrm@*' --since '1 hour ago' --no-pager
 
 # Reiniciar todo en orden
-sudo systemctl restart postgresql-18
+sudo systemctl restart postgresql
 sudo systemctl restart odontocrm@{identity,patients,scheduling,notifications,clinical,odontogram,screens,reporting}.service
 sudo systemctl restart odontocrm-gateway.service
 

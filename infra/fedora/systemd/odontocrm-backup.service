@@ -3,8 +3,12 @@ Description=OdontoCRM · respaldo diario de las 8 bases y de la configuración
 Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
 
 # El respaldo tiene que correr con las bases arriba y, si están caídas, esperar.
-After=postgresql.service network-online.target
-Wants=postgresql.service network-online.target
+After=postgresql.service postgresql-18.service network-online.target
+Wants=postgresql.service postgresql-18.service network-online.target
+# TZ del consultorio: sin esto, con el reloj del servidor en UTC la carpeta del día y la
+# retención se calculan en la zona del sistema y una corrida de las 21:00 en Caracas cae
+# en el día siguiente (los «días completos» de los reportes no cuadrarían).
+Environment=TZ=America/Caracas
 ConditionPathExists=/etc/odontocrm/backup.env
 
 [Service]

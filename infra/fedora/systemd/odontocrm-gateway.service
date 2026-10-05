@@ -9,7 +9,8 @@
 # DOS archivos de entorno, en el mismo orden que el arranque de desarrollo
 # (`node --env-file-if-exists=.env --env-file-if-exists=apps/gateway/.env …`):
 #   /etc/odontocrm/odontocrm.env   común (WEB_ORIGIN, *_URL, GATEWAY_PORT, …)
-#   /etc/odontocrm/gateway.env     propio (INTERNAL_SERVICE_SECRET)
+#   /etc/odontocrm/gateway.env     propio (JWT_PUBLIC_KEY_PATH: valida los tokens;
+#                                  el gateway NO usa rutas internas ni el secreto compartido)
 # systemd lee esos archivos COMO ROOT y le pasa las variables al proceso, por eso
 # pueden ser 0600 root:root (INSTALL.md §7.2 y §10.4).
 #

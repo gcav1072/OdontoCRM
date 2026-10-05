@@ -179,6 +179,24 @@ case "$ORDEN" in
       sleep 2
     done
 
+    # Marcadores de plantilla sin sustituir. Es el fallo más silencioso de todos: el
+    # servicio ARRANCA (el marcador cumple la longitud mínima del esquema) y luego usa un
+    # valor del repositorio — el secreto compartido de las rutas internas, la dirección del
+    # QR del récipe o el usuario del bot — como si fuera real.
+    marcadores=0
+    while IFS= read -r linea; do
+      [[ -n "$linea" ]] || continue
+      marcadores=$((marcadores + 1))
+    done < <(grep -rEl '=(CAMBIAR|CAMBIAR_)[A-Z_0-9]*' "$ETC_DIR"/*.env 2>/dev/null || true)
+    if (( marcadores > 0 )); then
+      av "$marcadores archivo(s) de /etc/odontocrm con marcadores CAMBIAR_* sin sustituir:"
+      grep -rEo '^[A-Z_0-9]+=CAMBIAR[A-Z_0-9]*' "$ETC_DIR"/*.env 2>/dev/null |
+        sed "s|$ETC_DIR/||" | sed 's/^/      /' | head -8
+      av '  se arreglan rellenando esos valores en /etc/odontocrm y reiniciando el servicio'
+    else
+      ok 'ningún marcador CAMBIAR_* sin sustituir en /etc/odontocrm'
+    fi
+
     fallos=0
     for svc in "${SERVICIOS[@]}" gateway; do
       puerto="${PUERTOS[$svc]}"
@@ -279,21 +297,31 @@ case "$ORDEN" in
       exec env ODONTOCRM_REEXEC=1 ODONTOCRM_RAMA="$rama" "$0" actualizar
     fi
     npm ci --silent || morir 'falló npm ci'
-    npm run build >/dev/null 2>&1 || morir 'falló la compilación'
+    # El registro se guarda: un error de TypeScript en el servidor dejaba al operador sin
+    # la causa y tenía que reproducir la compilación a mano.
+    npm run build >/tmp/odontocrm-build.log 2>&1 ||
+      { tail -30 /tmp/odontocrm-build.log; morir 'falló la compilación (registro: /tmp/odontocrm-build.log)'; }
     ok 'compilado'
     for s in "${SERVICIOS[@]}"; do
-      env -i PATH="$PATH" HOME=/root NODE_ENV=production \
-        bash -c "set -a; source '$ETC_DIR/odontocrm.env'; source '$ETC_DIR/$s.env'; set +a; \
-                 cd '$CODE_DIR' && node services/$s/dist/db/migrate.js" >"/tmp/odontocrm-migrar-$s.log" 2>&1 ||
+      # El entorno se carga con `tools/con-entorno.mjs`, NO con `source`: los .env no son
+      # archivos de shell y bash rompía valores legítimos en silencio (un WEB_ORIGIN con
+      # coma y espacio quedaba vacío; una contraseña con `$` se expandía).
+      (cd "$CODE_DIR" && NODE_ENV=production node tools/con-entorno.mjs "$ETC_DIR" "$s" -- \
+        node "services/$s/dist/db/migrate.js") >"/tmp/odontocrm-migrar-$s.log" 2>&1 ||
         { tail -5 "/tmp/odontocrm-migrar-$s.log"; morir "fallaron las migraciones de $s"; }
     done
     ok 'migraciones aplicadas'
-    systemctl restart postgresql >/dev/null 2>&1 || true
-    systemctl restart odontocrm.target 2>/dev/null || {
-      for s in "${SERVICIOS[@]}"; do systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 || true; done
-      systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || true
-    }
-    sleep 6
+    # PostgreSQL NO se reinicia: las migraciones no lo necesitan y reiniciarlo cortaba las
+    # conexiones de los servicios que aún no se habían reiniciado (ventana de errores).
+    # Y no se llama a `odontocrm.target`, que no existe en el repositorio: era código muerto
+    # que aparentaba una intención.
+    reiniciados=0
+    for s in "${SERVICIOS[@]}"; do
+      systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 && reiniciados=$((reiniciados + 1))
+    done
+    systemctl restart odontocrm-gateway.service >/dev/null 2>&1 ||
+      av 'no pude reiniciar el gateway'
+    ok "$reiniciados de ${#SERVICIOS[@]} servicios reiniciados"
     exec "$0" verificar
     ;;
 
@@ -448,7 +476,7 @@ EOF
     # interfaces virtuales (docker, virbr…).
     IP_LAN="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1)"
     [[ -n "$IP_LAN" ]] || IP_LAN="$(hostname -I 2>/dev/null | awk '{print $1}')"
-    RED_LAN="$(printf '%s' "$IP_LAN" | awk -F. '{printf "%s.%s.%s.0/24", $1, $2, $3}')"
+    RED_LAN="$(ip -o -f inet addr show dev "${IFACE_LAN:-$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)}" 2>/dev/null | awk 'NR==1 {print $4; exit}')"
     NOMBRE="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null | awk '{print $1}')"
 
     printf '%sDirecciones para entrar al sistema%s\n' "$C_TI" "$C_RE"
@@ -478,6 +506,15 @@ EOF
 
       if printf '%s' "$servicios_zona" | grep -qw https; then
         ok "firewalld: 443 abierto en la zona «$zona_fw» (sigue a la interfaz: vale en cualquier red)"
+        # El 80 es por donde se descarga la CA: si está cerrado, los equipos de la red no
+        # pueden instalar el certificado (desde el propio servidor parece que va bien,
+        # porque firewalld no filtra loopback).
+        if printf '%s' "$servicios_zona" | grep -qw http; then
+          ok 'el 80 está abierto (descarga de la CA y redirección a HTTPS)'
+        else
+          av 'el 80 está cerrado: los equipos no podrán descargar la CA por http://<servidor>/ca.crt'
+          problemas=$((problemas + 1))
+        fi
       elif [[ -n "$reglas" ]] && printf '%s' "$reglas" | grep -qF "$RED_LAN"; then
         ok "firewalld: 443 abierto para $RED_LAN (regla por rango)"
       elif [[ -n "$reglas" ]]; then
@@ -697,11 +734,10 @@ EOF
     cd "$CODE_DIR" || morir "no existe $CODE_DIR"
     # Los secretos se leen de los archivos y se pasan por entorno, nunca como
     # argumentos (en `ps` los vería cualquiera de la máquina).
-    export SERVICIO="$servicio" ETC_DIR="$ETC_DIR"
-    exec env -i PATH="$PATH" HOME=/root NODE_ENV=production TZ="${TZ:-America/Caracas}" \
-      ETC_DIR="$ETC_DIR" SERVICIO="$servicio" ODONTOCRM_ENV_DIR="$ETC_DIR" \
-      bash -c 'set -a; . "$ETC_DIR/odontocrm.env"; . "$ETC_DIR/$SERVICIO.env"; set +a; exec "$@"' \
-      _ "$@"
+    export SERVICIO="$servicio" ETC_DIR="$ETC_DIR" NODE_ENV=production ODONTOCRM_ENV_DIR="$ETC_DIR"
+    # Mismo criterio que en las migraciones: nada de `source`, que interpreta los valores
+    # como shell. `con-entorno` los lee tal cual y ejecuta el comando con ese entorno.
+    exec node "$CODE_DIR/tools/con-entorno.mjs" "$ETC_DIR" "$servicio" -- "$@"
     ;;
 
   parar|stop|detener)
@@ -781,7 +817,8 @@ EOF
     fi
     ok "versión en el disco: $(git rev-parse --short HEAD 2>/dev/null || echo 'sin git')"
     npm ci --silent || morir 'falló npm ci'
-    npm run build >/dev/null 2>&1 || morir 'falló la compilación'
+    npm run build >/tmp/odontocrm-build.log 2>&1 ||
+      { tail -30 /tmp/odontocrm-build.log; morir 'falló la compilación (registro: /tmp/odontocrm-build.log)'; }
     ok 'compilado (TypeScript → dist/ y la SPA en apps/web/dist)'
     av 'los servicios siguen con el código anterior hasta que se reinicien: usa «odontocrm arrancar» (o «reiniciar»)'
     ;;
@@ -792,7 +829,8 @@ EOF
     printf '%sRecompilando %s%s\n' "$C_TI" "$CODE_DIR" "$C_RE"
     ok "versión en el disco: $(git rev-parse --short HEAD 2>/dev/null || echo 'sin git')"
     npm ci --silent || morir 'falló npm ci'
-    npm run build >/dev/null 2>&1 || morir 'falló la compilación'
+    npm run build >/tmp/odontocrm-build.log 2>&1 ||
+      { tail -30 /tmp/odontocrm-build.log; morir 'falló la compilación (registro: /tmp/odontocrm-build.log)'; }
     ok 'compilado (TypeScript → dist/)'
     for s in "${SERVICIOS[@]}"; do
       systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 || av "no pude reiniciar odontocrm@$s"

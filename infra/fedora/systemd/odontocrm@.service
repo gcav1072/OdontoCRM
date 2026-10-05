@@ -48,8 +48,12 @@
 Description=OdontoCRM servicio %i (API interna en 127.0.0.1)
 Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
 # Orden de arranque: los 8 servicios usan PostgreSQL (datos + outbox + pg-boss).
-After=network-online.target postgresql-18.service
-Wants=network-online.target postgresql-18.service
+# Se nombran las DOS convenciones a propósito: Fedora trae la unidad `postgresql.service`
+# y el repositorio PGDG la llama `postgresql-18.service`. systemd **ignora en silencio**
+# una unidad que no existe, así que listar ambas es correcto en los dos casos (y evita el
+# arranque en desorden cuando el nombre no coincide, que era justo lo que pasaba).
+After=network-online.target postgresql.service postgresql-18.service
+Wants=network-online.target postgresql.service postgresql-18.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 

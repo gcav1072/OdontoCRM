@@ -87,7 +87,12 @@ PGDATA="${PGDATA:-/var/lib/pgsql/data}"
 NODE_MAJOR="${NODE_MAJOR:-26}"
 TIMEZONE="${TIMEZONE:-America/Caracas}"
 
-SUPERVISOR="pm2"        # pm2 | systemd | none
+# El supervisor validado en producción es **systemd** (ADR 0037: una sola pila; el ensayo
+# de la Fase 10 se hizo con él). Estaba puesto `pm2` por defecto, y eso hacía que quien
+# siguiera la guía literal (`install.sh --apply`) acabara con PM2 instalado globalmente y
+# su unidad de arranque habilitada, con plantillas 0600 root:root que PM2 **no puede leer**
+# y un ecosistema con 3 de los 9 servicios: media pila y dos supervisores a la vez.
+SUPERVISOR="systemd"    # systemd | pm2 | none
 NODE_CHANNEL="auto"     # auto | nodesource | copr | distro | skip
 APPLY=0                 # 0 = dry-run (por defecto), 1 = aplicar
 WITH_FIREWALL=0
@@ -282,10 +287,34 @@ PKGS_BASE=(
   # `ausearch` en audit. El nombre `setools-conftools` que traía la guía no existe en Fedora.
   policycoreutils-python-utils setools-console setroubleshoot-server audit
 )
+# PostgreSQL se llama de dos formas según de dónde venga:
+#   · Fedora: `postgresql-server` / `postgresql-contrib`, binarios en /usr/bin, unidad
+#     `postgresql.service` y `postgresql-setup --initdb`. **Además declara el alias**
+#     `postgresql18-server`, así que `dnf install postgresql18-server` funciona igual.
+#   · PGDG: `postgresql18-server` / `postgresql18-contrib`, binarios en /usr/pgsql-18/bin,
+#     unidad `postgresql-18.service` y `postgresql-18-setup --initdb`.
+# El script usa los nombres con versión (que dnf resuelve en ambos casos) y **detecta**
+# cuál está instalado para los mensajes y las rutas: antes decía siempre los de PGDG, y
+# quien siguiera la guía en Fedora tecleaba comandos que no existen.
 PKGS_PG=(
   "postgresql${PG_MAJOR}-server"
   "postgresql${PG_MAJOR}-contrib"
 )
+
+# Sabor instalado: 'fedora' o 'pgdg' (por la unidad y los binarios, que es lo que cambia).
+pg_sabor() {
+  # Lo que de verdad cambia son los binarios y el nombre de la unidad:
+  #   PGDG   → /usr/pgsql-18/bin/*        + postgresql-18.service
+  #   Fedora → /usr/bin/* (paquete del sistema) + postgresql.service
+  if [[ -x "/usr/pgsql-${PG_MAJOR}/bin/pg_dump" ]]; then
+    echo pgdg
+  else
+    echo fedora
+  fi
+}
+pg_setup_cmd() { [[ "$(pg_sabor)" == pgdg ]] && echo "postgresql-${PG_MAJOR}-setup" || echo postgresql-setup; }
+pg_unit()      { [[ "$(pg_sabor)" == pgdg ]] && echo "postgresql-${PG_MAJOR}.service" || echo postgresql.service; }
+pg_bin_dir()   { [[ "$(pg_sabor)" == pgdg ]] && echo "/usr/pgsql-${PG_MAJOR}/bin" || echo /usr/bin; }
 # Dependencias de ejecución de Chromium (Playwright) en Fedora.
 # > PENDIENTE FASE 10: la lista exacta puede variar según la versión de Fedora y
 #   de Playwright. Verificación recomendada tras instalar el navegador:
@@ -301,16 +330,43 @@ PKGS_CHROMIUM=(
   liberation-fonts dejavu-sans-fonts
 )
 
+# Secreto compartido de las rutas internas. **Nunca** un marcador: el valor de plantilla
+# del repositorio («CAMBIAR_SECRETO_INTERNO_COMPARTIDO») cumplía el `min(16)` del esquema,
+# así que los servicios lo aceptaban como bueno y cualquiera que leyera el repositorio podía
+# llamar a `/internal/*`. Si ya existe uno real en el entorno común, se conserva; si no, se
+# genera uno aleatorio (idempotente: la misma corrida no lo cambia dos veces).
+secreto_interno() {
+  local actual
+  actual="$(sed -n 's/^INTERNAL_SERVICE_SECRET=//p' "$ETC_DIR/odontocrm.env" 2>/dev/null | head -1)"
+  if [[ -n "$actual" && ! "$actual" =~ ^CAMBIAR ]]; then
+    printf '%s' "$actual"
+  else
+    openssl rand -base64 48 | tr -d '\n=+/' | cut -c1-48
+  fi
+}
+SECRETO_INTERNO="$(secreto_interno)"
+
 install_packages() {
   step "1/9 · Paquetes dnf"
 
   local pkgs=("${PKGS_BASE[@]}" "${PKGS_PG[@]}")
   (( WITH_CHROMIUM_DEPS )) && pkgs+=("${PKGS_CHROMIUM[@]}")
 
+  # `rpm -q` no entiende el alias de Fedora (`postgresql18-server` → `postgresql-server`),
+  # así que se pregunta por las dos formas: si una está, el paquete está.
+  paquete_presente() {
+    local p="$1"
+    rpm -q "$p" >/dev/null 2>&1 && return 0
+    if [[ "$p" == postgresql*-server || "$p" == postgresql*-contrib ]]; then
+      local base="${p/postgresql${PG_MAJOR}/postgresql}"
+      rpm -q "$base" >/dev/null 2>&1 && return 0
+    fi
+    return 1
+  }
   local missing=()
   local p
   for p in "${pkgs[@]}"; do
-    rpm -q "$p" >/dev/null 2>&1 || missing+=("$p")
+    paquete_presente "$p" || missing+=("$p")
   done
 
   if (( ${#missing[@]} == 0 )); then
@@ -618,7 +674,7 @@ EOF
 # --- Secreto compartido de los JWT de servicio (REST interno, plan §2.3) -----
 # DEBE ser el MISMO valor en los 9 servicios. Lo genera \`npm run db:bootstrap\`
 # en el .env del repositorio (o genérelo con: openssl rand -base64 48).
-INTERNAL_SERVICE_SECRET=CAMBIAR_SECRETO_INTERNO_COMPARTIDO
+INTERNAL_SERVICE_SECRET=${SECRETO_INTERNO}
 EOF
 }
 
@@ -672,8 +728,16 @@ corregir_valores_obsoletos() {
   if [[ -f "$archivo" ]] && ! grep -qE '^PUBLIC_APP_URL=' "$archivo"; then
     local web_origin
     web_origin="$(sed -n 's/^WEB_ORIGIN=//p' /etc/odontocrm/odontocrm.env | head -1)"
-    (( APPLY )) && printf 'PUBLIC_APP_URL=%s\n' "${web_origin:-https://CAMBIAR_HOST_O_IP_DEL_SERVIDOR}" >>"$archivo"
-    ok "añadido PUBLIC_APP_URL=${web_origin:-CAMBIAR…} en $archivo (lo usa el QR de verificación del récipe)"
+    # `WEB_ORIGIN` admite VARIOS orígenes separados por comas, y `PUBLIC_APP_URL` es una
+    # sola dirección: se toma el primero. Antes se copiaba la lista entera y el QR del
+    # récipe salía como `https://a, https://b/verificar/<código>`: un papel impreso con un
+    # enlace roto.
+    if (( APPLY )); then
+      publico="$(printf '%s' "${web_origin:-}" | cut -d, -f1 | tr -d ' ')"
+      [[ -n "$publico" ]] || publico="https://CAMBIAR_HOST_O_IP_DEL_SERVIDOR"
+      printf 'PUBLIC_APP_URL=%s\n' "$publico" >>"$archivo"
+    fi
+    ok "añadido PUBLIC_APP_URL (primer origen) en $archivo (lo usa el QR de verificación del récipe)"
   fi
 
   # 3-bis) clinical y reporting generan PDF con Playwright: sin la ruta, el
@@ -830,20 +894,24 @@ $(env_common_body)"
     "# ─────────────────────────────────────────────────────────────────────────────
 # OdontoCRM · configuración de los respaldos (lo lee backup/odontocrm-backup.sh)
 # PLANTILLA generada por infra/fedora/install.sh v${SCRIPT_VERSION}
-# > PENDIENTE FASE 10: confirmar el usuario/rol de respaldo y la ruta del socket.
+# El rol «odonto_backup» y la ruta del socket están confirmados (INSTALL.md §15.2 y P-09).
 # ─────────────────────────────────────────────────────────────────────────────
 BACKUP_DIR=${BACKUP_DIR}
 RETENTION_DAYS=30
 LOG_FILE=${LOG_DIR}/backup.log
 # Conexión para los respaldos (INSTALL.md §15.2). Opción recomendada: un rol
 # dedicado «odonto_backup» por TCP con scram-sha-256 y /etc/odontocrm/.pgpass.
+# Binarios de PostgreSQL a usar (vacío = los del PATH). Con dos clientes instalados
+# (Fedora en /usr/bin y PGDG en /usr/pgsql-18/bin), un `pg_dump` de otra versión mayor
+# falla contra el servidor: aquí se fija el correcto. Ej.: PGBIN_DIR=/usr/pgsql-18/bin
+PGBIN_DIR=$(pg_bin_dir)
 # Alternativa por socket unix con autenticación peer: PG_HOST=/var/run/postgresql
 PG_HOST=127.0.0.1
 PG_PORT=5432
 PG_USER=CAMBIAR_USUARIO_DE_RESPALDO
 PGPASSFILE=/etc/odontocrm/.pgpass
 # Lista de bases a respaldar (las 8 bases, una por servicio).
-DATABASES=\"odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting\"
+DATABASES=\"odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_events\"
 # Copias opcionales (activar con --include-config / --include-storage)
 STORAGE_DIR=/var/lib/odontocrm/storage
 # Nombre del rol propietario de cada base (para restaurar con --no-owner --role).
@@ -936,7 +1004,12 @@ install_systemd_units() {
   install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-alertas.service" "/etc/systemd/system/odontocrm-alertas.service"
   install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-alertas.timer" "/etc/systemd/system/odontocrm-alertas.timer"
   run systemctl daemon-reload
+  # Los DOS temporizadores: antes solo se habilitaba el de alertas y el respaldo diario
+  # quedaba sin programar (el ensayo lo habilitaba a mano, así que en la PC de pruebas
+  # funcionaba y en una instalación nueva no habría respaldos). El RUNBOOK decía que
+  # `install.sh` lo programaba: ahora es verdad.
   run systemctl enable --now odontocrm-alertas.timer
+  run systemctl enable --now odontocrm-backup.timer
 
   if (( ENABLE_SERVICES )); then
     log "habilitando servicios (no se arrancan en este paso)"
@@ -949,7 +1022,7 @@ install_systemd_units() {
   else
     log "los servicios NO se habilitan ni arrancan automáticamente."
     log "  Cuando el código esté compilado (INSTALL.md §9), ejecute:"
-    log "    sudo systemctl enable --now postgresql-${PG_MAJOR} \\"
+    log "    sudo systemctl enable --now $(pg_unit) \\"
     log "      odontocrm@{identity,patients,scheduling,notifications,clinical,odontogram,screens,reporting}.service \\"
     log "      odontocrm-gateway.service"
   fi
@@ -974,6 +1047,11 @@ configure_firewall() {
 
   run systemctl enable --now firewalld
   run firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=${LAN_CIDR} port port=${PROXY_PORT} protocol=tcp accept"
+  # El 80 hace falta de verdad: es por donde cada equipo descarga el certificado de la CA
+  # (`http://<servidor>/ca.crt`, INSTALL.md §13.3-bis) y por donde redirige a HTTPS. Sin
+  # esto, las comprobaciones daban verde porque se hacían desde 127.0.0.1, y firewalld no
+  # filtra loopback: los demás equipos no podían ni descargar la CA ni entrar por http.
+  run firewall-cmd --permanent --add-service=http
   run firewall-cmd --reload
   log "estado actual:"
   run firewall-cmd --list-all
@@ -1000,7 +1078,10 @@ configure_selinux() {
 
   # La SPA compilada la sirve el reverse proxy (nginx/Caddy, dominio httpd_t):
   # sin esta etiqueta el proxy no puede leerla desde /opt (tipo usr_t).
-  run semanage fcontext -a -t httpd_sys_content_t "${CODE_DIR}/apps/web/dist(/.*)?"
+  # `-a` falla si la regla ya existe: se intenta añadir y, si ya está, se modifica. Sin
+  # esto, la segunda corrida de `--with-selinux` abortaba el aprovisionamiento entero.
+  run bash -c "semanage fcontext -a -t httpd_sys_content_t '${CODE_DIR}/apps/web/dist(/.*)?' 2>/dev/null || \
+               semanage fcontext -m -t httpd_sys_content_t '${CODE_DIR}/apps/web/dist(/.*)?'"
   run restorecon -Rv "${CODE_DIR}/apps/web/dist"
 
   # El proxy necesita salir a la red para hablar con 127.0.0.1:8090.
@@ -1010,7 +1091,8 @@ configure_selinux() {
     # Solo si el proxy sirve archivos de storage DIRECTAMENTE.
     # El diseño de OdontoCRM los sirve por endpoint autorizado (plan §11),
     # así que por defecto NO se etiqueta.
-    run semanage fcontext -a -t httpd_sys_content_t "${DATA_DIR}/storage(/.*)?"
+    run bash -c "semanage fcontext -a -t httpd_sys_content_t '${DATA_DIR}/storage(/.*)?' 2>/dev/null || \
+                 semanage fcontext -m -t httpd_sys_content_t '${DATA_DIR}/storage(/.*)?'"
     run restorecon -Rv "${DATA_DIR}/storage"
   fi
 
@@ -1045,8 +1127,8 @@ ${C_BOLD}Estado esperado tras este script${C_RESET}
 
 ${C_BOLD}Siguientes pasos manuales (en este orden)${C_RESET}
   1. Inicializar el clúster de PostgreSQL 18 si aún no lo está:
-       sudo postgresql-${PG_MAJOR}-setup --initdb
-       sudo systemctl enable --now postgresql-${PG_MAJOR}
+       sudo $(pg_setup_cmd) --initdb
+       sudo systemctl enable --now $(pg_unit)
   2. Crear las 8 bases y sus roles (bootstrap del repositorio; NO lo hace este script):
        cd ${CODE_DIR} && npm run db:bootstrap      # requiere .env con el superusuario
   3. Trasladar los secretos que genera el bootstrap (${CODE_DIR}/services/<servicio>/.env)

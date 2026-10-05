@@ -78,7 +78,7 @@ PG_HOST="/var/run/postgresql"
 PG_PORT="5432"
 PG_USER="postgres"
 PGPASSFILE="/etc/odontocrm/.pgpass"
-DATABASES="odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting"
+DATABASES="odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_events"
 STORAGE_DIR="/var/lib/odontocrm/storage"
 CONFIG_DIR="/etc/odontocrm"
 CONFIG_FILE="/etc/odontocrm/backup.env"
@@ -217,6 +217,36 @@ pg_bin() { # resuelve el ejecutable de PostgreSQL 18
   fi
 }
 
+# ¿Existe la base? (una consulta al catálogo, sin conectar a ella)
+base_existe() {
+  local db="$1"
+  local -a pgenv=(PGHOST="$PG_HOST" PGPORT="$PG_PORT" PGUSER="$PG_USER" PGCONNECT_TIMEOUT=15)
+  [[ -n "${PGPASSFILE:-}" ]] && pgenv+=(PGPASSFILE="$PGPASSFILE")
+  local salida
+  salida="$(env "${pgenv[@]}" "$(pg_bin psql)" --no-password -d postgres -tAc \
+    "select 1 from pg_database where datname = '${db}'" 2>/dev/null)" || return 1
+  [[ "$salida" == "1" ]]
+}
+
+# La versión del CLIENTE tiene que poder leer al SERVIDOR: `pg_dump` de una mayor anterior
+# falla con «server version mismatch» en todas las bases, y si eso pasa de noche nadie se
+# entera hasta que hace falta el respaldo. Se comprueba antes de empezar y se dice el
+# arreglo exacto (`PGBIN_DIR`).
+comprobar_version_cliente() {
+  local cliente servidor
+  cliente="$("$(pg_bin pg_dump)" --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
+  servidor="$(env PGHOST="$PG_HOST" PGPORT="$PG_PORT" PGUSER="$PG_USER" ${PGPASSFILE:+PGPASSFILE="$PGPASSFILE"} \
+    "$(pg_bin psql)" --no-password -d postgres -tAc "select current_setting('server_version_num')" 2>/dev/null | head -1)"
+  [[ -n "$cliente" && -n "$servidor" ]] || { warn 'no pude comparar las versiones del cliente y del servidor'; return 0; }
+  if (( cliente < servidor / 10000 )); then
+    err "el cliente pg_dump es la versión $cliente y el servidor la $((servidor / 10000)): el volcado fallaría"
+    err "  fija los binarios correctos en ${CONFIG_DIR:-/etc/odontocrm}/backup.env:"
+    err "      PGBIN_DIR=/usr/pgsql-$((servidor / 10000))/bin      (o el que corresponda)"
+    return 1
+  fi
+  ok "cliente pg_dump $cliente compatible con el servidor $((servidor / 10000)) ($(pg_bin pg_dump))"
+}
+
 preflight() {
   command -v flock >/dev/null 2>&1 || warn "no se encontró flock: sin protección contra solapamientos"
 
@@ -304,6 +334,15 @@ dump_databases() {
   local db file start end bytes
   for db in "${dbs[@]}"; do
     file="$RUN_DIR/${db}_${STAMP}.dump"
+
+    # Una base de la lista puede no existir todavía: `odonto_events` (la cola de pg-boss)
+    # solo aparece cuando el primer servicio con outbox arranca. Eso NO es un fallo del
+    # respaldo: se omite diciéndolo, en vez de hacer fracasar la noche entera.
+    if (( ! DRY_RUN )) && ! base_existe "$db"; then
+      warn "$db no existe en este servidor: se omite (¿aún no se creó la cola?)"
+      continue
+    fi
+
     log "respaldando $db → $file"
     start="$(date +%s)"
 

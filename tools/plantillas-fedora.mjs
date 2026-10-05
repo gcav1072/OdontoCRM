@@ -29,7 +29,8 @@
  * Fedora, el commit no pasa.
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -42,6 +43,12 @@ const installSh = leer('infra/fedora/install.sh');
  * Lo que el despliegue **pone** además de las plantillas. Son valores que genera
  * `npm run db:bootstrap` en el repositorio y que la guía traslada a `/etc/odontocrm`
  * (§8.6), más lo que añade la propia migración de `install.sh`.
+ */
+/**
+ * Variables que **no** escribe la plantilla de `install.sh` porque las pone otro paso (el
+ * bootstrap, el traslado de secretos o la unidad). No puede ser un cheque en blanco: cada
+ * una tiene que estar **documentada** en `install.sh` o en la guía, porque si no, quitar la
+ * variable de la plantilla dejaría de detectarse (pasaba con `DATABASE_URL` y compañía).
  */
 const LOS_PONE_OTRO_PASO = new Set([
   'DATABASE_URL',
@@ -159,10 +166,20 @@ const revisarDefaultsRelativos = () => {
   for (const ruta of rutas) {
     comprobaciones += 1;
     const contenido = leer(ruta);
-    // `algo: z.string()...default('./…')` — el nombre y su valor relativo.
-    const relativos = [
-      ...contenido.matchAll(/^\s{2}([A-Z][A-Z0-9_]+):[\s\S]*?default\('\.\//gm),
-    ].map((m) => m[1]);
+    // `algo: z.string()...default('./…')`: se busca la CLAVE y su default **en la misma
+    // declaración**. La versión anterior usaba `[\s\S]*?`, que avanzaba hasta el primer
+    // `default('./` del archivo y culpaba siempre a la primera clave del esquema
+    // (`SERVICE_VERSION`, que sí está en la plantilla): el chequeo no detectaba nada.
+    const relativos = contenido
+      .split('\n')
+      .map((linea, indice, lineas) => {
+        const clave = /^\s{2}([A-Z][A-Z0-9_]+):/.exec(linea);
+        if (clave === null) return null;
+        // La declaración puede seguir en las dos líneas siguientes (z.string().default('./x')).
+        const declaracion = [linea, lineas[indice + 1] ?? '', lineas[indice + 2] ?? ''].join(' ');
+        return declaracion.includes("default('./") ? clave[1] : null;
+      })
+      .filter((clave) => clave !== null);
     const pendientes = relativos.filter(
       (variable) =>
         !new RegExp(`^${variable}=`, 'm').test(installSh) && !LOS_PONE_OTRO_PASO.has(variable),
@@ -284,6 +301,166 @@ console.log('\nCoherencia entre el registro de verificación y el cuerpo de la g
       `INSTALL.md: ${contradicciones.join(', ')} están marcados ✅ en §20.1 y a la vez anunciados como pendientes en el cuerpo`,
     );
   }
+}
+
+// ── 1-sexies. Lecciones de la auditoría, convertidas en guardias ──────────────
+// Cada una de estas comprobaciones es un fallo REAL que se encontró auditando el despliegue
+// para que otra PC pudiera instalarse sin tropezar con él. Si alguna se pone roja, no es un
+// falso positivo: es que el fallo ha vuelto.
+console.log('\nLecciones de la auditoría (no deben volver):');
+
+const exigir = (condicion, bien, mal) => {
+  comprobaciones += 1;
+  if (condicion) ok(bien);
+  else err(mal);
+};
+
+{
+  const installSh = leer('infra/fedora/install.sh');
+  const base = leer('infra/fedora/instalar-base-fedora.sh');
+  const odontocrm = leer('infra/fedora/odontocrm');
+  const runbook = leer('infra/fedora/RUNBOOK.md');
+  const guia = leer('infra/fedora/INSTALL.md');
+
+  // (1) Los DOS temporizadores se programan: sin esto, la clínica se queda sin respaldo diario.
+  exigir(
+    /enable --now odontocrm-alertas\.timer/.test(installSh) &&
+      /enable --now odontocrm-backup\.timer/.test(installSh),
+    'install.sh programa los dos temporizadores (alertas y respaldo diario)',
+    'install.sh NO programa odontocrm-backup.timer: la clínica se quedaría sin respaldo diario',
+  );
+
+  // (2) Los .env no se leen con `source`: bash vacía un WEB_ORIGIN con coma y espacio y
+  //     expande los `$` de una contraseña.
+  const usosSource = ['infra/fedora/odontocrm', 'infra/fedora/ensayo-despliegue.sh'].filter(
+    (ruta) => /set -a;\s*(source|\.)/.test(leer(ruta)),
+  );
+  exigir(
+    usosSource.length === 0,
+    'las migraciones y `con-entorno` cargan los .env sin interpretarlos como shell',
+    `${usosSource.join(', ')} siguen usando 'source' sobre los .env (WEB_ORIGIN y las contraseñas con $ se corrompen)`,
+  );
+
+  // (3) El supervisor por defecto es systemd (el validado). PM2 no puede leer las plantillas
+  //     0600 y su ecosistema solo declara 3 de los 9 servicios.
+  exigir(
+    /^SUPERVISOR="systemd"/m.test(installSh),
+    'el supervisor por defecto de install.sh es systemd',
+    'install.sh vuelve a traer PM2 por defecto: media pila y dos supervisores a la vez',
+  );
+
+  // (4) El puerto 80 se abre: por ahí se descarga la CA en cada equipo.
+  exigir(
+    /add-service=http/.test(installSh),
+    'install.sh abre el 80 (descarga de la CA y redirección a HTTPS)',
+    'install.sh no abre el 80: ningún equipo podrá descargar la CA por http://<servidor>/ca.crt',
+  );
+
+  // (5) Los nombres de Fedora: `postgresql-18.service`/`postgresql-18-setup` no existen allí
+  //     (y systemd ignora en silencio una unidad inexistente en After=/Wants=).
+  const conNombreVersionado = [
+    'infra/fedora/install.sh',
+    'infra/fedora/instalar-base-fedora.sh',
+    'infra/fedora/systemd/odontocrm@.service',
+    'infra/fedora/systemd/odontocrm-backup.service',
+    'infra/fedora/INSTALL.md',
+  ].filter((ruta) => {
+    // Se mira línea a línea y se perdonan las que EXPLICAN la otra convención (mencionan
+    // PGDG, o listan las dos unidades a propósito, como las unidades systemd del proyecto).
+    return (
+      leer(ruta)
+        .split('\n')
+        // Se perdonan los comentarios (explican la otra convención a propósito) y las líneas
+        // que ya nombran Fedora o PGDG para aclarar cuál es cuál.
+        .filter((linea) => !/^\s*#/.test(linea) && !/PGDG|postgresql\.service/.test(linea))
+        .some(
+          (linea) =>
+            /systemctl\s+(enable|start|restart|status)[^\n]*postgresql-\d+/.test(linea) ||
+            /postgresql-\d+-setup/.test(linea),
+        )
+    );
+  });
+  exigir(
+    conNombreVersionado.length === 0,
+    'los comandos de PostgreSQL usan el nombre de Fedora (o detectan el sabor)',
+    `${conNombreVersionado.join(', ')}: comandos con el nombre versionado de PGDG, que no existe en Fedora`,
+  );
+
+  // (6) La red no se inventa como /24.
+  const conSlash24 = ['infra/fedora/ensayo-despliegue.sh', 'infra/fedora/odontocrm'].filter(
+    (ruta) => /printf "%s\.%s\.%s\.0\/24"/.test(leer(ruta)),
+  );
+  exigir(
+    conSlash24.length === 0,
+    'el CIDR se deduce de la interfaz (no se inventa una /24)',
+    `${conSlash24.join(', ')}: construyen un /24 a mano (en redes /16 o 10/8 la regla deja fuera a equipos legítimos)`,
+  );
+
+  // (7) Los documentos no pueden citar banderas que no existen (el RUNBOOK enseñaba una
+  //     restauración imposible, y sin `--keep-old` se borraba la base actual).
+  const banderasInventadas = ['--file', '--verify', '--database', '--keep '].filter(
+    (bandera) => runbook.includes(bandera) || guia.includes(bandera),
+  );
+  exigir(
+    banderasInventadas.length === 0,
+    'los documentos usan las banderas reales de los guiones',
+    `los documentos citan banderas que no existen (${banderasInventadas.join(', ')}): compruébalas con --help`,
+  );
+
+  // (8) La guía explica dónde se cambian los datos de la clínica (otra consulta = otro
+  //     membrete, otro QR y otro usuario clínico).
+  exigir(
+    /clinic\.ts/.test(guia),
+    'la guía explica cómo cambiar los datos del consultorio (clinic.ts)',
+    'INSTALL.md no menciona packages/contracts/src/clinic.ts: otra clínica imprimiría récipes con estos datos',
+  );
+
+  // (9) La lista de bases coincide en todos los sitios (incluida la cola `odonto_events`).
+  const basesDe = (texto, etiqueta) => {
+    // Se busca la línea y se limpia lo que la envuelve: en la plantilla el valor va
+    // escapado en el heredoc (`DATABASES=\"…\"`), así que sobran barras y comillas.
+    const linea = texto
+      .split('\n')
+      .find((l) => l.includes(`${etiqueta}=`) && l.includes('odonto_identity'));
+    if (linea === undefined) return '';
+    return linea
+      .slice(linea.indexOf(`${etiqueta}=`) + etiqueta.length + 1)
+      .replace(/[\\"]/g, '')
+      .trim()
+      .split(/\s+/)
+      .sort()
+      .join(' ');
+  };
+  const enPlantilla = basesDe(installSh, 'DATABASES');
+  const enRespaldo = basesDe(leer('infra/fedora/backup/odontocrm-backup.sh'), 'DATABASES');
+  exigir(
+    enPlantilla !== '' && enPlantilla === enRespaldo && enPlantilla.includes('odonto_events'),
+    'la lista de bases es la misma en la plantilla y en el guion, e incluye la cola',
+    `las listas de bases no coinciden o falta la cola:\n      plantilla: ${enPlantilla}\n      guion:     ${enRespaldo}`,
+  );
+
+  // (10) El agente `odontocrm` avisa de los marcadores sin sustituir.
+  exigir(
+    /CAMBIAR/.test(odontocrm) && /marcador/.test(odontocrm),
+    'odontocrm verificar avisa de los marcadores CAMBIAR_* sin sustituir',
+    '`odontocrm` no comprueba los marcadores CAMBIAR_*: un secreto del repositorio pasaría por bueno',
+  );
+
+  // (11) El cargador de entorno existe y se usa (no basta con tenerlo).
+  exigir(
+    existsSync(join(ROOT, 'tools/con-entorno.mjs')) &&
+      /con-entorno\.mjs/.test(leer('infra/fedora/odontocrm')),
+    'el cargador de entorno (tools/con-entorno.mjs) existe y se usa en el despliegue',
+    'falta el uso de tools/con-entorno.mjs en el despliegue: los .env volverían a leerse como shell',
+  );
+
+  // (12) La base del instalador base declara solo lo que hace (prometía pg_hba y no lo tocaba).
+  exigir(
+    !/pg_hba/.test(base.split('\n').slice(0, 20).join('\n')) ||
+      /pg_hba/.test(base.slice(base.indexOf('\n', 400))),
+    'lo que la cabecera de instalar-base-fedora.sh promete se corresponde con el cuerpo',
+    'la cabecera de instalar-base-fedora.sh promete tocar pg_hba.conf y el cuerpo no lo hace',
+  );
 }
 
 // ── 2. Nombres muertos que no deben volver ───────────────────────────────────
