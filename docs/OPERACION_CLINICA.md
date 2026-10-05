@@ -47,6 +47,43 @@ contraseña propios**. Hay dos direcciones y las dos funcionan:
 > La IP exacta de tu instalación la imprime el servidor con
 > `sudo odontocrm certificado`.
 
+### Cómo se instala el certificado (según el equipo)
+
+El archivo que se descarga (`odontocrm-ca.crt`) **no se abre**: se instala como
+«autoridad de certificación». Es un paso por equipo y se hace una sola vez.
+
+**Tablet o móvil Android**
+1. Se descarga el archivo desde `http://<IP>/ca.crt` (el aviso de «no segura» es normal).
+2. **Ajustes** → **Seguridad** → **Cifrado y credenciales** → **Instalar un
+   certificado** → **Certificado de CA** → elegir el archivo descargado.
+3. Android avisa de que «la red podría supervisarse»: es tu propio servidor, se acepta.
+   Puede pedir el PIN de la pantalla.
+4. Se cierra el navegador y se vuelve a abrir la dirección del consultorio: candado normal.
+
+**iPhone o iPad**
+1. Se descarga desde `http://<IP>/ca.crt` y se acepta **Permitir** (queda en Archivos).
+2. **Ajustes** → **General** → **VPN y gestión de dispositivos** → se instala el perfil
+   que aparece como descargado.
+3. **Ajustes** → **General** → **Información** → **Ajustes de confianza de
+   certificados** → se activa el interruptor del certificado. **Sin este paso queda
+   instalado pero no se confía en él** (es el error más común).
+
+**Windows**
+1. Se descarga el archivo y se hace **doble clic** → **Instalar certificado**.
+2. **Equipo local** → **Colocar todos los certificados en el siguiente almacén** →
+   **Entidades de certificación raíz de confianza** → Finalizar → aceptar el aviso.
+
+**Mac**
+1. Se abre el archivo descargado (se añade al Llavero «Sistema»).
+2. Doble clic sobre el certificado → **Confiar** → **Confiar siempre**.
+
+**Televisor (Smart TV)**
+Muchos **no permiten** instalar una CA. Salidas honestas: ponerle un mini-PC o una
+tablet a la pantalla, o usar un dominio real con certificado de Let's Encrypt (lo
+configura quien administra el servidor). Lo que **no** se hace nunca es desactivar la
+validación del servidor: eso quita la protección justo donde circulan los datos
+clínicos.
+
 - La primera vez el sistema pide **cambiar la contraseña temporal**: se escribe una
   nueva (mínimo 10 caracteres) y se repite.
 - Cada persona tiene **su** usuario. No se comparte: todo lo que se hace queda

@@ -64,6 +64,9 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    exporta los archivos para instalar en tablets, móviles
                                    y TVs (--exportar /ruta). Es lo que quita el aviso de
                                    «conexión no privada» en los demás equipos.
+  sudo odontocrm selinux           Denegaciones de SELinux de hoy, con la causa más
+                                   probable y el comando que lo arregla. «Sin
+                                   denegaciones» es lo que quieres ver.
   sudo odontocrm con-entorno <servicio> -- <comando>
                                    Ejecuta cualquier herramienta con el entorno de
                                    producción ya cargado (común + del servicio). Los
@@ -323,6 +326,49 @@ EOF
       err "no encuentro la CA de mkcert (busqué $CA_FIJA y $CA_DIR/rootCA.pem)"
       av 'se crea con: sudo mkcert -install   (INSTALL.md §13.2)'
     fi
+    ;;
+
+  selinux)
+    necesita_root
+    command -v getenforce >/dev/null || morir 'este sistema no usa SELinux'
+    estado="$(getenforce)"
+    printf '%sSELinux: %s%s\n' "$C_TI" "$estado" "$C_RE"
+    if [[ "$estado" != "Enforcing" ]]; then
+      av 'SELinux no está en Enforcing: no puede estar bloqueando nada'
+    fi
+
+    # Etiquetas de las rutas del proyecto (para comparar con las denegaciones).
+    if command -v semanage >/dev/null; then
+      echo '  Etiquetas del proyecto:'
+      semanage fcontext -l 2>/dev/null | grep -E '/opt/odontocrm|/var/www/odontocrm|/var/lib/odontocrm|/var/log/odontocrm|/etc/odontocrm' |
+        sed 's/^/    /' || av 'sin etiquetas propias (se aplican con install.sh y nginx/instalar.sh)'
+    fi
+
+    command -v ausearch >/dev/null || morir 'falta ausearch (paquete audit)'
+    denegaciones="$(ausearch -m avc -ts today 2>/dev/null | grep -c 'denied' || true)"
+    echo
+    if [[ "${denegaciones:-0}" == "0" ]]; then
+      ok 'sin denegaciones hoy: SELinux no está bloqueando nada'
+      exit 0
+    fi
+
+    av "$denegaciones denegación(es) hoy. Últimas diez:"
+    ausearch -m avc -ts today 2>/dev/null | grep 'denied' | tail -10 |
+      sed -E 's/.*(denied[^\n]*)/    \1/' | cut -c1-160
+
+    echo
+    echo "  ${C_TI}Causas típicas y su arreglo${C_RE}"
+    echo "    · nginx no puede leer un archivo (avc: denied { read } ... path=/…):"
+    echo "        sudo semanage fcontext -a -t httpd_sys_content_t '<ruta>(/.*)?' && sudo restorecon -R <ruta>"
+    echo "    · nginx no puede conectarse al gateway (name_connect ... port=8090):"
+    echo "        sudo setsebool -P httpd_can_network_connect on"
+    echo "    · Chromium/Playwright (execmod, execmem) o un archivo en /tmp:"
+    echo "        revisa que el servicio use /var/lib/odontocrm y no escriba en /opt"
+    echo "    · Si son de ANTES de un arreglo, quita el ruido y vuelve a probar:"
+    echo "        sudo ausearch -m avc -ts today --raw | audit2allow -a   (solo para LEER, no lo apliques a ciegas)"
+    echo
+    av 'nunca desactives SELinux para «que funcione»: se etiqueta la ruta, que es lo correcto'
+    exit 2
     ;;
 
   con-entorno|env)
