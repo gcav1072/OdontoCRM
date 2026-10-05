@@ -65,14 +65,37 @@ else
 fi
 
 # ── 2. El proxy versionado, con el nombre del servidor ───────────────────────
+#
+# El puerto 80 tiene que quedar en NUESTRAS manos. Dos casos, medidos en la Fase 10:
+#   a) Fedora trae `listen 80 default_server` → se comenta (arriba) y ya está.
+#   b) Fedora trae solo `listen 80;` y `server_name _;` → **no** hay default_server
+#      explícito, así que gana el primer bloque del puerto (el suyo) y quien escriba
+#      `http://127.0.0.1` ve su página de prueba. Se resuelve declarando el nuestro
+#      como `default_server`: así el redirect vale para cualquier nombre o IP.
 install -d -m 0755 /etc/nginx/conf.d
+nuestro_default=0
+if grep -qE '^[[:space:]]*listen[[:space:]]+(\[::\]:)?80' /etc/nginx/nginx.conf &&
+   ! grep -qE 'listen[[:space:]]+(\[::\]:)?80[[:space:]]+default_server' /etc/nginx/nginx.conf; then
+  nuestro_default=1
+  ok 'Fedora no declara default_server en el 80: el nuestro pasa a serlo'
+else
+  ok 'el puerto 80 queda sin competencia (el bloque de Fedora está desactivado)'
+fi
+
 {
   echo "# Generado por infra/fedora/nginx/instalar.sh desde odontocrm.conf."
   echo "# No lo edite aquí: cambie el archivo del repositorio y vuelva a ejecutarlo."
-  sed "s|__HOST__|${HOST}|g" "$CONF_ORIGEN"
+  if (( nuestro_default )); then
+    sed -e "s|__HOST__|${HOST}|g" \
+        -e 's|\(listen[[:space:]]*\(\[::\]:\)\?80\)[[:space:]]*;|\1 default_server;|' \
+        "$CONF_ORIGEN"
+  else
+    sed "s|__HOST__|${HOST}|g" "$CONF_ORIGEN"
+  fi
 } >"$CONF_DESTINO"
 chmod 0644 "$CONF_DESTINO"
 ok "instalado $CONF_DESTINO"
+grep -q 'listen 80 default_server;' "$CONF_DESTINO" && ok 'el redirect de http→https es el que decide' || true
 
 # ── 3. Sintaxis y arranque ───────────────────────────────────────────────────
 if nginx -t >/tmp/odontocrm-nginx.log 2>&1; then
