@@ -222,6 +222,17 @@ case "$ORDEN" in
       install -m 0644 -o root -g root "$origen" "$CA_FIJA" 2>/dev/null || true
       ok "copia estable en $CA_FIJA (entra en el respaldo: --include-config)"
 
+      # ¿El proxy la sirve de verdad? Si la configuración de nginx es anterior a que
+      # existiera `/ca.crt`, la petición acaba en la SPA y el equipo ve la página de
+      # «no encontrada» del propio sistema, que despista mucho. Pasó al probarlo desde
+      # otro dispositivo: el código estaba, la config instalada no.
+      if ! grep -q '/ca.crt' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null; then
+        av 'la configuración del proxy NO sirve /ca.crt todavía: los equipos verán «no encontrada»'
+        av 'arréglalo con:  sudo bash '"$CODE_DIR"'/infra/fedora/nginx/instalar.sh'
+      else
+        ok 'el proxy sirve /ca.crt (los equipos pueden descargarla)'
+      fi
+
       if [[ -z "$destino" ]]; then
         destino="/var/lib/odontocrm/ca-para-dispositivos"
       fi

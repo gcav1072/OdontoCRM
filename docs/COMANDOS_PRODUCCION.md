@@ -287,6 +287,17 @@ el equipo confíe en el certificado.
 Los pasos por sistema operativo (Android, iPhone/iPad, Windows, Mac y qué hacer con un
 Smart TV que no admite CA) están en INSTALL §13.3-bis, y el comando los imprime.
 
+**Si esa página dice «no encontrada»**, es que la configuración instalada de nginx es
+anterior a que existiera `/ca.crt` (pasa tras actualizar el código: el archivo del
+repositorio ya la trae, pero nginx sigue usando la copia vieja). Se arregla regenerándola
+—es idempotente y no corta el servicio—:
+
+```bash
+sudo bash /opt/odontocrm/infra/fedora/nginx/instalar.sh
+curl -sI http://127.0.0.1/ca.crt | head -1     # tiene que decir 200 OK
+sudo odontocrm certificado                     # deja la CA y avisa si el proxy no la sirve
+```
+
 ---
 
 ## 7. La base de datos
