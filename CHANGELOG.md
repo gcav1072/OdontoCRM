@@ -19,7 +19,7 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   tropezar: `dnf provides '*/<comando>'` dice a qué paquete pertenece una herramienta antes de darla
   por perdida.
 
-## [Fase 10] — Modo test, observabilidad y endurecimiento · en curso
+## [Fase 10] — Modo test, observabilidad y endurecimiento · 2026-10-04 · tag `fase-10`
 
 ### Añadido
 
@@ -57,6 +57,24 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   fallar (para una máquina sin token); sin esa bandera, no tenerlo es un fallo.
 - **Runbook de operación** ([`infra/fedora/RUNBOOK.md`](infra/fedora/RUNBOOK.md)) y
   **guía para el consultorio** ([`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md)).
+- **Despliegue Fedora validado en el banco de pruebas**, con el registro de verificación
+  en [`INSTALL.md` §20](infra/fedora/INSTALL.md): los 9 servicios con `systemd` (unidad
+  activa **y** sirviendo su puerto), nginx con TLS interno y `firewalld` publicando solo
+  443, SELinux en `Enforcing` sin denegaciones, respaldo + **restauración probada fila a
+  fila** (4953 → 4953 en las 8 bases) y la **prueba de reinicio** (los 9 vuelven solos).
+- **Un solo comando para el servidor** (`/usr/local/bin/odontocrm`): `estado`, `alertas`,
+  `respaldar`, `restaurar`, `verificar`, `servicios`, `logs`, `actualizar`, `parar`,
+  `arrancar`, `reiniciar`, `compilar`, `recompilar`, `certificado`, `selinux`,
+  `con-entorno` y `modo-test`. Cada orden delega en el script ya probado, pone el entorno
+  correcto y **avisa si falta `sudo`** en vez de hacer media faena.
+- **`docs/COMANDOS_PRODUCCION.md`**: los comandos del sistema en marcha (incluida la
+  tabla que traduce los de desarrollo) y **`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`**: cómo
+  instalar el certificado interno en Android, iPhone/iPad, Windows, macOS, **Linux
+  (Arch, Fedora, Ubuntu)** y televisores.
+- **Lectura de las sesiones clínicas desde la ficha del paciente**: la tarjeta
+  «Sesiones clínicas» lista las atenciones y cada una se abre en modo lectura (motivo,
+  examen, procedimientos con su pieza, diagnóstico, indicaciones, próxima cita, firma).
+  Antes se veía que había sesiones, pero no se podía leer ninguna.
 
 ### Corregido
 
@@ -78,9 +96,44 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 - **El gateway moría al arrancar** si faltaba `apps/gateway/.env`: `node --watch` no
   tolera un `--env-file-if-exists` inexistente (medido con Node 22 en Fedora). El
   bootstrap lo crea vacío.
+- **La impresión en modo oscuro salía con los colores del tema**: las páginas
+  imprimibles usan los mismos tokens que la aplicación, así que un equipo en modo oscuro
+  imprimía el odontograma con líneas claras sobre blanco y los dibujos casi invisibles.
+  Ahora la página imprimible fuerza la paleta clara mientras está montada (y devuelve el
+  tema al salir), el papel es blanco pase lo que pase y los PDF del servidor fijan el
+  esquema de color explícitamente.
+- **En la interfaz ya no se habla de fases**: las tarjetas de módulo llevaban un badge
+  «Fase N» y varios textos decían «llega en la Fase 6» cuando esa funcionalidad ya
+  existía. Se quitaron del código visible, se reescribieron esos textos y `/recepcion`
+  (que caía en «módulo en construcción») redirige a Secretaría.
 - **`/secretaría` no mostraba el nombre abreviado** del paciente cuando su segundo
   nombre empieza en minúscula («Alexander de Jesús Peña» → «Alexander D.»): la prueba
   de humo replicaba mal la regla real (`abbreviateName`).
+
+### Lo que destapó la validación real (28 hallazgos)
+
+Los ocho primeros de la lista están en el registro de
+[`INSTALL.md` §20.1-bis](infra/fedora/INSTALL.md); el resto salió al desplegar, probar
+desde otros equipos y usar el sistema como se usa en un consultorio. Los que más
+importan, porque **no se ven leyendo el código**:
+
+- `pg_hba.conf` de Fedora deja `ident` en TCP: **ningún servicio entra por la red**
+  aunque la contraseña sea correcta.
+- `TELEGRAM_MODE=polling` no existe (el *long polling* es el transporte, no un modo) y
+  el servicio no arrancaba con él.
+- Faltaba `EVENTS_DATABASE_URL` en el despliegue: cada servicio habría usado **su** base
+  para la cola y los eventos no habrían llegado a los demás.
+- `STORAGE_ROOT` y `STORAGE_MAX_UPLOAD_MB` no los lee nadie (los reales son
+  `STORAGE_DIR` y `MAX_FILE_BYTES`): el almacén quedaba en `/opt`, de solo lectura.
+- La exportación de reportes a PDF respondía **503** porque `reporting` no definía
+  `PLAYWRIGHT_BROWSERS_PATH`.
+- El rol de respaldo no leía nada por crearse `NOINHERIT` (la pertenencia a
+  `pg_read_all_data` queda sin efecto), y `pg_read_all_data` no cubre los esquemas
+  `drizzle`/`pgboss`.
+- El restablecimiento se quedaba **mudo** esperando una contraseña; ahora ninguna
+  herramienta del despliegue pregunta y, si falta una credencial, falla diciendo cuál.
+- El tablero sin `sudo` inventaba nueve alertas falsas (no podía leer los entornos).
+- Buscar en la cola de `/flujo` dejaba la pantalla sin paciente en curso.
 
 ## [Fase 9] — Reportes, KPIs y auditoría · 2026-10-04 · tag `fase-9`
 
