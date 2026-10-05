@@ -678,7 +678,7 @@ raíz del repositorio):
 | `IDENTITY_PORT` … `REPORTING_PORT` | `4001` … `4008` | Una por servicio, en el orden de §2.2. |
 | `<SERVICIO>_HOST` | `127.0.0.1` | Los 9 escuchan **solo** en loopback (plan §11). |
 | `IDENTITY_URL` … `REPORTING_URL` | `http://127.0.0.1:400x` | URLs internas que usa el gateway para el proxy por recurso; una URL **vacía** significa «ese servicio todavía no existe». |
-| `WEB_ORIGIN` | `https://odontocrm.local` | CORS del gateway: el origen exacto con el que se abre la SPA. |
+| `WEB_ORIGIN` | `https://odontocrm.local, https://192.168.1.50` | CORS del gateway: el origen con el que se abre la SPA. Admite **varios separados por comas** —pon el nombre **y** la IP, que son las dos formas en que entra un equipo de la clínica—; con uno solo, entrar por el otro da un error de CORS y la pantalla queda en blanco. |
 
 Nombres exactos de los puertos (los del código y los de §2.2):
 

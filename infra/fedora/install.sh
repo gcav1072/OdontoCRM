@@ -567,9 +567,11 @@ EOF
   cat <<EOF
 
 # --- Origen permitido de la SPA (CORS del gateway) ---------------------------
-# WEB_ORIGIN debe ser EXACTAMENTE el origen con el que se abre la SPA en el
-# navegador (esquema + host + puerto), o el CORS la bloqueará.
-WEB_ORIGIN=https://CAMBIAR_HOST_O_IP_DEL_SERVIDOR
+# WEB_ORIGIN: el origen con el que se abre la SPA en el navegador (esquema + host +
+# puerto), o el CORS la bloqueará. Admite VARIOS separados por comas: pon el nombre y
+# la IP con los que entran los equipos de la clínica, porque el navegador manda el que
+# se teclee.
+WEB_ORIGIN=https://CAMBIAR_HOST, https://CAMBIAR_IP_DEL_SERVIDOR
 EOF
 }
 

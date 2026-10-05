@@ -5,7 +5,7 @@ import { buildServer, isProduction, loadPublicKey } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 
 import { registerAuthGuard } from './auth-guard.js';
-import { jwtPublicKeyPath, type GatewayConfig } from './config.js';
+import { jwtPublicKeyPath, origenesPermitidos, type GatewayConfig } from './config.js';
 import { buildSystemMeta } from './meta.js';
 import { buildUpstreamChecks } from './upstreams.js';
 import { buildProxyRoutes } from './routes.js';
@@ -44,7 +44,7 @@ export const createGatewayServer = async (
   registerAuthGuard(app, publicKey);
 
   await app.register(cors, {
-    origin: [config.WEB_ORIGIN],
+    origin: origenesPermitidos(config.WEB_ORIGIN),
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   });
