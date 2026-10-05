@@ -1,0 +1,16 @@
+[Unit]
+Description=OdontoCRM · respaldo diario (03:30, hora local del servidor)
+Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
+
+[Timer]
+# 03:30 de la madrugada: la clínica está cerrada y hay margen si tarda.
+OnCalendar=*-*-* 03:30:00
+# Persistent=true: si el servidor estaba apagado a esa hora, lo hace al arrancar.
+# No se pierde el respaldo del día por un corte de luz.
+Persistent=true
+RandomizedDelaySec=300
+AccuracySec=1min
+Unit=odontocrm-backup.service
+
+[Install]
+WantedBy=timers.target

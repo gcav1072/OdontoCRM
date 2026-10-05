@@ -92,13 +92,30 @@ else
   av 'sin BYPASSRLS: el esquema no usa Row Level Security (comprobado en la Fase 10)'
 fi
 
-# ── 2. Permiso de conexión a cada base ───────────────────────────────────────
+# ── 2. Permiso de conexión y de ESQUEMA en cada base ─────────────────────────
+#
+# OJO con los esquemas: `pg_read_all_data` da lectura de tablas y USAGE en `public`,
+# pero **no** en los demás esquemas. Medido en la Fase 10: el respaldo moría con
+# «permiso denegado al esquema drizzle» porque `pg_dump` bloquea
+# `drizzle.__drizzle_migrations` (y en otra base, las tablas de `pgboss`). Por eso
+# aquí se concede USAGE sobre TODOS los esquemas no internos de cada base, presentes
+# y futuros.
+SQL_ESQUEMAS="DO \$\$ DECLARE s text; BEGIN
+  FOR s IN SELECT nspname FROM pg_namespace
+            WHERE nspname NOT LIKE 'pg\\_%' AND nspname <> 'information_schema'
+  LOOP EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', s, '$rol'); END LOOP;
+END \$\$;"
+
 for base in "${bases[@]}"; do
   if psql "$ADMIN_URL" -tAc "select 1 from pg_database where datname = '$base'" | grep -q 1; then
     psql "$ADMIN_URL" -q -c "grant connect on database $base to $rol" >/dev/null || av "no pude dar CONNECT en $base"
+    # `psql <url>` con `-d` interpreta la URL como USUARIO: por eso la base va
+    # dentro de la URL, no en un `-d` aparte.
+    psql -d "postgres:///$base?host=/var/run/postgresql" -q -c "$SQL_ESQUEMAS" >/dev/null 2>&1 ||
+      av "no pude dar USAGE sobre los esquemas de $base"
   fi
 done
-ok "CONNECT concedido en las bases existentes (${#bases[@]} previstas)"
+ok "CONNECT y USAGE en todos los esquemas de las bases existentes (${#bases[@]} previstas)"
 
 # ── 3. .pgpass y backup.env ──────────────────────────────────────────────────
 cp -n "$pgpass" "$pgpass.antes" 2>/dev/null || true
@@ -122,11 +139,21 @@ ok "backup.env apunta a $rol por TCP con .pgpass"
 fallos=0
 for base in "${bases[@]}"; do
   psql "$ADMIN_URL" -tAc "select 1 from pg_database where datname='$base'" | grep -q 1 || continue
-  PGPASSFILE="$pgpass" psql -h 127.0.0.1 -p 5432 -U "$rol" -d "$base" -tAc \
-    'select count(*) from information_schema.tables where table_schema = current_schema()' >/dev/null 2>&1 ||
-    { av "el rol no puede leer $base"; fallos=$((fallos+1)); }
+  # No basta con `public`: se lee a propósito el esquema de migraciones, que es el
+  # que rompía el respaldo, y se comprueba el USAGE de todos los esquemas.
+  if ! PGPASSFILE="$pgpass" psql -h 127.0.0.1 -p 5432 -U "$rol" -d "$base" -tAc \
+       "select count(*) from drizzle.__drizzle_migrations" >/dev/null 2>&1; then
+    av "el rol no puede leer el esquema drizzle de $base"; fallos=$((fallos+1)); continue
+  fi
+  sin_usage="$(PGPASSFILE="$pgpass" psql -h 127.0.0.1 -p 5432 -U "$rol" -d "$base" -tAc \
+    "select string_agg(nspname, ', ') from pg_namespace
+      where nspname not like 'pg\\_%' and nspname <> 'information_schema'
+        and not has_schema_privilege(current_user, nspname, 'USAGE')" 2>/dev/null)"
+  if [[ -n "$sin_usage" ]]; then
+    av "sin USAGE en $base: $sin_usage"; fallos=$((fallos+1))
+  fi
 done
-if (( fallos == 0 )); then ok 'el rol lee las 8 bases'
-else err "$fallos base(s) sin lectura: revisa los GRANT"; fi
+if (( fallos == 0 )); then ok 'el rol lee las 8 bases (incluido el esquema de migraciones)'
+else err "$fallos base(s) con problemas: revisa los GRANT"; fi
 
 printf '\n  Siguiente paso:  sudo bash infra/fedora/backup/odontocrm-backup.sh --include-config\n'

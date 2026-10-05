@@ -857,6 +857,8 @@ install_systemd_units() {
   install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-gateway.service" "/etc/systemd/system/odontocrm-gateway.service"
   # Observabilidad (Fase 10): el tablero de estado cada 5 minutos. Es un
   # temporizador, no un servicio de la pila: no depende del supervisor elegido.
+  install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-backup.service" "/etc/systemd/system/odontocrm-backup.service"
+  install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-backup.timer" "/etc/systemd/system/odontocrm-backup.timer"
   install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-alertas.service" "/etc/systemd/system/odontocrm-alertas.service"
   install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-alertas.timer" "/etc/systemd/system/odontocrm-alertas.timer"
   run systemctl daemon-reload

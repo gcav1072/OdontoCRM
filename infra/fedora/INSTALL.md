@@ -1593,36 +1593,17 @@ Códigos de salida: `0` correcto · `1` configuración · `2` falló un volcado 
 
 ### 15.4 Automatización diaria (temporizador `systemd`)
 
-Crea `/etc/systemd/system/odontocrm-backup.service`:
+Un respaldo que nadie ejecuta no es un respaldo: las unidades vienen **en el
+repositorio** (`infra/fedora/systemd/odontocrm-backup.service` y `.timer`) y
+`install.sh --apply` las instala junto al resto. Hacen el respaldo **cada día a las
+03:30** hora local, con `Persistent=true` (si el servidor estaba apagado a esa hora,
+lo hace al arrancar: un corte de luz no se lleva el respaldo del día).
 
-```ini
-[Unit]
-Description=OdontoCRM — respaldo diario de las 8 bases
-Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
-After=postgresql-18.service
-Wants=postgresql-18.service
-
-[Service]
-Type=oneshot
-User=root
-Nice=10
-ExecStart=/opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config
-```
-
-Y `/etc/systemd/system/odontocrm-backup.timer`:
-
-```ini
-[Unit]
-Description=OdontoCRM — respaldo diario (03:30, hora local America/Caracas)
-
-[Timer]
-OnCalendar=*-*-* 03:30:00
-Persistent=true
-RandomizedDelaySec=300
-Unit=odontocrm-backup.service
-
-[Install]
-WantedBy=timers.target
+```bash
+sudo systemctl enable --now odontocrm-backup.timer
+systemctl list-timers odontocrm-backup.timer
+sudo systemctl start odontocrm-backup.service      # forzar una corrida ahora
+sudo journalctl -u odontocrm-backup -n 40 --no-pager
 ```
 
 ```bash
@@ -2063,11 +2044,11 @@ exige el plan (§13, Fase 10).
 | P-11 | Proxy elegido + SSE + SELinux | pantalla en vivo + `ausearch` | ☐ | |
 | P-12 | Certificado interno y confianza en dispositivos | `openssl s_client` desde PC/tablet/TV | ☐ | |
 | P-13 | Recursos y cifrado de disco | `free -h` · `df -h` · LUKS | ☐ | |
-| P-14 | Cifrado y copia externa del respaldo | `rsync` + `age`/`gpg` | ☐ | |
+| P-14 | Cifrado y copia externa del respaldo | `rsync` + `age`/`gpg` | ◐ | **PC de pruebas:** el respaldo diario ya se programa solo (`odontocrm-backup.timer`, 03:30 con `Persistent=true`); queda decidir el cifrado del medio externo (§15.5). |
 | P-15 | **Prueba de restauración documentada** | §16.2, con las 8 bases | ☐ | |
 | P-16 | **Reinicio del servidor: los 9 vuelven solos** | §10.5 | ☐ | |
 | P-17 | Cómo se sirve la SPA y su etiqueta SELinux | `curl -I` + `semanage fcontext -l` | ☐ | |
-| P-18 | `BYPASSRLS` para el rol de respaldo (si hay RLS) | `\du+ odonto_backup` | ☐ | |
+| P-18 | `BYPASSRLS` para el rol de respaldo (si hay RLS) | `\du+ odonto_backup` | ✅ | **PC de pruebas:** el esquema **no usa RLS** (ninguna migración crea políticas), así que no hace falta. Sí hizo falta `USAGE` explícito en los esquemas `drizzle` y `pgboss`, que `pg_read_all_data` no cubre (el respaldo moría con «permiso denegado al esquema drizzle»). |
 | P-19 | Rotación del token del bot y de la clave JWT | §8.5 | ☐ | |
 | P-20 | 8090/4001-4008/5432 inaccesibles desde la LAN | `curl` desde otro equipo | ☐ | |
 | P-21 | Alertas de servicio caído y cola atascada | entregable de observabilidad (Fase 10) | ☐ | |
