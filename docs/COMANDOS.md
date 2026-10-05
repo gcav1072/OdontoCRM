@@ -8,6 +8,10 @@
 > Referencias: [`README.md`](../README.md) · [`PLAN_MAESTRO_FASES.md`](PLAN_MAESTRO_FASES.md) ·
 > [`SEGURIDAD_SECRETOS.md`](SEGURIDAD_SECRETOS.md) · [ADRs](adr/README.md)
 
+> **¿Buscas los comandos del servidor de la clínica?** Este documento es para
+> **desarrollo** (levantar la pila local, pruebas, seeds). Para el sistema en marcha está
+> [`COMANDOS_PRODUCCION.md`](COMANDOS_PRODUCCION.md).
+
 ## Índice
 
 1. [Los cinco comandos del día a día](#1-los-cinco-comandos-del-día-a-día)

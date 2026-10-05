@@ -28,6 +28,7 @@
 > nueve cruces rojas de «sin DATABASE_URL», es que se ejecutó sin `sudo`.
 
 - Instalación desde cero: [`INSTALL.md`](INSTALL.md)
+- Comandos del servidor en producción (referencia rápida): [`../../docs/COMANDOS_PRODUCCION.md`](../../docs/COMANDOS_PRODUCCION.md)
 - Comandos del día a día: [`docs/COMANDOS.md`](../../docs/COMANDOS.md)
 - Qué ve el personal en la aplicación: [`docs/OPERACION_CLINICA.md`](../../docs/OPERACION_CLINICA.md)
 

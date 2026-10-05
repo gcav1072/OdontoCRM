@@ -77,7 +77,8 @@ Los secretos **nunca** se versionan ni se comparten por chat: ver
 ## Scripts
 
 La lista completa (con flags, requisitos, variables de entorno y problemas típicos)
-está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)**. Estos son los del día a día:
+está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)
+- [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) — comandos del servidor en producción (`sudo odontocrm …`).**. Estos son los del día a día:
 
 | Comando | Qué hace |
 | :--- | :--- |
