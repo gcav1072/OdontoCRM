@@ -128,13 +128,15 @@ export const PatientDetailPage = () => {
       </div>
 
       <Card>
-        <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <span className="grid size-11 shrink-0 place-items-center rounded-control bg-primary/10 text-primary">
               <UserRound className="size-5" aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <CardTitle as="h1" className="truncate text-lg">
+              {/* `break-words` en lugar de `truncate`: con los botones al lado, un
+                  nombre compuesto se cortaba a media palabra. Aquí manda el nombre. */}
+              <CardTitle as="h1" className="text-lg break-words" title={paciente.fullName}>
                 {paciente.fullName}
               </CardTitle>
               <p className="flex flex-wrap items-center gap-2 pt-1 font-mono text-sm text-ink-muted">
@@ -157,7 +159,7 @@ export const PatientDetailPage = () => {
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
             {/* La historia clínica se abre desde la ficha: es el camino natural
                 del odontólogo, y la secretaría entra en solo lectura. */}
             {hasPermission('clinical:read') && (
