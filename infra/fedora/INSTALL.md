@@ -1757,10 +1757,15 @@ número de tablas coincide con el origen, las tablas pertenecen al rol del servi
 
 Registra el resultado en §20 (y, si algo falla, la causa y la corrección).
 
-> **Nota medida en la Fase 10:** si falta la credencial de administración, el
-> restablecimiento **no se cuelga** esperando que alguien teclee la contraseña: `psql`
-> corre con `-w` y falla en el acto con «no password supplied». Antes se quedaba mudo
-> (un minuto entero en el ensayo) y parecía estar trabajando. El paso 0-a lo evita.
+> **Nota medida en la Fase 10: ninguna herramienta de este despliegue pregunta
+> contraseñas.** `psql`, `pg_dump` y `pg_restore` corren siempre con `-w` /
+> `--no-password`: si falta una credencial, **fallan en el acto** diciendo cuál falta.
+> Antes no era así y el restablecimiento se quedó mudo un minuto y medio esperando que
+> alguien tecleara la contraseña del rol `postgres` (que en Fedora entra por *peer* y no
+> tiene contraseña útil por TCP). Si alguna vez ves un `Password for user postgres:` en
+> la clínica, es que se está ejecutando una copia vieja: comprueba con
+> `git -C /opt/odontocrm log --oneline -1`. El paso 0-a deja la credencial de
+> administración en el `.pgpass` y evita el problema de raíz.
 >
 > **P-15 (resuelto en la Fase 10):** la prueba se corre con las **8 bases** de una vez
 > (`--all --keep-verify-db`), se comparan las filas de cada tabla entre la base real y
