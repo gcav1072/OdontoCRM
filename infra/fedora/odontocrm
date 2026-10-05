@@ -61,9 +61,12 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    firewall, SELinux, respaldo y restauración probada)
                                    está `infra/fedora/ensayo-despliegue.sh`.
   sudo odontocrm parar             Detener los 9 servicios (el gateway primero: es la
-                                   puerta). nginx y PostgreSQL se quedan.
+                                   puerta). nginx y PostgreSQL se quedan; con `--todo`
+                                   se paran también ellos (sistema completamente parado).
   sudo odontocrm arrancar          Arrancarlos en orden y comprobar que los 9 responden.
-  sudo odontocrm reiniciar         Parar y arrancar (para aplicar configuración).
+                                   Sirve igual si el sistema estaba parado del todo.
+  sudo odontocrm reiniciar         Reiniciar los 9 (aplicar configuración). Funciona
+                                   también con el sistema parado: arranca lo que falte.
   sudo odontocrm compilar          Solo compilar (TypeScript → dist/), sin tocar servicios.
                                    El ciclo completo es: parar → compilar → arrancar.
   sudo odontocrm recompilar        Compilar y reiniciar de una vez, sin tocar el repositorio
@@ -136,6 +139,9 @@ case "$ORDEN" in
       for svc in "${esperados[@]}"; do
         puerto="${PUERTOS[$svc]}"
         unidad="odontocrm@$svc"; [[ "$svc" == "gateway" ]] && unidad="odontocrm-gateway"
+        # Solo se espera a las unidades ACTIVAS: si una está apagada, no es cuestión de
+        # darle tiempo, es que nadie la arrancó (y eso se informa abajo, como inactiva).
+        systemctl is-active --quiet "$unidad.service" || continue
         pid_unidad="$(systemctl show -p MainPID --value "$unidad.service" 2>/dev/null || echo 0)"
         pid_puerto="$(ss -lntpH "sport = :$puerto" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)"
         [[ -n "$pid_puerto" && "$pid_puerto" == "$pid_unidad" ]] || pendientes=$((pendientes + 1))
@@ -226,6 +232,26 @@ case "$ORDEN" in
     else
       tail -15 /tmp/odontocrm-install.log
       av 'install.sh falló: el código se actualiza, pero revisa las unidades y las plantillas'
+    fi
+
+    # ── Cambiar de versión a mitad de camino, sin romperse ────────────────────
+    #
+    # Este proceso empezó con la versión ANTIGUA del comando. ¿Qué pasa si el commit
+    # que acaba de llegar trae una versión nueva de este mismo guion (por ejemplo, un
+    # arreglo en las migraciones o en `verificar`)? Si siguiéramos aquí, los pasos que
+    # quedan correrían con la lógica vieja —el arreglo no se aplicaría hasta la próxima
+    # vez— y, peor, el guion seguiría leyéndose del archivo mientras otro lo reemplaza.
+    #
+    # Bash **no** carga el archivo entero en memoria: lo va leyendo por bloques desde el
+    # descriptor abierto. Como `install.sh` instala el comando con `install` (crea un
+    # archivo NUEVO y renombra), el proceso que corre conserva el descriptor del archivo
+    # original y termina sano —por eso no se corrompe nada—, pero seguiría ejecutando la
+    # versión vieja. La forma limpia de cambiar es **re-ejecutarse**: `exec "$0" …`
+    # reemplaza el proceso y vuelve a leer el archivo, ya nuevo. Una sola vez, con una
+    # variable de guarda para no repetirlo.
+    if [[ "${ODONTOCRM_REEXEC:-0}" != "1" && -f "$CODE_DIR/infra/fedora/odontocrm" ]]; then
+      ok 'el comando se re-ejecuta con la versión recién instalada (los pasos que quedan ya son los nuevos)'
+      exec env ODONTOCRM_REEXEC=1 ODONTOCRM_RAMA="$rama" "$0" actualizar
     fi
     npm ci --silent || morir 'falló npm ci'
     npm run build >/dev/null 2>&1 || morir 'falló la compilación'
@@ -469,6 +495,11 @@ EOF
 
   parar|stop|detener)
     necesita_root
+    todo=0
+    for arg in "$@"; do
+      case "$arg" in --todo|--con-base|--todo=*|--con-base=*) todo=1 ;; esac
+    done
+
     # El gateway PRIMERO: es la puerta de entrada. Si se para al final, las peticiones
     # que estén en curso se quedan colgadas contra servicios que ya no están.
     systemctl stop odontocrm-gateway.service >/dev/null 2>&1 || true
@@ -478,30 +509,54 @@ EOF
       systemctl stop "odontocrm@$s.service" >/dev/null 2>&1 && parados=$((parados + 1))
     done
     ok "$parados servicio(s) detenido(s)"
-    av 'nginx y PostgreSQL siguen en marcha (el proxy dará 502 mientras tanto)'
-    av 'para detenerlos también:  sudo systemctl stop nginx postgresql'
+
+    if (( todo )); then
+      # PostgreSQL al final y a propósito: los servicios ya están parados, así que no
+      # hay nadie a quien dejar a medias.
+      systemctl stop nginx >/dev/null 2>&1 || true
+      systemctl stop postgresql >/dev/null 2>&1 || true
+      ok 'nginx y PostgreSQL detenidos (--todo): el sistema queda completamente parado'
+    else
+      av 'nginx y PostgreSQL siguen en marcha (el proxy dará 502 mientras tanto)'
+      av 'para pararlo TODO (incluidos el proxy y la base):  sudo odontocrm parar --todo'
+    fi
     ;;
 
   arrancar|start)
     necesita_root
+    # Independiente del estado: arranca lo que esté parado y deja lo que ya corría.
     systemctl is-active --quiet postgresql || systemctl start postgresql
+    ok 'PostgreSQL en marcha'
     systemctl is-active --quiet nginx || systemctl start nginx
+    ok 'nginx en marcha'
     for s in "${SERVICIOS[@]}"; do
       systemctl start "odontocrm@$s.service" >/dev/null 2>&1 || av "no pude arrancar odontocrm@$s"
     done
+    ok "${#SERVICIOS[@]} servicios arrancados"
     systemctl start odontocrm-gateway.service >/dev/null 2>&1 || av 'no pude arrancar el gateway'
-    ok 'servicios arrancados; comprobando…'
+    ok 'gateway arrancado; comprobando que los nueve escuchen…'
     exec "$0" verificar
     ;;
 
   reiniciar|restart|reinicio)
     necesita_root
-    systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || true
+    # Vale igual si el sistema estaba corriendo **o** si se paró antes con
+    # `odontocrm parar` (o con `parar --todo`): se levanta lo que falte y se reinicia
+    # el resto. Antes no arrancaba PostgreSQL ni nginx, así que tras un `parar --todo`
+    # el sistema se quedaba a medias —y el error que se veía era de la verificación,
+    # no del reinicio—.
+    systemctl is-active --quiet postgresql || { systemctl start postgresql && ok 'PostgreSQL estaba parado: arrancado'; }
+    systemctl is-active --quiet nginx || { systemctl start nginx && ok 'nginx estaba parado: arrancado'; }
+
     for s in "${SERVICIOS[@]}"; do
-      systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 || av "no pude reiniciar odontocrm@$s"
+      # `restart` arranca lo que esté detenido: no hace falta saber en qué estado está.
+      systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 ||
+        av "no pude reiniciar odontocrm@$s"
     done
-    systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || true
-    ok 'servicios reiniciados; comprobando…'
+    ok "${#SERVICIOS[@]} servicios reiniciados"
+    # El gateway al FINAL: así no atiende peticiones mientras sus servicios reinician.
+    systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || av 'no pude reiniciar el gateway'
+    ok 'gateway reiniciado; comprobando que los nueve escuchen…'
     exec "$0" verificar
     ;;
 

@@ -111,14 +111,16 @@ sudo odontocrm arrancar
 
 | Paso | Comando | Qué pasa por dentro |
 | :--- | :--- | :--- |
-| Parar | `odontocrm parar` | `systemctl stop` del gateway y de los 8 servicios. **nginx y PostgreSQL se quedan** (el proxy dará 502 mientras tanto, que es lo correcto: algo tiene que contestar). Para detenerlos también: `sudo systemctl stop nginx postgresql` |
+| Parar | `odontocrm parar` | `systemctl stop` del gateway y de los 8 servicios. **nginx y PostgreSQL se quedan** (el proxy dará 502 mientras tanto, que es lo correcto: algo tiene que contestar). Para pararlo **todo**: `sudo odontocrm parar --todo` |
 | Compilar | `odontocrm compilar` | `npm ci` + `npm run build` dentro de `/opt/odontocrm`. Los servicios **siguen con el código viejo en memoria** hasta que se reinicien: por eso este paso va entre parar y arrancar |
 | Arrancar | `odontocrm arrancar` | `systemctl start` de PostgreSQL y nginx si hicieran falta, luego los 8 servicios, y el gateway al final. Termina comprobando los 9 con `verificar` |
 
 **Atajos que existen para no repetir:**
 
 ```bash
-sudo odontocrm reiniciar     # parar + arrancar (para aplicar cambios de configuración)
+# Sirve con el sistema corriendo O parado (también tras `parar --todo`): levanta
+# PostgreSQL y nginx si faltan, reinicia los 8 servicios, el gateway al final y verifica.
+sudo odontocrm reiniciar     # aplicar cambios de configuración
 sudo odontocrm recompilar    # compilar + reiniciar (código ya en /opt, sin migraciones)
 sudo odontocrm actualizar    # traer del repositorio + compilar + migrar + reiniciar
 ```
@@ -207,6 +209,28 @@ done
 sudo systemctl restart 'odontocrm@*' odontocrm-gateway
 sudo odontocrm verificar
 ```
+
+### ¿Cómo se actualiza el propio comando del servidor?
+
+`sudo odontocrm` es un **guion de bash** que vive en `/usr/local/bin/odontocrm` (una copia
+del repositorio). `actualizar` lo reemplaza a mitad de camino, así que conviene saber qué
+pasa con un guion que se actualiza **mientras se está ejecutando**:
+
+| Caso | Qué ocurre |
+| :--- | :--- |
+| **Reemplazar el archivo** (lo que hacen `install`, `git checkout` o `sed -i`: crean un archivo nuevo y renombran) | bash conserva abierto el archivo original, así que **el proceso que corre termina sano con la versión vieja**. Nada se corrompe |
+| **Reescribir en sitio** (`algo > guion.sh`) con el guion en ejecución | bash sigue leyendo del mismo archivo y el guion **se corta a media ejecución, en silencio** (medido: 720 de 2000 líneas, sin ningún error). Por eso los scripts del proyecto **nunca** se editan así |
+| **Re-ejecutarse** (`exec "$0" …`) después de actualizar | el proceso se reemplaza y **los pasos que quedan ya usan la versión nueva** |
+
+`actualizar` usa la tercera: trae el código, deja al día unidades y plantillas con
+`install.sh` (que reemplaza el comando de forma segura) y luego **se re-ejecuta** con una
+variable de guarda (`ODONTOCRM_REEXEC=1`, para no repetirlo). Así un arreglo en el propio
+guion —por ejemplo en las migraciones o en `verificar`— **se aplica en esa misma
+actualización**, no en la siguiente.
+
+> No se puede «mantener el guion en RAM»: bash lo lee por bloques del archivo. La forma
+> limpia de cambiar de versión a mitad de camino es reemplazar el archivo y re-ejecutarse,
+> que es justo lo que hace.
 
 ### ¿Qué rama se despliega?
 

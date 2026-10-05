@@ -84,10 +84,16 @@ sudo ls -lh /var/backups/odontocrm | tail -5
 ### Con systemd (recomendado)
 
 ```bash
-sudo odontocrm parar        # detener los 9 (nginx y PostgreSQL se quedan)
-sudo odontocrm arrancar     # arrancarlos en orden y verificar
-sudo odontocrm reiniciar    # para aplicar cambios de configuración
+sudo odontocrm parar           # detener los 9 (nginx y PostgreSQL se quedan)
+sudo odontocrm parar --todo    # …y también nginx y PostgreSQL (sistema parado del todo)
+sudo odontocrm arrancar        # arrancarlos en orden y verificar
+sudo odontocrm reiniciar       # aplicar cambios de configuración
 ```
+
+Los tres **funcionan en cualquier estado**: si el sistema estaba parado del todo,
+`arrancar` y `reiniciar` levantan también PostgreSQL y nginx. No hay que «arrancar en el
+orden correcto» a mano: lo hace el comando y después **comprueba** que los nueve
+escuchen.
 
 
 ```bash
