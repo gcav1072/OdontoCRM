@@ -376,6 +376,24 @@ sudo odontocrm certificado                     # deja la CA y avisa si el proxy 
 
 ---
 
+## 6-bis. En qué dirección se entra (y si cambió la red)
+
+```bash
+sudo odontocrm red
+```
+
+Dice la IP de la máquina en la red actual, las direcciones para entrar
+(`https://odontocrm.local` y `https://<IP>`) y comprueba las tres cosas que se quedan
+apuntando a la red anterior cuando el servidor cambia de wifi o de router: la regla de
+**`firewalld`**, el **certificado** (que cubre la IP con la que se emitió) y **`WEB_ORIGIN`**
+(que si no admite la dirección nueva hace fallar el inicio de sesión sin decir por qué).
+Si algo está desalineado, imprime el comando exacto que lo arregla.
+
+Detalle completo (y el truco de entrar siempre por el nombre): 
+[`CERTIFICADO_EN_LOS_EQUIPOS.md`](CERTIFICADO_EN_LOS_EQUIPOS.md) §9-bis.
+
+---
+
 ## 7. La base de datos
 
 ```bash

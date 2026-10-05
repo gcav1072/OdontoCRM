@@ -219,6 +219,38 @@ como prueba puntual.
 
 ---
 
+## 9-bis. El servidor cambió de red (otro wifi, otro router)
+
+Cuando el servidor se conecta a **otra red**, su IP cambia y hay **tres cosas** que se
+quedan apuntando a la red anterior. El síntoma típico: desde el servidor entra
+perfecto, pero desde otro equipo «no carga» o «la contraseña no vale».
+
+```bash
+sudo odontocrm red
+```
+
+Ese comando dice la **IP actual**, las direcciones para entrar (`https://odontocrm.local`
+y `https://<IP>`) y comprueba las tres cosas:
+
+| Qué | Por qué falla | Cómo se arregla |
+| :--- | :--- | :--- |
+| **`firewalld`** | La regla de 443 se puso para la red anterior (`192.168.9.0/24`), así que la nueva no entra | El mismo comando dice la red actual y el comando exacto |
+| **El certificado** | Se emitió con la IP anterior: el navegador avisa de que no es válido para esa dirección | Reemitirlo (un minuto) |
+| **`WEB_ORIGIN`** (CORS) | Solo admite el nombre y la IP anterior: entrar por la IP nueva **falla el inicio de sesión** sin decir por qué | Añadir la IP nueva a la lista |
+
+Los tres se arreglan de una vez:
+
+```bash
+sudo bash /opt/odontocrm/infra/fedora/ensayo-despliegue.sh --hasta=tls --lan-cidr=192.168.1.0/24
+```
+
+> **Truco para no repetirlo:** entra siempre por **`https://odontocrm.local`** y pon esa
+> línea en el archivo *hosts* de cada equipo apuntando a la IP del momento. El nombre no
+> cambia cuando cambia la red; la IP, sí. (El certificado cubre el nombre, así que el
+> candado sigue bien.)
+
+---
+
 ## 10. Problemas típicos
 
 | Síntoma | Causa | Solución |

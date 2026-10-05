@@ -75,6 +75,11 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    exporta los archivos para instalar en tablets, móviles
                                    y TVs (--exportar /ruta). Es lo que quita el aviso de
                                    «conexión no privada» en los demás equipos.
+  sudo odontocrm red               En qué IP se está sirviendo y con qué dirección entrar
+                                   desde otro equipo. Comprueba las TRES cosas que se
+                                   quedan apuntando a la red anterior al cambiar de
+                                   wifi/router (firewall, certificado y CORS) y dice
+                                   el comando que lo arregla.
   sudo odontocrm selinux           Denegaciones de SELinux de hoy, con la causa más
                                    probable y el comando que lo arregla. «Sin
                                    denegaciones» es lo que quieres ver.
@@ -413,6 +418,79 @@ EOF
     else
       err "no encuentro la CA de mkcert (busqué $CA_FIJA y $CA_DIR/rootCA.pem)"
       av 'se crea con: sudo mkcert -install   (INSTALL.md §13.2)'
+    fi
+    ;;
+
+  red|ip|lan)
+    necesita_root
+    # La IP con la que esta máquina sale a la red (la que hay que teclear desde un
+    # equipo de la misma red). No es la de `hostname -I` a secas: esa puede incluir
+    # interfaces virtuales (docker, virbr…).
+    IP_LAN="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1)"
+    [[ -n "$IP_LAN" ]] || IP_LAN="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    RED_LAN="$(printf '%s' "$IP_LAN" | awk -F. '{printf "%s.%s.%s.0/24", $1, $2, $3}')"
+    NOMBRE="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null | awk '{print $1}')"
+
+    printf '%sDirecciones para entrar al sistema%s\n' "$C_TI" "$C_RE"
+    printf '  %shttps://%s%s   (por el nombre; hace falta una línea en el hosts de cada equipo)\n' "$C_TI" "${NOMBRE:-odontocrm.local}" "$C_RE"
+    printf '  %shttps://%s%s      (por la IP de esta máquina en la red actual)\n' "$C_TI" "$IP_LAN" "$C_RE"
+    printf '  %sDel mismo servidor%s también sirve https://127.0.0.1\n' "$C_TI" "$C_RE"
+    echo
+    echo "  nginx escucha en:"
+    ss -lntp 2>/dev/null | grep ':443' | awk '{print "    " $4}' | sort -u
+    echo "  (0.0.0.0:443 = todas las interfaces; el firewall es quien decide quién entra)"
+    echo
+
+    problemas=0
+
+    # 1) Firewall: ¿está abierto 443 para ESTA red?
+    if systemctl is-active --quiet firewalld; then
+      if firewall-cmd --list-rich-rules 2>/dev/null | grep -q "443"; then
+        reglas="$(firewall-cmd --list-rich-rules 2>/dev/null | grep 443 | head -2)"
+        if printf '%s' "$reglas" | grep -qF "$RED_LAN"; then
+          ok "firewalld: 443 abierto para $RED_LAN"
+        else
+          av "firewalld tiene reglas de OTRA red (esta es $RED_LAN):"
+          printf '%s\n' "$reglas" | sed 's/^/      /'
+          problemas=$((problemas + 1))
+        fi
+      else
+        av 'firewalld no tiene ninguna regla para 443: nadie de la red podrá entrar'
+        problemas=$((problemas + 1))
+      fi
+    else
+      ok 'firewalld no está activo: nada bloquea el acceso'
+    fi
+
+    # 2) Certificado: ¿cubre la IP de ahora?
+    if [[ -f /etc/pki/tls/certs/odontocrm.crt ]]; then
+      if openssl x509 -in /etc/pki/tls/certs/odontocrm.crt -noout -ext subjectAltName 2>/dev/null | grep -qF "$IP_LAN"; then
+        ok "el certificado incluye $IP_LAN"
+      else
+        av "el certificado NO incluye $IP_LAN (se emitió para la red anterior): el navegador avisará"
+        problemas=$((problemas + 1))
+      fi
+    fi
+
+    # 3) CORS: ¿WEB_ORIGIN admite esa dirección? Si no, el login falla sin decir por qué.
+    origenes="$(sed -n 's/^WEB_ORIGIN=//p' /etc/odontocrm/odontocrm.env | head -1)"
+    if printf '%s' "$origenes" | grep -qF "$IP_LAN"; then
+      ok 'WEB_ORIGIN admite la IP actual'
+    else
+      av "WEB_ORIGIN no incluye https://$IP_LAN (hoy: $origenes): entrar por la IP fallará el login"
+      problemas=$((problemas + 1))
+    fi
+
+    echo
+    if (( problemas == 0 )); then
+      ok 'todo apunta a la red actual: se puede entrar desde otro equipo'
+      echo "    Recuerda instalar el certificado en cada equipo:  http://${IP_LAN}/ca.crt"
+    else
+      av "$problemas cosa(s) apuntan a la red anterior. Se arreglan de una vez con:"
+      printf '      sudo bash %s/infra/fedora/ensayo-despliegue.sh --hasta=tls --lan-cidr=%s\n' "$CODE_DIR" "$RED_LAN"
+      echo '      (reemite el certificado con la IP actual, abre el firewall a esta red y'
+      echo '       actualiza WEB_ORIGIN con el nombre y la IP; tarda un minuto)'
+      exit 2
     fi
     ;;
 
