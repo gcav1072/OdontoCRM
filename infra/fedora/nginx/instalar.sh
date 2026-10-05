@@ -28,6 +28,7 @@ morir(){ err "$1"; exit 1; }
 [[ $EUID -eq 0 ]] || morir 'hay que ejecutarlo como root (sudo)'
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ETC_DIR="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}"
 CONF_ORIGEN="$AQUI/odontocrm.conf"
 CONF_DESTINO="/etc/nginx/conf.d/odontocrm.conf"
 CERT="/etc/pki/tls/certs/odontocrm.crt"
