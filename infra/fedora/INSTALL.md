@@ -452,6 +452,13 @@ genera las contraseñas aleatorias de cada rol.
 cd /opt/odontocrm
 sudo npm run build                 # las migraciones y el bootstrap corren sobre dist/
 
+# Si el clon lo hizo OTRO usuario (p. ej. `git clone` como root de un repositorio
+# tuyo, o al revés), git puede negarse a leerlo con «detected dubious ownership» y
+# los `git pull` fallan → te quedas en un commit viejo **sin que nadie lo diga**.
+# Se arregla declarando el directorio como seguro:
+sudo git config --global --add safe.directory /opt/odontocrm
+git -C /opt/odontocrm log --oneline -1     # comprueba SIEMPRE qué commit quedó
+
 # El bootstrap lee PG_ADMIN_URL del .env de la RAÍZ del repositorio (nunca se imprime).
 # Ese archivo NO se versiona (.gitignore). Créelo solo para el bootstrap:
 sudo install -m 0600 -o root -g root /dev/null /opt/odontocrm/.env
