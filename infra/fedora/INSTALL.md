@@ -2106,7 +2106,7 @@ exige el plan (§13, Fase 10).
 | P-13 | Recursos y cifrado de disco | `free -h` · `df -h` · LUKS | ◐ | **PC de pruebas:** 7,6 GiB de RAM con los 9 servicios, PostgreSQL, nginx y Chromium en marcha (4,3 GiB en uso, sin swap) y 88 GB libres en `/`. **El disco NO está cifrado** (`lsblk` sin LUKS): en la clínica hay que decidirlo antes de cargar datos reales. |
 | P-14 | Cifrado y copia externa del respaldo | `rsync` + `age`/`gpg` | ◐ | **PC de pruebas:** el respaldo diario ya se programa solo (`odontocrm-backup.timer`, 03:30 con `Persistent=true`); queda decidir el cifrado del medio externo (§15.5). |
 | P-15 | **Prueba de restauración documentada** | §16.2, con las 8 bases | ☐ | |
-| P-16 | **Reinicio del servidor: los 9 vuelven solos** | §10.5 | ☐ | |
+| P-16 | **Reinicio del servidor: los 9 vuelven solos** | §10.5 | ✅ | **PC de pruebas (2026-10-04):** tras `systemctl reboot` los **9 servicios y nginx** volvieron solos, sin intervención: `active`, con 4 minutos de vida y `/health` y `/ready` en **200** por HTTPS (`sudo npm run estado`), el gateway incluido. |
 | P-17 | Cómo se sirve la SPA y su etiqueta SELinux | `curl -I` + `semanage fcontext -l` | ✅ | **PC de pruebas:** la SPA se sirve desde `/opt/odontocrm/apps/web/dist` por nginx (200 por https), con la etiqueta `httpd_sys_content_t` aplicada por `semanage fcontext` + `restorecon`. |
 | P-18 | `BYPASSRLS` para el rol de respaldo (si hay RLS) | `\du+ odonto_backup` | ✅ | **PC de pruebas:** el esquema **no usa RLS** (ninguna migración crea políticas), así que no hace falta. Sí hizo falta `USAGE` explícito en los esquemas `drizzle` y `pgboss`, que `pg_read_all_data` no cubre (el respaldo moría con «permiso denegado al esquema drizzle»). |
 | P-19 | Rotación del token del bot y de la clave JWT | §8.5 | ☐ | |
@@ -2145,7 +2145,7 @@ mismo commit que lo documenta:
 
 | Fecha | `systemctl reboot` ejecutado | Servicios activos tras el reinicio | `/health` de los 9 | Observaciones |
 | :--- | :--- | :--- | :--- | :--- |
-| | | | | |
+| 2026-10-04 | Sí, al final del ensayo (`--reiniciar`) | **9 de 9** (más `nginx`, `postgresql` y el temporizador de alertas) | **200** en los 9, y `/ready` también | Los servicios volvieron **solos** y en el orden correcto (`After=`/`Wants=`), con `↑ 4 min` de vida al mirar. La primera prueba **no reinició** por un fallo del guion de ensayo (moría en silencio antes del «Resumen», hallazgo P-35), no del sistema. **Aviso para el operador:** `npm run estado` necesita `sudo` (los entornos son `0600 root:root`); sin él avisa de que no puede comprobar la cola y el outbox en vez de inventarse problemas. |
 
 ---
 
