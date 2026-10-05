@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+# =============================================================================
+# OdontoCRM · comandos del servidor (una sola puerta)
+#
+#   sudo odontocrm                 # ayuda
+#   sudo odontocrm estado          # tablero completo (con el entorno de producción)
+#   sudo odontocrm alertas         # solo los problemas; código 1 si hay alguno
+#   sudo odontocrm respaldar       # respaldo ahora (bases + configuración)
+#   sudo odontocrm verificar       # los 9 servicios: unidad, puerto y /health
+#   sudo odontocrm servicios       # estado de las 10 unidades
+#   sudo odontocrm logs clinical   # últimos registros de un servicio
+#   sudo odontocrm actualizar      # traer el código nuevo y reiniciar (RUNBOOK §8)
+#
+# Existe para que en la clínica no haya que recordar rutas, `sudo`, variables de
+# entorno ni en qué orden se carga todo. Cada orden delega en el script que ya está
+# probado: aquí solo se pone el entorno correcto y se dice qué se está haciendo.
+# =============================================================================
+set -uo pipefail
+
+CODE_DIR="${CODE_DIR:-/opt/odontocrm}"
+ETC_DIR="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}"
+SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting)
+
+C_OK=$'\e[32m'; C_AV=$'\e[33m'; C_ER=$'\e[31m'; C_TI=$'\e[1m'; C_RE=$'\e[0m'
+ok()   { printf '  %s✔%s %s\n' "$C_OK" "$C_RE" "$1"; }
+av()   { printf '  %s!%s %s\n' "$C_AV" "$C_RE" "$1"; }
+err()  { printf '  %s✖%s %s\n' "$C_ER" "$C_RE" "$1"; }
+morir(){ err "$1"; exit 1; }
+
+necesita_root() {
+  [[ $EUID -eq 0 ]] && return 0
+  err "esta orden necesita sudo: sudo odontocrm $ORDEN"
+  exit 1
+}
+
+ayuda() {
+  cat <<EOF
+${C_TI}OdontoCRM · comandos del servidor${C_RE}
+
+  sudo odontocrm estado            Tablero completo: servicios, unidades, bases, cola,
+                                   outbox, envíos, reportes y alertas.
+  sudo odontocrm alertas           Solo los problemas. Sale con 1 si hay alguno
+                                   (es lo que ejecuta el temporizador cada 5 minutos).
+  sudo odontocrm respaldar         Respaldo ahora mismo de las 8 bases y de la
+                                   configuración (/etc/odontocrm, CONTIENE SECRETOS).
+  sudo odontocrm restaurar ...     Restaurar desde un respaldo (pasa las opciones tal
+                                   cual: --from /var/backups/odontocrm/<fecha> --all --yes).
+  sudo odontocrm verificar         Los 9 servicios: unidad activa, puerto servido por
+                                   ELLA y /health + /ready en 200.
+  sudo odontocrm servicios         Estado de las 10 unidades de systemd.
+  sudo odontocrm logs <servicio|gateway|nginx|postgres> [líneas]
+                                   Últimos registros.
+  sudo odontocrm actualizar        Traer el código nuevo, compilar, migrar y reiniciar
+                                   (lo mismo que RUNBOOK §8, sin acordarse de nada).
+  sudo odontocrm modo-test <on|off|estado>
+                                   Leer o escribir el modo test (nunca en producción
+                                   con datos reales: ver el ADR 0020).
+
+Directorio del código: $CODE_DIR
+Configuración:         $ETC_DIR
+EOF
+}
+
+ORDEN="${1:-ayuda}"
+shift || true
+
+case "$ORDEN" in
+  ayuda|-h|--help|help) ayuda ;;
+
+  estado)
+    necesita_root
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    ODONTOCRM_ENV_DIR="$ETC_DIR" exec node tools/estado.mjs "$@"
+    ;;
+
+  alertas)
+    necesita_root
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    ODONTOCRM_ENV_DIR="$ETC_DIR" exec node tools/estado.mjs --alertas "$@"
+    ;;
+
+  respaldar|respaldo)
+    necesita_root
+    exec bash "$CODE_DIR/infra/fedora/backup/odontocrm-backup.sh" --include-config "$@"
+    ;;
+
+  restaurar)
+    necesita_root
+    exec bash "$CODE_DIR/infra/fedora/backup/odontocrm-restore.sh" "$@"
+    ;;
+
+  verificar)
+    necesita_root
+    command -v curl >/dev/null || morir 'falta curl'
+    declare -A PUERTOS=([identity]=4001 [patients]=4002 [scheduling]=4003 [notifications]=4004
+                        [clinical]=4005 [odontogram]=4006 [screens]=4007 [reporting]=4008 [gateway]=8090)
+    fallos=0
+    for svc in "${SERVICIOS[@]}" gateway; do
+      puerto="${PUERTOS[$svc]}"
+      unidad="odontocrm@$svc"; [[ "$svc" == "gateway" ]] && unidad="odontocrm-gateway"
+      activa="$(systemctl is-active "$unidad.service" 2>/dev/null || true)"
+      pid_unidad="$(systemctl show -p MainPID --value "$unidad.service" 2>/dev/null || echo 0)"
+      pid_puerto="$(ss -lntpH "sport = :$puerto" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)"
+      if [[ "$activa" != "active" ]]; then
+        err "$unidad: $activa"; fallos=$((fallos + 1)); continue
+      fi
+      if [[ "$pid_puerto" != "$pid_unidad" ]]; then
+        err "el puerto $puerto lo sirve el PID ${pid_puerto:-nadie}, no $unidad (PID $pid_unidad)"
+        fallos=$((fallos + 1)); continue
+      fi
+      for ruta in health ready; do
+        codigo="$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:$puerto/$ruta" || echo 000)"
+        if [[ "$codigo" == "200" ]]; then ok "$svc :$puerto /$ruta 200"
+        else err "$svc :$puerto /$ruta → $codigo"; fallos=$((fallos + 1)); fi
+      done
+    done
+    echo
+    if (( fallos == 0 )); then ok 'los 9 servicios están bien'; else err "$fallos comprobación(es) con problemas"; fi
+    exit $(( fallos > 0 ))
+    ;;
+
+  servicios)
+    necesita_root
+    systemctl --no-pager --type=service --all 'odontocrm*' | cat
+    echo
+    systemctl --no-pager --type=service --all 'nginx*' 'postgresql*' | cat
+    ;;
+
+  logs)
+    necesita_root
+    que="${1:-clinical}"; shift || true
+    lineas="${1:-50}"
+    case "$que" in
+      gateway) exec journalctl -u odontocrm-gateway -n "$lineas" --no-pager ;;
+      nginx)   exec journalctl -u nginx -n "$lineas" --no-pager ;;
+      postgres|postgresql) exec journalctl -u postgresql -n "$lineas" --no-pager ;;
+      *)       exec journalctl -u "odontocrm@$que" -n "$lineas" --no-pager ;;
+    esac
+    ;;
+
+  actualizar)
+    necesita_root
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    git config --global --add safe.directory "$CODE_DIR" 2>/dev/null || true
+    printf '%sActualizando %s%s\n' "$C_TI" "$CODE_DIR" "$C_RE"
+    git fetch --prune origin || morir 'no pude traer el código nuevo'
+    rama="$(git rev-parse --abbrev-ref HEAD)"
+    git checkout -B "$rama" "origin/$rama" || morir 'no pude cambiar a la rama del repositorio'
+    ok "código en $(git rev-parse --short HEAD)"
+    npm ci --silent || morir 'falló npm ci'
+    npm run build >/dev/null 2>&1 || morir 'falló la compilación'
+    ok 'compilado'
+    for s in "${SERVICIOS[@]}"; do
+      env -i PATH="$PATH" HOME=/root NODE_ENV=production \
+        bash -c "set -a; source '$ETC_DIR/odontocrm.env'; source '$ETC_DIR/$s.env'; set +a; \
+                 cd '$CODE_DIR' && node services/$s/dist/db/migrate.js" >"/tmp/odontocrm-migrar-$s.log" 2>&1 ||
+        { tail -5 "/tmp/odontocrm-migrar-$s.log"; morir "fallaron las migraciones de $s"; }
+    done
+    ok 'migraciones aplicadas'
+    systemctl restart postgresql >/dev/null 2>&1 || true
+    systemctl restart odontocrm.target 2>/dev/null || {
+      for s in "${SERVICIOS[@]}"; do systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 || true; done
+      systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || true
+    }
+    sleep 6
+    exec "$0" verificar
+    ;;
+
+  modo-test)
+    necesita_root
+    accion="${1:-estado}"; archivo="$ETC_DIR/odontocrm.env"
+    case "$accion" in
+      on|off)
+        valor=$([[ "$accion" == "on" ]] && echo true || echo false)
+        sed -i "s|^TEST_MODE=.*|TEST_MODE=${valor}|; s|^ALLOW_TEST_MODE=.*|ALLOW_TEST_MODE=${valor}|" "$archivo"
+        if [[ "$valor" == "true" && "${NODE_ENV:-production}" == "production" ]]; then
+          av 'ojo: con NODE_ENV=production el modo test sigue bloqueado (ADR 0020)'
+        fi
+        ok "modo test $accion en $archivo (reinicia los servicios para que lo lean)"
+        for s in "${SERVICIOS[@]}"; do systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 || true; done
+        systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || true
+        ;;
+      estado)
+        grep -E '^(TEST_MODE|ALLOW_TEST_MODE)=' "$archivo" 2>/dev/null | sed 's/^/  /' || av 'no encuentro el archivo común'
+        curl -s --max-time 4 http://127.0.0.1:8090/api/v1/meta 2>/dev/null |
+          python3 -c 'import json,sys; print("  el gateway dice:", json.load(sys.stdin).get("testMode"))' 2>/dev/null || true
+        ;;
+      *) morir 'uso: odontocrm modo-test <on|off|estado>' ;;
+    esac
+    ;;
+
+  *) err "orden desconocida: $ORDEN"; echo; ayuda; exit 2 ;;
+esac

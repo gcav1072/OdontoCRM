@@ -1868,6 +1868,12 @@ sudo install -m 0755 -o root -g root /tmp/verificar-odontocrm.sh /usr/local/bin/
 /usr/local/bin/verificar-odontocrm
 ```
 
+> Desde la Fase 10 esto también está en el comando del servidor:
+> `sudo odontocrm verificar` (lo instala `install.sh` en `/usr/local/bin/odontocrm`,
+> junto con `estado`, `alertas`, `respaldar`, `restaurar`, `servicios`, `logs`,
+> `actualizar` y `modo-test`). El script de aquí abajo queda como referencia de lo que
+> hace por dentro.
+>
 > El verificador comprueba **tres** cosas por servicio: que la unidad esté `active`, que
 > el puerto lo sirva **su** proceso (`MainPID`) y que `/health` y `/ready` respondan 200.
 > La primera versión solo miraba el `curl` y daba verde con la pila equivocada escuchando

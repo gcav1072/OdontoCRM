@@ -843,6 +843,24 @@ localhost:5432:*:CAMBIAR_USUARIO_DE_RESPALDO:CAMBIAR_PASSWORD_DE_RESPALDO"
 # -----------------------------------------------------------------------------
 # 5-bis. Rotación de logs (logrotate)
 # -----------------------------------------------------------------------------
+# Una sola puerta para las tareas del servidor: `sudo odontocrm estado`, `respaldar`,
+# `verificar`… Así en la clínica no hay que recordar rutas, `sudo` ni variables.
+install_comando() {
+  step "8/9 · Comando del servidor (/usr/local/bin/odontocrm)"
+
+  if [[ ! -f "$SCRIPT_DIR/odontocrm" ]]; then
+    warn "no encuentro $SCRIPT_DIR/odontocrm: se omite"
+    return 0
+  fi
+  if (( APPLY )); then
+    install -m 0755 -o root -g root "$SCRIPT_DIR/odontocrm" /usr/local/bin/odontocrm
+    ok "instalado /usr/local/bin/odontocrm (prueba: sudo odontocrm ayuda)"
+  else
+    printf '       %s[dry-run] install -m 0755 %s/odontocrm /usr/local/bin/odontocrm%s\n' \
+      "$C_DIM" "$SCRIPT_DIR" "$C_RESET"
+  fi
+}
+
 install_logrotate() {
   step "5-bis/9 · Rotación de logs"
 
@@ -1067,6 +1085,7 @@ main() {
   create_user_and_dirs
   write_env_templates
   corregir_valores_obsoletos
+  install_comando
   install_logrotate
   install_systemd_units
   configure_firewall

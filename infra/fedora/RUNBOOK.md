@@ -5,6 +5,18 @@
 > No hace falta saber programar: cada tarea dice **qué se hace, cómo se comprueba y
 > qué significa lo que se ve**.
 >
+> **Una sola puerta: `sudo odontocrm`.** Todas las tareas de este runbook están ahí,
+> sin rutas ni variables que recordar:
+>
+> ```bash
+> sudo odontocrm            # la ayuda
+> sudo odontocrm estado     # el tablero completo
+> sudo odontocrm alertas    # solo los problemas (código 1 si hay)
+> sudo odontocrm respaldar  # un respaldo ahora
+> sudo odontocrm verificar  # los 9 servicios, uno por uno
+> sudo odontocrm logs clinical
+> ```
+>
 > **Antes de tocar nada**: `sudo npm run estado` desde `/opt/odontocrm`. Ese comando
 > dice, en una pantalla, si los nueve servicios están vivos, si la cola de eventos
 > avanza, si el respaldo corrió y cuánto disco queda. Casi todo lo de este documento
