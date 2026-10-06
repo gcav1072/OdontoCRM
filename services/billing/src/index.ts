@@ -1,6 +1,7 @@
 import {
   consumerQueueName,
   createBoss,
+  createOutboxRunner,
   ensureDomainEventsQueue,
   registerDomainEventHandler,
   startBoss,
@@ -30,8 +31,11 @@ const main = async (): Promise<void> => {
   const database = createBillingDatabase(config);
   const patientLookup = createBillingPatientLookup(config);
 
+  // El publicador se crea después del servidor, así que el gancho se resuelve por referencia.
+  let kick: () => void = () => undefined;
   const services: Omit<BillingServices, 'config' | 'db' | 'pool'> = {
     patientLookup,
+    kickOutbox: () => kick(),
     lastError: null,
   };
 
@@ -64,7 +68,24 @@ const main = async (): Promise<void> => {
     },
   );
 
+  /**
+   * Publicador del outbox: la tasa del día y, más adelante, cada acto de dinero (emitir, cobrar)
+   * dejan su evento en la auditoría. `kick()` lo adelanta para que se vea sin esperar el ciclo.
+   */
+  const outbox = createOutboxRunner({
+    pool: database.pool,
+    boss,
+    intervalMs: 500,
+    onError: (error) => {
+      services.lastError = error instanceof Error ? error.message : String(error);
+      app.log.error({ err: error }, 'Falló un ciclo del publicador del outbox');
+    },
+  });
+  outbox.start();
+  kick = () => outbox.kick();
+
   app.addHook('onClose', async () => {
+    await outbox.stop();
     await stopBoss(boss);
     await database.close();
   });

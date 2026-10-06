@@ -689,3 +689,60 @@ export const billingCatalogItemSchema = z.object({
 export type BillingCatalogItem = z.infer<typeof billingCatalogItemSchema>;
 
 export const billingCatalogListSchema = z.object({ items: z.array(billingCatalogItemSchema) });
+
+/* ── 10. La tasa del día (ADR 0046) ───────────────────────────────────────── */
+
+/**
+ * El «día» de la tasa y del hecho imponible es el de **America/Caracas**, no el del reloj del servidor
+ * ni UTC (Art. 25 de la Ley de IVA). Con `en-CA` sale directamente `AAAA-MM-DD`.
+ */
+export const rateDateInCaracas = (now: Date = new Date()): string =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Caracas',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+
+/**
+ * Alta o corrección de la tasa. La corrección **marca** la fila anterior (`supersedes_id`) y escribe
+ * una nueva: lo ya emitido con la tasa vieja sigue diciendo lo que decía.
+ */
+export const setExchangeRateSchema = z
+  .object({
+    rateDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha va en AAAA-MM-DD'),
+    /** Como se teclea en el mostrador: `36,5420`. */
+    rate: z.string().trim().min(1, 'Escribe la tasa'),
+    /** Por qué se corrige: obligatorio cuando ya había tasa para ese día. */
+    note: optionalText(300),
+  })
+  .strict();
+
+export type SetExchangeRateInput = z.infer<typeof setExchangeRateSchema>;
+
+export const billingRateSchema = z.object({
+  /** La fila: es el `entityId` con el que la tasa aparece en la auditoría. */
+  id: z.uuid(),
+  rateDate: z.string(),
+  rateMicros: z.number().int(),
+  source: z.enum(RATE_SOURCES),
+  note: z.string().nullable(),
+  setByUsername: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+export type BillingRate = z.infer<typeof billingRateSchema>;
+
+/** La tasa vigente para una fecha, con el hueco de días que arrastra. */
+export const billingRateStatusSchema = z.object({
+  /** `null` = no hay ninguna tasa publicada hasta esa fecha: la caja no puede cobrar. */
+  current: billingRateSchema.nullable(),
+  /** Días entre la fecha pedida y el día de la tasa vigente (0 = es de ese mismo día). */
+  gapDays: z.number().int(),
+  /** El hueco supera el umbral configurado: cobrar exige confirmar (M8). */
+  needsConfirmation: z.boolean(),
+});
+
+export type BillingRateStatus = z.infer<typeof billingRateStatusSchema>;
+
+export const billingRateListSchema = z.object({ items: z.array(billingRateSchema) });

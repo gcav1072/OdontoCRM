@@ -11,6 +11,8 @@ export interface BillingServices {
   pool: pg.Pool;
   /** Ficha del paciente para la instantánea del documento (por la red interna). */
   patientLookup: BillingPatientLookup;
+  /** Avanza el publicador del outbox para que la auditoría aparezca al instante. */
+  kickOutbox?: (() => void) | undefined;
   /** Último error del consumidor, para el diagnóstico. */
   lastError: string | null;
 }

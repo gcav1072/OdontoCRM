@@ -2,6 +2,7 @@ import {
   IVA_GENERAL_BASIS_POINTS,
   invoiceTotalsFromItems,
   ivaCentsForItem,
+  rateDateInCaracas,
   type BillingDraftDetail,
   type BillingDraftItem,
   type BillingDraftSummary,
@@ -21,6 +22,7 @@ import {
   processedEvents,
   treatmentCatalog,
 } from '../db/schema.js';
+import { rateForDate } from '../rates/rate-service.js';
 import type { BillingPatientLookup } from '../shared/patient-client.js';
 
 /** El borrador lo crea el **sistema** al cerrarse la sesión clínica, no una persona. */
@@ -168,6 +170,8 @@ export const createDraftFromSession = async (
 
   const lineas = await buildItems(deps.db, input.procedures);
   const totales = invoiceTotalsFromItems(lineas);
+  // B5: el borrador nace con la **tasa provisional** del día (la definitiva se congela al emitir).
+  const tasa = await rateForDate(deps.db, rateDateInCaracas());
 
   return deps.db.transaction(async (tx) => {
     const reclamado = await tx
@@ -194,6 +198,7 @@ export const createDraftFromSession = async (
         patientDocNumber: paciente.docNumber,
         patientTaxId: paciente.taxId,
         patientFiscalAddress: paciente.fiscalAddress,
+        rateAtDraftMicros: tasa?.rate.rateMicros ?? null,
         exemptAmountCentsUsd: totales.exemptAmountCentsUsd,
         taxableAmountCentsUsd: totales.taxableAmountCentsUsd,
         ivaAmountCentsUsd: totales.ivaAmountCentsUsd,

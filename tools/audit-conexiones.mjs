@@ -31,14 +31,14 @@ const METODOS_HTTP = ['get', 'post', 'put', 'patch', 'delete'];
  * que los exija ni código que los publique). Se vacía a medida que la fase llega:
  *
  * - `services/billing` **ya existe** (Fase 11, tanda A): por eso no está en `servicios`. Lo que
- *   sigue en la lista son sus permisos de **dinero** —cobrar, tasa y anular—, que llegan con la
- *   sesión B. `billing:read` y `billing:write` ya los exige la caja, así que no están.
- * - Los temas `billing.*` se publican con el primer acto de dinero (emitir, cobrar): hasta entonces
- *   siguen contando como de fase futura para no llenar la deuda de avisos.
+ *   sigue en la lista son sus permisos de **dinero** —cobrar y anular—, que llegan con la sesión B.
+ *   `billing:read`, `billing:write` y `billing:rates` ya los exige la caja, así que no están.
+ * - Los temas `billing.*` se publican con cada acto: `billing.rate.set` ya sale (la tasa del día);
+ *   los demás, con el cobro y la emisión.
  */
 const FASES_FUTURAS = {
   servicios: ['billing'],
-  permisos: ['billing:collect', 'billing:rates', 'billing:void'],
+  permisos: ['billing:collect', 'billing:void'],
 };
 
 /**

@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import type { BillingConfig } from './config.js';
 import type { BillingDatabaseHandle } from './db/client.js';
 import { registerBillingRoutes } from './routes/billing-routes.js';
+import { registerRateRoutes } from './routes/rate-routes.js';
 import type { BillingServices } from './services.js';
 import { createBillingPatientLookup } from './shared/patient-client.js';
 
@@ -45,10 +46,12 @@ export const createBillingServer = async (
     db: database.db,
     pool: database.pool,
     patientLookup: options.services?.patientLookup ?? createBillingPatientLookup(config),
+    kickOutbox: options.services?.kickOutbox,
     lastError: options.services?.lastError ?? null,
   };
 
   registerBillingRoutes(app, services);
+  registerRateRoutes(app, services);
 
   return app;
 };
