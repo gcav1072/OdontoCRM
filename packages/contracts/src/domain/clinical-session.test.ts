@@ -12,6 +12,7 @@ import {
   SESSION_MATERIALS,
   SESSION_PROCEDURES,
   saveClinicalSessionSchema,
+  sessionProcedureBlocks,
   sessionProcedureSchema,
   sessionProcedureText,
   SESSION_MATERIAL_CODES,
@@ -202,5 +203,44 @@ describe('entradas de la API', () => {
       confirm: true,
       closureNote: null,
     });
+  });
+});
+
+describe('lo que el evento publica de una sesión cerrada (ADR 0041)', () => {
+  it('lleva código, detalle, pieza y caras de cada procedimiento', () => {
+    const procedimientos = clinicalSessionContentSchema.parse({
+      ...contenidoBase,
+      procedimientos: [
+        { code: 'obturacion_resina', toothNumber: 26, surfaces: ['occlusal', 'mesial'] },
+        { code: 'profilaxis' },
+        {
+          code: 'otros',
+          detalle: 'Sellado de fosas profundo',
+          toothNumber: 36,
+          surfaces: ['occlusal'],
+        },
+      ],
+    }).procedimientos;
+
+    expect(sessionProcedureBlocks(procedimientos)).toEqual([
+      {
+        code: 'obturacion_resina',
+        detail: null,
+        toothNumber: 26,
+        surfaces: ['occlusal', 'mesial'],
+      },
+      { code: 'profilaxis', detail: null, toothNumber: null, surfaces: [] },
+      {
+        code: 'otros',
+        detail: 'Sellado de fosas profundo',
+        toothNumber: 36,
+        surfaces: ['occlusal'],
+      },
+    ]);
+  });
+
+  it('una sesión sin procedimientos publica una lista vacía, no `undefined`', () => {
+    // El borrador de factura itera la lista: `undefined` lo obligaría a defenderse.
+    expect(sessionProcedureBlocks([])).toEqual([]);
   });
 });

@@ -2,6 +2,7 @@ import {
   clinicalSessionCanClose,
   clinicalSessionSummaryText,
   emptyClinicalSessionContent,
+  sessionProcedureBlocks,
   sessionProcedureText,
   type AmendClinicalSessionInput,
   type ClinicalPatientSnapshot,
@@ -418,6 +419,9 @@ export const closeSession = async (
           closedAt: new Date().toISOString(),
           procedureCodes: content.procedimientos.map((procedimiento) => procedimiento.code),
           procedureCount: content.procedimientos.length,
+          // Y las partidas completas (B14 de la Fase 11): el borrador de factura necesita el
+          // código, el detalle, la pieza y las caras para describir cada línea. Es aditivo.
+          procedures: sessionProcedureBlocks(content.procedimientos),
         },
       },
     });

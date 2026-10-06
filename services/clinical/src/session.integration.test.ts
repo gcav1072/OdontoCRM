@@ -5,6 +5,7 @@ import {
   createBoss,
   createOutboxRunner,
   ensureDomainEventsQueue,
+  outboxEvents,
   registerDomainEventHandler,
   startBoss,
   stopBoss,
@@ -275,6 +276,32 @@ describeWithDatabases('sesiones clínicas: numeración, autoguardado y cierre', 
     expect(cierre?.summary).toContain('cerrada');
     expect(cierre?.reason).toBe('Paciente sin molestias');
     expect(rows.map((row) => row.action)).toContain('clinical_session_created');
+
+    // Y el evento publicado lleva las **partidas completas** (código, pieza y caras), que es lo que
+    // el borrador de factura necesita para describir cada línea (B14 de la Fase 11). Es aditivo:
+    // `procedureCodes` sigue viajando igual, que es lo que ya consumía el read model de reportes.
+    const [publicado] = await handle.db
+      .select({ envelope: outboxEvents.envelope })
+      .from(outboxEvents)
+      .where(
+        and(
+          eq(outboxEvents.aggregateId, sessionId),
+          eq(outboxEvents.eventType, 'clinical.session.closed'),
+        ),
+      );
+    const sesionPublicada = (
+      publicado?.envelope as { payload?: { session?: Record<string, unknown> } } | undefined
+    )?.payload?.session;
+    expect(sesionPublicada?.['procedureCodes']).toEqual(['obturacion_resina', 'profilaxis']);
+    expect(sesionPublicada?.['procedures']).toEqual([
+      {
+        code: 'obturacion_resina',
+        detail: null,
+        toothNumber: 26,
+        surfaces: ['occlusal', 'mesial'],
+      },
+      { code: 'profilaxis', detail: null, toothNumber: null, surfaces: [] },
+    ]);
   }, 40_000);
 
   it('la enmienda abre una sesión nueva en borrador sin tocar la cerrada', async () => {

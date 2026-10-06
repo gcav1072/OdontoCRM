@@ -4,6 +4,66 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Facturación] — El contrato del módulo y las partidas en el evento de cierre · 2026-10-06
+
+Arranque de la Fase 11 ([`docs/feat_billing.md`](docs/feat_billing.md)), **todavía sin servicio**: lo
+que entra son las decisiones registradas, el contrato compartido, los permisos y el cambio de contrato
+del evento clínico que el borrador de factura necesita.
+
+### Decisiones registradas (ADR 0044–0048)
+
+El plan numeraba sus cinco ADRs 0043–0047 dando por hecho que 0042 era el último, pero el
+[ADR 0043](docs/adr/0043-se-descarta-el-enfoque-de-instalacion-actual.md) —instalación y despliegue— se
+escribió antes y ocupó ese número, así que el primero chocaba de frente con él (el propio plan ya citaba
+«ADR 0043» para el instalador). Los de facturación entran como **0044–0048**, el plan queda corregido y
+`docs/adr/` pasa a **48** entradas; la fila de la Fase 10 del plan maestro, a **42** (lo que existía al
+cerrarla).
+
+| ADR | Decisión |
+| :--- | :--- |
+| [0044](docs/adr/0044-modulo-de-facturacion-desacoplado.md) | Servicio desacoplado, dinero en enteros y borrador idempotente desde la sesión clínica |
+| [0045](docs/adr/0045-regimen-tributario-iva-e-igtf.md) | Servicios exentos, bienes al 16 % y el IGTF como dato del medio de pago |
+| [0046](docs/adr/0046-tasa-bcv-historica-y-regla-de-imputacion.md) | Tasa BCV histórica, congelada por documento, y regla de imputación explícita |
+| [0047](docs/adr/0047-quien-asigna-el-numero-de-la-factura.md) | Quién asigna el número: formas libres con correlativo propio **y** número de control |
+| [0048](docs/adr/0048-el-documento-de-cobro-se-archiva.md) | Emitir es congelar; anular no es borrar |
+
+### Contrato compartido
+
+`packages/contracts/src/domain/billing.ts` es la única fuente de los estados, las categorías fiscales,
+los medios de pago y la **aritmética del dinero en enteros** (una sola regla de redondeo, half-up, y
+productos intermedios en `BigInt`): `rateToMicros` parsea la tasa sin coma flotante, `vesCentimosFromUsd`
+y `usdCentsFromVes` convierten en los dos sentidos e `igtfCents` aplica la alícuota. La máquina de
+estados es **dato** (`INVOICE_TRANSITIONS`, con las transiciones del saldo marcadas como automáticas) y
+la decisión del IGTF vive en un solo sitio (`igtfDecision`): el banco no se cobra dos veces y sin SPE no
+se percibe nada. 28 pruebas unitarias.
+
+### Permisos, auditoría y tópicos
+
+Cinco permisos (`billing:read/write/collect/rates/void`) repartidos por rol —la secretaría los tiene
+**todos**, porque atiende sola el mostrador y anula con motivo; el odontólogo solo mira lo que se cobró—,
+ocho acciones de auditoría con su etiqueta en la interfaz y ocho tópicos `billing.*` (el borrador no
+publica evento: el acto de dinero nace al emitir).
+
+### Cambio de contrato: `clinical.session.closed` (aditivo)
+
+> **Aviso para quien consuma el evento** ([ADR 0041](docs/adr/0041-el-evento-lleva-lo-que-el-consumidor-necesita.md)):
+> el bloque `session` gana `procedures: [{ code, detail, toothNumber, surfaces }]` **además** de
+> `procedureCodes` y `procedureCount`, que no cambian.
+
+El borrador de factura necesita el código, el detalle, la pieza y las caras para describir cada línea
+(«Obturación con resina compuesta · pieza 26 (oclusal)»), y el detalle es imprescindible cuando el
+procedimiento es `otros`. El mapeo vive en un solo sitio (`sessionProcedureBlocks`, en el contrato) y lo
+usan el servicio clínico y el mundo de prueba; hay pruebas en los tres niveles: contrato, **outbox real**
+(integración) y eventos sembrados.
+
+### De paso
+
+- **`npm run verify` estaba en rojo en `main`** desde `fd44cd1`: eslint marcaba `no-control-regex` en el
+  aprovisionador del instalador. Corregido (comprueba lo mismo con `\p{Cc}`).
+- **El auditor de conexiones daba un problema estructural falso** con `/api/v1/meta`: la puerta la sirve
+  por sí misma (`app.get` en `server.ts`) y el auditor solo miraba los `add(...)` de `routes.ts`. Ahora
+  recoge también las rutas propias de la puerta y `npm run audit` sale 0.
+
 ## [Fedora] — El instalador nuevo: una sola fuente de verdad para las credenciales · 2026-10-05
 
 El rediseño que el ADR 0043 dejó pendiente, implementado. **Un comando instala el servidor

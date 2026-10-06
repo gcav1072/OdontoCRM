@@ -6,6 +6,7 @@ import {
   formatTicket,
   formatTime12h,
   renderTemplate,
+  sessionProcedureBlocks,
   type AppointmentStatus,
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS, type EventTopic, type ServiceName } from '@odontocrm/events';
@@ -573,6 +574,7 @@ const eventosDeClinica = (world: TestWorld): TestWorldEvent[] => {
             closedAt: session.closedAt,
             procedureCodes: session.procedureCodes,
             procedureCount: session.procedureCodes.length,
+            procedures: sessionProcedureBlocks(session.content.procedimientos),
           },
         },
       }),

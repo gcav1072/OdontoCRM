@@ -420,6 +420,30 @@ describe('eventos', () => {
     expect(String(bloque?.number)).toMatch(/^RX-\d{6}$/);
   });
 
+  it('el cierre de la sesión lleva las partidas con pieza y caras (B14 de la Fase 11)', () => {
+    const world = mundo();
+    const cierres = events.filter((event) => event.topic === 'clinical.session.closed');
+    expect(cierres.length).toBe(world.sessions.length);
+
+    for (const cierre of cierres) {
+      const sesion = world.sessions.find((item) => item.id === cierre.aggregateId);
+      const bloque = cierre.payload['session'] as
+        { procedureCodes?: unknown; procedures?: unknown } | undefined;
+
+      // Aditivo: lo que ya viajaba sigue igual…
+      expect(bloque?.procedureCodes).toEqual(sesion?.procedureCodes);
+      // …y ahora la partida completa, que es lo que el borrador de factura necesita.
+      expect(bloque?.procedures).toEqual(
+        sesion?.content.procedimientos.map((procedimiento) => ({
+          code: procedimiento.code,
+          detail: procedimiento.detalle,
+          toothNumber: procedimiento.toothNumber,
+          surfaces: procedimiento.surfaces,
+        })),
+      );
+    }
+  });
+
   it('cada hallazgo y cada visita tienen su evento', () => {
     const world = mundo();
     const eventos = buildTestWorldEvents(world);

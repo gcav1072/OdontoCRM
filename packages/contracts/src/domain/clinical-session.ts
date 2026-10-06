@@ -223,6 +223,34 @@ export const sessionProcedureSchema = z
 
 export type SessionProcedure = z.infer<typeof sessionProcedureSchema>;
 
+/**
+ * Un procedimiento tal como viaja en el bloque `session` de `clinical.session.closed`
+ * ([ADR 0041](../../../docs/adr/0041-el-evento-lleva-lo-que-el-consumidor-necesita.md)).
+ *
+ * El borrador de factura necesita **código, detalle, pieza y caras**: con `procedureCodes` a secas no
+ * puede describir la partida («Obturación con resina compuesta · pieza 26 (oclusal)»), y el detalle es
+ * imprescindible cuando el código es `otros`. Es **aditivo**: lo que ya viajaba sigue viajando y los
+ * consumidores actuales ignoran lo que no conocen.
+ */
+export interface SessionProcedureBlock {
+  code: SessionProcedureCode;
+  /** Detalle escrito a mano: el que hace falta cuando el código es `otros`. */
+  detail: string | null;
+  toothNumber: number | null;
+  surfaces: readonly ToothSurface[];
+}
+
+/** El bloque `session.procedures[]` del evento, a partir del contenido de la sesión. */
+export const sessionProcedureBlocks = (
+  procedimientos: readonly SessionProcedure[],
+): SessionProcedureBlock[] =>
+  procedimientos.map((procedimiento) => ({
+    code: procedimiento.code,
+    detail: procedimiento.detalle,
+    toothNumber: procedimiento.toothNumber,
+    surfaces: procedimiento.surfaces,
+  }));
+
 export const sessionMaterialSchema = z
   .object({
     code: z.enum(SESSION_MATERIAL_CODES),
