@@ -114,14 +114,23 @@ if [[ -f "$PG_HBA" ]]; then
     echo "  [dry-run] $PG_HBA: sed host 127.0.0.1/32 y ::1/128 → scram-sha-256  (hoy: $metodos)"
   elif [[ "$metodos" == *ident* || "$metodos" == *trust* ]]; then
     cp -a "$PG_HBA" "${PG_HBA}.antes-de-odontocrm"
-    sed -i -E 's|^(host[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+(127\.0\.0\.1/32|::1/128)[[:space:]]+)(ident|trust)|\1scram-sha-256|' "$PG_HBA"
+    # OJO con el delimitador: el patrón lleva una alternación (`|`), así que `|` no sirve como
+    # separador de `s///` — `sed` lo interpreta como fin de la orden y falla con «opción
+    # desconocida para `s'». Se usa `#`, que no aparece en el patrón.
+    sed -i -E 's#^(host[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+(127\.0\.0\.1/32|::1/128)[[:space:]]+)(ident|trust)#\1scram-sha-256#' "$PG_HBA"
     systemctl reload postgresql
     nuevos="$(sudo -u postgres psql -tAc \
       "select coalesce(string_agg(distinct auth_method, ','), '?') from pg_hba_file_rules where type = 'host' and address in ('127.0.0.1/32', '::1/128')" 2>/dev/null)"
     if [[ "$nuevos" == *scram-sha-256* ]]; then
       echo "  TCP con contraseña: $metodos → $nuevos (copia previa: ${PG_HBA}.antes-de-odontocrm)"
     else
-      echo "  (aviso) no pude confirmar el cambio en $PG_HBA; revisa a mano (INSTALL.md §6.3)"
+      echo "  ✖ No pude dejar TCP con contraseña en $PG_HBA y sin eso los servicios NO pueden" >&2
+      echo "    entrar (arrancan en bucle con «Peer authentication failed»). Hazlo a mano:" >&2
+      echo "      sudo cp -a $PG_HBA $PG_HBA.antes-de-odontocrm" >&2
+      echo "      sudo sed -i -E 's#^(host[[:space:]]+.*(127\.0\.0\.1/32|::1/128)[[:space:]]+)ident#\1scram-sha-256#' $PG_HBA" >&2
+      echo "      sudo systemctl reload postgresql && sudo bash $0   # y repite" >&2
+      echo "    (Detalle en INSTALL.md §6.3.)" >&2
+      exit 1
     fi
   else
     echo "  ya estaba con contraseña ($metodos): no se toca"

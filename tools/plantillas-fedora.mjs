@@ -29,8 +29,9 @@
  * Fedora, el commit no pasa.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -700,6 +701,44 @@ const exigir = (condicion, bien, mal) => {
       }
     } else {
       ok(`bash ${guion.split('/').pop()} ${args.join(' ')}`.padEnd(46) + ' arranca sin caerse');
+    }
+  }
+
+  // (13-octies) LA REGLA DE `pg_hba.conf`, PROBADA.
+  // Se ejecuto con `|` como delimitador de `sed` y el patrón lleva una alternación (`|`), así
+  // que `sed` fallaba («opción desconocida para `s'») y en una PC nueva los servicios se
+  // quedaban sin poder entrar por TCP. Aquí se prueba la orden de verdad sobre un archivo de
+  // ejemplo: TCP pasa a contraseña y el socket **conserva `peer`** (administrar sin claves).
+  console.log('\nLa regla de pg_hba.conf (probada sobre un ejemplo):');
+  {
+    const ejemplo = [
+      'local   all             all                                     peer',
+      'host    all             all             127.0.0.1/32            ident',
+      'host    all             all             ::1/128                 trust',
+      'host    all             all             0.0.0.0/0               scram-sha-256',
+      '',
+    ].join('\n');
+    const temporal = join(tmpdir(), 'odontocrm-pg-hba-prueba.conf');
+    writeFileSync(temporal, ejemplo);
+    const orden = /sed -i -E '([^']+)' "\$PG_HBA"/.exec(
+      leer('infra/fedora/instalar-base-fedora.sh'),
+    );
+    comprobaciones += 1;
+    if (orden === null) {
+      err('no encontré la orden que pone pg_hba.conf en scram-sha-256');
+    } else {
+      const r = spawnSync('sed', ['-i', '-E', orden[1], temporal], { encoding: 'utf8' });
+      const resultado = readFileSync(temporal, 'utf8');
+      const okTcp = (resultado.match(/scram-sha-256/g) ?? []).length === 3;
+      const peerIntacto = /^local\s+all\s+all\s+peer$/m.test(resultado);
+      if (r.status !== 0 || !okTcp || !peerIntacto) {
+        err('la orden de pg_hba.conf no deja el archivo como debe:');
+        console.error(
+          `      sed salió ${r.status}; TCP con contraseña: ${okTcp}; peer conservado: ${peerIntacto}`,
+        );
+      } else {
+        ok('TCP pasa a scram-sha-256 y el socket conserva peer');
+      }
     }
   }
 
