@@ -67,12 +67,24 @@ const escapar = (texto: string | null | undefined): string =>
 const dinero = (cents: number): string =>
   (cents / 100).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** La fecha como la pide la Providencia: `DDMMAAAA` (Art. 34). */
+/**
+ * La fecha como la pide la Providencia: `DDMMAAAA` (Art. 34), y en el **día de Caracas** —el del
+ * hecho imponible—, no en el del reloj del servidor: uno en UTC imprimiría el día equivocado.
+ */
 export const fechaFiscal = (fecha: Date): string => {
-  const dia = String(fecha.getDate()).padStart(2, '0');
-  const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-  return `${dia}${mes}${String(fecha.getFullYear())}`;
+  const iso = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Caracas',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(fecha);
+  const [anio = '', mes = '', dia = ''] = iso.split('-');
+  return `${dia}${mes}${anio}`;
 };
+
+/** Puntos básicos a la forma que se imprime: `1600` → `16,00`. */
+const porcentaje = (basisPoints: number): string =>
+  (basisPoints / 100).toFixed(2).replace('.', ',');
 
 const partida = (item: BillingDraftItem, rateMicros: number): string => {
   const letra = item.taxCategory === 'general' ? '(G)' : '(E)';
@@ -192,7 +204,7 @@ export const renderInvoiceHtml = (input: InvoicePdfInput): string => {
       ${gravadas
         .map(
           ([puntos, base]) =>
-            `<tr><td>Base gravada al ${dinero(puntos / 100)} %</td><td class="num">US$ ${dinero(base)}</td><td class="num">Bs. ${dinero(enBs(base))}</td></tr>`,
+            `<tr><td>Base gravada al ${porcentaje(puntos)} %</td><td class="num">US$ ${dinero(base)}</td><td class="num">Bs. ${dinero(enBs(base))}</td></tr>`,
         )
         .join('')}
       <tr><td>IVA</td><td class="num">US$ ${dinero(input.totals.ivaAmountCentsUsd)}</td><td class="num">Bs. ${dinero(enBs(input.totals.ivaAmountCentsUsd))}</td></tr>
