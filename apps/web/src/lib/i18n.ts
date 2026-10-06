@@ -840,6 +840,8 @@ const DICCIONARIO = {
   'auditoria.exchange_rate_set': 'Tasa del día fijada o corregida',
   'auditoria.catalog_item_changed': 'Arancel modificado',
   'auditoria.billing_settings_changed': 'Configuración fiscal cambiada',
+  'auditoria.fiscal_forms_registered': 'Lote de formas libres dado de alta',
+  'auditoria.fiscal_form_spoiled': 'Forma libre estropeada (control consumido)',
 
   // --- Módulo de auditoría (Fase 9) ---------------------------------------
   'auditoria.titulo': 'Auditoría',
@@ -2539,6 +2541,8 @@ const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   exchange_rate_set: t('auditoria.exchange_rate_set'),
   catalog_item_changed: t('auditoria.catalog_item_changed'),
   billing_settings_changed: t('auditoria.billing_settings_changed'),
+  fiscal_forms_registered: t('auditoria.fiscal_forms_registered'),
+  fiscal_form_spoiled: t('auditoria.fiscal_form_spoiled'),
 };
 
 /** Etiqueta de una acción de auditoría; si el servidor añade una nueva, se muestra tal cual. */

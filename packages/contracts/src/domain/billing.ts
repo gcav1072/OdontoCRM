@@ -746,3 +746,66 @@ export const billingRateStatusSchema = z.object({
 export type BillingRateStatus = z.infer<typeof billingRateStatusSchema>;
 
 export const billingRateListSchema = z.object({ items: z.array(billingRateSchema) });
+
+/* ── 11. El lote de formas libres (ADR 0047) ──────────────────────────────── */
+
+/**
+ * Cuántas formas quedan cuando la caja empieza a avisar. Quedarse sin formas es **quedarse sin poder
+ * facturar**, así que el aviso es parte del trabajo, no un adorno.
+ */
+export const FISCAL_FORMS_LOW_THRESHOLD = 20;
+
+/**
+ * Alta de un lote: el rango que autorizó la imprenta («desde el N° … hasta el N° …») y los datos que
+ * la factura tiene que imprimir (Art. 13 nums. 15 y 16). El **número de control viene preimpreso**: el
+ * software solo lo consume en orden.
+ */
+export const createFiscalFormLotSchema = z
+  .object({
+    series: z.string().trim().min(1).max(4).default('A'),
+    /** Los extremos del rango, como vienen impresos: `000001`. */
+    controlFrom: z.string().trim().min(1).max(20),
+    controlTo: z.string().trim().min(1).max(20),
+    printerName: z.string().trim().min(3).max(120),
+    printerRif: z.string().trim().min(5).max(20),
+    /** Providencia que autoriza a la imprenta. */
+    authorizationRef: z.string().trim().min(3).max(60),
+    authorizationDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    printDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  })
+  .strict();
+
+export type CreateFiscalFormLotInput = z.infer<typeof createFiscalFormLotSchema>;
+
+export const fiscalFormLotSchema = z.object({
+  id: z.uuid(),
+  series: z.string(),
+  controlFrom: z.string(),
+  controlTo: z.string(),
+  /** La forma que se consumirá en la próxima emisión. */
+  nextControl: z.string(),
+  /** Cuántas formas quedan (la próxima incluida). */
+  remaining: z.number().int(),
+  /** Quedan pocas: la caja lo avisa. */
+  isLow: z.boolean(),
+  printerName: z.string(),
+  printerRif: z.string(),
+  authorizationRef: z.string(),
+  authorizationDate: z.string(),
+  printDate: z.string(),
+  /** Formas estropeadas o dadas de baja: se **conservan** (Art. 36 y 40) y se cuentan. */
+  spoiledCount: z.number().int(),
+  exhaustedAt: z.string().nullable(),
+  receivedAt: z.string().nullable(),
+});
+
+export type FiscalFormLot = z.infer<typeof fiscalFormLotSchema>;
+
+export const fiscalFormLotListSchema = z.object({ items: z.array(fiscalFormLotSchema) });
+
+/** Marcar una forma como dañada: se registra con motivo y **ocupa su control**, no se reutiliza. */
+export const spoilFiscalFormSchema = z
+  .object({ reason: z.string().trim().min(3, 'Indica por qué se dañó').max(200) })
+  .strict();
+
+export type SpoilFiscalFormInput = z.infer<typeof spoilFiscalFormSchema>;

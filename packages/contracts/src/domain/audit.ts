@@ -76,6 +76,10 @@ export const AUDIT_ACTIONS = [
   'exchange_rate_set',
   'catalog_item_changed',
   'billing_settings_changed',
+  /** Alta de un lote de formas libres: un acto fiscal con rango y providencia (Fase 11). */
+  'fiscal_forms_registered',
+  /** Una forma libre que se estropea: ocupa su control y se conserva (Art. 36 y 40). */
+  'fiscal_form_spoiled',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
