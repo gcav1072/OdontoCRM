@@ -1332,8 +1332,11 @@ nuevo» **se queda corto** (dice que las listas de respaldo son dos y no mencion
 
 **Y las que no existen** (riesgo silencioso, hay que tocarlas a mano y revisarlas en el diff):
 `odontocrm-restore.sh` y `crear-rol-respaldo.sh` (sus listas de bases), `tools/lib/stack.mjs` (la tabla
-de puertos) y `infra/windows/ecosystem.config.cjs`. **No hay CI** (`.github/` no existe): la única
-puerta es `npm run verify`, que incluye `fedora:check` y el auditor de conexiones.
+de puertos) y `infra/windows/ecosystem.config.cjs`. **No hay CI** (`.github/` no existe): la única puerta
+automática es `npm run verify` —`check-secrets`, `fedora:check`, `lint`, `format:check`, `typecheck`,
+`build` y `test`—, que **no** ejecuta el auditor de conexiones: hay que correr `npm run audit` a mano
+(corrección del 2026-10-06; el auditor salió en verde ese día tras arreglar un falso positivo con
+`/api/v1/meta`, que la puerta sirve por sí misma y el auditor no veía).
 
 ### 7.9 Tarea 0 — el perfil del consultorio por entorno
 
