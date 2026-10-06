@@ -246,6 +246,19 @@ for s in "${SERVICIOS[@]}"; do
   done
   install -m 0600 -o root -g root "$tmp" "$destino"
   rm -f "$tmp"
+
+  # Y se COMPRUEBA la credencial que se acaba de dejar, en vez de descubrirlo tres pasos más
+  # tarde con un «password authentication failed» en las migraciones (que fue lo que pasó y
+  # costó dos rondas de depuración). Si no autentica, se dice cuál y qué archivo revisar.
+  url="$(sed -n 's/^DATABASE_URL=//p' "$destino" | head -1 || true)"
+  if [[ -n "$url" ]]; then
+    if psql "$url" -tAc 'select 1' >/dev/null 2>&1; then
+      ok "  $s: la credencial de /etc/odontocrm/$s.env conecta"
+    else
+      av "  $s: la credencial de /etc/odontocrm/$s.env NO conecta (¿el bootstrap regeneró las"
+      av "      contraseñas y este archivo quedó con las viejas? Mira $origen y /etc/odontocrm/$s.env)"
+    fi
+  fi
 done
 # El gateway comparte el secreto interno de identity (no tiene base de datos).
 SECRETO="$(sed -n 's/^INTERNAL_SERVICE_SECRET=//p' /etc/odontocrm/identity.env || true)"
