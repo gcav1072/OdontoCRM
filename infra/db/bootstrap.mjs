@@ -114,7 +114,7 @@ const readEnvValue = (path, key) => {
   return match?.[1]?.trim();
 };
 
-const upsertEnvFile = (path, values) => {
+const upsertEnvFile = (path, values, opciones = { modo: 0o600 }) => {
   const header =
     '# Generado por `npm run db:bootstrap` — no versionar (ver .gitignore y docs/SEGURIDAD_SECRETOS.md).';
   const existing = existsSync(path) ? readFileSync(path, 'utf8') : '';
@@ -136,7 +136,7 @@ const upsertEnvFile = (path, values) => {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${header}\n${body}\n`, { mode: 0o600 });
+  writeFileSync(path, `${header}\n${body}\n`, { mode: opciones.modo });
 };
 
 /* ── Punto de entrada ────────────────────────────────────────────────────── */
@@ -195,6 +195,9 @@ const existingCookieSecret =
   randomBytes(32).toString('base64url');
 
 const admin = new Client({ connectionString: adminUrl, application_name: 'odontocrm-bootstrap' });
+
+const despliegue = [];
+const avisos = [];
 
 const run = async () => {
   await admin.connect();
@@ -268,6 +271,26 @@ const run = async () => {
       ...(service.name === 'identity' ? { COOKIE_SECRET: existingCookieSecret } : {}),
     };
     upsertEnvFile(envPath, values);
+
+    // ── Y lo mismo en el despliegue, si estamos en el servidor ────────────────
+    //
+    // El bootstrap es la ÚNICA fuente de verdad de las credenciales, así que cuando corre
+    // como root y existe /etc/odontocrm (el servidor, no un PC de desarrollo) escribe ahí
+    // **las mismas claves** en lugar de dejar que otro paso las copie. Esto elimina la clase
+    // de fallo que nos costó cinco rondas: el bootstrap regeneraba la contraseña, la base
+    // quedaba con la nueva y `/etc` seguía con la vieja hasta que alguien la trasladara —y
+    // si ese traslado fallaba, los servicios y las migraciones fallaban con «password
+    // authentication failed» sin decir por qué.
+    const etcDir = process.env.ODONTOCRM_ENV_DIR ?? '/etc/odontocrm';
+    const etcFile = resolve(etcDir, `${service.name}.env`);
+    if (process.getuid?.() === 0 && existsSync(etcFile)) {
+      try {
+        upsertEnvFile(etcFile, values, { modo: 0o600 });
+        despliegue.push(service.name);
+      } catch (error) {
+        avisos.push(`no pude escribir ${etcFile}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
 
     summary.push({
       servicio: service.name,
