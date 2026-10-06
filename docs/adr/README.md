@@ -4,7 +4,7 @@ Una ADR por decisión relevante, en el formato *Contexto · Decisión · Consecu
 Las decisiones 0001–0021 provienen de la sesión de planificación del **2026-10-02**
 (§1 de [`../PLAN_MAESTRO_FASES.md`](../PLAN_MAESTRO_FASES.md)); las 0022–0025 se
 tomaron durante la Fase 0, la 0029 en la Fase 4.1, la 0030 en la Fase 5, las 0031–0033
-en la Fase 6, las 0034–0036 en la Fase 7, la 0038 en la Fase 8 y las 0039–0041 en la
+en la Fase 6, las 0034–0036 en la Fase 7, la 0038 en la Fase 8, las 0039–0041 en la
 Fase 9, y quedan documentadas por la misma razón.
 
 | # | Decisión | Estado |
@@ -51,3 +51,4 @@ Fase 9, y quedan documentadas por la misma razón.
 | [0040](0040-refresco-del-read-model-de-reportes.md) | El read model de reportes se refresca al cerrar el lote y de noche | aceptada (fase 9) |
 | [0041](0041-el-evento-lleva-lo-que-el-consumidor-necesita.md) | Un evento de dominio lleva lo que su consumidor necesita (bloques `patient`, `profile` y `session`) | aceptada (fase 9) |
 | [0042](0042-el-seed-escribe-filas-y-eventos.md) | El seed del modo test escribe las filas y los eventos, con identificadores derivados de la semilla | aceptada (fase 10) |
+| [0043](0043-se-descarta-el-enfoque-de-instalacion-actual.md) | Se descarta el enfoque de instalación y despliegue actual; el rediseño parte de una sola fuente de verdad para las credenciales | aceptada (despliegue) |
