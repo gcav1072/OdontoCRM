@@ -4,6 +4,35 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fedora] — Del «funciona en mi PC» al «funciona en la clínica» · 2026-10-05 (después del tag `fase-10`)
+
+### Lo que se cerró con pruebas en aparatos reales
+
+- **El certificado se instala en Windows, Android (Pixel 7) y Linux**, y `odontocrm.local`
+  funciona desde Android. Registrados como verificados P-12 y P-20 (§20.1).
+- **Instalación de una PC nueva en un comando**: `sudo bash infra/fedora/instalar-servidor.sh --con-dns`
+  (máquina, bases, usuarios, despliegue, TLS, firewall, SELinux, respaldos y el nombre),
+  con la contraseña temporal en pantalla y la página del certificado al final.
+- **Actualización en un comando**: `sudo odontocrm actualizar` pone al día código, unidades,
+  plantillas, **la configuración del proxy y el nombre por mDNS**.
+- **Diagnóstico en un comando**: `odontocrm estado · verificar · red · nombre · certificado`.
+
+### Los fallos que aparecieron al probar de verdad (y dónde quedaron)
+
+| Fallo | Causa raíz | Dónde quedó la lección |
+| :--- | :--- | :--- |
+| Los enlaces nuevos de la CA respondían **301** | La configuración del proxy es otra copia (`nginx/instalar.sh`), no la instalaba `actualizar` | `actualizar` reinstala el proxy; guardia de los cinco enlaces en los dos bloques |
+| Los scripts de la CA llevaban **una IP grabada** → *timeout* | Se publicaban con la IP del día de la instalación | `sub_filter` con la dirección de quien descarga; guardia que prohíbe grabar IPs |
+| «**Could not resolve host: SERVIDOR**» | `sub_filter_types text/plain` no coincide con `application/x-sh` | `sub_filter_types *`; guardia del comodín; plan B con el nombre |
+| avahi anunciaba **el nombre viejo** | `systemctl restart` no siempre reemplaza el proceso | `nombre --arreglar`, `actualizar` lo corrige; se comprueba lo que **anuncia** el proceso |
+| El nombre no resolvía y parecía la red | Tres causas distintas con el mismo síntoma | `odontocrm nombre` las separa y da el camino de cada una |
+
+### Y la red de seguridad
+
+**86 comprobaciones** en `npm run fedora:check` (dentro de `verify`): cada fallo de arriba
+tiene la suya. Más la tabla de **INSTALL §7-bis**: qué tocar al añadir una variable, un
+servicio, una ruta, algo del proxy, una migración o un dato impreso.
+
 ## [Fedora] — Auditoría de portabilidad: 20 fallos corregidos y 12 guardias nuevas · 2026-10-05 (después del tag `fase-10`)
 
 ### Corregido
