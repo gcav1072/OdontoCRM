@@ -1,11 +1,18 @@
-import { issueInvoiceSchema, replaceDraftItemsSchema } from '@odontocrm/contracts';
+import {
+  collectPaymentSchema,
+  issueInvoiceSchema,
+  replaceDraftItemsSchema,
+  voidPaymentSchema,
+} from '@odontocrm/contracts';
 import { parseOrThrow, requirePermission } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { issueInvoice } from '../billing/issue-service.js';
+import { collectPayment, listInvoicePayments, voidPayment } from '../billing/payment-service.js';
 import {
   getDraft,
+  getInvoice,
   listCatalog,
   listDrafts,
   replaceDraftItems,
@@ -25,6 +32,7 @@ export const registerBillingRoutes = (app: FastifyInstance, services: BillingSer
   const { db, kickOutbox } = services;
   const read = requirePermission('billing:read');
   const write = requirePermission('billing:write');
+  const collect = requirePermission('billing:collect');
 
   /** Pendientes de caja: las sesiones cerradas cuyo borrador sigue sin emitir. */
   app.get('/api/v1/billing/drafts', { preHandler: read }, async () => ({
@@ -58,6 +66,38 @@ export const registerBillingRoutes = (app: FastifyInstance, services: BillingSer
     );
     kickOutbox?.();
     return emitida;
+  });
+
+  /**
+   * **Cobrar**: registra el recibo con la **tasa del pago** y la política de imputación (B6). Si la
+   * tasa vigente arrastra más días de los tolerados, hay que confirmar (M8).
+   */
+  app.post('/api/v1/billing/invoices/:id/payments', { preHandler: collect }, async (request) => {
+    const { id } = parseOrThrow(invoiceParamsSchema, request.params);
+    const input = parseOrThrow(collectPaymentSchema, request.body);
+    const resultado = await collectPayment(
+      { db, blobStore: services.blobStore, pdf: services.pdf },
+      id,
+      input,
+      actorFrom(request),
+    );
+    kickOutbox?.();
+    return resultado;
+  });
+
+  /** Anular un cobro: vuelve el saldo y el estado retrocede, con motivo (B8). */
+  app.post('/api/v1/billing/payments/:id/void', { preHandler: collect }, async (request) => {
+    const { id } = parseOrThrow(invoiceParamsSchema, request.params);
+    const input = parseOrThrow(voidPaymentSchema, request.body);
+    const resultado = await voidPayment({ db }, id, input, actorFrom(request));
+    kickOutbox?.();
+    return resultado;
+  });
+
+  /** La factura con sus cobros: para reimprimir el recibo o ver el saldo. */
+  app.get('/api/v1/billing/invoices/:id', { preHandler: read }, async (request) => {
+    const { id } = parseOrThrow(invoiceParamsSchema, request.params);
+    return { ...(await getInvoice(db, id)), payments: await listInvoicePayments(db, id) };
   });
 
   /** El arancel: lo que la caja puede añadir a mano (un cepillo, un gel). */

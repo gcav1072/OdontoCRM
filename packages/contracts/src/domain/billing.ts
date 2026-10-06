@@ -646,6 +646,10 @@ export const billingDraftSummarySchema = z.object({
   /** RIF, solo si factura con crédito fiscal. */
   patientTaxId: z.string().nullable(),
   patientFiscalAddress: z.string().nullable(),
+  /** El correlativo interno; `null` mientras es un borrador. */
+  invoiceNumber: z.number().int().nullable(),
+  /** La tasa congelada al emitir (Art. 25); `null` mientras es un borrador. */
+  exchangeRateMicros: z.number().int().nullable(),
   createdAt: z.string(),
   itemCount: z.number().int(),
   /** Desglose que se imprime en el papel (céntimos de USD): exento, gravado e IVA. */
@@ -850,3 +854,87 @@ export const billingInvoiceIssuedSchema = billingDraftDetailSchema.extend({
 });
 
 export type BillingInvoiceIssued = z.infer<typeof billingInvoiceIssuedSchema>;
+
+/* ── 13. Cobrar: el recibo, la tasa del pago y la anulación (B6, B8) ───────── */
+
+export const paymentMethodCodeSchema = z.enum(
+  PAYMENT_METHODS.map((method) => method.code) as unknown as [
+    PaymentMethodCode,
+    ...PaymentMethodCode[],
+  ],
+);
+
+/**
+ * Un cobro. `tenderedAmount` va en la **unidad mínima de la moneda del medio de pago**: céntimos de
+ * USD o céntimos de Bs. Lo que se imputa a la deuda se calcula con la tasa, según la política.
+ */
+export const collectPaymentSchema = z
+  .object({
+    method: paymentMethodCodeSchema,
+    tenderedAmount: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    /** Referencia del pago (número de operación, de Zelle, del punto de venta…). */
+    reference: optionalText(60),
+    /** Confirma cobrar con una tasa que arrastra más días de los tolerados (M8). */
+    confirmRate: z.boolean().default(false),
+  })
+  .strict();
+
+export type CollectPaymentInput = z.infer<typeof collectPaymentSchema>;
+
+export const billingPaymentSchema = z.object({
+  id: z.uuid(),
+  receiptNumber: z.number().int(),
+  /** `REC-000001`. */
+  receiptLabel: z.string(),
+  method: paymentMethodCodeSchema,
+  tenderedAmount: z.number().int(),
+  tenderedCurrency: z.enum(CURRENCIES),
+  /** Lo imputado a la deuda, en céntimos de USD. */
+  amountCentsUsd: z.number().int(),
+  /** La tasa **congelada de este pago**. */
+  exchangeRateMicros: z.number().int(),
+  /** La política con la que se imputó (B6), registrada en cada pago. */
+  imputationPolicy: z.enum(IMPUTATION_POLICIES),
+  /** Informativo: los Bs de diferencia con lo impreso, valorados a la tasa de la factura. */
+  fxDifferenceCentsUsd: z.number().int(),
+  appliesIgtf: z.boolean(),
+  igtfBasisPoints: z.number().int(),
+  /** `banco` = ya lo debitó el banco; `clinica` = lo percibe y lo entera la clínica. */
+  igtfPerceivedBy: z.enum(IGTF_PERCEIVERS).nullable(),
+  igtfAmountCentsUsd: z.number().int(),
+  igtfAmountVesCentimos: z.number().int(),
+  pdfSha256: z.string().nullable(),
+  receivedByUsername: z.string(),
+  createdAt: z.string(),
+  voidedAt: z.string().nullable(),
+  voidReason: z.string().nullable(),
+});
+
+export type BillingPayment = z.infer<typeof billingPaymentSchema>;
+
+/** Lo que devuelve un cobro: el recibo y cómo queda la factura. */
+export const billingPaymentResultSchema = z.object({
+  payment: billingPaymentSchema,
+  invoice: z.object({
+    id: z.uuid(),
+    status: z.enum(INVOICE_STATUSES),
+    totalCentsUsd: z.number().int(),
+    balanceCentsUsd: z.number().int(),
+  }),
+});
+
+export type BillingPaymentResult = z.infer<typeof billingPaymentResultSchema>;
+
+/** Anular un cobro exige motivo: el saldo vuelve y el estado retrocede (B8). */
+export const voidPaymentSchema = z
+  .object({ reason: z.string().trim().min(3, 'Indica por qué se anula').max(200) })
+  .strict();
+
+export type VoidPaymentInput = z.infer<typeof voidPaymentSchema>;
+
+/** La factura con sus cobros: lo que necesita el historial de la caja. */
+export const billingInvoiceDetailSchema = billingDraftDetailSchema.extend({
+  payments: z.array(billingPaymentSchema),
+});
+
+export type BillingInvoiceDetail = z.infer<typeof billingInvoiceDetailSchema>;

@@ -235,6 +235,8 @@ const resumen = (fila: {
   patientDocNumber: string;
   patientTaxId: string | null;
   patientFiscalAddress: string | null;
+  invoiceNumber: number | null;
+  exchangeRateMicros: number | null;
   createdAt: Date;
   exemptAmountCentsUsd: number;
   taxableAmountCentsUsd: number;
@@ -252,6 +254,8 @@ const resumen = (fila: {
   patientDocNumber: fila.patientDocNumber,
   patientTaxId: fila.patientTaxId,
   patientFiscalAddress: fila.patientFiscalAddress,
+  invoiceNumber: fila.invoiceNumber,
+  exchangeRateMicros: fila.exchangeRateMicros,
   createdAt: fila.createdAt.toISOString(),
   exemptAmountCentsUsd: fila.exemptAmountCentsUsd,
   taxableAmountCentsUsd: fila.taxableAmountCentsUsd,
@@ -270,6 +274,8 @@ const columnasResumen = {
   patientDocNumber: invoices.patientDocNumber,
   patientTaxId: invoices.patientTaxId,
   patientFiscalAddress: invoices.patientFiscalAddress,
+  invoiceNumber: invoices.invoiceNumber,
+  exchangeRateMicros: invoices.exchangeRateMicros,
   createdAt: invoices.createdAt,
   exemptAmountCentsUsd: invoices.exemptAmountCentsUsd,
   taxableAmountCentsUsd: invoices.taxableAmountCentsUsd,

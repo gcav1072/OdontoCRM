@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { outboxEvents } from '@odontocrm/db';
 import { createDiskBlobStore } from '@odontocrm/storage';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createDraftFromSession } from './billing/invoice-service.js';
@@ -124,12 +124,10 @@ describeWithDatabase('emitir la factura', () => {
       await handle.db.delete(invoices).where(eq(invoices.id, draftId));
     }
     await handle.db.delete(processedEvents).where(eq(processedEvents.eventId, eventId));
-    // El outbox de TODO lo que deja esta suite: la factura, la tasa y el lote. Un evento sin publicar
-    // dejaría al auditor denunciando un outbox atascado (y ya pasó una vez).
-    const idsEnOutbox = [draftId, ...idsTasas, idLote].filter((id) => id !== '');
-    if (idsEnOutbox.length > 0) {
-      await handle.db.delete(outboxEvents).where(inArray(outboxEvents.aggregateId, idsEnOutbox));
-    }
+    // El outbox de TODO lo que deja esta suite, por el actor: la factura, la tasa y el lote.
+    await handle.db
+      .delete(outboxEvents)
+      .where(sql`${outboxEvents.envelope}->'payload'->>'actorUsername' = ${MARKER}`);
     await handle.db.delete(fiscalForms).where(eq(fiscalForms.printerRif, 'J-99887766-5'));
     if (idsTasas.length > 0) {
       await handle.db.delete(exchangeRates).where(inArray(exchangeRates.id, idsTasas));
