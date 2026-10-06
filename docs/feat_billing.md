@@ -1252,6 +1252,19 @@ nuevo» **se queda corto** (dice que las listas de respaldo son dos y no mencion
 17. `infra/fedora/odontocrm` (`SERVICIOS` y `PUERTOS`) y `infra/fedora/ensayo-despliegue.sh`
     (`SERVICIOS`, `PUERTO_DE`, el bucle de puertos, el bucle de bases y la exigencia del `.env`).
     *(La unidad `systemd` es una plantilla: `odontocrm@billing.service` funciona sin archivo nuevo.)*
+
+    **Y los DOS del instalador nuevo** (`infra/fedora/instalar/`, ADR 0043 — este plan se escribió
+    antes de que existiera, así que no los tenía):
+
+    - `infra/fedora/instalar/comun.sh` → la lista `SERVICIOS`, de la que leen las cuatro piezas
+      (preparar no, pero sí desplegar, aprovisionar y verificar).
+    - `infra/fedora/instalar/aprovisionar.mjs` → el array `SERVICIOS` con `puerto` y `base`, del que
+      salen el rol, la base y la credencial de `/etc/odontocrm`.
+
+    Si falta el segundo, el aprovisionamiento **no crea la base ni el rol de `billing`**, y el fallo
+    aparece más tarde como un `password authentication failed` a mitad del despliegue —justo el
+    síntoma que el rediseño vino a eliminar, y el que costó cinco rondas—. Si falta el primero, la
+    pieza 4 verifica 8 servicios y **da el conjunto por bueno sin mirar el noveno**.
 18. **Las listas de respaldo son CUATRO**, no dos ni tres:
     `backup/odontocrm-backup.sh`, `backup/odontocrm-restore.sh`, `backup/crear-rol-respaldo.sh` y el
     heredoc de `install.sh`. La guardia de `tools/plantillas-fedora.mjs` solo cruza la primera y la
