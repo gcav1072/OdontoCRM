@@ -228,22 +228,34 @@ export const createDraftFromSession = async (
 const resumen = (fila: {
   id: string;
   status: string;
+  series: string;
   patientId: string;
   patientName: string;
   patientDocType: string;
   patientDocNumber: string;
+  patientTaxId: string | null;
+  patientFiscalAddress: string | null;
   createdAt: Date;
+  exemptAmountCentsUsd: number;
+  taxableAmountCentsUsd: number;
+  ivaAmountCentsUsd: number;
   totalCentsUsd: number;
   balanceCentsUsd: number;
 }): Omit<DraftSummary, 'itemCount' | 'needsPricing'> => ({
   id: fila.id,
   // El `CHECK` de la tabla garantiza que es un estado del contrato.
   status: fila.status as InvoiceStatus,
+  series: fila.series,
   patientId: fila.patientId,
   patientName: fila.patientName,
   patientDocType: fila.patientDocType,
   patientDocNumber: fila.patientDocNumber,
+  patientTaxId: fila.patientTaxId,
+  patientFiscalAddress: fila.patientFiscalAddress,
   createdAt: fila.createdAt.toISOString(),
+  exemptAmountCentsUsd: fila.exemptAmountCentsUsd,
+  taxableAmountCentsUsd: fila.taxableAmountCentsUsd,
+  ivaAmountCentsUsd: fila.ivaAmountCentsUsd,
   totalCentsUsd: fila.totalCentsUsd,
   balanceCentsUsd: fila.balanceCentsUsd,
 });
@@ -251,11 +263,17 @@ const resumen = (fila: {
 const columnasResumen = {
   id: invoices.id,
   status: invoices.status,
+  series: invoices.series,
   patientId: invoices.patientId,
   patientName: invoices.patientName,
   patientDocType: invoices.patientDocType,
   patientDocNumber: invoices.patientDocNumber,
+  patientTaxId: invoices.patientTaxId,
+  patientFiscalAddress: invoices.patientFiscalAddress,
   createdAt: invoices.createdAt,
+  exemptAmountCentsUsd: invoices.exemptAmountCentsUsd,
+  taxableAmountCentsUsd: invoices.taxableAmountCentsUsd,
+  ivaAmountCentsUsd: invoices.ivaAmountCentsUsd,
   totalCentsUsd: invoices.totalCentsUsd,
   balanceCentsUsd: invoices.balanceCentsUsd,
 };
@@ -301,15 +319,14 @@ export const listDrafts = async (db: BillingDb): Promise<DraftSummary[]> => {
   }));
 };
 
-export const getDraft = async (db: BillingDb, invoiceId: string): Promise<DraftDetail> => {
+/** La factura en **cualquier estado**: la emisión vuelve a leerla ya emitida. */
+export const getInvoice = async (db: BillingDb, invoiceId: string): Promise<DraftDetail> => {
   const [fila] = await db
     .select(columnasResumen)
     .from(invoices)
     .where(eq(invoices.id, invoiceId))
     .limit(1);
-  if (fila === undefined || fila.status !== 'borrador') {
-    throw new NotFoundError('Ese borrador no existe');
-  }
+  if (fila === undefined) throw new NotFoundError('Esa factura no existe');
 
   const items = await db
     .select({
@@ -416,3 +433,13 @@ export const listCatalog = async (db: BillingDb) =>
     .from(treatmentCatalog)
     .where(eq(treatmentCatalog.isActive, true))
     .orderBy(asc(treatmentCatalog.code));
+
+/**
+ * El borrador, para la caja: si ya es un documento, esta ruta no lo alcanza (un documento emitido no
+ * se edita: se anula con nota de crédito).
+ */
+export const getDraft = async (db: BillingDb, invoiceId: string): Promise<DraftDetail> => {
+  const detalle = await getInvoice(db, invoiceId);
+  if (detalle.status !== 'borrador') throw new NotFoundError('Ese borrador no existe');
+  return detalle;
+};

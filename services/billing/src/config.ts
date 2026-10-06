@@ -21,6 +21,20 @@ export const billingEnvSchema = baseEnvSchema.extend({
    */
   PATIENTS_URL: z.string().min(1).default('http://127.0.0.1:4002'),
 
+  /**
+   * Almacén de los documentos archivados (la factura, el recibo y la nota de crédito). Una carpeta
+   * relativa a la raíz del repositorio, ignorada por Git (ADR 0036/0048).
+   */
+  STORAGE_DIR: z.string().min(1).default('./storage/billing'),
+
+  /**
+   * Chromium para el PDF de la factura. Vacío = el navegador que administra Playwright
+   * (`npx playwright install chromium`); con Chromium del sistema se fija la ruta.
+   */
+  PDF_CHROMIUM_PATH: z.string().min(1).optional(),
+  /** Cuánto se espera a que el PDF salga antes de darlo por fallido. */
+  PDF_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(120_000).default(30_000),
+
   /** Secreto compartido con los demás servicios para las rutas internas. */
   INTERNAL_SERVICE_SECRET: z.string().min(16).optional(),
 });

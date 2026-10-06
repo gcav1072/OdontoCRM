@@ -8,10 +8,12 @@ import {
   stopBoss,
 } from '@odontocrm/db';
 import { startServer } from '@odontocrm/kernel';
+import { createDiskBlobStore } from '@odontocrm/storage';
 
 import { loadBillingConfig } from './config.js';
 import { handleDomainEvents } from './consumer.js';
 import { createBillingDatabase } from './db/client.js';
+import { createPdfRenderer } from './pdf-renderer.js';
 import { createBillingServer } from './server.js';
 import type { BillingServices } from './services.js';
 import { createBillingPatientLookup } from './shared/patient-client.js';
@@ -33,8 +35,15 @@ const main = async (): Promise<void> => {
 
   // El publicador se crea después del servidor, así que el gancho se resuelve por referencia.
   let kick: () => void = () => undefined;
+  const blobStore = createDiskBlobStore({ rootDir: config.STORAGE_DIR });
+  const pdf = createPdfRenderer({
+    executablePath: config.PDF_CHROMIUM_PATH,
+    timeoutMs: config.PDF_TIMEOUT_MS,
+  });
   const services: Omit<BillingServices, 'config' | 'db' | 'pool'> = {
     patientLookup,
+    blobStore,
+    pdf,
     kickOutbox: () => kick(),
     lastError: null,
   };
@@ -86,6 +95,7 @@ const main = async (): Promise<void> => {
 
   app.addHook('onClose', async () => {
     await outbox.stop();
+    await pdf.close();
     await stopBoss(boss);
     await database.close();
   });

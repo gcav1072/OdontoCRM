@@ -1,9 +1,11 @@
 import { checkConnection } from '@odontocrm/db';
 import { buildServer, isProduction } from '@odontocrm/kernel';
+import { createDiskBlobStore } from '@odontocrm/storage';
 import type { FastifyInstance } from 'fastify';
 
 import type { BillingConfig } from './config.js';
 import type { BillingDatabaseHandle } from './db/client.js';
+import { createPdfRenderer } from './pdf-renderer.js';
 import { registerBillingRoutes } from './routes/billing-routes.js';
 import { registerFormRoutes } from './routes/form-routes.js';
 import { registerRateRoutes } from './routes/rate-routes.js';
@@ -47,6 +49,13 @@ export const createBillingServer = async (
     db: database.db,
     pool: database.pool,
     patientLookup: options.services?.patientLookup ?? createBillingPatientLookup(config),
+    blobStore: options.services?.blobStore ?? createDiskBlobStore({ rootDir: config.STORAGE_DIR }),
+    pdf:
+      options.services?.pdf ??
+      createPdfRenderer({
+        executablePath: config.PDF_CHROMIUM_PATH,
+        timeoutMs: config.PDF_TIMEOUT_MS,
+      }),
     kickOutbox: options.services?.kickOutbox,
     lastError: options.services?.lastError ?? null,
   };

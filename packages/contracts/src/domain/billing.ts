@@ -637,12 +637,21 @@ export type BillingDraftItem = z.infer<typeof billingDraftItemSchema>;
 export const billingDraftSummarySchema = z.object({
   id: z.uuid(),
   status: z.enum(INVOICE_STATUSES),
+  /** La serie de la que sale el correlativo y el lote de formas. */
+  series: z.string(),
   patientId: z.uuid(),
   patientName: z.string(),
   patientDocType: z.string(),
   patientDocNumber: z.string(),
+  /** RIF, solo si factura con crédito fiscal. */
+  patientTaxId: z.string().nullable(),
+  patientFiscalAddress: z.string().nullable(),
   createdAt: z.string(),
   itemCount: z.number().int(),
+  /** Desglose que se imprime en el papel (céntimos de USD): exento, gravado e IVA. */
+  exemptAmountCentsUsd: z.number().int(),
+  taxableAmountCentsUsd: z.number().int(),
+  ivaAmountCentsUsd: z.number().int(),
   totalCentsUsd: z.number().int(),
   balanceCentsUsd: z.number().int(),
   /** Alguna partida sin precio: la caja lo resuelve antes de emitir (M3). */
@@ -809,3 +818,35 @@ export const spoilFiscalFormSchema = z
   .strict();
 
 export type SpoilFiscalFormInput = z.infer<typeof spoilFiscalFormSchema>;
+
+/* ── 12. Emitir (ADR 0048: emitir es congelar) ────────────────────────────── */
+
+/**
+ * Emitir toma el correlativo, consume el **control** de la forma y archiva el PDF: no hay vuelta
+ * atrás (desde ahí solo se anula con nota de crédito). Se confirma explícitamente.
+ */
+export const issueInvoiceSchema = z
+  .object({ confirm: z.literal(true, { message: 'Confirma la emisión de la factura' }) })
+  .strict();
+
+export type IssueInvoiceInput = z.infer<typeof issueInvoiceSchema>;
+
+/** Lo que devuelve la emisión: los **dos** números, la tasa congelada y las dos monedas. */
+export const billingInvoiceIssuedSchema = billingDraftDetailSchema.extend({
+  /** Correlativo interno, asignado ahora. */
+  invoiceNumber: z.number().int(),
+  /** Número de control preimpreso de la forma consumida (`null` en modo `software`). */
+  controlNumber: z.string().nullable(),
+  /** `A-000123`: el número como se imprime. */
+  numberLabel: z.string(),
+  issuedAt: z.string(),
+  exchangeRateMicros: z.number().int(),
+  exemptAmountVesCentimos: z.number().int(),
+  taxableAmountVesCentimos: z.number().int(),
+  ivaAmountVesCentimos: z.number().int(),
+  totalVesCentimos: z.number().int(),
+  /** Huella del PDF archivado: lo que se reimprime es ese archivo. */
+  pdfSha256: z.string(),
+});
+
+export type BillingInvoiceIssued = z.infer<typeof billingInvoiceIssuedSchema>;
