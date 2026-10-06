@@ -20,6 +20,8 @@ import { userRoles, users } from './db/schema.js';
  *   npm run seed:users -w @odontocrm/identity              (idempotente)
  *   npm run seed:users -w @odontocrm/identity -- --reset    (regenera contraseñas)
  *   npm run seed:users -w @odontocrm/identity -- --print    (recuerda las claves, sin tocar nada)
+ *   … --usuarios=admin                                      (solo esa cuenta; el servidor
+ *                                                            siembra únicamente el admin)
  *
  * Todas las contraseñas nacen como **temporales**: el sistema obliga a cambiarlas
  * en el primer acceso. En producción (`NODE_ENV=production`) hay que indicarlas
@@ -56,6 +58,51 @@ const reset = process.argv.includes('--reset');
 /** `--print`: solo recuerda las credenciales y su estado; no escribe en la base. */
 const soloRecordar = process.argv.includes('--print');
 
+/**
+ * `--usuarios=admin[,recepcion,…]`: siembra **solo** esas cuentas, y en producción solo
+ * exige las claves de esas. Sin la bandera se siembran todas (desarrollo y pruebas).
+ *
+ * El servidor la usa para crear **únicamente el administrador**: el resto del personal
+ * se da de alta desde la aplicación (`/usuarios`, permiso `users:manage`), que es donde
+ * tiene sentido decidir roles y datos. Antes la instalación creaba tres cuentas que la
+ * clínica no había pedido y había que borrar después.
+ */
+const parseUsuariosPedidos = (): string[] | null => {
+  const arg = process.argv.find((valor) => valor.startsWith('--usuarios='));
+  if (arg === undefined) return null;
+  return arg
+    .slice('--usuarios='.length)
+    .split(',')
+    .map((nombre) => nombre.trim().toLowerCase())
+    .filter((nombre) => nombre !== '');
+};
+
+const usuariosPedidos = parseUsuariosPedidos();
+if (usuariosPedidos !== null && usuariosPedidos.length === 0) {
+  throw new Error('--usuarios= necesita al menos un usuario (ej.: --usuarios=admin)');
+}
+
+/** ¿Esta cuenta entra en la siembra? Sin `--usuarios=` entran todas. */
+const seleccionado = (username: string): boolean =>
+  usuariosPedidos === null || usuariosPedidos.includes(username.toLowerCase());
+
+/**
+ * `--ocultar-claves=admin`: no imprime la contraseña de esas cuentas. Lo usa el
+ * instalador cuando la eligió una persona: no hay nada que apuntar, y esa clave no tiene
+ * por qué acabar en la salida de la instalación (que puede ir a un registro).
+ */
+const clavesOcultas = ((): string[] => {
+  const arg = process.argv.find((valor) => valor.startsWith('--ocultar-claves='));
+  if (arg === undefined) return [];
+  return arg
+    .slice('--ocultar-claves='.length)
+    .split(',')
+    .map((nombre) => nombre.trim().toLowerCase())
+    .filter((nombre) => nombre !== '');
+})();
+
+const ocultarClave = (username: string): boolean => clavesOcultas.includes(username.toLowerCase());
+
 const config = loadIdentityConfig();
 const production = config.NODE_ENV === 'production';
 
@@ -74,8 +121,9 @@ const resolvePassword = (username: string): string | null => {
   if (fromEnv !== undefined && fromEnv.length >= 10) return fromEnv;
   if (production) {
     // `--print` no escribe en la base: no necesita las claves, solo recordar quién hay
-    // (es el comando con el que se comprueba si una cuenta quedó bloqueada).
-    if (!soloRecordar) clavesQueFaltan.push(envName);
+    // (es el comando con el que se comprueba si una cuenta quedó bloqueada). Y una cuenta
+    // que no se va a sembrar (`--usuarios=`) tampoco necesita la suya.
+    if (!soloRecordar && seleccionado(username)) clavesQueFaltan.push(envName);
     return null;
   }
   return DEVELOPMENT_PASSWORDS[username] ?? DENTIST_DEFAULT_PASSWORD;
@@ -105,7 +153,7 @@ const DENTIST_USERS: SeedUser[] = CLINIC.dentists.map((dentist) => ({
   passwordEnv: `SEED_PASSWORD_${dentist.username.toUpperCase()}`,
 }));
 
-const SEED_USERS: SeedUser[] = [
+const TODAS_LAS_CUENTAS: SeedUser[] = [
   {
     username: 'admin',
     fullName: 'Administrador del sistema',
@@ -124,6 +172,20 @@ const SEED_USERS: SeedUser[] = [
   },
   ...DENTIST_USERS,
 ];
+
+// Un nombre que no existe en la lista es un error de tecleo, no una siembra vacía.
+const desconocidos = (usuariosPedidos ?? []).filter(
+  (nombre) => !TODAS_LAS_CUENTAS.some((cuenta) => cuenta.username.toLowerCase() === nombre),
+);
+if (desconocidos.length > 0) {
+  throw new Error(
+    `No sé sembrar «${desconocidos.join(', ')}». Cuentas disponibles: ` +
+      `${TODAS_LAS_CUENTAS.map((cuenta) => cuenta.username).join(', ')}.`,
+  );
+}
+
+/** Lo que se siembra de verdad: todo, o solo lo que pidió `--usuarios=`. */
+const SEED_USERS: SeedUser[] = TODAS_LAS_CUENTAS.filter((cuenta) => seleccionado(cuenta.username));
 
 // Antes de tocar la base: si falta alguna clave de producción, se dice cuáles y con qué
 // comando se arregla (mínimo 10 caracteres; la misma sirve para todas, el sistema pedirá
@@ -190,9 +252,12 @@ const recordarCredenciales = async (): Promise<void> => {
       }
     }
 
+    const claveVisible = ocultarClave(seedUser.username)
+      ? '(la que elegiste)'
+      : (seedUser.password ?? '(la del entorno)');
     // eslint-disable-next-line no-console -- credenciales temporales de desarrollo
     console.log(
-      `  ${seedUser.username.padEnd(10)} ${(seedUser.password ?? '(la del entorno)').padEnd(26)} roles: ${seedUser.roles.join(', ')}` +
+      `  ${seedUser.username.padEnd(10)} ${claveVisible.padEnd(26)} roles: ${seedUser.roles.join(', ')}` +
         `\n             ${estado}\n`,
     );
   }
@@ -277,9 +342,12 @@ const main = async (): Promise<void> => {
     // eslint-disable-next-line no-console -- script de línea de comandos
     console.log(`\n${title}`);
     for (const user of list) {
+      // La clave que eligió una persona no se imprime: ya la conoce, y esta salida
+      // puede acabar en el registro de la instalación (ver `--ocultar-claves=`).
+      const clave = ocultarClave(user.username) ? '(la que elegiste)' : claveParaSembrar(user);
       // eslint-disable-next-line no-console -- credenciales temporales de desarrollo
       console.log(
-        `  ${user.username.padEnd(10)} ${claveParaSembrar(user).padEnd(26)} roles: ${user.roles.join(', ')}`,
+        `  ${user.username.padEnd(10)} ${clave.padEnd(26)} roles: ${user.roles.join(', ')}`,
       );
     }
   };

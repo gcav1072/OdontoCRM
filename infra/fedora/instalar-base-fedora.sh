@@ -213,7 +213,12 @@ if [[ -n "$NOMBRE_MDNS" ]]; then
       echo "          sudo systemctl restart avahi-daemon"
     fi
   fi
-  echo "  los equipos entran por:  https://${NOMBRE_MDNS}.local"
+  # El nombre puede llegar ya completo (`odontocrm.local`, que es como lo guarda
+  # `aprovisionar`): añadirle `.local` otra vez imprimía «odontocrm.local.local» —un
+  # nombre que no resuelve en ningún equipo— y confundía justo en el resumen.
+  nombre_equipos="$NOMBRE_MDNS"
+  [[ "$nombre_equipos" == *.* ]] || nombre_equipos="${nombre_equipos}.local"
+  echo "  los equipos entran por:  https://${nombre_equipos}"
 else
   echo "  (opcional, recomendado en la clinica) publica un nombre fijo para entrar:"
   echo "      sudo bash $0 --nombre-mdns=odontocrm"

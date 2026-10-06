@@ -4,6 +4,54 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — Pregunta lo que hace falta y siembra solo el administrador · 2026-10-06
+
+Instalar ya no termina con deberes: el instalador **pregunta** lo que no se puede inventar
+y lo deja en su sitio antes de arrancar los servicios.
+
+```bash
+sudo bash infra/fedora/instalar/instalar.sh
+#  Contraseña del administrador  → se crea UNA cuenta: admin
+#  Token del bot de Telegram     → comprobado contra Telegram antes de guardarlo
+#  WhatsApp Cloud API (4 datos)  → opcional, con «¿configurar ahora? s/N»
+```
+
+Antes había que pelearse con esto **después** del despliegue: el token no llegaba al
+servicio (se ponía en `/opt/odontocrm/services/notifications/.env`, que en el servidor no
+lo lee nadie: systemd carga `/etc/odontocrm/*.env`) y el seed creaba tres cuentas —`admin`,
+`recepcion` y el odontólogo— que la clínica no había pedido.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `instalar.sh` | Pregunta con `read -s` (nada queda en pantalla ni en registros), valida longitudes, comprueba el token con `getMe` y resume lo que va a configurar. Banderas para desatenderlo (`--clave-admin=`, `--token-telegram=`, `--whatsapp-…`) y `--sin-preguntas`. Sin terminal no pregunta nada |
+| `aprovisionar.mjs` | Escribe en `notifications.env` los tokens que le llegan por entorno; lo que no venga se conserva (una segunda instalación no borra el token de nadie) |
+| `seed.js` | `--usuarios=<lista>` siembra solo esas cuentas (y en producción solo exige sus claves); `--ocultar-claves=` no imprime las que eligió una persona. Sin bandera se comporta como siempre (dev y pruebas) |
+| `30-desplegar.sh` | Siembra solo `admin` (`USUARIOS_SEED`), usa la contraseña que eligió el operador y **el registro del seed ya no queda en `/tmp` a 644** (nacía con la contraseña dentro): va a `/root`, en 0600, y se borra al terminar bien |
+| `desinstalar.sh` | **Nuevo**: deja la máquina como si el instalador no hubiera pasado (unidades, código, secretos, bases, roles, proxy, certificado, firewall y SELinux). Exige `--si`; sin él solo enseña lo que borraría. Antes guarda `/etc/odontocrm` y un `pg_dump` de cada base en `/root/odontocrm-antes-de-desinstalar-<fecha>/` |
+| `fedora:check` | Tres candados nuevos: las recetas del seed llevan la clave de cada cuenta (respetando `--usuarios=`), **ninguna pieza pregunta nada** (una actualización sin terminal se colgaría) y `instalar.sh` pregunta de verdad y se puede desatender |
+
+Los e2e del repositorio siguen igual: en desarrollo y en las pruebas se siembran las tres
+cuentas de siempre (`--con-todas-las-cuentas` en el instalador).
+
+### Lo que encontró la primera prueba real (y quedó cerrado)
+
+Probar el ciclo completo —desinstalar, instalar, entrar— encontró cinco defectos que
+habrían dado exactamente la «vorágine de pruebas fallidas» que el ADR 0043 dejó atrás:
+
+| Defecto | Síntoma real | Corrección |
+| :--- | :--- | :--- |
+| El desinstalador borraba `/opt/odontocrm` aunque fuera **el directorio de la terminal** | El intérprete se quedó sin directorio (`getcwd: no se puede acceder a los directorios padre`) y la instalación siguiente murió en el paso 3/4 con `fatal: esta operación debe ser realizada en un árbol de trabajo` — parecía un fallo del código y no lo era | Se comprueba antes de tocar nada: si la terminal está dentro de una ruta que se borra, **se niega a seguir (código 11)** y dice `cd ~`. Y `comun.sh` sigue desde `/` si el directorio ya no existe, para que ninguna pieza se caiga por eso |
+| El volcado de cada base se hacía **troceando la URL a mano** y con `2>/dev/null` | Nueve «no pude volcar … (¿la base ya no está?)» **sin el motivo**, y las bases quedaron sin copia | `pg_dump` recibe **la URL entera** que usa el servicio (la cadena que ya está probada) y, si falla, se enseña el error de `pg_dump` y se guarda en `<base>.error` |
+| El `DROP DATABASE`/`DROP ROLE` también ocultaba la salida | «no pude borrar la base … (míralo a mano)» sin decir por qué | Se enseña el motivo. Y si un volcado falló, **esa base no se borra**: la copia es la única red con pacientes dentro |
+| **El propio instalador exportaba las claves vacías** (`WHATSAPP_TOKEN=''`) | Las migraciones de notifications murieron con `ConfigError: WHATSAPP_TOKEN: el valor es más corto o menor de lo permitido`. Una variable **vacía no es «ausente»** para los esquemas de los servicios, y `con-entorno` pasa el entorno del proceso tal cual: el instalador envenenaba el entorno de sus hijos | Se exporta **solo lo que tiene valor**. Probado con el código compilado: con las variables vacías exportadas sale el `ConfigError` exacto; sin ellas la configuración carga |
+| `instalar-base-fedora.sh` añadía `.local` a un nombre que ya lo traía | El resumen decía «los equipos entran por https://odontocrm.local.local» | Solo se añade si el nombre no trae dominio (mismo criterio que `nombre_fqdn`) |
+
+### Arreglado de paso
+
+- `aprovisionar.mjs` no pasaba `npm run lint` (`no-control-regex` en la comprobación de
+  caracteres de control de `sqlTexto`): ahora lleva la misma excepción razonada que
+  `packages/contracts` usa en sus dos limpiadores.
+
 ## [Corrección] — Sembrar usuarios en el servidor: la receta no decía qué claves hacía falta · 2026-10-06
 
 En la puesta en marcha, el comando que enseñaban el RUNBOOK (§5) y `COMANDOS_PRODUCCION.md`

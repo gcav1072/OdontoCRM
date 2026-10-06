@@ -300,12 +300,19 @@ sudo odontocrm restaurar --limpiar-verif --yes
 
 ## 5. Usuarios y contraseñas
 
+La instalación crea **solo `admin`** (y pregunta su contraseña). El resto del personal se
+da de alta desde `/usuarios`; estas son las recetas para lo que se hace a mano después:
+
 ```bash
-# Restaurar las contraseñas temporales sembradas (admin, recepcion y cada odontólogo de
-# `CLINIC.dentists`). En producción el seed NO acepta las claves de desarrollo: hay que darle
-# una por cuenta en `SEED_PASSWORD_<USUARIO>` (mínimo 10 caracteres) y en la misma línea del
-# comando —`con-entorno` la reenvía al proceso—. Si falta alguna, el seed dice cuáles son y
-# no escribe nada. Sin el `--reset` solo crea las cuentas que falten.
+# Resetear la contraseña del administrador. En producción el seed NO acepta las claves de
+# desarrollo: hay que darle la suya en `SEED_PASSWORD_ADMIN` (mínimo 10 caracteres) y en la
+# misma línea del comando —`con-entorno` la reenvía al proceso—.
+sudo SEED_PASSWORD_ADMIN='la-que-quieras-poner' \
+  odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset --usuarios=admin
+
+# Si hay más cuentas sembradas de una instalación vieja: una clave por cuenta. Sin
+# `--usuarios=`, el seed exige las de todas (admin, recepcion y cada odontólogo de
+# `CLINIC.dentists`); si falta alguna dice cuáles son y no escribe nada.
 sudo SEED_PASSWORD_ADMIN='la-que-quieras-poner' \
      SEED_PASSWORD_RECEPCION='la-que-quieras-poner' \
      SEED_PASSWORD_EGOMEZ='la-que-quieras-poner' \
@@ -324,9 +331,9 @@ En el día a día **no hace falta tocar esto**: las contraseñas se cambian desd
 aplicación (cada usuario, en su perfil) y el sistema obliga a cambiarlas en el primer
 acceso. Lo de arriba es para el caso «nadie recuerda la del administrador».
 
-> **`--reset` regenera la de TODAS las cuentas del seed**, no solo una: quien no esté
-> delante tendrá que pedir la nueva. Para el estado —quién existe, quién sigue con
-> contraseña temporal y quién está bloqueado— está
+> **`--reset` cambia la contraseña de las cuentas que se siembren**: con
+> `--usuarios=admin` solo la del administrador. Para el estado —quién existe, quién sigue
+> con contraseña temporal y quién está bloqueado— está
 > `sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js --print`,
 > que no escribe nada y funciona sin las claves.
 

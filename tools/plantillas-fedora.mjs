@@ -464,7 +464,14 @@ const exigir = (condicion, bien, mal) => {
     for (const comando of comandosDocumentados(leer(ruta))) {
       // `--print` no escribe en la base: puede ir sin claves. Lo que se comprueba es lo que siembra.
       if (!/dist\/seed\.js/.test(comando) || /--print/.test(comando)) continue;
-      const faltan = usuariosDelSeed.filter((u) => !comando.includes(`SEED_PASSWORD_${u}`));
+      // Con `--usuarios=` solo hacen falta las claves de esas cuentas: es como siembra el
+      // servidor (solo `admin`) y como se resetea una sola cuenta.
+      const pedidos = /--usuarios=([^\s\\]+)/.exec(comando);
+      const cuentas =
+        pedidos === null
+          ? usuariosDelSeed
+          : pedidos[1].split(',').map((n) => n.trim().toUpperCase());
+      const faltan = cuentas.filter((u) => !comando.includes(`SEED_PASSWORD_${u}`));
       if (faltan.length > 0) recetasIncompletas.push(`${ruta}: falta ${faltan.join(', ')}`);
     }
   }
@@ -472,6 +479,34 @@ const exigir = (condicion, bien, mal) => {
     recetasIncompletas.length === 0,
     'las recetas documentadas del seed llevan la clave de cada cuenta en el entorno',
     `hay recetas de siembra sin todas las claves de producción:\n      ${recetasIncompletas.join('\n      ')}`,
+  );
+
+  // (7-ter) Las preguntas de la instalación viven SOLO en `instalar.sh`. Las cuatro piezas
+  //     siguen siendo desatendidas a propósito: `odontocrm actualizar` ejecuta la 3 sin
+  //     terminal, y un `read` ahí dejaría una actualización colgada esperando a nadie.
+  // Se busca el `read` que PREGUNTA (`-p`, `-s`) o el que lee de `/dev/tty`: un
+  // `while IFS= read -r usuario` (aquí-string) no pregunta nada y no cuenta.
+  const preguntaAlOperador = (texto) =>
+    /\bread\b(?=[^\n]*\s-[a-zA-Z]*[ps]\b)|\/dev\/tty/.test(texto);
+  const piezasConPreguntas = [
+    '10-preparar.sh',
+    '20-aprovisionar.sh',
+    '30-desplegar.sh',
+    '40-verificar.sh',
+  ].filter((guion) => preguntaAlOperador(leer(`infra/fedora/instalar/${guion}`)));
+  exigir(
+    piezasConPreguntas.length === 0,
+    'las piezas del instalador siguen siendo desatendidas (las preguntas están en instalar.sh)',
+    `estas piezas preguntan algo: ${piezasConPreguntas.join(', ')} — una actualización sin terminal se quedaría esperando`,
+  );
+
+  // (7-quáter) Y `instalar.sh` de verdad pregunta, y ofrece `--sin-preguntas`: sin eso, el
+  //     operador vuelve a pelearse con los tokens después del despliegue (lo que se arregló).
+  exigir(
+    /preguntar_secreto/.test(leer('infra/fedora/instalar/instalar.sh')) &&
+      /--sin-preguntas/.test(leer('infra/fedora/instalar/instalar.sh')),
+    'instalar.sh pregunta por la clave del admin y los tokens, y se puede desatender',
+    'instalar.sh no pregunta (o no hay forma de desatenderlo): vuelve el trabajo manual tras el despliegue',
   );
 
   // (8) La guía explica dónde se cambian los datos de la clínica (otra consulta = otro

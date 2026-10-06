@@ -28,6 +28,25 @@
 #   --comprobar             solo dice si la máquina está lista; no toca nada
 #   --dry-run               enseña lo que haría, sin hacerlo
 #
+# Preguntas (una instalación nueva): la contraseña del administrador y, si se quieren
+# ya, el token del bot de Telegram y las credenciales de WhatsApp. Se guardan en
+# /etc/odontocrm (0600) y en la clave del admin; con Enter se omite cada una. Sin
+# terminal, con `--sin-preguntas` o en `odontocrm actualizar` no se pregunta nada:
+# la clave del admin se genera temporal y el bot queda en modo simulado.
+#
+#   --usuarios=admin,recepcion   cuentas a sembrar (por defecto SOLO `admin`: el
+#                                resto del personal se da de alta desde /usuarios)
+#   --con-todas-las-cuentas      siembra también `recepcion` y los odontólogos
+#   --clave-admin=CLAVE          contraseña del administrador
+#   --token-telegram=…           token de BotFather
+#   --usuario-telegram=…         usuario del bot, sin @
+#   --whatsapp-token=…           token de la WhatsApp Cloud API
+#   --whatsapp-phone-id=…        identificador del número
+#   --whatsapp-verify-token=…    el que inventa la clínica para el webhook
+#   --whatsapp-app-secret=…      el App Secret de Meta
+#   --sin-preguntas              no pregunta nada
+#   --reconfigurar               vuelve a preguntar aunque ya haya valores
+#
 # Al terminar imprime la dirección por la que entran los aparatos de la consulta.
 # =============================================================================
 set -uo pipefail
@@ -45,6 +64,20 @@ SIN_RESPALDO=0
 ROTAR=0
 COMPROBAR=0
 SOLO=""
+SIN_PREGUNTAS="${SIN_PREGUNTAS:-0}"
+RECONFIGURAR=0
+# El servidor siembra SOLO el administrador: el resto del personal se da de alta desde
+# la aplicación (`/usuarios`), que es donde tiene sentido decidir rol y datos.
+USUARIOS_SEED="${USUARIOS_SEED:-admin}"
+# Los datos que se pueden dar por bandera (o por entorno: son los mismos nombres que
+# leen los servicios, así que exportarlos en la shell también vale).
+CLAVE_ADMIN="${SEED_PASSWORD_ADMIN:-}"
+TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
+TELEGRAM_BOT_USERNAME="${TELEGRAM_BOT_USERNAME:-}"
+WHATSAPP_TOKEN="${WHATSAPP_TOKEN:-}"
+WHATSAPP_PHONE_ID="${WHATSAPP_PHONE_ID:-}"
+WHATSAPP_VERIFY_TOKEN="${WHATSAPP_VERIFY_TOKEN:-}"
+WHATSAPP_APP_SECRET="${WHATSAPP_APP_SECRET:-}"
 for arg in "$@"; do
   case "$arg" in
     --nombre-mdns=*) NOMBRE_MDNS="${arg#*=}" ;;
@@ -56,7 +89,18 @@ for arg in "$@"; do
     --comprobar) COMPROBAR=1 ;;
     --solo=*) SOLO="${arg#*=}" ;;
     --dry-run) DRY_RUN=1 ;;
-    -h | --help) sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --sin-preguntas) SIN_PREGUNTAS=1 ;;
+    --reconfigurar) RECONFIGURAR=1 ;;
+    --usuarios=*) USUARIOS_SEED="${arg#*=}" ;;
+    --con-todas-las-cuentas) USUARIOS_SEED="" ;;
+    --clave-admin=*) CLAVE_ADMIN="${arg#*=}" ;;
+    --token-telegram=*) TELEGRAM_BOT_TOKEN="${arg#*=}" ;;
+    --usuario-telegram=*) TELEGRAM_BOT_USERNAME="${arg#*=}" ;;
+    --whatsapp-token=*) WHATSAPP_TOKEN="${arg#*=}" ;;
+    --whatsapp-phone-id=*) WHATSAPP_PHONE_ID="${arg#*=}" ;;
+    --whatsapp-verify-token=*) WHATSAPP_VERIFY_TOKEN="${arg#*=}" ;;
+    --whatsapp-app-secret=*) WHATSAPP_APP_SECRET="${arg#*=}" ;;
+    -h | --help) sed -n '2,51p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) morir "opción no reconocida: $arg" ;;
   esac
 done
@@ -122,6 +166,194 @@ detalle "secretos    : $ETC_DIR   (única fuente de verdad — ADR 0043)"
 detalle "usuario     : $(usuario_real)"
 (( DRY_RUN )) && av '--dry-run: no se cambia nada'
 (( ROTAR )) && av '--rotar-credenciales: se generan contraseñas NUEVAS'
+
+# ── Los datos que no se pueden inventar ─────────────────────────────────────
+# Se preguntan UNA vez, aquí, y viajan por entorno a las piezas 2 y 3 —que siguen
+# siendo desatendidas: `odontocrm actualizar` ejecuta la 3 sin pasar por este guion—.
+#
+# · Sin terminal, con `--sin-preguntas` o en `--dry-run` no se pregunta nada: la clave
+#   del admin se genera temporal y el bot queda en modo simulado, como siempre.
+# · Lo que ya esté configurado no se vuelve a preguntar (`--reconfigurar` lo fuerza):
+#   repetir la instalación no debe borrar ni reescribir el token de nadie.
+preguntar_secreto() { # $1 título · $2 pista · $3 texto del prompt (opcional)
+  [[ -t 0 && $SIN_PREGUNTAS -eq 0 ]] || return 1
+  printf '\n  %s%s%s\n' "$C_TI" "$1" "$C_RE" >&2
+  [[ -n "${2:-}" ]] && detalle "$2" >&2
+  local valor=""
+  # Se lee de /dev/tty a propósito: si la salida va a un registro (`| tee`), la pregunta
+  # sigue siendo interactiva y **lo tecleado no aparece** en el registro. Y el texto del
+  # prompt se puede cambiar: en la confirmación no tiene sentido ofrecer «Enter para
+  # omitir» (omitir la confirmación no significa nada, la clave ya está escrita).
+  read -r -s -p "${3:-      valor (Enter para omitir): }" valor </dev/tty || valor=""
+  printf '\n' >&2
+  [[ -n "$valor" ]] || return 1
+  printf '%s' "$valor"
+}
+
+preguntar_texto() { # igual, pero a la vista
+  [[ -t 0 && $SIN_PREGUNTAS -eq 0 ]] || return 1
+  printf '\n  %s%s%s\n' "$C_TI" "$1" "$C_RE" >&2
+  [[ -n "${2:-}" ]] && detalle "$2" >&2
+  local valor=""
+  read -r -p '      valor (Enter para omitir): ' valor </dev/tty || valor=""
+  [[ -n "$valor" ]] || return 1
+  printf '%s' "$valor"
+}
+
+preguntar_si() { # 0 = sí · 1 = no (también cuando no hay terminal)
+  [[ -t 0 && $SIN_PREGUNTAS -eq 0 ]] || return 1
+  local respuesta=""
+  read -r -p "  $1 [s/N] " respuesta </dev/tty || respuesta=""
+  [[ "$respuesta" =~ ^[sSyY] ]]
+}
+
+ya_configurado() { # $1 archivo · $2 clave: ¿ya tiene valor? (--reconfigurar lo ignora)
+  (( RECONFIGURAR )) && return 1
+  [[ -f "$1" ]] || return 1
+  grep -qE "^$2=.+" "$1" 2>/dev/null
+}
+
+if (( DRY_RUN )); then
+  detalle '[dry-run] no se pregunta nada'
+elif [[ -n "$SOLO" && "$SOLO" != "aprovisionar" && "$SOLO" != "desplegar" ]]; then
+  detalle "--solo=$SOLO: no hace falta preguntar nada"
+elif (( SIN_PREGUNTAS )); then
+  detalle '--sin-preguntas: clave del admin al azar y bot en modo simulado'
+elif [[ ! -t 0 ]]; then
+  detalle 'sin terminal: clave del admin al azar y bot en modo simulado'
+  detalle 'para configurarlo después:  RUNBOOK §5 (usuarios) y §6 (bot)'
+else
+  printf '\n%sPuesta en marcha%s — se crea la cuenta «admin»; Enter omite lo demás\n' "$C_TI" "$C_RE"
+
+  # 1) La contraseña del administrador (solo si es una instalación nueva).
+  if [[ -n "$CLAVE_ADMIN" ]]; then
+    detalle 'contraseña del administrador: la que pasaste por bandera'
+  elif [[ -f "$ETC_DIR/odontocrm.env" ]] && (( ! RECONFIGURAR )); then
+    detalle 'ya hay un entorno aprovisionado: no se toca la contraseña del administrador'
+  else
+    while true; do
+      if ! valor="$(preguntar_secreto 'Contraseña del administrador' 'Mínimo 10 caracteres. Nace temporal: el sistema pedirá cambiarla al primer acceso.')"; then
+        detalle 'sin contraseña: se generará una temporal y se imprimirá UNA vez'
+        break
+      fi
+      if (( ${#valor} < 10 )); then
+        err 'menos de 10 caracteres: no la guardo, prueba otra vez'
+        continue
+      fi
+      if ! repetida="$(preguntar_secreto 'Repite la contraseña del administrador' '' '      repítela: ')"; then
+        err 'no la repetiste: vuelve a empezar'
+        continue
+      fi
+      if [[ "$valor" != "$repetida" ]]; then
+        err 'no coinciden: vuelve a empezar'
+        continue
+      fi
+      CLAVE_ADMIN="$valor"
+      ok 'contraseña del administrador guardada (no se imprime en ningún sitio)'
+      break
+    done
+  fi
+
+  # 2) El bot de Telegram, con el token comprobado contra Telegram: un token mal copiado
+  #    se descubre aquí y no tres días después, cuando un paciente no recibe su aviso.
+  if [[ -z "$TELEGRAM_BOT_TOKEN" ]] && ! ya_configurado "$ETC_DIR/notifications.env" 'TELEGRAM_BOT_TOKEN'; then
+    if valor="$(preguntar_secreto 'Token del bot de Telegram (BotFather)' 'Sin él los avisos quedan en la bandeja como pendientes manuales; se puede poner después.')"; then
+      if (( ${#valor} < 20 )); then
+        av 'un token de BotFather tiene más de 20 caracteres: no lo guardo'
+      else
+        TELEGRAM_BOT_TOKEN="$valor"
+      fi
+    fi
+  fi
+  if [[ -n "$TELEGRAM_BOT_TOKEN" ]] && command -v curl >/dev/null; then
+    if respuesta="$(timeout 10 curl -fsS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe" 2>/dev/null)" &&
+      [[ "$respuesta" == *'"ok":true'* ]]; then
+      TELEGRAM_BOT_USERNAME="$(printf '%s' "$respuesta" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p')"
+      ok "Telegram confirma el bot: @${TELEGRAM_BOT_USERNAME}"
+    else
+      av 'Telegram no confirmó ese token (¿internet?, ¿mal copiado?): se guarda igual'
+      detalle "se corrige en $ETC_DIR/notifications.env y reiniciando odontocrm@notifications"
+    fi
+  fi
+  if [[ -n "$TELEGRAM_BOT_TOKEN" && -z "$TELEGRAM_BOT_USERNAME" ]] &&
+    ! ya_configurado "$ETC_DIR/notifications.env" 'TELEGRAM_BOT_USERNAME'; then
+    if valor="$(preguntar_texto 'Usuario del bot, sin @' 'Es el que arma el enlace t.me/<usuario> (opcional).')"; then
+      TELEGRAM_BOT_USERNAME="${valor#@}"
+    fi
+  fi
+
+  # 3) WhatsApp (Cloud API): cuatro datos, y los tres últimos solo se tienen al crear la
+  #    app en Meta. Se pueden dejar para después; el canal simplemente no se activa.
+  if [[ -z "$WHATSAPP_TOKEN" ]] && ! ya_configurado "$ETC_DIR/notifications.env" 'WHATSAPP_TOKEN'; then
+    if preguntar_si '¿Configurar WhatsApp ahora (Cloud API de Meta)?'; then
+      if valor="$(preguntar_secreto 'Token de la WhatsApp Cloud API')" && (( ${#valor} >= 20 )); then
+        WHATSAPP_TOKEN="$valor"
+      else
+        av 'sin un token de 20 caracteres o más no configuro WhatsApp: se omite'
+      fi
+    fi
+  fi
+  if [[ -n "$WHATSAPP_TOKEN" ]]; then
+    if [[ -z "$WHATSAPP_PHONE_ID" ]]; then
+      valor="$(preguntar_texto 'Identificador del número (phone number ID)')" && WHATSAPP_PHONE_ID="$valor"
+    fi
+    if [[ -z "$WHATSAPP_VERIFY_TOKEN" ]]; then
+      valor="$(preguntar_texto 'Verify token del webhook' 'Lo inventa la clínica: Meta lo repite al verificar. Mínimo 8 caracteres.')" &&
+        WHATSAPP_VERIFY_TOKEN="$valor"
+    fi
+    if [[ -z "$WHATSAPP_APP_SECRET" ]]; then
+      valor="$(preguntar_secreto 'App Secret de Meta' 'Firma los webhooks (App settings → Basic).')" &&
+        WHATSAPP_APP_SECRET="$valor"
+    fi
+  fi
+
+  # Resumen sin secretos: lo que va a quedar configurado. Se mira TAMBIÉN lo que ya esté
+  # en /etc/odontocrm: en una instalación repetida el token sigue ahí y decir «sin token»
+  # haría pensar que se ha perdido (se conserva, que es lo que hace aprovisionar).
+  resumen_admin='temporal al azar (se imprime una vez)'
+  if [[ -n "$CLAVE_ADMIN" ]]; then
+    resumen_admin='con la contraseña que elegiste'
+  elif [[ -f "$ETC_DIR/odontocrm.env" ]] && (( ! RECONFIGURAR )); then
+    resumen_admin='sin cambios (ya hay un entorno aprovisionado)'
+  fi
+  resumen_tg='sin token: modo simulado'
+  if [[ -n "$TELEGRAM_BOT_TOKEN" ]]; then
+    resumen_tg="con token (@${TELEGRAM_BOT_USERNAME:-sin usuario})"
+  elif ya_configurado "$ETC_DIR/notifications.env" 'TELEGRAM_BOT_TOKEN'; then
+    resumen_tg='ya configurado en el servidor (se conserva)'
+  fi
+  resumen_wa='no configurado'
+  if [[ -n "$WHATSAPP_TOKEN" ]]; then
+    resumen_wa='configurado ahora'
+  elif ya_configurado "$ETC_DIR/notifications.env" 'WHATSAPP_TOKEN'; then
+    resumen_wa='ya configurado en el servidor (se conserva)'
+  fi
+  printf '\n'
+  detalle "cuentas a crear : ${USUARIOS_SEED:-admin, recepcion y los odontólogos de clinic.ts}"
+  detalle "admin           : $resumen_admin"
+  detalle "Telegram        : $resumen_tg"
+  detalle "WhatsApp        : $resumen_wa"
+fi
+
+# Los valores viajan a las piezas por ENTORNO, nunca como argumentos (en `ps` los vería
+# cualquiera de la máquina). El vacío significa «no lo toques»: aprovisionar conserva lo
+# que ya hubiera escrito y desplegar genera la contraseña temporal.
+#
+# **Solo se exporta lo que TIENE valor.** Una variable exportada y VACÍA no es «ausente»
+# para los esquemas de los servicios (son `.min(20).optional()`, y `''` no pasa el
+# mínimo), y `con-entorno` pasa a las migraciones y a los servicios el entorno del
+# proceso tal cual: exportar `WHATSAPP_TOKEN=''` desde aquí tumbaba las migraciones de
+# notifications con «Configuración inválida … el valor es más corto o menor de lo
+# permitido». Pasó en la primera instalación de verdad (el WhatsApp se dejó sin
+# configurar), y era el propio instalador quien envenenaba el entorno.
+export USUARIOS_SEED
+[[ -n "$CLAVE_ADMIN" ]] && export SEED_PASSWORD_ADMIN="$CLAVE_ADMIN"
+[[ -n "$TELEGRAM_BOT_TOKEN" ]] && export TELEGRAM_BOT_TOKEN
+[[ -n "$TELEGRAM_BOT_USERNAME" ]] && export TELEGRAM_BOT_USERNAME
+[[ -n "$WHATSAPP_TOKEN" ]] && export WHATSAPP_TOKEN
+[[ -n "$WHATSAPP_PHONE_ID" ]] && export WHATSAPP_PHONE_ID
+[[ -n "$WHATSAPP_VERIFY_TOKEN" ]] && export WHATSAPP_VERIFY_TOKEN
+[[ -n "$WHATSAPP_APP_SECRET" ]] && export WHATSAPP_APP_SECRET
 
 NOMBRE_MDNS="$(resolver_nombre "$NOMBRE_MDNS")"
 FQDN="$(nombre_fqdn "$NOMBRE_MDNS")"
