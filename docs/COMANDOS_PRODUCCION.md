@@ -150,7 +150,7 @@ sudo systemctl start odontocrm-gateway
 | `npm run build` | `sudo odontocrm compilar` |
 | `npm run stack:fijo` (PM2) | **No se usa**: el supervisor es systemd |
 | `npm run db:migrate` | `sudo odontocrm con-entorno <servicio> -- node services/<servicio>/dist/db/migrate.js` (o `odontocrm actualizar`, que las corre todas) |
-| `npm run seed:users` | `sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js` |
+| `npm run seed:users` | `sudo SEED_PASSWORD_<USUARIO>='…' odontocrm con-entorno identity -- node services/identity/dist/seed.js` (una por cuenta, mínimo 10 caracteres: §5) |
 | `npm run estado` | `sudo odontocrm estado` |
 | `npm run e2e:clinica` | **No se ejecuta** contra la clínica: es una prueba de desarrollo |
 | `npm run db:reset` | **Nunca.** Borra las 9 bases (§11) |
@@ -301,8 +301,15 @@ sudo odontocrm restaurar --limpiar-verif --yes
 ## 5. Usuarios y contraseñas
 
 ```bash
-# Restaurar las contraseñas temporales sembradas (admin, recepcion, egomez)
-sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset
+# Restaurar las contraseñas temporales sembradas (admin, recepcion y cada odontólogo de
+# `CLINIC.dentists`). En producción el seed NO acepta las claves de desarrollo: hay que darle
+# una por cuenta en `SEED_PASSWORD_<USUARIO>` (mínimo 10 caracteres) y en la misma línea del
+# comando —`con-entorno` la reenvía al proceso—. Si falta alguna, el seed dice cuáles son y
+# no escribe nada. Sin el `--reset` solo crea las cuentas que falten.
+sudo SEED_PASSWORD_ADMIN='la-que-quieras-poner' \
+     SEED_PASSWORD_RECEPCION='la-que-quieras-poner' \
+     SEED_PASSWORD_EGOMEZ='la-que-quieras-poner' \
+  odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset
 
 # Ver quién existe y con qué rol (no imprime contraseñas)
 sudo odontocrm con-entorno identity -- node -e "
@@ -316,6 +323,12 @@ sudo odontocrm con-entorno identity -- node -e "
 En el día a día **no hace falta tocar esto**: las contraseñas se cambian desde la
 aplicación (cada usuario, en su perfil) y el sistema obliga a cambiarlas en el primer
 acceso. Lo de arriba es para el caso «nadie recuerda la del administrador».
+
+> **`--reset` regenera la de TODAS las cuentas del seed**, no solo una: quien no esté
+> delante tendrá que pedir la nueva. Para el estado —quién existe, quién sigue con
+> contraseña temporal y quién está bloqueado— está
+> `sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js --print`,
+> que no escribe nada y funciona sin las claves.
 
 > `con-entorno` carga `/etc/odontocrm/odontocrm.env` y el del servicio **dentro del
 > proceso**: los secretos no aparecen en la línea de comandos (en `ps` los vería

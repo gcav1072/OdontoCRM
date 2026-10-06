@@ -221,26 +221,33 @@ Las cuentas se crean desde la aplicación (`/usuarios`, permiso `users:manage`, 
 el administrador) o con el seed, que es lo que se usa en la puesta en marcha:
 
 ```bash
-# Crea lo que falte (no toca lo que ya existe). En producción el seed EXIGE la contraseña
-# en el entorno (`SEED_PASSWORD_<USUARIO>`), así que se pasa en la misma línea que el
-# comando; `con-entorno` la reenvía al proceso.
+# Crea lo que falte (no toca lo que ya existe). En producción el seed EXIGE una contraseña
+# por CADA cuenta del seed —admin, recepcion y un odontólogo por `CLINIC.dentists`— en el
+# entorno (`SEED_PASSWORD_<USUARIO>`, mínimo 10 caracteres): se pasan en la misma línea que
+# el comando y `con-entorno` las reenvía al proceso. Si falta alguna, el seed dice cuáles
+# son y no escribe nada. Puede valer la misma para todas: nacen temporales.
 cd /opt/odontocrm
 sudo SEED_PASSWORD_ADMIN='la-que-quieras-poner' \
+     SEED_PASSWORD_RECEPCION='la-que-quieras-poner' \
+     SEED_PASSWORD_EGOMEZ='la-que-quieras-poner' \
   odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset
 
-# ¿Qué usuarios hay y quiénes tienen contraseña temporal?
+# ¿Qué usuarios hay, quiénes siguen con contraseña temporal y quién está bloqueado?
+# `--print` no escribe nada: funciona sin las claves (si se le pasan, las comprueba).
 sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js --print
 ```
 
-> La contraseña nueva nace **temporal**: el sistema obliga a cambiarla al entrar. Para
-> reponer la del administrador cuando se ha olvidado, el comando de arriba es el camino
-> (en producción el seed **no** acepta las claves de desarrollo).
+> **`--reset` regenera la contraseña de TODAS las cuentas del seed**, no solo la de una.
+> Si solo se ha olvidado la del administrador, lo fino es dar de alta a cada persona en la
+> aplicación (`/usuarios`) y dejar `--reset` para cuando nadie pueda entrar: la contraseña
+> nueva nace **temporal** y el sistema obliga a cambiarla al entrar (en producción el seed
+> **no** acepta las claves de desarrollo).
 
 - Toda contraseña nueva nace **temporal**: el sistema obliga a cambiarla en el primer
   acceso.
-- **5 intentos fallidos bloquean la cuenta 15 minutos.** Se desbloquea sola; si hay
-  prisa: `npm run seed:users -- --reset` (deja la contraseña sembrada y limpia
-  bloqueos e intentos).
+- **5 intentos fallidos bloquean la cuenta 15 minutos.** Se desbloquea sola; si hay prisa,
+  el seed con `--reset` (la receta de arriba) limpia bloqueos e intentos, pero cambia de paso
+  la contraseña de **todas** las cuentas del seed.
 - **El personal no comparte usuarios**: cada quien entra con el suyo, porque todo lo
   clínico queda auditado con nombre y apellido.
 - Para **dar de baja** a alguien: `/usuarios` → desactivar (no se borra: sus actos

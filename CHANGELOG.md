@@ -4,6 +4,27 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Corrección] — Sembrar usuarios en el servidor: la receta no decía qué claves hacía falta · 2026-10-06
+
+En la puesta en marcha, el comando que enseñaban el RUNBOOK (§5) y `COMANDOS_PRODUCCION.md`
+(§5) —y el que repetía `40-verificar.sh` cuando no había usuarios— moría en producción:
+
+```
+Error: En producción define SEED_PASSWORD_EGOMEZ (mínimo 10 caracteres) antes de sembrar usuarios.
+```
+
+Las tres piezas estaban mal por el mismo motivo: **en producción el seed exige una contraseña
+por CADA cuenta** en el entorno (`SEED_PASSWORD_<USUARIO>`, mínimo 10 caracteres) y no acepta
+las de desarrollo. Las recetas que se documentaban no las llevaban, y las que llevaban una
+sola (`SEED_PASSWORD_ADMIN`) fallaban igual en cuanto la clínica tenía odontólogo propio.
+
+| Defecto | Consecuencia | Corrección |
+| :--- | :--- | :--- |
+| El seed lanzaba el error con la **primera** clave que faltaba | Con tres cuentas había que repetir el comando tres veces para enterarse de todas | Se anotan las que faltan y se avisa **una sola vez**, con la lista completa y el comando de ejemplo |
+| `--print` (el comando para ver quién existe y quién quedó bloqueado) exigía las claves y moría igual | En producción no se podía consultar el estado de las cuentas con la herramienta del propio sistema | `--print` no escribe: funciona sin claves y dice `(la del entorno)` en vez de inventar la de desarrollo |
+| Las recetas de RUNBOOK §5, `COMANDOS_PRODUCCION.md` §5 y la tabla de equivalencias no llevaban las claves; la del RUNBOOK llevaba solo la del administrador | El operador sigue la receta y se queda fuera del sistema sin pista de cómo entrar | Las tres llevan las claves de todas las cuentas (una por odontólogo de `CLINIC.dentists`) y avisan de que `--reset` regenera **todas** |
+| Nada comprobaba lo anterior | El defecto volvería con el próximo odontólogo | `npm run fedora:check` comprueba que todo comando documentado que siembre usuarios nombre las claves de todas las cuentas |
+
 ## [Fedora] — El instalador nuevo: una sola fuente de verdad para las credenciales · 2026-10-05
 
 El rediseño que el ADR 0043 dejó pendiente, implementado. **Un comando instala el servidor

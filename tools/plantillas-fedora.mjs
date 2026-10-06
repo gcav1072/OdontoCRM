@@ -434,6 +434,46 @@ const exigir = (condicion, bien, mal) => {
     `los documentos citan banderas que no existen (${banderasInventadas.join(', ')}): compruébalas con --help`,
   );
 
+  // (7-bis) Sembrar usuarios en producción EXIGE una contraseña por cuenta
+  //     (`SEED_PASSWORD_<USUARIO>`, mínimo 10 caracteres): con `NODE_ENV=production` el seed
+  //     NO acepta las claves de desarrollo y se niega a escribir si falta alguna. Enseñar la
+  //     receta sin ellas deja al operador con un error y sin poder entrar (pasó en el servidor
+  //     con la del odontólogo, que es justo la que se olvida porque sale de `CLINIC.dentists`).
+  const usuariosDelSeed = [
+    'ADMIN',
+    'RECEPCION',
+    ...(leer('packages/contracts/src/clinic.ts').match(/username: '([^']+)'/g) ?? []).map((linea) =>
+      linea.slice(linea.indexOf("'") + 1, -1).toUpperCase(),
+    ),
+  ];
+  /** Los comandos de los bloques de código, con las continuaciones de línea (`\`) ya unidas. */
+  const comandosDocumentados = (texto) =>
+    (texto.match(/```[\s\S]*?```/g) ?? []).flatMap((bloque) => {
+      const comandos = [];
+      let buffer = '';
+      for (const linea of bloque.split('\n')) {
+        buffer = buffer === '' ? linea : `${buffer} ${linea}`;
+        if (linea.trimEnd().endsWith('\\')) continue;
+        comandos.push(buffer);
+        buffer = '';
+      }
+      return comandos;
+    });
+  const recetasIncompletas = [];
+  for (const ruta of ['infra/fedora/RUNBOOK.md', 'docs/COMANDOS_PRODUCCION.md']) {
+    for (const comando of comandosDocumentados(leer(ruta))) {
+      // `--print` no escribe en la base: puede ir sin claves. Lo que se comprueba es lo que siembra.
+      if (!/dist\/seed\.js/.test(comando) || /--print/.test(comando)) continue;
+      const faltan = usuariosDelSeed.filter((u) => !comando.includes(`SEED_PASSWORD_${u}`));
+      if (faltan.length > 0) recetasIncompletas.push(`${ruta}: falta ${faltan.join(', ')}`);
+    }
+  }
+  exigir(
+    recetasIncompletas.length === 0,
+    'las recetas documentadas del seed llevan la clave de cada cuenta en el entorno',
+    `hay recetas de siembra sin todas las claves de producción:\n      ${recetasIncompletas.join('\n      ')}`,
+  );
+
   // (8) La guía explica dónde se cambian los datos de la clínica (otra consulta = otro
   //     membrete, otro QR y otro usuario clínico).
   exigir(

@@ -24,13 +24,18 @@ import { userRoles, users } from './db/schema.js';
  * Todas las contraseñas nacen como **temporales**: el sistema obliga a cambiarlas
  * en el primer acceso. En producción (`NODE_ENV=production`) hay que indicarlas
  * por variables de entorno; no se admiten los valores por defecto de desarrollo.
+ * `--print` es la excepción: no escribe nada, así que funciona sin ellas.
  */
 interface SeedUser {
   username: string;
   fullName: string;
   roles: Role[];
   email: string | null;
-  password: string;
+  /**
+   * Contraseña con la que se siembra. En producción sale del entorno; con `--print` y
+   * sin ella vale `null` («no se conoce»), porque ese modo no escribe en la base.
+   */
+  password: string | null;
   /** Variable de entorno que puede sustituir la contraseña por defecto. */
   passwordEnv: string;
 }
@@ -54,16 +59,36 @@ const soloRecordar = process.argv.includes('--print');
 const config = loadIdentityConfig();
 const production = config.NODE_ENV === 'production';
 
-const resolvePassword = (username: string): string => {
+/**
+ * Claves de producción que faltan, según se van resolviendo. No se lanza el error en
+ * cuanto aparece la primera: se anotan todas y se avisa **una sola vez**, con la lista
+ * completa. Antes salía una por ejecución —con tres cuentas había que repetir el mismo
+ * comando tres veces para enterarse de cuáles faltaban— y en el servidor desplegado ese
+ * error es lo único que se ve.
+ */
+const clavesQueFaltan: string[] = [];
+
+const resolvePassword = (username: string): string | null => {
   const envName = `SEED_PASSWORD_${username.toUpperCase()}`;
   const fromEnv = process.env[envName];
   if (fromEnv !== undefined && fromEnv.length >= 10) return fromEnv;
   if (production) {
-    throw new Error(
-      `En producción define ${envName} (mínimo 10 caracteres) antes de sembrar usuarios.`,
-    );
+    // `--print` no escribe en la base: no necesita las claves, solo recordar quién hay
+    // (es el comando con el que se comprueba si una cuenta quedó bloqueada).
+    if (!soloRecordar) clavesQueFaltan.push(envName);
+    return null;
   }
   return DEVELOPMENT_PASSWORDS[username] ?? DENTIST_DEFAULT_PASSWORD;
+};
+
+/** La clave con la que se ESCRIBE. `null` solo puede pasar con `--print`, que no escribe. */
+const claveParaSembrar = (usuario: SeedUser): string => {
+  if (usuario.password === null) {
+    throw new Error(
+      `No puedo sembrar «${usuario.username}» sin su clave: define ${usuario.passwordEnv}.`,
+    );
+  }
+  return usuario.password;
 };
 
 /**
@@ -100,6 +125,17 @@ const SEED_USERS: SeedUser[] = [
   ...DENTIST_USERS,
 ];
 
+// Antes de tocar la base: si falta alguna clave de producción, se dice cuáles y con qué
+// comando se arregla (mínimo 10 caracteres; la misma sirve para todas, el sistema pedirá
+// cambiarla en el primer acceso). Todo lo que necesita el operador está en este mensaje.
+if (clavesQueFaltan.length > 0) {
+  throw new Error(
+    `En producción define ${clavesQueFaltan.join(', ')} (mínimo 10 caracteres) antes de sembrar usuarios.\n` +
+      `  sudo ${clavesQueFaltan.map((nombre) => `${nombre}='…'`).join(' ')} \\\n` +
+      '    odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset',
+  );
+}
+
 const database = createIdentityDatabase(config);
 
 /**
@@ -129,19 +165,24 @@ const recordarCredenciales = async (): Promise<void> => {
   } catch {
     // Sin base de datos (o sin migrar) se recuerdan igual: es lo que se viene a buscar.
     // eslint-disable-next-line no-console -- script de línea de comandos
-    console.log(
-      '(No se pudo consultar la base: se muestra la contraseña por defecto sin comprobarla.)\n',
-    );
+    console.log('(No se pudo consultar la base: se muestran las credenciales sin comprobarlas.)\n');
   }
 
   for (const seedUser of SEED_USERS) {
     const fila = filas.find((usuario) => usuario.username === seedUser.username);
-    let estado = 'no existe todavía: créalo con  npm run seed:users';
+    // En el servidor el seed se ejecuta con `con-entorno`, no con los guiones de npm:
+    // la receta que se imprime aquí es la que de verdad se puede pegar en la terminal.
+    const receta = production
+      ? 'sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js'
+      : 'npm run seed:users';
+    let estado = `no existe todavía: créalo con  ${receta}`;
 
     if (fila !== undefined) {
       const bloqueada = fila.lockedUntil !== null && fila.lockedUntil.getTime() > Date.now();
       if (bloqueada) {
         estado = `BLOQUEADA por intentos fallidos hasta las ${fila.lockedUntil?.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}`;
+      } else if (seedUser.password === null) {
+        estado = `no se comprueba aquí: en producción la clave vive en el entorno (pásala en ${seedUser.passwordEnv} para verificarla)`;
       } else if (await verifyPassword(seedUser.password, fila.passwordHash)) {
         estado = 'la contraseña por defecto SIGUE valiendo (pedirá cambiarla al entrar)';
       } else {
@@ -151,18 +192,25 @@ const recordarCredenciales = async (): Promise<void> => {
 
     // eslint-disable-next-line no-console -- credenciales temporales de desarrollo
     console.log(
-      `  ${seedUser.username.padEnd(10)} ${seedUser.password.padEnd(26)} roles: ${seedUser.roles.join(', ')}` +
+      `  ${seedUser.username.padEnd(10)} ${(seedUser.password ?? '(la del entorno)').padEnd(26)} roles: ${seedUser.roles.join(', ')}` +
         `\n             ${estado}\n`,
     );
   }
 
-  // eslint-disable-next-line no-console -- script de línea de comandos
-  console.log(
-    'Las pruebas de humo cambian la del `admin` a `prueba-e2e-odontocrm-2026`.\n' +
-      `Restaurar las ${String(SEED_USERS.length)}:  npm run seed:users -- --reset\n` +
-      `Cambiarlas antes de sembrar:  ${SEED_USERS.map((usuario) => usuario.passwordEnv).join(', ')}\n` +
-      'Detalle completo:  docs/COMANDOS.md §5',
-  );
+  if (production) {
+    // En el servidor no hay guiones de npm ni pruebas de humo: lo que sirve es la receta
+    // del RUNBOOK (que es donde está la lista de claves que hay que pasarle al seed).
+    // eslint-disable-next-line no-console -- script de línea de comandos
+    console.log('Siembra y cambios de contraseña:  infra/fedora/RUNBOOK.md §5');
+  } else {
+    // eslint-disable-next-line no-console -- script de línea de comandos
+    console.log(
+      'Las pruebas de humo cambian la del `admin` a `prueba-e2e-odontocrm-2026`.\n' +
+        `Restaurar las ${String(SEED_USERS.length)}:  npm run seed:users -- --reset\n` +
+        `Cambiarlas antes de sembrar:  ${SEED_USERS.map((usuario) => usuario.passwordEnv).join(', ')}\n` +
+        'Detalle completo:  docs/COMANDOS.md §5',
+    );
+  }
 };
 
 const main = async (): Promise<void> => {
@@ -187,7 +235,7 @@ const main = async (): Promise<void> => {
       continue;
     }
 
-    const passwordHash = await hashPassword(seedUser.password);
+    const passwordHash = await hashPassword(claveParaSembrar(seedUser));
 
     if (existing.length > 0) {
       const id = existing[0]?.id;
@@ -231,7 +279,7 @@ const main = async (): Promise<void> => {
     for (const user of list) {
       // eslint-disable-next-line no-console -- credenciales temporales de desarrollo
       console.log(
-        `  ${user.username.padEnd(10)} ${user.password.padEnd(26)} roles: ${user.roles.join(', ')}`,
+        `  ${user.username.padEnd(10)} ${claveParaSembrar(user).padEnd(26)} roles: ${user.roles.join(', ')}`,
       );
     }
   };
