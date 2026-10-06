@@ -255,8 +255,25 @@ for s in "${SERVICIOS[@]}"; do
     if psql "$url" -tAc 'select 1' >/dev/null 2>&1; then
       ok "  $s: la credencial de /etc/odontocrm/$s.env conecta"
     else
-      av "  $s: la credencial de /etc/odontocrm/$s.env NO conecta (¿el bootstrap regeneró las"
-      av "      contraseñas y este archivo quedó con las viejas? Mira $origen y /etc/odontocrm/$s.env)"
+      # Diagnóstico y reparación. Las causas vistas: el archivo quedó con la contraseña vieja,
+      # o tiene **más de una** línea `DATABASE_URL` (una antigua que sobrevivió al filtro por
+      # llevar espacios delante) y entonces cada programa lee una distinta: `psql` la primera
+      # y el cargador del proyecto la última. Se cuenta, se reescribe limpio desde el
+      # repositorio y se vuelve a probar.
+      lineas="$(grep -cE '^[[:space:]]*DATABASE_URL=' "$destino" 2>/dev/null || echo 0)"
+      av "  $s: la credencial de /etc/odontocrm/$s.env NO conecta ($lineas línea(s) DATABASE_URL)"
+      origen_url="$(sed -n 's/^DATABASE_URL=//p' "$origen" | head -1 || true)"
+      if [[ -n "$origen_url" ]]; then
+        grep -vE '^[[:space:]]*DATABASE_URL=' "$destino" >"$tmp" 2>/dev/null || true
+        printf 'DATABASE_URL=%s\n' "$origen_url" >>"$tmp"
+        install -m 0600 -o root -g root "$tmp" "$destino"
+        rm -f "$tmp"
+        if psql "$origen_url" -tAc 'select 1' >/dev/null 2>&1; then
+          ok "  $s: credencial reescrita desde el repositorio y comprobada"
+        else
+          av "  $s: el repositorio tampoco conecta; corre: npm run db:bootstrap"
+        fi
+      fi
     fi
   fi
 done
