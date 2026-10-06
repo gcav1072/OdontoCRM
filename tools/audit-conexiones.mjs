@@ -38,7 +38,7 @@ const METODOS_HTTP = ['get', 'post', 'put', 'patch', 'delete'];
  */
 const FASES_FUTURAS = {
   servicios: ['billing'],
-  permisos: ['billing:void'],
+  permisos: [],
 };
 
 /**

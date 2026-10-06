@@ -2,12 +2,14 @@ import {
   collectPaymentSchema,
   issueInvoiceSchema,
   replaceDraftItemsSchema,
+  voidInvoiceSchema,
   voidPaymentSchema,
 } from '@odontocrm/contracts';
 import { parseOrThrow, requirePermission } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
+import { discardDraft, voidInvoice } from '../billing/credit-note-service.js';
 import { issueInvoice } from '../billing/issue-service.js';
 import { collectPayment, listInvoicePayments, voidPayment } from '../billing/payment-service.js';
 import {
@@ -33,6 +35,7 @@ export const registerBillingRoutes = (app: FastifyInstance, services: BillingSer
   const read = requirePermission('billing:read');
   const write = requirePermission('billing:write');
   const collect = requirePermission('billing:collect');
+  const voidInvoicePermission = requirePermission('billing:void');
 
   /** Pendientes de caja: las sesiones cerradas cuyo borrador sigue sin emitir. */
   app.get('/api/v1/billing/drafts', { preHandler: read }, async () => ({
@@ -98,6 +101,36 @@ export const registerBillingRoutes = (app: FastifyInstance, services: BillingSer
   app.get('/api/v1/billing/invoices/:id', { preHandler: read }, async (request) => {
     const { id } = parseOrThrow(invoiceParamsSchema, request.params);
     return { ...(await getInvoice(db, id)), payments: await listInvoicePayments(db, id) };
+  });
+
+  /**
+   * **Anular una factura emitida**: exige motivo y emite su **nota de crédito** (Art. 22 y 23), que
+   * es un documento aparte con su número y su PDF archivado. La factura no se borra ni se edita.
+   */
+  app.post(
+    '/api/v1/billing/invoices/:id/void',
+    { preHandler: voidInvoicePermission },
+    async (request) => {
+      const { id } = parseOrThrow(invoiceParamsSchema, request.params);
+      const input = parseOrThrow(voidInvoiceSchema, request.body);
+      const resultado = await voidInvoice(
+        { db, blobStore: services.blobStore, pdf: services.pdf },
+        id,
+        input,
+        actorFrom(request),
+      );
+      kickOutbox?.();
+      return resultado;
+    },
+  );
+
+  /** Descartar un **borrador**: no consumió número fiscal, así que no lleva nota de crédito. */
+  app.post('/api/v1/billing/drafts/:id/discard', { preHandler: write }, async (request) => {
+    const { id } = parseOrThrow(invoiceParamsSchema, request.params);
+    const input = parseOrThrow(voidInvoiceSchema, request.body);
+    const resultado = await discardDraft(db, id, input, actorFrom(request));
+    kickOutbox?.();
+    return resultado;
   });
 
   /** El arancel: lo que la caja puede añadir a mano (un cepillo, un gel). */

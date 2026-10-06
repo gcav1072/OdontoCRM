@@ -938,3 +938,53 @@ export const billingInvoiceDetailSchema = billingDraftDetailSchema.extend({
 });
 
 export type BillingInvoiceDetail = z.infer<typeof billingInvoiceDetailSchema>;
+
+/* ── 14. Anular con nota de crédito (Art. 22 y 23; ADR 0048) ──────────────── */
+
+/** Anular exige motivo; el descartar un borrador, también (el `CHECK` lo pide para toda fila anulada). */
+export const voidInvoiceSchema = z
+  .object({ reason: z.string().trim().min(5, 'Explica por qué se anula').max(200) })
+  .strict();
+
+export type VoidInvoiceInput = z.infer<typeof voidInvoiceSchema>;
+
+/**
+ * La **nota de crédito**: documento nuevo, con su numeración y su PDF archivado, que referencia la
+ * factura con **fecha, número y monto copiados** (Art. 23) porque la factura puede anularse después.
+ */
+export const billingCreditNoteSchema = z.object({
+  id: z.uuid(),
+  creditNoteNumber: z.number().int(),
+  /** `NC-000001`. */
+  creditNoteLabel: z.string(),
+  invoiceId: z.uuid(),
+  /** La referencia copiada, no un enlace vivo. */
+  invoiceNumber: z.number().int(),
+  invoiceNumberLabel: z.string(),
+  invoiceIssuedAt: z.string(),
+  invoiceTotalCentsUsd: z.number().int(),
+  /** `total` anula la factura entera; `parcial` (todavía sin usar) ajusta partidas. */
+  kind: z.enum(['total', 'parcial']),
+  reason: z.string(),
+  totalCentsUsd: z.number().int(),
+  exchangeRateMicros: z.number().int(),
+  totalVesCentimos: z.number().int(),
+  pdfSha256: z.string().nullable(),
+  issuedAt: z.string(),
+});
+
+export type BillingCreditNote = z.infer<typeof billingCreditNoteSchema>;
+
+/** Lo que devuelve anular: cómo queda la factura y la nota que la deja sin efecto. */
+export const billingInvoiceVoidedSchema = z.object({
+  invoice: z.object({
+    id: z.uuid(),
+    status: z.enum(INVOICE_STATUSES),
+    voidReason: z.string(),
+    voidedAt: z.string(),
+  }),
+  /** `null` cuando se descartó un **borrador**: nunca fue un documento, así que no hay nota. */
+  creditNote: billingCreditNoteSchema.nullable(),
+});
+
+export type BillingInvoiceVoided = z.infer<typeof billingInvoiceVoidedSchema>;
