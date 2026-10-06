@@ -642,6 +642,14 @@ const exigir = (condicion, bien, mal) => {
   // equipo que los ejecutaba se quedó esperando (timeout) a una dirección que ya no existía.
   // Ahora llevan el marcador `SERVIDOR` y nginx lo sustituye por la dirección con la que
   // llegó el equipo (`$host`).
+  // El tipo MIME tiene que ser comodín: nginx sirve `.sh` como `application/x-sh` por su
+  // mime.types, y con una lista cerrada (`text/plain`) la sustitución **no se aplica** y el
+  // script llega con el marcador («Could not resolve host: SERVIDOR»).
+  exigir(
+    /sub_filter_types \*;/.test(conf),
+    'el sub_filter acepta cualquier tipo MIME (nginx sirve .sh como application/x-sh)',
+    'sub_filter_types no es comodín: la sustitución de SERVIDOR puede no aplicarse (el .sh va como application/x-sh)',
+  );
   exigir(
     (conf.match(/sub_filter 'http:\/\/SERVIDOR'/g) ?? []).length >= 2,
     'el proxy sustituye el marcador SERVIDOR por la dirección real (en los dos bloques)',

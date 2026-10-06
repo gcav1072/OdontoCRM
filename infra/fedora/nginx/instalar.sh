@@ -217,13 +217,21 @@ PS1
 # así que funciona aunque el servidor cambie de IP o de red.
 set -uo pipefail
 [[ "$(id -u)" == 0 ]] || { echo 'se necesita sudo'; exit 1; }
-SERVIDOR_URL='http://SERVIDOR'
+# La dirección la sustituye nginx al servir el archivo (por eso el `| sudo bash` no necesita
+# argumentos). Si llegara sin sustituir —o si prefieres indicarla— se puede pasar:
+#     curl -fsSL http://<servidor>/ca-linux.sh | sudo bash -s -- http://<servidor>
+SERVIDOR_URL="${1:-http://SERVIDOR}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 # Si no llega, el error tiene que decir POR QUÉ y qué comprobar: un «timeout» a secas deja
 # al operador sin nada (nos pasó: el servidor había cambiado de red y el script apuntaba a
 # la dirección vieja).
+# Plan B: si el marcador quedó sin sustituir, se prueba por el nombre antes de rendirse.
+if [[ "$SERVIDOR_URL" == *SERVIDOR* ]]; then
+  SERVIDOR_URL='http://odontocrm.local'
+  echo '· el proxy no sustituyó la dirección: pruebo por el nombre (odontocrm.local)'
+fi
 if ! curl -fsSL --max-time 10 "$SERVIDOR_URL/ca.crt" -o "$tmp/odontocrm-ca.crt"; then
   echo "✖ No pude descargar la CA de $SERVIDOR_URL" >&2
   echo "  Comprueba, en este equipo:" >&2
@@ -232,6 +240,8 @@ if ! curl -fsSL --max-time 10 "$SERVIDOR_URL/ca.crt" -o "$tmp/odontocrm-ca.crt";
   echo "    3. ¿el puerto 80 llega?                      curl -v --max-time 5 $SERVIDOR_URL/ca.crt" >&2
   echo "  Si el servidor cambió de red, vuelve a abrir la página de la CA con la" >&2
   echo "  dirección nueva (o pide al responsable: sudo odontocrm red --arreglar)." >&2
+  echo "  También puedes indicar la dirección a mano:" >&2
+  echo "    curl -fsSL http://<direccion-del-servidor>/ca-linux.sh | sudo bash -s -- http://<direccion-del-servidor>" >&2
   exit 1
 fi
 if [[ -d /etc/pki/ca-trust/source/anchors ]]; then
