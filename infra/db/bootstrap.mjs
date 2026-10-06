@@ -224,7 +224,12 @@ const run = async () => {
 
     if (!roleExists) {
       await admin.query(`create role ${ident(service.role)} login password ${literal(password)}`);
-    } else if (rotate || existingUrl === undefined) {
+    } else {
+      // **Siempre** se aplica la contraseña, no solo al rotarla o al crearla. El `.env` es la
+      // fuente de verdad y la base tiene que coincidir con él: antes, si se desincronizaban
+      // una vez (por ejemplo tras borrar los `.env` de §8.6 y reejecutar el bootstrap), no
+      // volvían a converger nunca y el servicio quedaba en bucle con «password
+      // authentication failed». Es idempotente: aplicar la misma contraseña no cambia nada.
       await admin.query(`alter role ${ident(service.role)} with password ${literal(password)}`);
     }
 
