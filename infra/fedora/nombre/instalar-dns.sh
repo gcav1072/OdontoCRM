@@ -92,8 +92,10 @@ domain-needed
 bogus-priv
 cache-size=1000
 
-# El nombre del servidor → su IP. Se publican las dos formas: la elegida y `.local`
-# (por si algún equipo consulta el .local por DNS en vez de por mDNS).
+# El nombre del servidor → su IP. Se publican las dos formas: la elegida y .local
+# (por si algún equipo consulta el .local por DNS en vez de por mDNS). NADA de comillas
+# invertidas aquí dentro: esto es una cadena con comillas DOBLES y bash las EJECUTA
+# (salía «.local: orden no encontrada» y el comentario quedaba a medias).
 address=/${NOMBRE}/${IP_LAN}
 address=/odontocrm.local/${IP_LAN}
 "

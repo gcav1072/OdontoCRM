@@ -598,6 +598,52 @@ const exigir = (condicion, bien, mal) => {
     `estas unidades ponen Environment= en [Unit] y systemd lo ignora: ${unidadesConEntornoEnUnit.join(', ')}`,
   );
 
+  // (12-bis) Una comilla invertida dentro de una cadena con comillas DOBLES es una
+  //     sustitución de orden: bash intenta EJECUTAR lo de dentro. Pasó en la configuración
+  //     del DNS (`… la elegida y `.local`` → «.local: orden no encontrada», y el texto
+  //     quedaba a medias en el archivo). Dentro de comillas simples es texto y no pasa nada.
+  const comillasInvertidas = [];
+  for (const ruta of [
+    'infra/fedora/odontocrm',
+    'infra/fedora/ensayo-despliegue.sh',
+    'infra/fedora/install.sh',
+    'infra/fedora/instalar-base-fedora.sh',
+    'infra/fedora/nombre/instalar-dns.sh',
+    'infra/fedora/nginx/instalar.sh',
+    'infra/fedora/backup/odontocrm-backup.sh',
+    'infra/fedora/backup/odontocrm-restore.sh',
+    'infra/fedora/backup/crear-rol-respaldo.sh',
+  ]) {
+    for (const [indice, linea] of leer(ruta).split('\n').entries()) {
+      const invertida = linea.indexOf('`');
+      const doble = linea.indexOf('"');
+      const escapada = invertida > 0 && linea[invertida - 1] === '\\';
+      if (invertida !== -1 && doble !== -1 && doble < invertida && !escapada) {
+        comillasInvertidas.push(`${ruta}:${indice + 1}`);
+      }
+    }
+  }
+  exigir(
+    comillasInvertidas.length === 0,
+    'ninguna comilla invertida dentro de comillas dobles (bash la ejecutaría)',
+    `bash EJECUTA lo que va entre comillas invertidas dentro de comillas dobles: ${comillasInvertidas.join(', ')}`,
+  );
+
+  // (12-ter) El aviso del nombre por mDNS no puede comparar contra `$(hostname).local`:
+  //     `hostname` ya es `odontocrm.local` en el despliegue, así que esperaba
+  //     `odontocrm.local.local` y el aviso saltaba SIEMPRE. Además de ruido, tapaba el caso
+  //     real (avahi anunciando un nombre viejo).
+  const comparacionesDobles = [
+    'infra/fedora/odontocrm',
+    'infra/fedora/instalar-base-fedora.sh',
+    'infra/fedora/instalar/10-preparar.sh',
+  ].filter((ruta) => /\$\(hostname\)\.local/.test(leer(ruta)));
+  exigir(
+    comparacionesDobles.length === 0,
+    'nadie compara contra «$(hostname).local» (el nombre ya puede traer el dominio)',
+    `estos guiones esperan «nombre.local.local» y su aviso salta siempre: ${comparacionesDobles.join(', ')}`,
+  );
+
   // (12) Las SONDAS no deben disparar los avisos de error. Un `x="$(… | grep …)"` devuelve 1
   //      cuando no encuentra nada —que es una respuesta válida— y el aviso de ERR lo contaba
   //      como si el guion se hubiera cortado: ruido que tapa los avisos de verdad (pasó al
