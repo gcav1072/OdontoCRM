@@ -194,25 +194,46 @@ PERFIL
   fi
 
   # Scripts de un solo comando para los equipos de la consulta.
+  # OJO: los dos scripts NO llevan una IP grabada. Llevan el marcador `SERVIDOR`, y nginx lo
+  # sustituye al servirlos por la dirección con la que el equipo llegó (`$host`, con
+  # `sub_filter`). Así funcionan aunque el servidor cambie de red: pasó lo contrario y el
+  # equipo que los ejecutaba se quedaba esperando a una dirección que ya no existía.
   cat >"$CA_DIR/ca-windows.ps1" <<'PS1'
 # OdontoCRM · instalar la CA interna en Windows (PowerShell COMO ADMINISTRADOR)
-#   irm http://<IP-del-servidor>/ca-windows.ps1 | iex
+#   irm http://<direccion-del-servidor>/ca-windows.ps1 | iex
 $ErrorActionPreference = 'Stop'
 $destino = Join-Path $env:TEMP 'odontocrm-ca.der'
 Invoke-WebRequest -Uri 'http://SERVIDOR/ca.der' -OutFile $destino
 Import-Certificate -FilePath $destino -CertStoreLocation 'Cert:\LocalMachine\Root' | Out-Null
 Write-Host 'CA instalada. Cierra y vuelve a abrir el navegador.' -ForegroundColor Green
 PS1
-  sed -i "s|http://SERVIDOR/|http://${HOST_IP:-SERVIDOR}/|" "$CA_DIR/ca-windows.ps1"
   chmod 0644 "$CA_DIR/ca-windows.ps1"
 
   cat >"$CA_DIR/ca-linux.sh" <<'SH'
 #!/usr/bin/env bash
 # OdontoCRM · instalar la CA interna en Linux (Fedora/RHEL y Debian/Ubuntu)
-set -euo pipefail
+#
+# El servidor lo pone nginx al servir este archivo (es la dirección con la que llegaste),
+# así que funciona aunque el servidor cambie de IP o de red.
+set -uo pipefail
 [[ "$(id -u)" == 0 ]] || { echo 'se necesita sudo'; exit 1; }
+SERVIDOR_URL='http://SERVIDOR'
 tmp="$(mktemp -d)"
-curl -fsSL 'http://SERVIDOR/ca.crt' -o "$tmp/odontocrm-ca.crt"
+trap 'rm -rf "$tmp"' EXIT
+
+# Si no llega, el error tiene que decir POR QUÉ y qué comprobar: un «timeout» a secas deja
+# al operador sin nada (nos pasó: el servidor había cambiado de red y el script apuntaba a
+# la dirección vieja).
+if ! curl -fsSL --max-time 10 "$SERVIDOR_URL/ca.crt" -o "$tmp/odontocrm-ca.crt"; then
+  echo "✖ No pude descargar la CA de $SERVIDOR_URL" >&2
+  echo "  Comprueba, en este equipo:" >&2
+  echo "    1. ¿estás en la misma red que el servidor?   ip -4 addr | grep inet" >&2
+  echo "    2. ¿responde el servidor?                    ping -c2 $(printf '%s' "$SERVIDOR_URL" | sed 's|http://||')" >&2
+  echo "    3. ¿el puerto 80 llega?                      curl -v --max-time 5 $SERVIDOR_URL/ca.crt" >&2
+  echo "  Si el servidor cambió de red, vuelve a abrir la página de la CA con la" >&2
+  echo "  dirección nueva (o pide al responsable: sudo odontocrm red --arreglar)." >&2
+  exit 1
+fi
 if [[ -d /etc/pki/ca-trust/source/anchors ]]; then
   install -m 0644 "$tmp/odontocrm-ca.crt" /etc/pki/ca-trust/source/anchors/ && update-ca-trust
 elif [[ -d /usr/local/share/ca-certificates ]]; then
@@ -220,10 +241,9 @@ elif [[ -d /usr/local/share/ca-certificates ]]; then
 else
   echo 'no encontré el almacén del sistema; revisa la documentación de tu distribución'; exit 1
 fi
-rm -rf "$tmp"
-echo 'CA instalada. Firefox tiene su propio almacén: activa security.enterprise_roots.enabled'
+echo "✔ CA instalada (desde $SERVIDOR_URL)."
+echo '  Firefox tiene su propio almacén: about:config → security.enterprise_roots.enabled = true'
 SH
-  sed -i "s|http://SERVIDOR/|http://${HOST_IP:-SERVIDOR}/|" "$CA_DIR/ca-linux.sh"
   chmod 0755 "$CA_DIR/ca-linux.sh"
   ok 'scripts de un comando publicados (ca-windows.ps1 y ca-linux.sh)'
   if command -v semanage >/dev/null && [[ "$(getenforce 2>/dev/null)" == "Enforcing" ]]; then

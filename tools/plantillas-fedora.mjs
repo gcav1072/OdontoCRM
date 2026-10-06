@@ -637,6 +637,23 @@ const exigir = (condicion, bien, mal) => {
     'ni INSTALL.md ni README.md mencionan infra/fedora/instalar-servidor.sh',
   );
 
+  // (13-sexies) Los scripts de la CA NO pueden llevar una IP grabada.
+  // Se publicaban con la IP del día de la instalación: cuando el servidor cambió de red, el
+  // equipo que los ejecutaba se quedó esperando (timeout) a una dirección que ya no existía.
+  // Ahora llevan el marcador `SERVIDOR` y nginx lo sustituye por la dirección con la que
+  // llegó el equipo (`$host`).
+  exigir(
+    (conf.match(/sub_filter 'http:\/\/SERVIDOR'/g) ?? []).length >= 2,
+    'el proxy sustituye el marcador SERVIDOR por la dirección real (en los dos bloques)',
+    'falta `sub_filter` para los scripts de la CA: volverían a llevar una IP grabada y fallarían al cambiar de red',
+  );
+  const instaladorNginx = leer('infra/fedora/nginx/instalar.sh');
+  exigir(
+    !/sed -i .*http:\/\/\$\{HOST_IP/.test(instaladorNginx),
+    'los scripts de la CA se publican sin IP grabada',
+    'nginx/instalar.sh vuelve a escribir la IP del momento dentro de los scripts de la CA',
+  );
+
   // (13) Las sondas de red llevan tope: `avahi-resolve` puede quedarse esperando.
   const avahiSinTope = ['infra/fedora/odontocrm', 'infra/fedora/instalar-base-fedora.sh'].filter(
     (ruta) =>

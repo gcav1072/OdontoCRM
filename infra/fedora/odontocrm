@@ -437,6 +437,20 @@ case "$ORDEN" in
         done
         (( faltan == 0 )) || av 'arréglalo con:  sudo bash '"$CODE_DIR"'/infra/fedora/nginx/instalar.sh'
 
+        # Los dos scripts tienen que salir con la dirección REAL, no con el marcador: los
+        # equipos los ejecutan tal cual, y una dirección sin sustituir (o la IP del día de la
+        # instalación) los dejaba esperando hasta el timeout.
+        for script in ca-linux.sh ca-windows.ps1; do
+          servido="$(curl -sS --max-time 5 "http://127.0.0.1/$script" 2>/dev/null | grep -m1 -oE 'http://[^/ ]+' || true)"
+          if [[ -z "$servido" ]]; then
+            av "/$script no dice a qué dirección conectarse (revisa el sub_filter del proxy)"
+          elif [[ "$servido" == *SERVIDOR* ]]; then
+            av "/$script sigue con el marcador sin sustituir: el proxy NO está aplicando sub_filter"
+          else
+            ok "/$script apunta a $servido (la dirección con la que se descargue)"
+          fi
+        done
+
         echo
         printf '%sEn cada aparato%s (el certificado se instala una vez):\n' "$C_TI" "$C_RE"
         printf '  %sAndroid%s   http://%s/ca.crt  → Ajustes → Seguridad → Cifrado y credenciales\n' "$C_TI" "$C_RE" "${IP_CA:-<IP>}"
