@@ -174,20 +174,11 @@ fi
 # ── 2. Despliegue completo --------------------------------------------------
 paso '3/5 · Despliegue (código, unidades, secretos, TLS, firewall, respaldos)'
 
-# ORDEN IMPORTANTE: primero se trasladan los secretos a /etc/odontocrm (fase de
-# configuración del ensayo) y DESPUÉS se migra. En el orden contrario el despliegue se rompe
-# si el bootstrap acaba de regenerar las contraseñas: el bootstrap las escribe en los `.env`
-# del repositorio (los servicios no los leen) y las migraciones se conectan con las de
-# /etc/odontocrm, que son las viejas → «password authentication failed» y los servicios en
-# bucle. Nos pasó en el primer ensayo real del seed.
-if (( ! DRY_RUN )); then
-  if ! bash "$ORIGEN/infra/fedora/ensayo-despliegue.sh" --hasta=config >/tmp/odontocrm-config.log 2>&1; then
-    tail -20 /tmp/odontocrm-config.log
-    morir 'falló el paso de configuración (secretos a /etc/odontocrm); revisa /tmp/odontocrm-config.log'
-  fi
-  ok 'secretos sincronizados con /etc/odontocrm antes de migrar'
-fi
-
+# El ensayo ya hace el orden correcto por dentro: en su fase de configuración traslada los
+# secretos del repositorio a /etc/odontocrm (clave por clave) y **después** migra, así que el
+# bootstrap puede regenerar lo que quiera y los servicios reciben siempre la credencial
+# vigente. (Ojo: `--hasta=X` no significa «parar en X» — solo habilita las fases posteriores
+# a X, que son las opcionales: TLS y respaldos. Por eso no se usa aquí para «solo config».)
 hasta='respaldos'; (( SIN_RESPALDO )) && hasta='tls'
 aviso_resumen="$(
   bash "$ORIGEN/infra/fedora/ensayo-despliegue.sh" "${DRY[@]}" --hasta="$hasta" 2>&1 |
