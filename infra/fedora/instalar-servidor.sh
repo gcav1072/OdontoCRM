@@ -93,6 +93,21 @@ fi
 printf '%sOdontoCRM · instalación completa%s\n' "$C_TI" "$C_RE"
 printf '  repositorio: %s\n  usuario: %s\n' "$ORIGEN" "$USUARIO_REAL"
 
+
+# ── Traza de credenciales ─────────────────────────────────────────────────────
+# Se ha visto que la contraseña de la base y la de los archivos se desfasan **dentro de una
+# misma corrida**, y eso confunde: cada paso parece correcto por separado. Esta traza imprime
+# en cada frontera de paso una HUELLA (nunca el valor) de lo que dice la base y lo que dicen
+# los archivos, así que el paso culpable se ve de un vistazo en vez de deducirlo a ciegas.
+huella() {
+  (( DRY_RUN )) && return 0
+  local base archivo
+  base="$(psql -d postgres -tAc "select rolpassword from pg_authid where rolname='odonto_identity'" 2>/dev/null | sha256sum | cut -c1-10)"
+  archivo="$(grep -E '^DATABASE_URL=' "$ORIGEN/services/identity/.env" 2>/dev/null | sha256sum | cut -c1-10)"
+  printf '  %s· traza [%s] base=%s archivo=%s%s\n' "$C_DIM" "$1" "${base:-?}" "${archivo:-?}" "$C_RE"
+}
+C_DIM=$'\033[2m'; C_RE=${C_RE:-$'\033[0m'}
+
 # ── 0. La máquina -----------------------------------------------------------
 paso '1/5 · Preparar la máquina (paquetes, PostgreSQL, Node, nginx, pg_hba)'
 if (( SIN_NOMBRE )); then
@@ -107,6 +122,7 @@ fi
 ok 'máquina lista'
 
 # ── 1. Bases, credenciales y usuarios ---------------------------------------
+huella '1 · después de preparar la máquina'
 paso '2/5 · Bases, credenciales y usuarios'
 cd "$ORIGEN" || morir "no puedo entrar en $ORIGEN"
 
@@ -200,6 +216,7 @@ if (( ! DRY_RUN )); then
   fi
 fi
 
+huella '2 · después del bootstrap'
 # ── 2. Despliegue completo --------------------------------------------------
 paso '3/5 · Despliegue (código, unidades, secretos, TLS, firewall, respaldos)'
 
@@ -224,6 +241,7 @@ if (( ! DRY_RUN )) && [[ -x /usr/local/bin/odontocrm ]]; then
     av 'revisa las credenciales antes de dar la instalación por buena'
 fi
 
+huella '3 · después del despliegue'
 # ── 3. El nombre en los demás equipos --------------------------------------
 paso '4/5 · El nombre para los equipos de la consulta'
 if (( CON_DNS )); then
@@ -237,6 +255,7 @@ else
 fi
 
 # ── 4. Resumen --------------------------------------------------------------
+huella '4 · final'
 paso '5/5 · Cómo entrar desde los aparatos'
 IP_LAN="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1 || true)"
 [[ -n "$IP_LAN" ]] || IP_LAN="<IP-del-servidor>"
