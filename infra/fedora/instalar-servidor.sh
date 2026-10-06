@@ -215,6 +215,15 @@ aviso_resumen="$(
 )" || { printf '%s\n' "$aviso_resumen"; morir "falló el despliegue (registro: /tmp/odontocrm-instalacion.log)"; }
 printf '%s\n' "$aviso_resumen"
 
+# Comprobación final: con el despliegue ya hecho, `odontocrm` está instalado y se verifica que
+# **la credencial que leen los servicios y las migraciones** (/etc/odontocrm) siga coincidiendo
+# con la de la base. Es el paso que en una PC nueva cierra el círculo; en una que se repite,
+# repara cualquier desfase.
+if (( ! DRY_RUN )) && [[ -x /usr/local/bin/odontocrm ]]; then
+  /usr/local/bin/odontocrm sincronizar-credenciales --desde="$ORIGEN" ||
+    av 'revisa las credenciales antes de dar la instalación por buena'
+fi
+
 # ── 3. El nombre en los demás equipos --------------------------------------
 paso '4/5 · El nombre para los equipos de la consulta'
 if (( CON_DNS )); then

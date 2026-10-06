@@ -238,6 +238,13 @@ guiones que ya existen— y termina diciendo cómo entrar desde cada aparato:
 | 4. El nombre | mDNS; con `--con-dns`, además el **DNS propio** (`infra/fedora/nombre/instalar-dns.sh`) para que funcione en todos los aparatos |
 | 5. Resumen | `tools/estado.mjs --alertas`, `odontocrm certificado` y la página del certificado para los equipos |
 
+Y en dos momentos —después del bootstrap y al final— el seed ejecuta
+`odontocrm sincronizar-credenciales --desde=<repositorio>`, que pone de acuerdo las
+credenciales de la base, los `.env` del repositorio y `/etc/odontocrm` y **comprueba cada una
+con una conexión real**. Es el paso que evita la clase de fallo más costosa: que la base y el
+archivo que leen los servicios digan cosas distintas (el síntoma es un
+«password authentication failed» a mitad del despliegue, sin decir cuál de los dos está mal).
+
 Es **idempotente** (repetirlo no rompe nada) y admite `--dry-run`, `--sin-respaldo`,
 `--sin-nombre` y `--admin-url=` si tu superusuario necesita contraseña.
 

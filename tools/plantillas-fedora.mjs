@@ -632,6 +632,21 @@ const exigir = (condicion, bien, mal) => {
     'el seed cubre la instalación completa (máquina, bases, usuarios, despliegue, respaldos y nombre)',
     `al seed le falta: ${sinPieza.join(', ')}`,
   );
+  // El seed tiene que usar el comando que sincroniza y **comprueba** las credenciales: es el
+  // arreglo de la clase de fallo que más rondas costó (base y /etc desfasados), y en una PC
+  // nueva es la única forma de dejar constancia de que la credencial que leen los servicios
+  // es la misma que la de la base.
+  exigir(
+    /sincronizar-credenciales/.test(seed),
+    'el seed sincroniza y comprueba las credenciales (base y /etc de acuerdo)',
+    'el seed no llama a `odontocrm sincronizar-credenciales`: una PC nueva podría quedar con la base y /etc desfasados',
+  );
+  exigir(
+    /sincronizar-credenciales/.test(guia) &&
+      /sincronizar-credenciales/.test(leer('infra/fedora/RUNBOOK.md')),
+    'la guía y el RUNBOOK explican `odontocrm sincronizar-credenciales`',
+    'ni INSTALL.md ni RUNBOOK.md mencionan `odontocrm sincronizar-credenciales`',
+  );
   exigir(
     /instalar-servidor\.sh/.test(guia) && /instalar-servidor\.sh/.test(leer('README.md')),
     'la guía y el README presentan el seed como el camino de una PC nueva',
