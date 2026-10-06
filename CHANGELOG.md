@@ -4,6 +4,123 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Red] — El servidor se adapta solo cuando cambia la IP (y el nombre en Android) · 2026-10-06
+
+Probar en un portátil que cambia de red destapó el último hueco de «lo que se queda apuntando
+a la red anterior»: al cambiar la IP se adaptaban el firewall, el certificado y `WEB_ORIGIN`,
+pero **el DNS del nombre se quedaba con la dirección vieja**. Con la IP anterior en
+`listen-address`, `dnsmasq` ni siquiera escucha (`bind-dynamic` espera una dirección que ya
+no existe), así que los Android —que **no** resuelven `.local` por mDNS— dejaban de resolver
+`odontocrm.local` sin que nadie se enterara. El certificado no tenía nada que ver: por IP
+entraban seguros.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `odontocrm red` | Ahora también comprueba el **DNS del nombre**: que `listen-address` y cada `address=` apunten a la IP de ahora, que `dnsmasq` esté activo y que **escuche de verdad** en esa dirección. Si está desalineado, lo cuenta como problema y dice cómo arreglarlo |
+| `odontocrm red --arreglar` | Reescribe el DNS con la IP actual (reutilizando `nombre/instalar-dns.sh`: esa configuración sigue teniendo un solo dueño) y comprueba con `dig` que responde |
+| `odontocrm-red.timer` + `.service` | **Nuevos**: cada 5 minutos ejecutan `odontocrm red --arreglar --si-cambio`. Guarda la última IP con la que se adaptó todo (`/var/lib/odontocrm/red-ultima-ip`) y, si no cambió, **no toca nada** (ni certificado ni servicios). En la clínica, con IP fija, nunca hace nada; en un portátil que cambia de red, deja firewall, certificado, CORS y DNS al día solo |
+| `fedora:check` | Dos candados: **toda unidad de `infra/fedora/systemd/` se instala en el despliegue** (una unidad que nadie copia es un archivo muerto) y el temporizador de la red usa `--si-cambio`. El primero encontró que a la unidad nueva le faltaba el `ExecStart` |
+
+Y una corrección de documentación con la prueba real de la consulta: la tabla de equipos decía
+que **Android «suele resolver» `.local`** (probado en un Pixel 7); con un Pixel 7 y un Redmi
+Note 8 Pro delante, el resultado es que **no lo resuelve**. `CERTIFICADO_EN_LOS_EQUIPOS.md`
+ahora lo dice tal cual y manda al DNS propio, con el detalle que se olvida: el móvil tiene que
+usar este servidor como DNS **y con el «DNS privado» desactivado**.
+
+Y otro fallo latente que apareció al validar las unidades con `systemd-analyze verify`:
+`odontocrm-backup.service` ponía `Environment=TZ=America/Caracas` en la sección **`[Unit]`**,
+donde systemd **lo ignora** («Unknown key» en el journal) — así que el respaldo diario corría
+con la zona horaria del sistema y la carpeta del día podía caer en la fecha equivocada, justo
+lo que ese comentario decía evitar. Ahora está en `[Service]`, y `fedora:check` comprueba que
+ninguna unidad vuelva a poner `Environment=` en `[Unit]`.
+
+### Lo que encontró la primera prueba en la máquina de verdad
+
+Poner esto en la PC de pruebas (que acababa de cambiar de red) encontró seis cosas más, y
+todas eran del mismo tipo: **algo que falla y no lo dice**.
+
+| Defecto | Síntoma real | Corrección |
+| :--- | :--- | :--- |
+| `instalar-dns.sh` arrancaba dnsmasq con `systemctl enable --now` | Un dnsmasq **ya activo no se reinicia** con `--now`: seguía esperando la IP anterior (`bind-dynamic`) y el 53 no escuchaba en la LAN, aunque el guion dijera «dnsmasq activo» y `odontocrm red` creyera que el DNS estaba bien | `enable` + **`restart`**, y se dice que se reinició con esta configuración |
+| El mismo guion usaba `$CODE_DIR` sin definirla (y con la ruta mal: `$CODE_DIR/../nginx/…`) | Con `set -u` moría **al final**, después de dejar el DNS configurado, así que `odontocrm red --arreglar` lo contaba como «no pude actualizar el DNS propio» con el trabajo hecho | Se define `CODE_DIR` al principio y el resumen cita la ruta correcta del instalador de nginx |
+| Dos sondas de `odontocrm red` sin `|| true` (`ss … \| grep :443`, `firewall-cmd … \| grep`) | Con nginx parado o sin reglas por rango, `grep` devuelve 1 → con `pipefail` el aviso de ERR imprimía «✖ un comando devolvió error» en mitad de un diagnóstico **correcto**, tapando el dato | Guardadas. Y la comprobación de sondas de `fedora:check` ahora también mira **tuberías sueltas**: encontró y se arreglaron cuatro más (incluidas las de `openssl … \| sed` del certificado) |
+| `nombre/instalar-dns.sh` llevaba **comillas invertidas dentro de una cadena con comillas dobles** | Bash las **ejecuta**: en mitad de la instalación del DNS salía `.local: orden no encontrada` y el comentario quedaba a medias en el archivo | Quitadas, y `fedora:check` comprueba que ninguna comilla invertida viva dentro de comillas dobles en los guiones del despliegue |
+| `odontocrm actualizar` avisaba «avahi sigue anunciando …» **siempre** | Comparaba con `$(hostname).local`, y `hostname` ya es `odontocrm.local` → esperaba `odontocrm.local.local`. Además de ruido, tapaba el caso real (avahi con un nombre viejo) | Se compara con el nombre ya normalizado (mismo criterio en `instalar-base-fedora.sh`), con candado |
+| `30-desplegar.sh` migraba sin comprobar la base | Con PostgreSQL parado (lo había parado `odontocrm parar --todo`), lo que se veía era una traza de Node con `ECONNREFUSED 127.0.0.1:5432` y nada que decir qué hacer | Antes de migrar comprueba `pg_isready` y dice: «arráncalo y repite: `sudo odontocrm arrancar`» |
+
+Y una confirmación: el aviso de contraseña temporal del paso 5/9 («se imprime UNA vez») es
+fiable — se comprobó contra la base que las cuentas que el seed dice crear son exactamente las
+que aparecen con `must_change_password`.
+
+## [Instalador] — Pregunta lo que hace falta y siembra solo el administrador · 2026-10-06
+
+Instalar ya no termina con deberes: el instalador **pregunta** lo que no se puede inventar
+y lo deja en su sitio antes de arrancar los servicios.
+
+```bash
+sudo bash infra/fedora/instalar/instalar.sh
+#  Contraseña del administrador  → se crea UNA cuenta: admin
+#  Token del bot de Telegram     → comprobado contra Telegram antes de guardarlo
+#  WhatsApp Cloud API (4 datos)  → opcional, con «¿configurar ahora? s/N»
+```
+
+Antes había que pelearse con esto **después** del despliegue: el token no llegaba al
+servicio (se ponía en `/opt/odontocrm/services/notifications/.env`, que en el servidor no
+lo lee nadie: systemd carga `/etc/odontocrm/*.env`) y el seed creaba tres cuentas —`admin`,
+`recepcion` y el odontólogo— que la clínica no había pedido.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `instalar.sh` | Pregunta con `read -s` (nada queda en pantalla ni en registros), valida longitudes, comprueba el token con `getMe` y resume lo que va a configurar. Banderas para desatenderlo (`--clave-admin=`, `--token-telegram=`, `--whatsapp-…`) y `--sin-preguntas`. Sin terminal no pregunta nada |
+| `aprovisionar.mjs` | Escribe en `notifications.env` los tokens que le llegan por entorno; lo que no venga se conserva (una segunda instalación no borra el token de nadie) |
+| `seed.js` | `--usuarios=<lista>` siembra solo esas cuentas (y en producción solo exige sus claves); `--ocultar-claves=` no imprime las que eligió una persona. Sin bandera se comporta como siempre (dev y pruebas) |
+| `30-desplegar.sh` | Siembra solo `admin` (`USUARIOS_SEED`), usa la contraseña que eligió el operador y **el registro del seed ya no queda en `/tmp` a 644** (nacía con la contraseña dentro): va a `/root`, en 0600, y se borra al terminar bien |
+| `desinstalar.sh` | **Nuevo**: deja la máquina como si el instalador no hubiera pasado (unidades, código, secretos, bases, roles, proxy, certificado, firewall y SELinux). Exige `--si`; sin él solo enseña lo que borraría. Antes guarda `/etc/odontocrm` y un `pg_dump` de cada base en `/root/odontocrm-antes-de-desinstalar-<fecha>/` |
+| `fedora:check` | Tres candados nuevos: las recetas del seed llevan la clave de cada cuenta (respetando `--usuarios=`), **ninguna pieza pregunta nada** (una actualización sin terminal se colgaría) y `instalar.sh` pregunta de verdad y se puede desatender |
+
+Los e2e del repositorio siguen igual: en desarrollo y en las pruebas se siembran las tres
+cuentas de siempre (`--con-todas-las-cuentas` en el instalador).
+
+### Lo que encontró la primera prueba real (y quedó cerrado)
+
+Probar el ciclo completo —desinstalar, instalar, entrar— encontró cinco defectos que
+habrían dado exactamente la «vorágine de pruebas fallidas» que el ADR 0043 dejó atrás:
+
+| Defecto | Síntoma real | Corrección |
+| :--- | :--- | :--- |
+| El desinstalador borraba `/opt/odontocrm` aunque fuera **el directorio de la terminal** | El intérprete se quedó sin directorio (`getcwd: no se puede acceder a los directorios padre`) y la instalación siguiente murió en el paso 3/4 con `fatal: esta operación debe ser realizada en un árbol de trabajo` — parecía un fallo del código y no lo era | Se comprueba antes de tocar nada: si la terminal está dentro de una ruta que se borra, **se niega a seguir (código 11)** y dice `cd ~`. Y `comun.sh` sigue desde `/` si el directorio ya no existe, para que ninguna pieza se caiga por eso |
+| El volcado de cada base se hacía **troceando la URL a mano** y con `2>/dev/null` | Nueve «no pude volcar … (¿la base ya no está?)» **sin el motivo**, y las bases quedaron sin copia | `pg_dump` recibe **la URL entera** que usa el servicio (la cadena que ya está probada) y, si falla, se enseña el error de `pg_dump` y se guarda en `<base>.error` |
+| El `DROP DATABASE`/`DROP ROLE` también ocultaba la salida | «no pude borrar la base … (míralo a mano)» sin decir por qué | Se enseña el motivo. Y si un volcado falló, **esa base no se borra**: la copia es la única red con pacientes dentro |
+| **El propio instalador exportaba las claves vacías** (`WHATSAPP_TOKEN=''`) | Las migraciones de notifications murieron con `ConfigError: WHATSAPP_TOKEN: el valor es más corto o menor de lo permitido`. Una variable **vacía no es «ausente»** para los esquemas de los servicios, y `con-entorno` pasa el entorno del proceso tal cual: el instalador envenenaba el entorno de sus hijos | Se exporta **solo lo que tiene valor**. Probado con el código compilado: con las variables vacías exportadas sale el `ConfigError` exacto; sin ellas la configuración carga |
+| `instalar-base-fedora.sh` añadía `.local` a un nombre que ya lo traía | El resumen decía «los equipos entran por https://odontocrm.local.local» | Solo se añade si el nombre no trae dominio (mismo criterio que `nombre_fqdn`) |
+
+### Arreglado de paso
+
+- `aprovisionar.mjs` no pasaba `npm run lint` (`no-control-regex` en la comprobación de
+  caracteres de control de `sqlTexto`): ahora lleva la misma excepción razonada que
+  `packages/contracts` usa en sus dos limpiadores.
+
+## [Corrección] — Sembrar usuarios en el servidor: la receta no decía qué claves hacía falta · 2026-10-06
+
+En la puesta en marcha, el comando que enseñaban el RUNBOOK (§5) y `COMANDOS_PRODUCCION.md`
+(§5) —y el que repetía `40-verificar.sh` cuando no había usuarios— moría en producción:
+
+```
+Error: En producción define SEED_PASSWORD_EGOMEZ (mínimo 10 caracteres) antes de sembrar usuarios.
+```
+
+Las tres piezas estaban mal por el mismo motivo: **en producción el seed exige una contraseña
+por CADA cuenta** en el entorno (`SEED_PASSWORD_<USUARIO>`, mínimo 10 caracteres) y no acepta
+las de desarrollo. Las recetas que se documentaban no las llevaban, y las que llevaban una
+sola (`SEED_PASSWORD_ADMIN`) fallaban igual en cuanto la clínica tenía odontólogo propio.
+
+| Defecto | Consecuencia | Corrección |
+| :--- | :--- | :--- |
+| El seed lanzaba el error con la **primera** clave que faltaba | Con tres cuentas había que repetir el comando tres veces para enterarse de todas | Se anotan las que faltan y se avisa **una sola vez**, con la lista completa y el comando de ejemplo |
+| `--print` (el comando para ver quién existe y quién quedó bloqueado) exigía las claves y moría igual | En producción no se podía consultar el estado de las cuentas con la herramienta del propio sistema | `--print` no escribe: funciona sin claves y dice `(la del entorno)` en vez de inventar la de desarrollo |
+| Las recetas de RUNBOOK §5, `COMANDOS_PRODUCCION.md` §5 y la tabla de equivalencias no llevaban las claves; la del RUNBOOK llevaba solo la del administrador | El operador sigue la receta y se queda fuera del sistema sin pista de cómo entrar | Las tres llevan las claves de todas las cuentas (una por odontólogo de `CLINIC.dentists`) y avisan de que `--reset` regenera **todas** |
+| Nada comprobaba lo anterior | El defecto volvería con el próximo odontólogo | `npm run fedora:check` comprueba que todo comando documentado que siembre usuarios nombre las claves de todas las cuentas |
+
 ## [Facturación] — El contrato del módulo y las partidas en el evento de cierre · 2026-10-06
 
 Arranque de la Fase 11 ([`docs/feat_billing.md`](docs/feat_billing.md)), **todavía sin servicio**: lo

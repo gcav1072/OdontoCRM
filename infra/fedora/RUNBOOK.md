@@ -88,7 +88,9 @@ sudo ls -lh /var/backups/odontocrm | tail -5
 sudo odontocrm credenciales   # ¿las 9 credenciales de /etc/odontocrm conectan? (no copia nada)
 sudo odontocrm nombre          # ¿los equipos entran por nombre? ¿qué falta?
 sudo odontocrm red             # ¿en qué IP está y qué apunta a la red anterior?
-sudo odontocrm red --arreglar  # adaptarlo (firewall, certificado y CORS) a la red actual
+sudo odontocrm red --arreglar  # adaptarlo (firewall, certificado, CORS y DNS del nombre)
+                               # lo mismo corre solo cada 5 min: odontocrm-red.timer
+                               # (con --si-cambio: si la IP no cambió, no toca nada)
 sudo odontocrm parar           # detener los 9 (nginx y PostgreSQL se quedan)
 sudo odontocrm parar --todo    # …y también nginx y PostgreSQL (sistema parado del todo)
 sudo odontocrm arrancar        # arrancarlos en orden y verificar
@@ -217,30 +219,42 @@ ella, el sistema no se usa con pacientes reales.
 
 ## 5. Usuarios y contraseñas
 
-Las cuentas se crean desde la aplicación (`/usuarios`, permiso `users:manage`, solo
-el administrador) o con el seed, que es lo que se usa en la puesta en marcha:
+**La instalación crea una sola cuenta: `admin`** (y pregunta su contraseña; ver §2). El
+resto del personal se da de alta desde la aplicación (`/usuarios`, permiso `users:manage`,
+solo el administrador), que es donde tiene sentido decidir el rol y los datos de cada uno.
+Las recetas de aquí son para lo que se hace **después**, a mano:
 
 ```bash
-# Crea lo que falte (no toca lo que ya existe). En producción el seed EXIGE la contraseña
-# en el entorno (`SEED_PASSWORD_<USUARIO>`), así que se pasa en la misma línea que el
-# comando; `con-entorno` la reenvía al proceso.
+# Resetear la contraseña del ADMINISTRADOR (lo normal: nadie más se siembra).
+# En producción el seed EXIGE la contraseña en el entorno (`SEED_PASSWORD_ADMIN`, mínimo
+# 10 caracteres) y no acepta las de desarrollo; `con-entorno` se la reenvía al proceso.
 cd /opt/odontocrm
 sudo SEED_PASSWORD_ADMIN='la-que-quieras-poner' \
+  odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset --usuarios=admin
+
+# Si en su día se sembraron más cuentas (instalación vieja, pruebas): una clave por cuenta.
+# Sin `--usuarios=` el seed exige la de TODAS —admin, recepcion y un odontólogo por
+# `CLINIC.dentists`—, y si falta alguna dice cuáles son y no escribe nada.
+sudo SEED_PASSWORD_ADMIN='la-que-quieras-poner' \
+     SEED_PASSWORD_RECEPCION='la-que-quieras-poner' \
+     SEED_PASSWORD_EGOMEZ='la-que-quieras-poner' \
   odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset
 
-# ¿Qué usuarios hay y quiénes tienen contraseña temporal?
+# ¿Qué usuarios hay, quiénes siguen con contraseña temporal y quién está bloqueado?
+# `--print` no escribe nada: funciona sin las claves (si se le pasan, las comprueba).
 sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js --print
 ```
 
-> La contraseña nueva nace **temporal**: el sistema obliga a cambiarla al entrar. Para
-> reponer la del administrador cuando se ha olvidado, el comando de arriba es el camino
-> (en producción el seed **no** acepta las claves de desarrollo).
+> **`--reset` cambia la contraseña de las cuentas que se siembren**, así que con
+> `--usuarios=admin` toca solo la del administrador (lo que casi siempre se quiere). La
+> contraseña nueva nace **temporal** y el sistema obliga a cambiarla al entrar; en
+> producción el seed **no** acepta las claves de desarrollo.
 
 - Toda contraseña nueva nace **temporal**: el sistema obliga a cambiarla en el primer
   acceso.
-- **5 intentos fallidos bloquean la cuenta 15 minutos.** Se desbloquea sola; si hay
-  prisa: `npm run seed:users -- --reset` (deja la contraseña sembrada y limpia
-  bloqueos e intentos).
+- **5 intentos fallidos bloquean la cuenta 15 minutos.** Se desbloquea sola; si hay prisa,
+  el seed con `--reset` (la receta de arriba) limpia bloqueos e intentos, pero cambia de paso
+  la contraseña de las cuentas que siembres.
 - **El personal no comparte usuarios**: cada quien entra con el suyo, porque todo lo
   clínico queda auditado con nombre y apellido.
 - Para **dar de baja** a alguien: `/usuarios` → desactivar (no se borra: sus actos
@@ -251,14 +265,15 @@ sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js --pri
 ## 6. El bot de Telegram
 
 El token vive **solo** en `/etc/odontocrm/notifications.env` y nunca se comparte por
-chat ni se pega en el repositorio.
+chat ni se pega en el repositorio. **La instalación ya lo pregunta** (`instalar.sh`) y lo
+comprueba contra Telegram antes de guardarlo; esto es para ponerlo o rotarlo después:
 
 ```bash
 # Comprobar que está vivo
 sudo odontocrm con-entorno notifications -- node tools/telegram-menu.mjs   # menú del bot
 
-# Rotar el token (BotFather → /revoke → token nuevo)
-sudo nano /etc/odontocrm/notifications.env     # TELEGRAM_BOT_TOKEN=…
+# Ponerlo o rotarlo (BotFather → /revoke → token nuevo)
+sudo nano /etc/odontocrm/notifications.env     # TELEGRAM_BOT_TOKEN=…  (+ USERNAME, sin @)
 sudo systemctl restart odontocrm@notifications.service
 journalctl -u odontocrm@notifications -n 30 --no-pager
 ```
@@ -266,6 +281,10 @@ journalctl -u odontocrm@notifications -n 30 --no-pager
 Señales de que algo va mal con el bot: en `/notificaciones` la tarjeta dice «Modo
 simulado» (no hay token o el servicio no lo ve) o «Sin conexión» (Telegram no
 contesta); los avisos quedan en cola y se reintentan solos.
+
+**WhatsApp** va en el mismo archivo (`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`,
+`WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`); la instalación también los pregunta.
+Sin los cuatro, ese canal no se activa y el resto sigue igual.
 
 > **Un solo poller.** Si algún día se levanta una segunda copia del servicio de
 > notificaciones, Telegram responde `409 Conflict` y ninguno de los dos funciona.

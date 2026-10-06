@@ -36,6 +36,7 @@ trap 'codigo=$?; if (( codigo != 0 )) && [[ "$BASH_COMMAND" != exit* ]]; then pr
 
 CODE_DIR="${CODE_DIR:-/opt/odontocrm}"
 ETC_DIR="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}"
+DATA_DIR="${ODONTOCRM_DATA_DIR:-/var/lib/odontocrm}"
 SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting billing)
 
 C_OK=$'\e[32m'; C_AV=$'\e[33m'; C_ER=$'\e[31m'; C_TI=$'\e[1m'; C_RE=$'\e[0m'
@@ -48,6 +49,36 @@ necesita_root() {
   [[ $EUID -eq 0 ]] && return 0
   err "esta orden necesita sudo: sudo odontocrm $ORDEN"
   exit 1
+}
+
+# ── La red, que en un portátil de pruebas cambia sola ─────────────────────────
+# Se apunta con qué IP quedó todo adaptado (`odontocrm red --arreglar`): el temporizador
+# `odontocrm-red.timer` compara con esto y, mientras la red no cambie, no toca nada (ni
+# reemite el certificado ni reinicia servicios cada cinco minutos). Es estado, no
+# configuración: por eso vive en /var/lib y no en /etc.
+ULTIMA_IP_ARCHIVO="$DATA_DIR/red-ultima-ip"
+
+guardar_ip_red() { # $1 = IP con la que quedó adaptado todo
+  mkdir -p "$DATA_DIR" 2>/dev/null || true
+  printf '%s\n' "$1" >"$ULTIMA_IP_ARCHIVO" 2>/dev/null || true
+}
+
+# ¿El DNS propio (si está instalado) publica la IP de AHORA? Al cambiar de red se queda
+# con la anterior y dnsmasq ni siquiera escucha —`bind-dynamic` espera una dirección que
+# ya no existe—, así que los Android, que no entienden mDNS, dejan de resolver el nombre
+# y nadie se entera. Sin DNS propio esto no es un problema: devuelve 0.
+DNS_CONF="${ODONTOCRM_DNS_CONF:-/etc/dnsmasq.d/odontocrm.conf}"
+
+dns_propio_coherente() { # $1 = IP de la LAN
+  local conf="$DNS_CONF" ip="$1"
+  [[ -f "$conf" ]] || return 0
+  systemctl is-active --quiet dnsmasq 2>/dev/null || return 1
+  grep -qE "^listen-address=${ip}$" "$conf" || return 1
+  # Toda línea `address=/<nombre>/<ip>` tiene que apuntar a la IP de ahora.
+  if grep -E '^address=/' "$conf" | grep -qv "/${ip}$"; then return 1; fi
+  # Y tiene que estar escuchando de verdad ahí (el archivo puede estar bien y el proceso no).
+  ss -lun 2>/dev/null | grep -q "${ip}:53" || return 1
+  return 0
 }
 
 ayuda() {
@@ -100,11 +131,14 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
   sudo odontocrm red               En qué IP se está sirviendo y con qué dirección entrar
                                    desde otro equipo. Comprueba lo que se queda apuntando
                                    a la red anterior al cambiar de wifi/router (firewall,
-                                   certificado, CORS y el nombre mDNS).
+                                   certificado, CORS, el nombre mDNS y el DNS propio).
   sudo odontocrm red --arreglar    Lo adapta solo: firewall por zona (sigue a la interfaz,
                                    no a un rango fijo), certificado reemitido con la IP
-                                   de ahora (misma CA: los equipos no tocan nada) y
-                                   WEB_ORIGIN actualizado.
+                                   de ahora (misma CA: los equipos no tocan nada),
+                                   WEB_ORIGIN y el DNS del nombre actualizados.
+                                   El temporizador `odontocrm-red.timer` lo ejecuta cada
+                                   5 minutos con --si-cambio: si la IP no cambió, no
+                                   toca nada (útil en un portátil que cambia de red).
   sudo odontocrm selinux           Denegaciones de SELinux de hoy, con la causa más
                                    probable y el comando que lo arregla. «Sin
                                    denegaciones» es lo que quieres ver.
@@ -343,19 +377,25 @@ case "$ORDEN" in
     # (pasa porque `systemctl restart` no siempre reemplaza el proceso), los equipos no
     # resuelven `odontocrm.local`. Se corrige aquí, que es donde uno lo espera.
     if command -v avahi-resolve >/dev/null 2>&1; then
+      # `hostname` puede ser YA el nombre completo (`odontocrm.local`, que es como lo deja el
+      # instalador): añadirle `.local` otra vez daba `odontocrm.local.local` y este aviso
+      # saltaba SIEMPRE —aunque avahi estuviera anunciando el nombre correcto—, con lo que
+      # dejaba de avisar de verdad cuando el nombre se queda viejo.
+      nombre_esperado="$(hostname)"
+      [[ "$nombre_esperado" == *.* ]] || nombre_esperado="${nombre_esperado}.local"
       anunciado="$(pgrep -a avahi-daemon 2>/dev/null | grep -oP 'running \[\K[^]]+' | head -1 || true)"
-      if [[ -n "$anunciado" && "$anunciado" != "$(hostname).local" ]]; then
+      if [[ -n "$anunciado" && "$anunciado" != "$nombre_esperado" ]]; then
         systemctl stop avahi-daemon.socket avahi-daemon.service >/dev/null 2>&1 || true
         systemctl start avahi-daemon.socket avahi-daemon.service >/dev/null 2>&1 || true
         for _ in $(seq 1 10); do
           anunciado="$(pgrep -a avahi-daemon 2>/dev/null | grep -oP 'running \[\K[^]]+' | head -1 || true)"
-          [[ "$anunciado" == "$(hostname).local" ]] && break
+          [[ "$anunciado" == "$nombre_esperado" ]] && break
           sleep 1
         done
-        if [[ "$anunciado" == "$(hostname).local" ]]; then
+        if [[ "$anunciado" == "$nombre_esperado" ]]; then
           ok "mDNS: avahi anuncia $anunciado (antes anunciaba otro nombre)"
         else
-          av "avahi sigue anunciando «$anunciado»: reinícialo a mano (systemctl restart avahi-daemon)"
+          av "avahi sigue anunciando «$anunciado» y no $nombre_esperado: revisa journalctl -u avahi-daemon"
         fi
       fi
     fi
@@ -391,7 +431,7 @@ case "$ORDEN" in
     if [[ -f /etc/pki/tls/certs/odontocrm.crt ]]; then
       ok "servidor: /etc/pki/tls/certs/odontocrm.crt"
       openssl x509 -in /etc/pki/tls/certs/odontocrm.crt -noout \
-        -subject -dates -ext subjectAltName 2>/dev/null | sed 's/^/    /'
+        -subject -dates -ext subjectAltName 2>/dev/null | sed 's/^/    /' || true
     else
       err 'no está el certificado del servidor: ejecuta la fase TLS (INSTALL.md §13.2)'
     fi
@@ -401,7 +441,7 @@ case "$ORDEN" in
     [[ -f "$origen" ]] || origen="$CA_DIR/rootCA.pem"
     if [[ -f "$origen" ]]; then
       ok "autoridad (CA) interna: $origen"
-      openssl x509 -in "$origen" -noout -subject -dates 2>/dev/null | sed 's/^/    /'
+      openssl x509 -in "$origen" -noout -subject -dates 2>/dev/null | sed 's/^/    /' || true
 
       # Se deja una copia estable, que entra en el respaldo de configuración.
       install -d -m 0755 "$ETC_DIR/keys"
@@ -656,13 +696,31 @@ EOF
     RED_LAN="$(ip -o -f inet addr show dev "${IFACE_LAN:-$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)}" 2>/dev/null | awk 'NR==1 {print $4; exit}' || true)"
     NOMBRE="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null | awk '{print $1}' || true)"
 
+    # `--si-cambio` lo usa el temporizador `odontocrm-red.timer`: si la IP es la misma con
+    # la que ya se adaptó todo —y el DNS propio está coherente— no hay nada que hacer, y
+    # sale en silencio. Así puede correr cada cinco minutos sin reemitir el certificado ni
+    # reiniciar servicios que no han cambiado.
+    si_cambio=0
+    for arg in "$@"; do
+      case "$arg" in --si-cambio|--vigilar) si_cambio=1 ;; esac
+    done
+    if (( si_cambio )); then
+      if [[ "$(cat "$ULTIMA_IP_ARCHIVO" 2>/dev/null || true)" == "$IP_LAN" ]] &&
+        dns_propio_coherente "$IP_LAN"; then
+        exit 0
+      fi
+    fi
+
     printf '%sDirecciones para entrar al sistema%s\n' "$C_TI" "$C_RE"
     printf '  %shttps://%s%s   (por el nombre; hace falta una línea en el hosts de cada equipo)\n' "$C_TI" "${NOMBRE:-odontocrm.local}" "$C_RE"
     printf '  %shttps://%s%s      (por la IP de esta máquina en la red actual)\n' "$C_TI" "$IP_LAN" "$C_RE"
     printf '  %sDel mismo servidor%s también sirve https://127.0.0.1\n' "$C_TI" "$C_RE"
     echo
     echo "  nginx escucha en:"
-    ss -lntp 2>/dev/null | grep ':443' | awk '{print "    " $4}' | sort -u
+    # `|| true` a propósito: si nginx está caído, `grep` devuelve 1 —que es una respuesta
+    # válida— y con `pipefail` eso disparaba el aviso de «un comando devolvió error»,
+    # tapando justo el dato que se venía a ver.
+    ss -lntp 2>/dev/null | grep ':443' | awk '{print "    " $4}' | sort -u || true
     echo "  (0.0.0.0:443 = todas las interfaces; el firewall es quien decide quién entra)"
     echo
 
@@ -751,10 +809,38 @@ EOF
       av "      sudo bash $CODE_DIR/infra/fedora/nombre/instalar-dns.sh"
     fi
 
+    # 5) DNS propio: es lo que hace que el nombre funcione en los **Android** (no entienden
+    #    mDNS) y lo que más fácil se queda viejo, porque casi nunca se mira. Si está
+    #    instalado, tiene que publicar la IP de AHORA.
+    if [[ -f /etc/dnsmasq.d/odontocrm.conf ]]; then
+      if dns_propio_coherente "$IP_LAN"; then
+        ok "el DNS propio publica el nombre con la IP de ahora ($IP_LAN)"
+      else
+        # Dos causas distintas que se ven iguales desde fuera («el nombre no resuelve en
+        # Android»): la configuración quedó con la IP anterior, o está bien pero dnsmasq
+        # no está escuchando (p. ej. no se reinició al reescribirla).
+        ip_conf="$(grep -m1 '^listen-address=' /etc/dnsmasq.d/odontocrm.conf 2>/dev/null | cut -d= -f2 || true)"
+        if [[ "$ip_conf" != "$IP_LAN" ]]; then
+          av "el DNS propio apunta a otra red ($ip_conf) y ahora esta máquina está en $IP_LAN"
+        else
+          av "el DNS propio está configurado para $IP_LAN, pero dnsmasq NO está escuchando ahí"
+        fi
+        av '  con eso, los Android (que no entienden mDNS) no resuelven el nombre'
+        av '  se arregla con:  sudo odontocrm red --arreglar'
+        problemas=$((problemas + 1))
+      fi
+    else
+      detalle 'sin DNS propio: los equipos que saben mDNS (Windows, macOS, Linux) entran por el nombre;'
+      detalle "  los Android no. Se instala con:  sudo bash $CODE_DIR/infra/fedora/nombre/instalar-dns.sh"
+    fi
+
     echo
     if (( problemas == 0 )); then
       ok 'todo apunta a la red actual: se puede entrar desde otro equipo'
       echo "    Recuerda instalar el certificado en cada equipo:  http://${IP_LAN}/ca.crt"
+      # Se apunta la IP: el temporizador `odontocrm-red.timer` no volverá a tocar nada
+      # mientras la red no cambie.
+      guardar_ip_red "$IP_LAN"
       exit 0
     fi
 
@@ -786,13 +872,17 @@ EOF
       firewall-cmd --permanent --zone="$zona" --add-service=https >/dev/null 2>&1 || true
       firewall-cmd --permanent --zone="$zona" --add-service=http >/dev/null 2>&1 || true
       # Las reglas por rango que apuntan a OTRA red se retiran: se quedaron viejas y
-      # confunden al siguiente que mire el firewall.
-      firewall-cmd --list-rich-rules 2>/dev/null | grep 'port="443"' | while read -r regla; do
-        printf '%s' "$regla" | grep -qF "$RED_LAN" || {
+      # confunden al siguiente que mire el firewall. La sonda lleva `|| true`: cuando no
+      # hay reglas por rango (lo normal) `grep` devuelve 1 y con `pipefail` eso disparaba
+      # el aviso de «un comando devolvió error» en mitad del arreglo.
+      reglas_viejas="$(firewall-cmd --list-rich-rules 2>/dev/null | grep 'port="443"' || true)"
+      while IFS= read -r regla; do
+        [[ -n "$regla" ]] || continue
+        if ! printf '%s' "$regla" | grep -qF "$RED_LAN"; then
           firewall-cmd --permanent --remove-rich-rule="$regla" >/dev/null 2>&1 || true
           av "retirada una regla vieja del firewall: $regla"
-        }
-      done
+        fi
+      done <<<"$reglas_viejas"
       firewall-cmd --reload >/dev/null 2>&1 || true
       ok "firewalld: 443 y 80 abiertos en la zona «$zona» (sigue a la interfaz, no a un rango)"
     fi
@@ -852,6 +942,34 @@ EOF
       ok 'identity, clinical y el gateway reiniciados (leen el origen permitido)'
     fi
 
+    # e) DNS propio: si está instalado, se reescribe con la IP de AHORA. Es el que hace que
+    #    el nombre funcione en los Android (que no entienden mDNS), y al cambiar de red se
+    #    queda con la IP vieja —y dnsmasq deja de escuchar— sin que nadie se entere.
+    #    Se reutiliza el instalador para que la configuración siga teniendo un solo dueño.
+    if [[ -f /etc/dnsmasq.d/odontocrm.conf ]]; then
+      nombre_dns="$(grep -oP '^address=/\K[^/]+' /etc/dnsmasq.d/odontocrm.conf 2>/dev/null |
+        grep -v '^odontocrm\.local$' | head -1 || true)"
+      instalador_dns="$CODE_DIR/infra/fedora/nombre/instalar-dns.sh"
+      if [[ -f "$instalador_dns" ]]; then
+        if bash "$instalador_dns" --nombre="${nombre_dns:-odontocrm.local}" >/tmp/odontocrm-dns.log 2>&1; then
+          ok "DNS propio actualizado: ${nombre_dns:-odontocrm.local} → $IP_LAN"
+          if dig +short "@$IP_LAN" odontocrm.local 2>/dev/null | grep -q "$IP_LAN"; then
+            ok "y responde de verdad (dig @$IP_LAN odontocrm.local → $IP_LAN)"
+          else
+            av "no responde todavía: revisa  journalctl -u dnsmasq"
+          fi
+        else
+          av 'no pude actualizar el DNS propio:'
+          tail -3 /tmp/odontocrm-dns.log 2>/dev/null | sed 's/^/      /' || true
+        fi
+        rm -f /tmp/odontocrm-dns.log
+      fi
+    fi
+
+    # Se apunta con qué IP quedó todo adaptado: es lo que mira `odontocrm red --si-cambio`
+    # (el temporizador) para no volver a tocar nada mientras la red no cambie.
+    guardar_ip_red "$IP_LAN"
+
     echo
     ok 'red actualizada. Comprueba con:  sudo odontocrm red'
     exit 0
@@ -893,7 +1011,7 @@ EOF
       if [[ "${ajenas_n:-0}" != "0" ]]; then
         av "$ajenas_n denegación(es) de servicios del SISTEMA (no del proyecto):"
         printf '%s' "$registro" | grep -oE 'comm="[^"]+"' | sort | uniq -c |
-          sed 's/^/      /' | head -5
+          sed 's/^/      /' | head -5 || true
         av 'son habituales en Fedora (systemd-rfkill y compañía) y no afectan a OdontoCRM'
       fi
       exit 0

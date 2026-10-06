@@ -44,6 +44,7 @@
 | [`systemd/odontocrm@.service`](systemd/odontocrm@.service) | Unidad plantilla para los 8 servicios internos (`odontocrm@identity`, `odontocrm@clinical`, …). Carga `/etc/odontocrm/odontocrm.env` + `/etc/odontocrm/%i.env` y arranca `services/%i/dist/index.js`. |
 | [`systemd/odontocrm-gateway.service`](systemd/odontocrm-gateway.service) | Unidad del gateway (puerto 8090, sin base de datos). Carga `/etc/odontocrm/odontocrm.env` + `/etc/odontocrm/gateway.env` y arranca `apps/gateway/dist/index.js`. |
 | [`systemd/odontocrm-alertas.service`](systemd/odontocrm-alertas.service) + [`systemd/odontocrm-alertas.timer`](systemd/odontocrm-alertas.timer) | **Observabilidad (Fase 10)**: cada 5 minutos corre `node tools/estado.mjs --alertas` y deja el servicio en `failed` si algo no responde, el outbox se atasca, la cola tiene fallidos o queda poco disco. Ver §10.6. |
+| [`systemd/odontocrm-red.service`](systemd/odontocrm-red.service) + [`systemd/odontocrm-red.timer`](systemd/odontocrm-red.timer) | **La red, sola**: cada 5 minutos ejecuta `odontocrm red --arreglar --si-cambio`. Si la IP no cambió, no hace nada; si cambió, reajusta el firewall, reemite el certificado con la IP nueva (misma CA), actualiza `WEB_ORIGIN` y reescribe el DNS del nombre (el que hace que `odontocrm.local` funcione en los Android). En la clínica, con IP fija, nunca hace nada; en un portátil de pruebas, deja todo al día sin tocar nada a mano. |
 | [`logrotate/odontocrm`](logrotate/odontocrm) | Rotación diaria (30 días, comprimida) de `/var/log/odontocrm/*.log`. Con `systemd` los servicios van al journal, que rota solo; esto cubre los logs de operación y los de PM2 si se elige ese supervisor. |
 | [`ecosystem.config.cjs`](ecosystem.config.cjs) | **Alternativa a `systemd`**: procesos de PM2 para Fedora, con rutas absolutas (`/opt/odontocrm/...`) y los mismos dos `--env-file-if-exists=/etc/odontocrm/...`. Nunca los dos supervisores a la vez (§10.1 y §10.4). |
 | [`backup/odontocrm-backup.sh`](backup/odontocrm-backup.sh) | Respaldo diario de las 8 bases (`pg_dump -Fc`), verificación de integridad, retención configurable y copias opcionales. |
@@ -243,6 +244,51 @@ desde la pieza que falló (todas son idempotentes).
 Opciones útiles: `--con-dns` (DNS propio para los Android que no entienden mDNS),
 `--lan-cidr=192.168.1.0/24` (abre el 443 solo a esa red), `--sin-respaldo`,
 `--rotar-credenciales`, `--solo=<pieza>` y `--dry-run`.
+
+### Lo que pregunta (y por qué)
+
+En una instalación nueva, `instalar.sh` **pregunta una vez** —con Enter se omite cada
+cosa— para que no haya que pelearse después con los archivos de `/etc/odontocrm`:
+
+| Pregunta | Para qué | Si se omite |
+| :--- | :--- | :--- |
+| **Contraseña del administrador** | es la cuenta con la que se entra la primera vez | se genera una temporal y se imprime UNA vez (queda en `/root/odontocrm-contrasena-inicial.txt`, 0600) |
+| **Token del bot de Telegram** (+ usuario) | los avisos salen de verdad; el token se comprueba contra Telegram antes de guardarlo | el bot queda en **modo simulado** y los avisos esperan en la bandeja |
+| **WhatsApp Cloud API** (4 datos) | activa ese canal | el canal no se activa; lo demás funciona igual |
+
+Se crea **una sola cuenta: `admin`** (con `--con-todas-las-cuentas` se siembran también
+`recepcion` y los odontólogos de `clinic.ts`). Los tokens van a `/etc/odontocrm` (0600
+root:root), no se imprimen y no quedan en registros. `odontocrm actualizar` **no** pasa
+por las preguntas —las piezas siguen siendo desatendidas— y conserva lo que ya esté escrito.
+
+Para desatenderlo del todo: `--sin-preguntas`, o dar los valores por bandera
+(`--clave-admin=…`, `--token-telegram=…`, `--whatsapp-token=…`, …). Sin terminal no
+pregunta nada.
+
+### Desinstalar (banco de pruebas)
+
+```bash
+sudo bash infra/fedora/instalar/desinstalar.sh          # enseña lo que borraría; no toca nada
+sudo bash infra/fedora/instalar/desinstalar.sh --si     # lo hace
+```
+
+Quita unidades, código, secretos, bases, roles, proxy, certificado, firewall y contextos
+de SELinux —y antes **guarda** `/etc/odontocrm` y un `pg_dump` de cada base en
+`/root/odontocrm-antes-de-desinstalar-<fecha>/` (0600)—. Con `--conservar-datos` no borra
+adjuntos, registros ni respaldos; con `--con-usuario` borra también el usuario del sistema.
+Los paquetes de `dnf` y PostgreSQL **no** se tocan, a propósito.
+
+Dos cosas que conviene saber antes de lanzarlo:
+
+- **Si tu terminal está dentro de `/opt/odontocrm` o `/etc/odontocrm`, sal antes (`cd ~`).**
+  Borrar el directorio donde vive la terminal la deja rota («getcwd: no se puede acceder a
+  los directorios padre») y todo lo que se ejecute después falla de formas raras: el
+  `git clone` de la instalación siguiente muere con «esta operación debe ser realizada en un
+  árbol de trabajo» y parece un fallo del código. El guion lo detecta y **se niega a seguir
+  (código 11)** en vez de dejarte así. Si ya te pasó: abre otra terminal o haz `cd ~`.
+- **Si un `pg_dump` falla, esa base no se borra** y el motivo queda en
+  `<base>.error` dentro del respaldo (el error se enseña en pantalla). La copia es la única
+  red que hay si alguien desinstala una instalación con pacientes dentro.
 
 ### Una sola fuente de verdad para las credenciales (ADR 0043)
 

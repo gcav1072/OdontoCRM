@@ -150,7 +150,7 @@ sudo systemctl start odontocrm-gateway
 | `npm run build` | `sudo odontocrm compilar` |
 | `npm run stack:fijo` (PM2) | **No se usa**: el supervisor es systemd |
 | `npm run db:migrate` | `sudo odontocrm con-entorno <servicio> -- node services/<servicio>/dist/db/migrate.js` (o `odontocrm actualizar`, que las corre todas) |
-| `npm run seed:users` | `sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js` |
+| `npm run seed:users` | `sudo SEED_PASSWORD_<USUARIO>='…' odontocrm con-entorno identity -- node services/identity/dist/seed.js` (una por cuenta, mínimo 10 caracteres: §5) |
 | `npm run estado` | `sudo odontocrm estado` |
 | `npm run e2e:clinica` | **No se ejecuta** contra la clínica: es una prueba de desarrollo |
 | `npm run db:reset` | **Nunca.** Borra las 9 bases (§11) |
@@ -300,9 +300,23 @@ sudo odontocrm restaurar --limpiar-verif --yes
 
 ## 5. Usuarios y contraseñas
 
+La instalación crea **solo `admin`** (y pregunta su contraseña). El resto del personal se
+da de alta desde `/usuarios`; estas son las recetas para lo que se hace a mano después:
+
 ```bash
-# Restaurar las contraseñas temporales sembradas (admin, recepcion, egomez)
-sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset
+# Resetear la contraseña del administrador. En producción el seed NO acepta las claves de
+# desarrollo: hay que darle la suya en `SEED_PASSWORD_ADMIN` (mínimo 10 caracteres) y en la
+# misma línea del comando —`con-entorno` la reenvía al proceso—.
+sudo SEED_PASSWORD_ADMIN='la-que-quieras-poner' \
+  odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset --usuarios=admin
+
+# Si hay más cuentas sembradas de una instalación vieja: una clave por cuenta. Sin
+# `--usuarios=`, el seed exige las de todas (admin, recepcion y cada odontólogo de
+# `CLINIC.dentists`); si falta alguna dice cuáles son y no escribe nada.
+sudo SEED_PASSWORD_ADMIN='la-que-quieras-poner' \
+     SEED_PASSWORD_RECEPCION='la-que-quieras-poner' \
+     SEED_PASSWORD_EGOMEZ='la-que-quieras-poner' \
+  odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset
 
 # Ver quién existe y con qué rol (no imprime contraseñas)
 sudo odontocrm con-entorno identity -- node -e "
@@ -316,6 +330,12 @@ sudo odontocrm con-entorno identity -- node -e "
 En el día a día **no hace falta tocar esto**: las contraseñas se cambian desde la
 aplicación (cada usuario, en su perfil) y el sistema obliga a cambiarlas en el primer
 acceso. Lo de arriba es para el caso «nadie recuerda la del administrador».
+
+> **`--reset` cambia la contraseña de las cuentas que se siembren**: con
+> `--usuarios=admin` solo la del administrador. Para el estado —quién existe, quién sigue
+> con contraseña temporal y quién está bloqueado— está
+> `sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js --print`,
+> que no escribe nada y funciona sin las claves.
 
 > `con-entorno` carga `/etc/odontocrm/odontocrm.env` y el del servicio **dentro del
 > proceso**: los secretos no aparecen en la línea de comandos (en `ps` los vería
@@ -383,12 +403,18 @@ sudo odontocrm red
 ```
 
 Dice la IP de la máquina en la red actual, las direcciones para entrar
-(`https://odontocrm.local` y `https://<IP>`) y comprueba las tres cosas que se quedan
-apuntando a la red anterior cuando el servidor cambia de wifi o de router: la regla de
-**`firewalld`**, el **certificado** (que cubre la IP con la que se emitió) y **`WEB_ORIGIN`**
-(el CORS del gateway: **solo interviene si sirves la interfaz desde otro origen**; con
-nginx sirviendo SPA y API en el mismo host, el navegador no aplica CORS).
+(`https://odontocrm.local` y `https://<IP>`) y comprueba lo que se queda apuntando a la red
+anterior cuando el servidor cambia de wifi o de router: la regla de **`firewalld`**, el
+**certificado** (que cubre la IP con la que se emitió), **`WEB_ORIGIN`** (el CORS del
+gateway: **solo interviene si sirves la interfaz desde otro origen**; con nginx sirviendo
+SPA y API en el mismo host, el navegador no aplica CORS) y el **DNS del nombre**, si está
+instalado (el que hace que `odontocrm.local` funcione en los Android, que no entienden mDNS).
 Si algo está desalineado, imprime el comando exacto que lo arregla.
+
+`sudo odontocrm red --arreglar` lo deja todo al día, y el temporizador
+**`odontocrm-red.timer`** lo ejecuta cada 5 minutos con `--si-cambio`: si la IP no cambió
+no toca nada (en la clínica, con IP fija, nunca hace nada; en un portátil que cambia de red,
+deja el firewall, el certificado, el CORS y el DNS al día sin intervención).
 
 Detalle completo (y el truco de entrar siempre por el nombre): 
 [`CERTIFICADO_EN_LOS_EQUIPOS.md`](CERTIFICADO_EN_LOS_EQUIPOS.md) §9-bis.

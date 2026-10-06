@@ -69,7 +69,15 @@ else
       ok "hay $cuantos usuario(s) con los que entrar"
     else
       fallo 'NO hay usuarios en la base de identidad: nadie puede iniciar sesión'
-      detalle "siémbralos:  cd $CODE_DIR && node tools/con-entorno.mjs $ETC_DIR identity -- node services/identity/dist/seed.js"
+      # En producción el seed NO acepta las claves de desarrollo: cada cuenta necesita la
+      # suya en el entorno (`SEED_PASSWORD_<USUARIO>`, mínimo 10 caracteres). Sin ellas no
+      # siembra nada, así que aquí se enseña la receta con su forma real y se apunta al
+      # RUNBOOK, que es donde se mantiene al día la lista de cuentas (un odontólogo nuevo
+      # es otra clave).
+      detalle 'siémbralos —en producción el seed EXIGE la clave de CADA cuenta en el entorno—:'
+      detalle "    sudo SEED_PASSWORD_ADMIN='…' SEED_PASSWORD_RECEPCION='…' SEED_PASSWORD_EGOMEZ='…' \\"
+      detalle '      odontocrm con-entorno identity -- node services/identity/dist/seed.js'
+      detalle "receta completa (una clave por odontólogo de CLINIC.dentists): $CODE_DIR/infra/fedora/RUNBOOK.md §5"
     fi
   fi
 fi

@@ -341,6 +341,20 @@ const envComun = () => {
   return valores;
 };
 
+/**
+ * Valor que el instalador ya recogió en sus preguntas y nos pasa por entorno. `null`
+ * significa «no lo traigas, no lo escribas»: `escribirEnv` conserva entonces lo que ya
+ * hubiera en el archivo (una segunda instalación no borra el token de nadie).
+ *
+ * Un valor vacío se trata como ausente a propósito: en el esquema del servicio estas
+ * claves son `.optional()` **con mínimo**, así que `CLAVE=` no es «sin configurar», es
+ * una configuración inválida que deja el servicio sin arrancar.
+ */
+const enEntorno = (clave) => {
+  const valor = (process.env[clave] ?? '').trim();
+  return valor === '' ? null : valor;
+};
+
 /** Las claves propias de cada servicio, además de las comunes a todos. */
 const extrasDe = (nombre) => {
   switch (nombre) {
@@ -372,7 +386,19 @@ const extrasDe = (nombre) => {
       // van con `null` (no se escriben, quedan comentadas): en el esquema del servicio
       // son `.optional()` con mínimo, así que una cadena VACÍA es inválida y el
       // servicio no arrancaría. Se descubrió migrando de verdad.
-      return { TELEGRAM_MODE: 'auto', TELEGRAM_BOT_TOKEN: null, TELEGRAM_BOT_USERNAME: null };
+      //
+      // Si el instalador ya las pidió —van en el entorno de ESTE proceso—, mandan ellas:
+      // es lo que evita pelearse con `/etc/odontocrm` después del despliegue. Lo que no
+      // venga por entorno se conserva tal cual.
+      return {
+        TELEGRAM_MODE: 'auto',
+        TELEGRAM_BOT_TOKEN: enEntorno('TELEGRAM_BOT_TOKEN'),
+        TELEGRAM_BOT_USERNAME: enEntorno('TELEGRAM_BOT_USERNAME'),
+        WHATSAPP_TOKEN: enEntorno('WHATSAPP_TOKEN'),
+        WHATSAPP_PHONE_ID: enEntorno('WHATSAPP_PHONE_ID'),
+        WHATSAPP_VERIFY_TOKEN: enEntorno('WHATSAPP_VERIFY_TOKEN'),
+        WHATSAPP_APP_SECRET: enEntorno('WHATSAPP_APP_SECRET'),
+      };
     default:
       return {};
   }
@@ -390,6 +416,10 @@ const comentarioDe = (clave) =>
     PUBLIC_APP_URL: 'La usa el QR del récipe: tiene que ser la dirección por la que entra la clínica.',
     TELEGRAM_BOT_TOKEN: 'Token de BotFather. Sin él los avisos salen en modo simulado.',
     TELEGRAM_BOT_USERNAME: 'Usuario del bot, sin @ (para el enlace t.me/<usuario>).',
+    WHATSAPP_TOKEN: 'Token de la WhatsApp Cloud API. Sin él ese canal no se activa.',
+    WHATSAPP_PHONE_ID: 'Identificador del número de WhatsApp Business.',
+    WHATSAPP_VERIFY_TOKEN: 'Lo inventa la clínica: Meta lo repite al verificar el webhook.',
+    WHATSAPP_APP_SECRET: 'Firma los webhooks de Meta (App settings → Basic).',
   })[clave];
 
 const escribirArchivos = () => {

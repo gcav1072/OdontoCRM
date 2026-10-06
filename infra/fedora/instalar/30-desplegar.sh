@@ -254,6 +254,14 @@ paso '4/9 · Migraciones de las 8 bases'
 if (( DRY_RUN )); then
   for s in "${SERVICIOS[@]}"; do detalle "[dry-run] migrar $s"; done
 else
+  # Antes de migrar: ¿está PostgreSQL en marcha? Si no, lo que se ve es un `ECONNREFUSED
+  # 127.0.0.1:5432` dentro de una traza larga de Node, que no dice qué hacer. Pasó tras un
+  # reinicio con la base parada (la había parado `odontocrm parar --todo`).
+  if ! pg_isready -h 127.0.0.1 -p 5432 >/dev/null 2>&1; then
+    av 'PostgreSQL no está escuchando en 127.0.0.1:5432'
+    detalle 'arráncalo y repite:   sudo odontocrm arrancar   (o la pieza 1: 10-preparar.sh)'
+    morir 'no puedo migrar sin base de datos'
+  fi
   for s in "${SERVICIOS[@]}"; do
     registro="/tmp/odontocrm-migrar-$s.log"
     if ! (cd "$CODE_DIR" && node tools/con-entorno.mjs "$ETC_DIR" "$s" -- \
@@ -273,17 +281,25 @@ paso '5/9 · Usuarios iniciales'
 SIN_USUARIOS=0
 INFORME_CLAVE=/root/odontocrm-contrasena-inicial.txt
 if (( DRY_RUN )); then
-  detalle '[dry-run] sembraría admin, recepcion y los odontólogos de clinic.ts'
+  detalle "[dry-run] sembraría: ${USUARIOS_SEED:-admin, recepcion y los odontólogos de clinic.ts}"
 else
-  # Los nombres salen de `packages/contracts/src/clinic.ts` (un odontólogo por
-  # entrada) más los fijos `admin` y `recepcion`. En producción el seed EXIGE una
-  # variable por usuario, así que se las damos todas: con otra clínica los nombres
-  # son otros y sin esto el seed fallaba justo en los que no estuvieran en la lista.
-  usuarios="$(
-    { printf 'admin\nrecepcion\n'
-      grep -oP "username: '\K[^']+" "$CODE_DIR/packages/contracts/src/clinic.ts" 2>/dev/null || true
-    } | tr 'a-z' 'A-Z' | sort -u
-  )"
+  # Qué cuentas se siembran. Por defecto, todas —`admin`, `recepcion` y un odontólogo por
+  # entrada de `CLINIC.dentists`—, que es lo que necesitan el desarrollo y las pruebas y lo
+  # que sigue haciendo `odontocrm actualizar` (no define `USUARIOS_SEED`). El instalador
+  # pide **solo `admin`** en una instalación nueva: el resto del personal se da de alta
+  # desde la aplicación (`/usuarios`), que es donde tiene sentido decidir rol y datos.
+  # Los nombres van tal cual salen de `clinic.ts` (el seed los compara sin distinguir
+  # mayúsculas) y la variable de entorno sí se escribe en mayúsculas.
+  if [[ -n "${USUARIOS_SEED:-}" ]]; then
+    usuarios_seed="$(printf '%s' "$USUARIOS_SEED" | tr ',' '\n' | sed '/^[[:space:]]*$/d')"
+  else
+    usuarios_seed="$(
+      { printf 'admin\nrecepcion\n'
+        grep -oP "username: '\K[^']+" "$CODE_DIR/packages/contracts/src/clinic.ts" 2>/dev/null || true
+      } | sort -u
+    )"
+  fi
+  usuarios_lista="$(printf '%s' "$usuarios_seed" | paste -sd, -)"
 
   # ¿Hay ya usuarios? El seed **omite los que existen** (sin `--reset`), así que
   # repetir la instalación y volver a imprimir una contraseña recién generada daría
@@ -302,19 +318,59 @@ else
     [[ "$existentes_db" =~ ^[0-9]+$ ]] && (( existentes_db > 0 )) && ya_hay=1
   fi
 
-  # Contraseña temporal: se imprime UNA vez y el sistema obliga a cambiarla al
-  # primer ingreso. No se guarda en ningún archivo.
+  # Contraseña con la que nacen las cuentas:
+  #   · si el entorno ya trae `SEED_PASSWORD_<USUARIO>` —es lo que pide el instalador—,
+  #     manda esa y **no se imprime**: la eligió quien instala y ya la conoce;
+  #   · si no, se genera una temporal que se imprime UNA vez y queda en un archivo de root
+  #     (0600): el sistema obliga a cambiarla en el primer ingreso.
   temporal="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-14)"
-  entorno_claves=()
+  entorno_claves=(); generadas=(); propias=()
   while IFS= read -r usuario; do
-    [[ -n "$usuario" ]] && entorno_claves+=("SEED_PASSWORD_$usuario=$temporal")
-  done <<<"$usuarios"
+    [[ -n "$usuario" ]] || continue
+    variable="SEED_PASSWORD_$(printf '%s' "$usuario" | tr 'a-z' 'A-Z')"
+    valor="${!variable:-}"
+    if (( ${#valor} >= 10 )); then
+      entorno_claves+=("$variable=$valor"); propias+=("$usuario")
+    else
+      entorno_claves+=("$variable=$temporal"); generadas+=("$usuario")
+    fi
+  done <<<"$usuarios_seed"
 
-  registro=/tmp/odontocrm-seed.log
+  # `--usuarios=`: siembra solo estas cuentas (y en producción solo exige sus claves).
+  # `--ocultar-claves=`: no imprime las que eligió una persona.
+  argumentos_seed=("--usuarios=$usuarios_lista")
+  (( ${#propias[@]} > 0 )) &&
+    argumentos_seed+=("--ocultar-claves=$(printf '%s' "${propias[*]}" | tr ' ' ',')")
+
+  # El registro nace en 0600 y dentro de /root: la salida del seed lleva credenciales, y un
+  # archivo en /tmp a 644 lo lee cualquiera de la máquina. Se borra al terminar bien.
+  registro="$(mktemp /root/.odontocrm-seed-XXXXXX.log)" ||
+    morir 'no pude crear el registro del seed en /root'
   if (cd "$CODE_DIR" && env "${entorno_claves[@]}" node tools/con-entorno.mjs "$ETC_DIR" identity -- \
-    node services/identity/dist/seed.js) >"$registro" 2>&1; then
-    ok "usuarios al día: $(printf '%s' "$usuarios" | tr '\n' ' ')"
-    if (( ya_hay )); then
+    node services/identity/dist/seed.js "${argumentos_seed[@]}") >"$registro" 2>&1; then
+    # ¿El seed creó alguna cuenta? Solo entonces hay contraseña nueva que dar.
+    creadas=0
+    if grep -q 'Usuarios creados' "$registro"; then creadas=1; fi
+    rm -f "$registro"
+    ok "usuarios al día: $(printf '%s' "$usuarios_lista" | tr ',' ' ')"
+    if (( creadas )); then
+      if (( ${#generadas[@]} > 0 )); then
+        # La generada se deja además en un archivo de root (0600): si esto corre desde
+        # `odontocrm actualizar`, la salida va a un registro del que nadie se acuerda.
+        printf 'Contraseña temporal de %s: %s\n' "${generadas[*]}" "$temporal" >"$INFORME_CLAVE"
+        chmod 0600 "$INFORME_CLAVE"; chown root:root "$INFORME_CLAVE" 2>/dev/null || true
+        if [[ -t 1 ]]; then
+          printf '\n  %sContraseña temporal: %s%s%s\n' "$C_TI" "$C_TI" "$temporal" "$C_RE"
+          printf '  %s(se pide cambiarla al primer ingreso)%s\n\n' "$C_DIM" "$C_RE"
+          (( ${#propias[@]} > 0 )) && detalle "solo para: ${generadas[*]}"
+        else
+          ok "contraseña temporal (${generadas[*]}) → $INFORME_CLAVE (0600, solo root)"
+          detalle 'se pide cambiarla al primer ingreso'
+        fi
+      fi
+      # Las que eligió quien instala no se imprimen: ya las conoce.
+      (( ${#propias[@]} > 0 )) && detalle "con la contraseña que elegiste: ${propias[*]}"
+    elif (( ya_hay )); then
       # Los usuarios ya estaban: el seed NO los toca, así que aquí NO hay contraseña
       # nueva que dar. Se dice claro y se da la receta exacta para poner una que el
       # operador elija — sin esto, quien instala se queda fuera del sistema sin
@@ -322,27 +378,14 @@ else
       av "los $existentes_db usuario(s) ya existían: no se les ha cambiado la contraseña"
       detalle 'para entrar vale la que ya tuvieran'
       echo
-      printf '      %spara ponerles una contraseña que elijas TÚ (cámbiala en las 3 veces):%s\n' "$C_TI" "$C_RE"
+      printf '      %spara poner una que elijas TÚ:%s\n' "$C_TI" "$C_RE"
       receta=""
       while IFS= read -r u; do
-        [[ -n "$u" ]] && receta+="SEED_PASSWORD_$u='TU_CLAVE' "
-      done <<<"$usuarios"
-      printf '        cd %s && sudo %s \\\n' "$CODE_DIR" "$receta"
-      printf '          node tools/con-entorno.mjs %s identity -- node services/identity/dist/seed.js --reset\n\n' "$ETC_DIR"
+        [[ -n "$u" ]] && receta+="SEED_PASSWORD_$(printf '%s' "$u" | tr 'a-z' 'A-Z')='TU_CLAVE' "
+      done <<<"$usuarios_seed"
+      printf '        cd %s && sudo %s \\\n' "$CODE_DIR" "${receta% }"
+      printf '          node tools/con-entorno.mjs %s identity -- node services/identity/dist/seed.js --reset --usuarios=%s\n\n' "$ETC_DIR" "$usuarios_lista"
       detalle 'el sistema pedirá cambiarla en el primer acceso'
-    else
-      # Se deja en un archivo de root (0600) además de imprimirla: si esto corre
-      # desde `odontocrm actualizar`, la salida va a un registro y una contraseña
-      # suelta en /tmp la lee cualquiera.
-      printf 'Contraseña temporal de los usuarios iniciales: %s\n' "$temporal" >"$INFORME_CLAVE"
-      chmod 0600 "$INFORME_CLAVE"; chown root:root "$INFORME_CLAVE" 2>/dev/null || true
-      if [[ -t 1 ]]; then
-        printf '\n  %sContraseña temporal: %s%s%s\n' "$C_TI" "$C_TI" "$temporal" "$C_RE"
-        printf '  %s(se pide cambiarla al primer ingreso)%s\n\n' "$C_DIM" "$C_RE"
-      else
-        ok "contraseña temporal de los usuarios iniciales → $INFORME_CLAVE (0600, solo root)"
-        detalle 'se pide cambiarla al primer ingreso'
-      fi
     fi
   else
     tail -20 "$registro" | sed 's/^/    /'
@@ -357,7 +400,11 @@ fi
 # ════════════════════════════════════════════════════════════════════════════
 paso '6/9 · Unidades de systemd'
 UNIDADES=(odontocrm@.service odontocrm-gateway.service)
+# El de la red va SIEMPRE (no depende de los respaldos): es el que vuelve a adaptar
+# firewall, certificado, CORS y el DNS del nombre cuando cambia la IP. En la clínica, con
+# IP fija, sale sin hacer nada; en un portátil de pruebas, deja todo al día solo.
 TIMERS=(odontocrm-alertas.service odontocrm-alertas.timer)
+TIMERS+=(odontocrm-red.service odontocrm-red.timer)
 (( ! SIN_RESPALDO )) && TIMERS+=(odontocrm-backup.service odontocrm-backup.timer)
 
 for unidad in "${UNIDADES[@]}" "${TIMERS[@]}"; do
@@ -407,6 +454,7 @@ else
     systemctl enable --now odontocrm-backup.timer >/dev/null 2>&1 || true
   fi
   systemctl enable --now odontocrm-alertas.timer >/dev/null 2>&1 || true
+  systemctl enable --now odontocrm-red.timer >/dev/null 2>&1 || true
   ok 'los 9 servicios habilitados (arrancan solos al encender la máquina)'
   detalle 'esperando a que escuchen…'
   for _ in $(seq 1 30); do

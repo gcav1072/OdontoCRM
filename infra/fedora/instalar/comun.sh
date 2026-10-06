@@ -66,6 +66,23 @@ exigir_root() {
   morir "esta pieza necesita sudo:  sudo bash $0 $*"
 }
 
+# ── Un directorio de trabajo que exista ──────────────────────────────────────
+# Si la terminal está parada en un directorio que ya no existe —pasa al desinstalar la
+# ruta donde estabas, p. ej. `/opt/odontocrm`—, bash no puede ni resolverlo: cada orden
+# imprime «getcwd: no se puede acceder a los directorios padre» y TODO falla de formas
+# raras. El síntoma que se llevó una instalación entera fue:
+#
+#     fatal: esta operación debe ser realizada en un árbol de trabajo
+#     advertencia: Clonación exitosa, pero falló el checkout
+#
+# ...en el paso 3/4, que parecía un fallo del código. No lo era: era el directorio.
+# Aquí se sigue desde la raíz (los procesos hijos heredan un directorio válido) y se
+# avisa, para que se sepa de dónde viene y se haga `cd ~` cuando se pueda.
+if ! pwd -P >/dev/null 2>&1; then
+  av "tu terminal está en un directorio que ya no existe: sigo desde / (haz «cd ~» al terminar)"
+  cd / 2>/dev/null || true
+fi
+
 # El usuario real detrás de sudo. Sin sudo (root de verdad) no hay ninguno.
 usuario_real() {
   if es_root && [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then

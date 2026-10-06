@@ -353,6 +353,7 @@ done
 systemctl enable odontocrm-gateway.service >/dev/null 2>&1 || true
 systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || av 'no pude arrancar el gateway'
 systemctl enable --now odontocrm-alertas.timer >/dev/null 2>&1 || av 'no pude habilitar el temporizador de alertas'
+systemctl enable --now odontocrm-red.timer >/dev/null 2>&1 || av 'no pude habilitar el temporizador de la red'
 
 sleep 8
 FALLOS=0

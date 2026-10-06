@@ -31,7 +31,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -435,6 +435,81 @@ const exigir = (condicion, bien, mal) => {
     `los documentos citan banderas que no existen (${banderasInventadas.join(', ')}): compruébalas con --help`,
   );
 
+  // (7-bis) Sembrar usuarios en producción EXIGE una contraseña por cuenta
+  //     (`SEED_PASSWORD_<USUARIO>`, mínimo 10 caracteres): con `NODE_ENV=production` el seed
+  //     NO acepta las claves de desarrollo y se niega a escribir si falta alguna. Enseñar la
+  //     receta sin ellas deja al operador con un error y sin poder entrar (pasó en el servidor
+  //     con la del odontólogo, que es justo la que se olvida porque sale de `CLINIC.dentists`).
+  const usuariosDelSeed = [
+    'ADMIN',
+    'RECEPCION',
+    ...(leer('packages/contracts/src/clinic.ts').match(/username: '([^']+)'/g) ?? []).map((linea) =>
+      linea.slice(linea.indexOf("'") + 1, -1).toUpperCase(),
+    ),
+  ];
+  /** Los comandos de los bloques de código, con las continuaciones de línea (`\`) ya unidas. */
+  const comandosDocumentados = (texto) =>
+    (texto.match(/```[\s\S]*?```/g) ?? []).flatMap((bloque) => {
+      const comandos = [];
+      let buffer = '';
+      for (const linea of bloque.split('\n')) {
+        buffer = buffer === '' ? linea : `${buffer} ${linea}`;
+        if (linea.trimEnd().endsWith('\\')) continue;
+        comandos.push(buffer);
+        buffer = '';
+      }
+      return comandos;
+    });
+  const recetasIncompletas = [];
+  for (const ruta of ['infra/fedora/RUNBOOK.md', 'docs/COMANDOS_PRODUCCION.md']) {
+    for (const comando of comandosDocumentados(leer(ruta))) {
+      // `--print` no escribe en la base: puede ir sin claves. Lo que se comprueba es lo que siembra.
+      if (!/dist\/seed\.js/.test(comando) || /--print/.test(comando)) continue;
+      // Con `--usuarios=` solo hacen falta las claves de esas cuentas: es como siembra el
+      // servidor (solo `admin`) y como se resetea una sola cuenta.
+      const pedidos = /--usuarios=([^\s\\]+)/.exec(comando);
+      const cuentas =
+        pedidos === null
+          ? usuariosDelSeed
+          : pedidos[1].split(',').map((n) => n.trim().toUpperCase());
+      const faltan = cuentas.filter((u) => !comando.includes(`SEED_PASSWORD_${u}`));
+      if (faltan.length > 0) recetasIncompletas.push(`${ruta}: falta ${faltan.join(', ')}`);
+    }
+  }
+  exigir(
+    recetasIncompletas.length === 0,
+    'las recetas documentadas del seed llevan la clave de cada cuenta en el entorno',
+    `hay recetas de siembra sin todas las claves de producción:\n      ${recetasIncompletas.join('\n      ')}`,
+  );
+
+  // (7-ter) Las preguntas de la instalación viven SOLO en `instalar.sh`. Las cuatro piezas
+  //     siguen siendo desatendidas a propósito: `odontocrm actualizar` ejecuta la 3 sin
+  //     terminal, y un `read` ahí dejaría una actualización colgada esperando a nadie.
+  // Se busca el `read` que PREGUNTA (`-p`, `-s`) o el que lee de `/dev/tty`: un
+  // `while IFS= read -r usuario` (aquí-string) no pregunta nada y no cuenta.
+  const preguntaAlOperador = (texto) =>
+    /\bread\b(?=[^\n]*\s-[a-zA-Z]*[ps]\b)|\/dev\/tty/.test(texto);
+  const piezasConPreguntas = [
+    '10-preparar.sh',
+    '20-aprovisionar.sh',
+    '30-desplegar.sh',
+    '40-verificar.sh',
+  ].filter((guion) => preguntaAlOperador(leer(`infra/fedora/instalar/${guion}`)));
+  exigir(
+    piezasConPreguntas.length === 0,
+    'las piezas del instalador siguen siendo desatendidas (las preguntas están en instalar.sh)',
+    `estas piezas preguntan algo: ${piezasConPreguntas.join(', ')} — una actualización sin terminal se quedaría esperando`,
+  );
+
+  // (7-quáter) Y `instalar.sh` de verdad pregunta, y ofrece `--sin-preguntas`: sin eso, el
+  //     operador vuelve a pelearse con los tokens después del despliegue (lo que se arregló).
+  exigir(
+    /preguntar_secreto/.test(leer('infra/fedora/instalar/instalar.sh')) &&
+      /--sin-preguntas/.test(leer('infra/fedora/instalar/instalar.sh')),
+    'instalar.sh pregunta por la clave del admin y los tokens, y se puede desatender',
+    'instalar.sh no pregunta (o no hay forma de desatenderlo): vuelve el trabajo manual tras el despliegue',
+  );
+
   // (8) La guía explica dónde se cambian los datos de la clínica (otra consulta = otro
   //     membrete, otro QR y otro usuario clínico).
   exigir(
@@ -482,6 +557,94 @@ const exigir = (condicion, bien, mal) => {
     'falta el uso de tools/con-entorno.mjs en el despliegue: los .env volverían a leerse como shell',
   );
 
+  // (11-bis) Toda unidad de systemd que vive en el repositorio se instala en el despliegue.
+  //     Una unidad que existe pero que nadie copia a /etc/systemd/system es un archivo
+  //     muerto: se escribe, se revisa… y no corre. Este hueco es justo el del temporizador
+  //     de la red, que es el que vuelve a adaptar la IP, el certificado y el DNS del nombre.
+  const despliegue = leer('infra/fedora/instalar/30-desplegar.sh');
+  const unidadesHuerfanas = readdirSync(join(ROOT, 'infra/fedora/systemd')).filter(
+    (archivo) => !despliegue.includes(archivo),
+  );
+  exigir(
+    unidadesHuerfanas.length === 0,
+    'todas las unidades de systemd del repositorio se instalan en el despliegue',
+    `estas unidades existen pero 30-desplegar.sh no las instala: ${unidadesHuerfanas.join(', ')}`,
+  );
+
+  // (11-ter) Y el temporizador de la red tiene que ser IDEMPOTENTE: sin `--si-cambio`
+  //     reemitiría el certificado y reiniciaría servicios cada cinco minutos.
+  exigir(
+    /ExecStart=\/usr\/local\/bin\/odontocrm red --arreglar --si-cambio/.test(
+      leer('infra/fedora/systemd/odontocrm-red.service'),
+    ),
+    'el temporizador de la red usa --si-cambio (no toca nada si la IP no cambió)',
+    'odontocrm-red.service no usa --si-cambio: reemitiría el certificado y reiniciaría servicios cada 5 minutos',
+  );
+
+  // (11-quáter) `Environment=` no puede vivir en la sección `[Unit]`: systemd lo IGNORA
+  //     (con un «Unknown key» en el journal) y la variable no llega al proceso. Pasó de
+  //     verdad: el `TZ` del respaldo estaba ahí y el respaldo corría con otra zona horaria.
+  //     Lo destapó `systemd-analyze verify`; esta comprobación lo pilla sin systemd.
+  const unidadesConEntornoEnUnit = readdirSync(join(ROOT, 'infra/fedora/systemd')).filter(
+    (archivo) => {
+      const seccion = leer(`infra/fedora/systemd/${archivo}`)
+        .split(/^\[/m)
+        .find((parte) => parte.startsWith('Unit]'));
+      return seccion !== undefined && /^Environment=/m.test(seccion);
+    },
+  );
+  exigir(
+    unidadesConEntornoEnUnit.length === 0,
+    'las unidades no ponen Environment= en [Unit] (systemd lo ignora)',
+    `estas unidades ponen Environment= en [Unit] y systemd lo ignora: ${unidadesConEntornoEnUnit.join(', ')}`,
+  );
+
+  // (12-bis) Una comilla invertida dentro de una cadena con comillas DOBLES es una
+  //     sustitución de orden: bash intenta EJECUTAR lo de dentro. Pasó en la configuración
+  //     del DNS (`… la elegida y `.local`` → «.local: orden no encontrada», y el texto
+  //     quedaba a medias en el archivo). Dentro de comillas simples es texto y no pasa nada.
+  const comillasInvertidas = [];
+  for (const ruta of [
+    'infra/fedora/odontocrm',
+    'infra/fedora/ensayo-despliegue.sh',
+    'infra/fedora/install.sh',
+    'infra/fedora/instalar-base-fedora.sh',
+    'infra/fedora/nombre/instalar-dns.sh',
+    'infra/fedora/nginx/instalar.sh',
+    'infra/fedora/backup/odontocrm-backup.sh',
+    'infra/fedora/backup/odontocrm-restore.sh',
+    'infra/fedora/backup/crear-rol-respaldo.sh',
+  ]) {
+    for (const [indice, linea] of leer(ruta).split('\n').entries()) {
+      const invertida = linea.indexOf('`');
+      const doble = linea.indexOf('"');
+      const escapada = invertida > 0 && linea[invertida - 1] === '\\';
+      if (invertida !== -1 && doble !== -1 && doble < invertida && !escapada) {
+        comillasInvertidas.push(`${ruta}:${indice + 1}`);
+      }
+    }
+  }
+  exigir(
+    comillasInvertidas.length === 0,
+    'ninguna comilla invertida dentro de comillas dobles (bash la ejecutaría)',
+    `bash EJECUTA lo que va entre comillas invertidas dentro de comillas dobles: ${comillasInvertidas.join(', ')}`,
+  );
+
+  // (12-ter) El aviso del nombre por mDNS no puede comparar contra `$(hostname).local`:
+  //     `hostname` ya es `odontocrm.local` en el despliegue, así que esperaba
+  //     `odontocrm.local.local` y el aviso saltaba SIEMPRE. Además de ruido, tapaba el caso
+  //     real (avahi anunciando un nombre viejo).
+  const comparacionesDobles = [
+    'infra/fedora/odontocrm',
+    'infra/fedora/instalar-base-fedora.sh',
+    'infra/fedora/instalar/10-preparar.sh',
+  ].filter((ruta) => /\$\(hostname\)\.local/.test(leer(ruta)));
+  exigir(
+    comparacionesDobles.length === 0,
+    'nadie compara contra «$(hostname).local» (el nombre ya puede traer el dominio)',
+    `estos guiones esperan «nombre.local.local» y su aviso salta siempre: ${comparacionesDobles.join(', ')}`,
+  );
+
   // (12) Las SONDAS no deben disparar los avisos de error. Un `x="$(… | grep …)"` devuelve 1
   //      cuando no encuentra nada —que es una respuesta válida— y el aviso de ERR lo contaba
   //      como si el guion se hubiera cortado: ruido que tapa los avisos de verdad (pasó al
@@ -497,12 +660,40 @@ const exigir = (condicion, bien, mal) => {
     'infra/fedora/backup/odontocrm-restore.sh',
     'infra/fedora/backup/crear-rol-respaldo.sh',
   ]) {
+    // Dentro de un heredoc solo hay TEXTO (las instrucciones que se imprimen al operador):
+    // un `$(… | awk …)` ahí no se ejecuta y no es una sonda.
+    let heredoc = null;
     for (const [indice, linea] of leer(ruta).split('\n').entries()) {
+      if (heredoc !== null) {
+        if (linea.trim() === heredoc) heredoc = null;
+        continue;
+      }
+      const marca = /<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?/.exec(linea);
+      if (marca !== null) heredoc = marca[1];
       const esSonda =
         /^\s*[\w[\]{}@-]+="\$\(.*(grep|awk|sed|head|ss |ip -|firewall-cmd|avahi-resolve|systemctl show).*\)"$/.test(
           linea,
         );
-      if (esSonda && !linea.includes('|| true') && !linea.includes('|| echo')) {
+      // Tuberías SUELTAS: `ss … | grep :443 | awk …` o `firewall-cmd … | grep …`. Cuando no
+      // hay nada que encontrar, `grep` devuelve 1 y con `pipefail` la tubería entera falla
+      // → el aviso de «un comando devolvió error» en medio de un diagnóstico perfectamente
+      // sano (pasó en `odontocrm red` con nginx parado y sin reglas por rango). Las que van
+      // dentro de un `if`/`while` no cuentan: ahí el código ES la respuesta; y el propio
+      // `trap` de ERR tampoco (es el que avisa, no una sonda).
+      const esTuberiaSuelta =
+        !/^\s*(if|elif|while|until|\}|\{|#|trap\b)/.test(linea) &&
+        // Si la línea termina en `|` o `\`, la tubería sigue en la siguiente: la guarda
+        // (si la hay) está al final del conjunto, no aquí.
+        !/[|\\]\s*$/.test(linea) &&
+        /\|/.test(linea) &&
+        /(grep|pgrep|ss |ip -|firewall-cmd|avahi-resolve|systemctl show)/.test(
+          linea.slice(linea.indexOf('|')),
+        ) &&
+        !linea.includes('||');
+      if (
+        (esSonda && !linea.includes('|| true') && !linea.includes('|| echo')) ||
+        esTuberiaSuelta
+      ) {
         sondasSinGuardar.push(`${ruta}:${indice + 1}`);
       }
     }
