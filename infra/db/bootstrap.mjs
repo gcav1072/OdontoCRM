@@ -288,7 +288,9 @@ const run = async () => {
         upsertEnvFile(etcFile, values, { modo: 0o600 });
         despliegue.push(service.name);
       } catch (error) {
-        avisos.push(`no pude escribir ${etcFile}: ${error instanceof Error ? error.message : error}`);
+        avisos.push(
+          `no pude escribir ${etcFile}: ${error instanceof Error ? error.message : error}`,
+        );
       }
     }
 
