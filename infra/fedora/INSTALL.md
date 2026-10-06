@@ -1397,8 +1397,10 @@ curl -m 5 http://<IP_DEL_SERVIDOR>:8090/health
 curl -m 5 http://<IP_DEL_SERVIDOR>:5432
 ```
 
-> PENDIENTE FASE 10: (P-20) ejecutar las dos comprobaciones desde un equipo de la LAN y
-> registrar la evidencia en §20.
+> ✅ Verificado (P-20, §20.1): acceso desde otros equipos de la red local, con **Android
+> resolviendo `odontocrm.local`** (Pixel 7) y la CA instalada desde
+> `http://<dirección-del-servidor>/ca.crt`. Los scripts adaptan la dirección a la que usó cada
+> equipo, así que funcionan aunque el servidor cambie de red.
 
 ---
 
@@ -1493,11 +1495,11 @@ sudo chown root:root /etc/pki/tls/private/odontocrm.key
 El certificado debe incluir **el nombre Y la IP** que teclean los equipos, o los
 navegadores mostrarán aviso.
 
-> PENDIENTE FASE 10: (P-12) confirmar `mkcert`/`openssl` en el Fedora usado, la ruta
-> final del par de claves y el procedimiento para instalar la CA raíz en cada PC,
-> tablet y TV. Algunos navegadores de Smart TV no permiten importar una CA: si es el
-> caso, la alternativa es un dominio real con certificado Let's Encrypt vía DNS-01
-> (documentar aparte).
+> ✅ Verificado (P-12, §20.1): el certificado se emite para el **nombre**, `localhost`,
+> `127.0.0.1` y la IP; la CA se reparte en cinco formatos (`.crt`, `.der`, `.mobileconfig` y los
+> dos scripts de un comando) por HTTP y HTTPS, y se instaló y probó en **Windows**, **Android
+> (Pixel 7)** y **Linux**. Queda fuera el televisor, que en general no admite CA
+> ([`CERTIFICADO_EN_LOS_EQUIPOS.md`](../../docs/CERTIFICADO_EN_LOS_EQUIPOS.md) §0).
 
 ### 13.3 nginx
 
