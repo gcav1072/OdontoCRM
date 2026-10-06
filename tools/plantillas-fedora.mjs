@@ -28,7 +28,7 @@
  * Corre dentro de `npm run verify`: si alguien renombra una variable y no toca
  * Fedora, el commit no pasa.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -661,6 +661,47 @@ const exigir = (condicion, bien, mal) => {
     'los scripts de la CA se publican sin IP grabada',
     'nginx/instalar.sh vuelve a escribir la IP del momento dentro de los scripts de la CA',
   );
+
+  // (13-septies) PRUEBA DE HUMO de los guiones: que ninguno aborte al arrancar.
+  //
+  // El seed se entrego con `(( ! COMPROBAR ))` antes de definir la variable: con `set -u`
+  // abortaba en la línea 62 y **solo en el camino normal** —el que yo no había ejecutado—,
+  // porque la prueba que hice fue con `--comprobar`. Esta comprobación ejecuta los guiones en
+  // sus modos inocuos (ayuda, bandera inválida o sin argumentos) y falla si alguno se cae al
+  // arrancar por una variable sin asignar o un error de sintaxis.
+  console.log('\nPrueba de humo de los guiones (ninguno debe abortar al arrancar):');
+  const humo = [
+    ['infra/fedora/instalar-servidor.sh', []],
+    ['infra/fedora/instalar-servidor.sh', ['--help']],
+    ['infra/fedora/odontocrm', []],
+    ['infra/fedora/ensayo-despliegue.sh', ['--hasta=inexistente']],
+    ['infra/fedora/backup/odontocrm-backup.sh', ['--help']],
+    ['infra/fedora/backup/odontocrm-restore.sh', ['--help']],
+  ];
+  for (const [guion, args] of humo) {
+    comprobaciones += 1;
+    const r = spawnSync('bash', [guion, ...args], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      timeout: 15_000,
+      env: { ...process.env, SUDO_USER: 'prueba-de-humo' },
+    });
+    const salida = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+    const roto = /variable sin asignar|unbound variable|syntax error|error de sintaxis/i.test(
+      salida,
+    );
+    if (roto) {
+      err(`bash ${guion} ${args.join(' ')} → aborta al arrancar:`);
+      for (const linea of salida
+        .split('\n')
+        .filter((l) => l.trim() !== '')
+        .slice(0, 3)) {
+        console.error(`      ${linea.trim().slice(0, 110)}`);
+      }
+    } else {
+      ok(`bash ${guion.split('/').pop()} ${args.join(' ')}`.padEnd(46) + ' arranca sin caerse');
+    }
+  }
 
   // (13) Las sondas de red llevan tope: `avahi-resolve` puede quedarse esperando.
   const avahiSinTope = ['infra/fedora/odontocrm', 'infra/fedora/instalar-base-fedora.sh'].filter(

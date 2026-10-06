@@ -40,6 +40,7 @@ ORIGEN="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 NOMBRE_MDNS="odontocrm"
 ADMIN_URL=""
 DRY_RUN=0
+COMPROBAR=0
 CON_DNS=0
 SIN_NOMBRE=0
 SIN_RESPALDO=0
@@ -70,7 +71,6 @@ if (( ! COMPROBAR )) && [[ "$USUARIO_REAL" == "root" ]]; then
   av 'no pude deducir tu usuario (¿lo lanzaste desde root?): el bootstrap usará el rol root'
 fi
 DRY=(); (( DRY_RUN )) && DRY=(--dry-run)
-COMPROBAR="${COMPROBAR:-0}"
 
 # ── Modo comprobación: ¿está la máquina lista para instalar? No toca nada. ──
 if (( COMPROBAR )); then
