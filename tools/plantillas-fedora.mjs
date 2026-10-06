@@ -613,12 +613,40 @@ const exigir = (condicion, bien, mal) => {
     'infra/fedora/backup/odontocrm-restore.sh',
     'infra/fedora/backup/crear-rol-respaldo.sh',
   ]) {
+    // Dentro de un heredoc solo hay TEXTO (las instrucciones que se imprimen al operador):
+    // un `$(… | awk …)` ahí no se ejecuta y no es una sonda.
+    let heredoc = null;
     for (const [indice, linea] of leer(ruta).split('\n').entries()) {
+      if (heredoc !== null) {
+        if (linea.trim() === heredoc) heredoc = null;
+        continue;
+      }
+      const marca = /<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?/.exec(linea);
+      if (marca !== null) heredoc = marca[1];
       const esSonda =
         /^\s*[\w[\]{}@-]+="\$\(.*(grep|awk|sed|head|ss |ip -|firewall-cmd|avahi-resolve|systemctl show).*\)"$/.test(
           linea,
         );
-      if (esSonda && !linea.includes('|| true') && !linea.includes('|| echo')) {
+      // Tuberías SUELTAS: `ss … | grep :443 | awk …` o `firewall-cmd … | grep …`. Cuando no
+      // hay nada que encontrar, `grep` devuelve 1 y con `pipefail` la tubería entera falla
+      // → el aviso de «un comando devolvió error» en medio de un diagnóstico perfectamente
+      // sano (pasó en `odontocrm red` con nginx parado y sin reglas por rango). Las que van
+      // dentro de un `if`/`while` no cuentan: ahí el código ES la respuesta; y el propio
+      // `trap` de ERR tampoco (es el que avisa, no una sonda).
+      const esTuberiaSuelta =
+        !/^\s*(if|elif|while|until|\}|\{|#|trap\b)/.test(linea) &&
+        // Si la línea termina en `|` o `\`, la tubería sigue en la siguiente: la guarda
+        // (si la hay) está al final del conjunto, no aquí.
+        !/[|\\]\s*$/.test(linea) &&
+        /\|/.test(linea) &&
+        /(grep|pgrep|ss |ip -|firewall-cmd|avahi-resolve|systemctl show)/.test(
+          linea.slice(linea.indexOf('|')),
+        ) &&
+        !linea.includes('||');
+      if (
+        (esSonda && !linea.includes('|| true') && !linea.includes('|| echo')) ||
+        esTuberiaSuelta
+      ) {
         sondasSinGuardar.push(`${ruta}:${indice + 1}`);
       }
     }

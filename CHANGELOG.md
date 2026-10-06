@@ -34,6 +34,22 @@ con la zona horaria del sistema y la carpeta del día podía caer en la fecha eq
 lo que ese comentario decía evitar. Ahora está en `[Service]`, y `fedora:check` comprueba que
 ninguna unidad vuelva a poner `Environment=` en `[Unit]`.
 
+### Lo que encontró la primera prueba en la máquina de verdad
+
+Poner esto en la PC de pruebas (que acababa de cambiar de red) encontró cuatro cosas más, y
+las cuatro eran del mismo tipo: **algo que falla y no lo dice**.
+
+| Defecto | Síntoma real | Corrección |
+| :--- | :--- | :--- |
+| `instalar-dns.sh` arrancaba dnsmasq con `systemctl enable --now` | Un dnsmasq **ya activo no se reinicia** con `--now`: seguía esperando la IP anterior (`bind-dynamic`) y el 53 no escuchaba en la LAN, aunque el guion dijera «dnsmasq activo» y `odontocrm red` creyera que el DNS estaba bien | `enable` + **`restart`**, y se dice que se reinició con esta configuración |
+| El mismo guion usaba `$CODE_DIR` sin definirla (y con la ruta mal: `$CODE_DIR/../nginx/…`) | Con `set -u` moría **al final**, después de dejar el DNS configurado, así que `odontocrm red --arreglar` lo contaba como «no pude actualizar el DNS propio» con el trabajo hecho | Se define `CODE_DIR` al principio y el resumen cita la ruta correcta del instalador de nginx |
+| Dos sondas de `odontocrm red` sin `|| true` (`ss … \| grep :443`, `firewall-cmd … \| grep`) | Con nginx parado o sin reglas por rango, `grep` devuelve 1 → con `pipefail` el aviso de ERR imprimía «✖ un comando devolvió error» en mitad de un diagnóstico **correcto**, tapando el dato | Guardadas. Y la comprobación de sondas de `fedora:check` ahora también mira **tuberías sueltas**: encontró y se arreglaron cuatro más (incluidas las de `openssl … \| sed` del certificado) |
+| `30-desplegar.sh` migraba sin comprobar la base | Con PostgreSQL parado (lo había parado `odontocrm parar --todo`), lo que se veía era una traza de Node con `ECONNREFUSED 127.0.0.1:5432` y nada que decir qué hacer | Antes de migrar comprueba `pg_isready` y dice: «arráncalo y repite: `sudo odontocrm arrancar`» |
+
+Y una confirmación: el aviso de contraseña temporal del paso 5/9 («se imprime UNA vez») es
+fiable — se comprobó contra la base que las cuentas que el seed dice crear son exactamente las
+que aparecen con `must_change_password`.
+
 ## [Instalador] — Pregunta lo que hace falta y siembra solo el administrador · 2026-10-06
 
 Instalar ya no termina con deberes: el instalador **pregunta** lo que no se puede inventar

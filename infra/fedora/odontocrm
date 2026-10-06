@@ -425,7 +425,7 @@ case "$ORDEN" in
     if [[ -f /etc/pki/tls/certs/odontocrm.crt ]]; then
       ok "servidor: /etc/pki/tls/certs/odontocrm.crt"
       openssl x509 -in /etc/pki/tls/certs/odontocrm.crt -noout \
-        -subject -dates -ext subjectAltName 2>/dev/null | sed 's/^/    /'
+        -subject -dates -ext subjectAltName 2>/dev/null | sed 's/^/    /' || true
     else
       err 'no está el certificado del servidor: ejecuta la fase TLS (INSTALL.md §13.2)'
     fi
@@ -435,7 +435,7 @@ case "$ORDEN" in
     [[ -f "$origen" ]] || origen="$CA_DIR/rootCA.pem"
     if [[ -f "$origen" ]]; then
       ok "autoridad (CA) interna: $origen"
-      openssl x509 -in "$origen" -noout -subject -dates 2>/dev/null | sed 's/^/    /'
+      openssl x509 -in "$origen" -noout -subject -dates 2>/dev/null | sed 's/^/    /' || true
 
       # Se deja una copia estable, que entra en el respaldo de configuración.
       install -d -m 0755 "$ETC_DIR/keys"
@@ -711,7 +711,10 @@ EOF
     printf '  %sDel mismo servidor%s también sirve https://127.0.0.1\n' "$C_TI" "$C_RE"
     echo
     echo "  nginx escucha en:"
-    ss -lntp 2>/dev/null | grep ':443' | awk '{print "    " $4}' | sort -u
+    # `|| true` a propósito: si nginx está caído, `grep` devuelve 1 —que es una respuesta
+    # válida— y con `pipefail` eso disparaba el aviso de «un comando devolvió error»,
+    # tapando justo el dato que se venía a ver.
+    ss -lntp 2>/dev/null | grep ':443' | awk '{print "    " $4}' | sort -u || true
     echo "  (0.0.0.0:443 = todas las interfaces; el firewall es quien decide quién entra)"
     echo
 
@@ -807,8 +810,16 @@ EOF
       if dns_propio_coherente "$IP_LAN"; then
         ok "el DNS propio publica el nombre con la IP de ahora ($IP_LAN)"
       else
-        av "el DNS propio apunta a otra red (se instaló con $(grep -m1 '^listen-address=' /etc/dnsmasq.d/odontocrm.conf 2>/dev/null | cut -d= -f2))"
-        av '  con la IP vieja dnsmasq no escucha: los Android no resuelven el nombre'
+        # Dos causas distintas que se ven iguales desde fuera («el nombre no resuelve en
+        # Android»): la configuración quedó con la IP anterior, o está bien pero dnsmasq
+        # no está escuchando (p. ej. no se reinició al reescribirla).
+        ip_conf="$(grep -m1 '^listen-address=' /etc/dnsmasq.d/odontocrm.conf 2>/dev/null | cut -d= -f2 || true)"
+        if [[ "$ip_conf" != "$IP_LAN" ]]; then
+          av "el DNS propio apunta a otra red ($ip_conf) y ahora esta máquina está en $IP_LAN"
+        else
+          av "el DNS propio está configurado para $IP_LAN, pero dnsmasq NO está escuchando ahí"
+        fi
+        av '  con eso, los Android (que no entienden mDNS) no resuelven el nombre'
         av '  se arregla con:  sudo odontocrm red --arreglar'
         problemas=$((problemas + 1))
       fi
@@ -855,13 +866,17 @@ EOF
       firewall-cmd --permanent --zone="$zona" --add-service=https >/dev/null 2>&1 || true
       firewall-cmd --permanent --zone="$zona" --add-service=http >/dev/null 2>&1 || true
       # Las reglas por rango que apuntan a OTRA red se retiran: se quedaron viejas y
-      # confunden al siguiente que mire el firewall.
-      firewall-cmd --list-rich-rules 2>/dev/null | grep 'port="443"' | while read -r regla; do
-        printf '%s' "$regla" | grep -qF "$RED_LAN" || {
+      # confunden al siguiente que mire el firewall. La sonda lleva `|| true`: cuando no
+      # hay reglas por rango (lo normal) `grep` devuelve 1 y con `pipefail` eso disparaba
+      # el aviso de «un comando devolvió error» en mitad del arreglo.
+      reglas_viejas="$(firewall-cmd --list-rich-rules 2>/dev/null | grep 'port="443"' || true)"
+      while IFS= read -r regla; do
+        [[ -n "$regla" ]] || continue
+        if ! printf '%s' "$regla" | grep -qF "$RED_LAN"; then
           firewall-cmd --permanent --remove-rich-rule="$regla" >/dev/null 2>&1 || true
           av "retirada una regla vieja del firewall: $regla"
-        }
-      done
+        fi
+      done <<<"$reglas_viejas"
       firewall-cmd --reload >/dev/null 2>&1 || true
       ok "firewalld: 443 y 80 abiertos en la zona «$zona» (sigue a la interfaz, no a un rango)"
     fi
@@ -939,7 +954,7 @@ EOF
           fi
         else
           av 'no pude actualizar el DNS propio:'
-          tail -3 /tmp/odontocrm-dns.log 2>/dev/null | sed 's/^/      /'
+          tail -3 /tmp/odontocrm-dns.log 2>/dev/null | sed 's/^/      /' || true
         fi
         rm -f /tmp/odontocrm-dns.log
       fi
@@ -990,7 +1005,7 @@ EOF
       if [[ "${ajenas_n:-0}" != "0" ]]; then
         av "$ajenas_n denegación(es) de servicios del SISTEMA (no del proyecto):"
         printf '%s' "$registro" | grep -oE 'comm="[^"]+"' | sort | uniq -c |
-          sed 's/^/      /' | head -5
+          sed 's/^/      /' | head -5 || true
         av 'son habituales en Fedora (systemd-rfkill y compañía) y no afectan a OdontoCRM'
       fi
       exit 0

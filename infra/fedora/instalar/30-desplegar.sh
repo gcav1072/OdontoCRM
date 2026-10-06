@@ -254,6 +254,14 @@ paso '4/9 · Migraciones de las 8 bases'
 if (( DRY_RUN )); then
   for s in "${SERVICIOS[@]}"; do detalle "[dry-run] migrar $s"; done
 else
+  # Antes de migrar: ¿está PostgreSQL en marcha? Si no, lo que se ve es un `ECONNREFUSED
+  # 127.0.0.1:5432` dentro de una traza larga de Node, que no dice qué hacer. Pasó tras un
+  # reinicio con la base parada (la había parado `odontocrm parar --todo`).
+  if ! pg_isready -h 127.0.0.1 -p 5432 >/dev/null 2>&1; then
+    av 'PostgreSQL no está escuchando en 127.0.0.1:5432'
+    detalle 'arráncalo y repite:   sudo odontocrm arrancar   (o la pieza 1: 10-preparar.sh)'
+    morir 'no puedo migrar sin base de datos'
+  fi
   for s in "${SERVICIOS[@]}"; do
     registro="/tmp/odontocrm-migrar-$s.log"
     if ! (cd "$CODE_DIR" && node tools/con-entorno.mjs "$ETC_DIR" "$s" -- \

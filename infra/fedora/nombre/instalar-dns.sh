@@ -54,6 +54,12 @@ done
 
 [[ "$(id -u)" == "0" ]] || morir 'esta orden necesita sudo (escribe configuración del sistema)'
 
+# El código desplegado, para poder citar la ruta del instalador de nginx en el resumen.
+# Antes se usaba `$CODE_DIR` sin definirla: con `set -u` el guion moría **al final** —después
+# de dejar el DNS configurado— con «unbound variable», y quien lo llamaba (odontocrm red
+# --arreglar) creía que no había hecho nada.
+CODE_DIR="${ODONTOCRM_CODE_DIR:-/opt/odontocrm}"
+
 IFACE="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1 || true)"
 IP_LAN="$(ip -4 addr show dev "${IFACE:-wlp2s0}" 2>/dev/null | grep -oP 'inet \K[0-9.]+' | head -1 || true)"
 [[ -n "$IP_LAN" ]] || morir 'no pude deducir la IP de este servidor en la red local'
@@ -101,11 +107,17 @@ else
 fi
 
 # ── 3. Servicio ──────────────────────────────────────────────────────────────
+# `enable` (que arranque al encender) + `restart`, NO `enable --now`: un dnsmasq que ya
+# estaba activo **no** se reinicia con `--now`, así que seguía con la configuración vieja
+# —esperando la IP anterior, porque `bind-dynamic` espera direcciones que aún no existen—
+# y el nombre no resolvía en ningún equipo. Pasó justo al cambiar de red: el guion decía
+# «dnsmasq activo» y el 53 no escuchaba en la LAN.
 if (( DRY_RUN )); then
-  printf '       [dry-run]$ systemctl enable --now dnsmasq\n'
+  printf '       [dry-run]$ systemctl enable dnsmasq && systemctl restart dnsmasq\n'
 else
-  systemctl enable --now dnsmasq >/dev/null 2>&1 || morir 'no pude arrancar dnsmasq (revisa: journalctl -u dnsmasq)'
-  systemctl is-active --quiet dnsmasq && ok 'dnsmasq activo' ||
+  systemctl enable dnsmasq >/dev/null 2>&1 || true
+  systemctl restart dnsmasq >/dev/null 2>&1 || morir 'no pude arrancar dnsmasq (revisa: journalctl -u dnsmasq)'
+  systemctl is-active --quiet dnsmasq && ok 'dnsmasq activo (reiniciado con esta configuración)' ||
     morir 'dnsmasq no quedó activo (revisa: journalctl -u dnsmasq)'
 fi
 
@@ -151,7 +163,7 @@ echo "      Android       : Ajustes → Red → (red actual) → IP estática �
 echo "      Linux         : nmcli con mod <conexión> ipv4.dns $IP_LAN && nmcli con up <conexión>"
 echo
 echo "  Y después, el certificado tiene que cubrir ese nombre:"
-echo "      sudo bash $CODE_DIR/../nginx/instalar.sh --host=\"$NOMBRE $IP_LAN\"   # o:"
+echo "      sudo bash $CODE_DIR/infra/fedora/nginx/instalar.sh --host=\"$NOMBRE $IP_LAN\"   # o:"
 echo "      sudo odontocrm red --arreglar                                        # reemite con lo que use el proxy"
 echo
 ok "hecho. Comprueba desde otro equipo:  nslookup $NOMBRE $IP_LAN   y luego  https://$NOMBRE"
