@@ -12,6 +12,7 @@ const SERVICIOS = [
   ['odontogram', 'ODONTOGRAM_URL'],
   ['screens', 'SCREENS_URL'],
   ['reporting', 'REPORTING_URL'],
+  ['billing', 'BILLING_URL'],
 ] as const;
 
 /** Servicios internos configurados (una URL vacía significa «no está desplegado»). */

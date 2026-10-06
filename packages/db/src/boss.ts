@@ -58,7 +58,7 @@ export const consumerQueueName = (service: string): string => `${DOMAIN_EVENTS_Q
 
 /**
  * Servicios que **consumen** eventos: los que registran un manejador de la cola
- * (`registerDomainEventHandler`). Son cinco; `scheduling`, `clinical` y
+ * (`registerDomainEventHandler`). Son seis; `scheduling`, `clinical` y
  * `odontogram` solo publican, y el gateway es borde puro.
  *
  * La lista tiene que ser exacta en los dos sentidos: si falta un consumidor, sus
@@ -72,6 +72,7 @@ export const EVENT_CONSUMERS: readonly string[] = [
   'notifications',
   'screens',
   'reporting',
+  'billing',
 ];
 
 /**

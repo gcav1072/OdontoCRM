@@ -53,7 +53,7 @@ SERVICE_GROUP="${ODONTOCRM_GROUP:-odontocrm}"
 
 # Los 8 servicios con base de datos propia, en orden. El gateway va aparte: no
 # tiene base de datos y su unidad es otra.
-SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting)
+SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting billing)
 PUERTO_GATEWAY=8090
 NOMBRE_MDNS_POR_DEFECTO=odontocrm
 ZONA_HORARIA="${ODONTOCRM_TZ:-America/Caracas}"

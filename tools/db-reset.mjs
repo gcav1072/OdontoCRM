@@ -68,6 +68,7 @@ const BASES = [
   'odonto_odontogram',
   'odonto_screens',
   'odonto_reporting',
+  'odonto_billing',
   'odonto_events',
 ];
 

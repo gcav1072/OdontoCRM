@@ -12,6 +12,7 @@ const conTodo = {
   ODONTOGRAM_URL: 'http://127.0.0.1:4006',
   SCREENS_URL: 'http://127.0.0.1:4007',
   REPORTING_URL: 'http://127.0.0.1:4008',
+  BILLING_URL: 'http://127.0.0.1:4009',
   LOG_LEVEL: 'silent',
 };
 
@@ -30,6 +31,7 @@ describe('servicios detrás de la puerta', () => {
       'odontogram',
       'screens',
       'reporting',
+      'billing',
     ]);
   });
 
@@ -51,7 +53,7 @@ describe('servicios detrás de la puerta', () => {
       (async () => ({ ok: true, status: 200 }) as Response) as unknown as typeof fetch,
     );
 
-    expect(checks).toHaveLength(8);
+    expect(checks).toHaveLength(9);
     await expect(checks[0]?.run()).resolves.toBeUndefined();
   });
 

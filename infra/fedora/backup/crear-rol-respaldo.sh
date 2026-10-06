@@ -58,7 +58,7 @@ password=""
 rotar=0
 bypassrls=0
 admin_role="${SUDO_USER:-}"   # rol con permiso para DROP/CREATE (restauración)
-bases=(odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_events)
+bases=(odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_billing odonto_events)
 
 for arg in "$@"; do
   case "$arg" in

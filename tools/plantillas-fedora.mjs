@@ -115,6 +115,7 @@ const CON_BASE = [
   'odontogram',
   'screens',
   'reporting',
+  'billing',
 ];
 
 /**

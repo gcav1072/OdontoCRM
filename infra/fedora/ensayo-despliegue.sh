@@ -42,7 +42,7 @@ DESTINO="${DESTINO:-/opt/odontocrm}"
 # la que estás mirando y la que esperas ver en el servidor. Si quieres otra (por
 # ejemplo, `main` mientras trabajas en una rama de función), pásala con `--rama=`.
 RAMA="${RAMA:-}"
-SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting)
+SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting billing)
 HASTA="servicios"
 LAN_CIDR=""
 REINICIAR=0
@@ -358,7 +358,7 @@ sleep 8
 FALLOS=0
 # El puerto tiene que estar ocupado por el proceso **de la unidad**, no por otro
 # (una pila de desarrollo, un proceso suelto): si no, un /health 200 engaña.
-declare -A PUERTO_DE=([identity]=4001 [patients]=4002 [scheduling]=4003 [notifications]=4004 [clinical]=4005 [odontogram]=4006 [screens]=4007 [reporting]=4008)
+declare -A PUERTO_DE=([identity]=4001 [patients]=4002 [scheduling]=4003 [notifications]=4004 [clinical]=4005 [odontogram]=4006 [screens]=4007 [reporting]=4008 [billing]=4009)
 for s in "${SERVICIOS[@]}"; do
   puerto="${PUERTO_DE[$s]}"
   unidad="odontocrm@$s"
@@ -638,7 +638,7 @@ if [[ "$HASTA" == "respaldos" ]]; then
     echo "    Filas por base (real → restaurada):"
     URL_BASE() { printf 'postgres:///%s?host=/var/run/postgresql' "$1"; }
     total_real=0; total_verif=0
-    for base in odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting; do
+    for base in odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_billing; do
       psql -d "postgres:///postgres?host=/var/run/postgresql" -tAc "select 1 from pg_database where datname='${base}__verif'" | grep -q 1 || continue
       # Los contadores de pg_stat pueden estar desactualizados: se cuenta de verdad.
       contar() {

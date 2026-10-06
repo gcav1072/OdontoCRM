@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791296413435,
+      "tag": "0000_flaky_emma_frost",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791296414435,
+      "tag": "0001_siembra_configuracion",
+      "breakpoints": true
+    }
+  ]
+}

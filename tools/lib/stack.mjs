@@ -26,6 +26,7 @@ export const PUERTOS = [
   { puerto: 4006, servicio: 'odontogram', script: 'dev:odontogram' },
   { puerto: 4007, servicio: 'screens', script: 'dev:screens' },
   { puerto: 4008, servicio: 'reporting', script: 'dev:reporting' },
+  { puerto: 4009, servicio: 'billing', script: 'dev:billing' },
 ];
 
 /** ¿Hay alguien escuchando en ese puerto? */

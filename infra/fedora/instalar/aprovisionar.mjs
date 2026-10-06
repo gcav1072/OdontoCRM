@@ -42,6 +42,7 @@ const SERVICIOS = [
   { nombre: 'odontogram', puerto: 4006, base: 'odonto_odontogram' },
   { nombre: 'screens', puerto: 4007, base: 'odonto_screens' },
   { nombre: 'reporting', puerto: 4008, base: 'odonto_reporting' },
+  { nombre: 'billing', puerto: 4009, base: 'odonto_billing' },
 ];
 
 /** La cola de eventos (pg-boss) es UNA base compartida: todos los servicios la leen igual. */
@@ -360,6 +361,10 @@ const extrasDe = (nombre) => {
         PUBLIC_APP_URL: `https://${opciones.host}`,
       };
     case 'reporting':
+      return { PLAYWRIGHT_BROWSERS_PATH: `${opciones.dataDir}/ms-playwright` };
+    case 'billing':
+      // La factura y el recibo se componen con Chromium: la misma ruta que clinical
+      // y reporting. El plan lo avisa (§7.5, punto 16).
       return { PLAYWRIGHT_BROWSERS_PATH: `${opciones.dataDir}/ms-playwright` };
     case 'notifications':
       // Sin token, `TELEGRAM_MODE=auto` usa el bot simulado: la clínica arranca y los

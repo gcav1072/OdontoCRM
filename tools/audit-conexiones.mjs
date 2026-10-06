@@ -27,15 +27,26 @@ const ROOT = process.cwd();
 const METODOS_HTTP = ['get', 'post', 'put', 'patch', 'delete'];
 
 /**
- * El contrato de una fase futura ya está escrito pero el servicio **todavía no existe**: sus temas y
- * sus permisos no cuentan como fallo estructural (no hay ruta que los exija ni código que los
- * publique). **Al crear `services/billing` hay que vaciar las dos listas**: el servicio exige sus
- * permisos en las rutas y publica sus temas, y entonces la excusa sobra.
+ * Lo que aún no existe: **sus permisos y sus temas no cuentan como fallo estructural** (no hay ruta
+ * que los exija ni código que los publique). Se vacía a medida que la fase llega:
+ *
+ * - `services/billing` **ya existe** (Fase 11, tanda A): por eso no está en `servicios`. Lo que
+ *   sigue en la lista son sus permisos de **dinero** —cobrar, tasa y anular—, que llegan con la
+ *   sesión B. `billing:read` y `billing:write` ya los exige la caja, así que no están.
+ * - Los temas `billing.*` se publican con el primer acto de dinero (emitir, cobrar): hasta entonces
+ *   siguen contando como de fase futura para no llenar la deuda de avisos.
  */
 const FASES_FUTURAS = {
   servicios: ['billing'],
-  permisos: ['billing:read', 'billing:write', 'billing:collect', 'billing:rates', 'billing:void'],
+  permisos: ['billing:collect', 'billing:rates', 'billing:void'],
 };
+
+/**
+ * Servicios cuya base existe pero **todavía no tiene migraciones**. Es distinto de `FASES_FUTURAS`:
+ * `billing` ya migró (13 tablas), así que entra en la tabla como los demás; lo que sigue pendiente
+ * son sus temas, no su base.
+ */
+const SIN_MIGRAR = [];
 
 /** Variables que genera `db:bootstrap` en cada servicio (no van en la plantilla). */
 const GENERADAS = new Set([
@@ -326,7 +337,7 @@ const auditarDatos = async () => {
   for (const servicio of servicios) {
     // Las bases de las fases futuras existen pero aún no tienen migraciones: se
     // informan aparte, con una línea, para no ensuciar la tabla.
-    if (FASES_FUTURAS.servicios.includes(servicio)) continue;
+    if (SIN_MIGRAR.includes(servicio)) continue;
 
     const url = leerEnv(`services/${servicio}/.env`, 'DATABASE_URL');
     if (url === undefined) {
@@ -367,7 +378,7 @@ const auditarDatos = async () => {
     }
   }
 
-  for (const servicio of FASES_FUTURAS.servicios) {
+  for (const servicio of SIN_MIGRAR) {
     const url = leerEnv(`services/${servicio}/.env`, 'DATABASE_URL');
     if (url === undefined) {
       pendientes.push(`La base de ${servicio} no tiene .env (ejecuta db:bootstrap)`);

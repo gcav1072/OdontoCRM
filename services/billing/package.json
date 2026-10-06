@@ -1,0 +1,21 @@
+{
+  "name": "@odontocrm/billing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Facturación y pagos: caja, documentos fiscales archivados y tasa BCV",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/index.js",
+    "db:migrate": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/db/migrate.js"
+  },
+  "dependencies": {
+    "@odontocrm/contracts": "*",
+    "@odontocrm/db": "*",
+    "@odontocrm/events": "*",
+    "@odontocrm/kernel": "*",
+    "fastify": "^5.12.5",
+    "playwright": "^1.63.0"
+  }
+}

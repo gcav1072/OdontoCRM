@@ -1,4 +1,8 @@
+import { z } from 'zod';
+
+import { optionalText } from '../common/optional.js';
 import type { InvoiceStatus, Role } from './enums.js';
+import { toothNumberSchema, toothSurfaceSchema } from './odontogram.js';
 
 /**
  * Módulo de facturación y pagos (Fase 11) — contrato compartido.
@@ -578,3 +582,33 @@ export const formatReceiptNumber = (receiptNumber: number): string =>
 
 export const formatCreditNoteNumber = (creditNoteNumber: number): string =>
   `NC-${String(creditNoteNumber).padStart(6, '0')}`;
+
+/* ── 8. Entradas de la caja (lo que manda la interfaz) ────────────────────── */
+
+/**
+ * Una línea del borrador. La caja manda la lista **completa** al guardar: quitar una línea es no
+ * mandarla, y así no hay dos caminos para el mismo cambio (ni un `PATCH` que dependa del orden).
+ *
+ * `unitPriceCentsUsd` y `description` se piden cuando la partida **no tiene precio en el catálogo**
+ * (M3: entra en 0 y marcada, y la caja la resuelve en diez segundos).
+ */
+export const draftItemInputSchema = z
+  .object({
+    /** Código del catálogo (`obturacion_resina`) o el que trajo la sesión clínica (`otros`). */
+    code: z.string().trim().min(1).max(60),
+    quantity: z.number().int().min(1).max(99).default(1),
+    /** Precio unitario en céntimos de USD; si falta, el del catálogo. */
+    unitPriceCentsUsd: z.number().int().min(0).max(100_000_000).optional(),
+    description: optionalText(200),
+    toothNumber: toothNumberSchema.nullable().default(null),
+    surfaces: z.array(toothSurfaceSchema).max(5).default([]),
+  })
+  .strict();
+
+export type DraftItemInput = z.infer<typeof draftItemInputSchema>;
+
+export const replaceDraftItemsSchema = z
+  .object({ items: z.array(draftItemInputSchema).max(60) })
+  .strict();
+
+export type ReplaceDraftItemsInput = z.infer<typeof replaceDraftItemsSchema>;

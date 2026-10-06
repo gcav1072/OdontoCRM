@@ -23,10 +23,11 @@ export const SERVICIOS = [
   { name: 'screens', database: 'odonto_screens', env: 'services/screens/.env' },
   { name: 'identity', database: 'odonto_identity', env: 'services/identity/.env' },
   { name: 'reporting', database: 'odonto_reporting', env: 'services/reporting/.env' },
+  { name: 'billing', database: 'odonto_billing', env: 'services/billing/.env' },
 ];
 
 /**
- * Los nueve procesos de la pila con su puerto y la variable que lo configura. El
+ * Los diez procesos de la pila con su puerto y la variable que lo configura. El
  * orden es el de arranque (la base, los servicios, la puerta al final).
  */
 export const PROCESOS = [
@@ -43,6 +44,7 @@ export const PROCESOS = [
   { name: 'odontogram', variable: 'ODONTOGRAM_PORT', port: 4006, unidad: 'odontocrm@odontogram' },
   { name: 'screens', variable: 'SCREENS_PORT', port: 4007, unidad: 'odontocrm@screens' },
   { name: 'reporting', variable: 'REPORTING_PORT', port: 4008, unidad: 'odontocrm@reporting' },
+  { name: 'billing', variable: 'BILLING_PORT', port: 4009, unidad: 'odontocrm@billing' },
   { name: 'gateway', variable: 'GATEWAY_PORT', port: 8090, unidad: 'odontocrm-gateway' },
 ];
 

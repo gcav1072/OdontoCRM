@@ -75,6 +75,12 @@ const SERVICES = [
     role: 'odonto_reporting',
     envFile: 'services/reporting/.env',
   },
+  {
+    name: 'billing',
+    database: 'odonto_billing',
+    role: 'odonto_billing',
+    envFile: 'services/billing/.env',
+  },
 ];
 
 const EVENTS_BROKER = { database: 'odonto_events', role: 'odonto_events' };

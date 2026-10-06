@@ -17,7 +17,7 @@ import { join } from 'node:path';
 
 import { ROOT } from './mantenimiento.mjs';
 
-/** Servicios con `.env` propio (el de `reporting` llega con la Fase 9). */
+/** Servicios con `.env` propio (el de `billing` llega con la Fase 11). */
 export const SERVICIOS = [
   'identity',
   'patients',
@@ -27,6 +27,7 @@ export const SERVICIOS = [
   'odontogram',
   'screens',
   'reporting',
+  'billing',
 ];
 
 /**

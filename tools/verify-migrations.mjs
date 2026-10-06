@@ -84,6 +84,24 @@ const SERVICES = [
       'processed_events',
     ],
   },
+  {
+    name: 'billing',
+    migrations: 'services/billing/migrations',
+    tables: [
+      'exchange_rates',
+      'billing_settings',
+      'invoice_series',
+      'fiscal_forms',
+      'treatment_catalog',
+      'invoices',
+      'invoice_items',
+      'invoice_sessions',
+      'payments',
+      'credit_notes',
+      'credit_note_items',
+      'processed_events',
+    ],
+  },
 ];
 
 const args = process.argv.slice(2);

@@ -36,7 +36,7 @@ trap 'codigo=$?; if (( codigo != 0 )) && [[ "$BASH_COMMAND" != exit* ]]; then pr
 
 CODE_DIR="${CODE_DIR:-/opt/odontocrm}"
 ETC_DIR="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}"
-SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting)
+SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting billing)
 
 C_OK=$'\e[32m'; C_AV=$'\e[33m'; C_ER=$'\e[31m'; C_TI=$'\e[1m'; C_RE=$'\e[0m'
 ok()   { printf '  %s✔%s %s\n' "$C_OK" "$C_RE" "$1"; }
@@ -155,7 +155,7 @@ case "$ORDEN" in
     necesita_root
     command -v curl >/dev/null || morir 'falta curl'
     declare -A PUERTOS=([identity]=4001 [patients]=4002 [scheduling]=4003 [notifications]=4004
-                        [clinical]=4005 [odontogram]=4006 [screens]=4007 [reporting]=4008 [gateway]=8090)
+                        [clinical]=4005 [odontogram]=4006 [screens]=4007 [reporting]=4008 [billing]=4009 [gateway]=8090)
 
     # Tras un reinicio (o un `actualizar`) los servicios no tardan todos lo mismo en
     # escuchar: notifications y clinical levantan plantillas y el navegador antes de

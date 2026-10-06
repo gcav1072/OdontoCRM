@@ -69,6 +69,8 @@ const extraEnv = {
   TEST_REPORTING_DATABASE_URL:
     process.env.TEST_REPORTING_DATABASE_URL ??
     readEnvValue('services/reporting/.env', 'DATABASE_URL'),
+  TEST_BILLING_DATABASE_URL:
+    process.env.TEST_BILLING_DATABASE_URL ?? readEnvValue('services/billing/.env', 'DATABASE_URL'),
 };
 
 /**

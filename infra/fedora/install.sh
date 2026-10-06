@@ -116,6 +116,7 @@ readonly SERVICES=(
   "odontogram:4006:odonto_odontogram"
   "screens:4007:odonto_screens"
   "reporting:4008:odonto_reporting"
+  "billing:4009:odonto_billing"
 )
 readonly GATEWAY_PORT=8090
 readonly PLAYWRIGHT_DIR="/var/lib/odontocrm/ms-playwright"   # navegadores (Fase 7)
@@ -740,10 +741,12 @@ corregir_valores_obsoletos() {
     ok "añadido PUBLIC_APP_URL (primer origen) en $archivo (lo usa el QR de verificación del récipe)"
   fi
 
-  # 3-bis) clinical y reporting generan PDF con Playwright: sin la ruta, el
+  # 3-bis) clinical, reporting y billing generan PDF con Playwright: sin la ruta, el
   #    navegador se busca en la caché del usuario del servicio y la exportación
-  #    responde 503. (Medido en la Fase 10: los récipes salían y la exportación no.)
-  for archivo in /etc/odontocrm/clinical.env /etc/odontocrm/reporting.env; do
+  #    responde 503. (Medido en la Fase 10: los récipes salían y la exportación no;
+  #    en billing, sin esto no se puede emitir la factura.)
+  for archivo in /etc/odontocrm/clinical.env /etc/odontocrm/reporting.env \
+    /etc/odontocrm/billing.env; do
     [[ -f "$archivo" ]] || continue
     if ! grep -qE '^PLAYWRIGHT_BROWSERS_PATH=' "$archivo"; then
       (( APPLY )) && printf '\nPLAYWRIGHT_BROWSERS_PATH=%s\n' "$PLAYWRIGHT_DIR" >>"$archivo"
@@ -852,6 +855,16 @@ PLAYWRIGHT_BROWSERS_PATH=/var/lib/odontocrm/ms-playwright
 EOF
 )
         ;;
+      billing)
+        extra=$(cat <<'EOF'
+# --- Factura y recibo en PDF con Playwright/Chromium (Fase 11) ---------------
+# La MISMA ruta que en clinical y reporting: sin esto, Playwright busca el
+# navegador en la caché del usuario del servicio (HOME=/var/lib/odontocrm) y la
+# factura no se puede emitir (el borrador no publica evento, pero emitir sí).
+PLAYWRIGHT_BROWSERS_PATH=/var/lib/odontocrm/ms-playwright
+EOF
+)
+        ;;
       *)
         extra="# (Este servicio todavía no declara variables propias; ver su
 #  services/${name}/src/config.ts cuando se implemente su fase.)"
@@ -907,8 +920,8 @@ PG_HOST=127.0.0.1
 PG_PORT=5432
 PG_USER=CAMBIAR_USUARIO_DE_RESPALDO
 PGPASSFILE=/etc/odontocrm/.pgpass
-# Lista de bases a respaldar (las 8 bases, una por servicio).
-DATABASES=\"odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_events\"
+# Lista de bases a respaldar (las 9 bases de servicio + la cola compartida).
+DATABASES=\"odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_billing odonto_events\"
 # Copias opcionales (activar con --include-config / --include-storage)
 STORAGE_DIR=/var/lib/odontocrm/storage
 # Nombre del rol propietario de cada base (para restaurar con --no-owner --role).
@@ -920,7 +933,8 @@ ROLE_odonto_notifications=odonto_notifications
 ROLE_odonto_clinical=odonto_clinical
 ROLE_odonto_odontogram=odonto_odontogram
 ROLE_odonto_screens=odonto_screens
-ROLE_odonto_reporting=odonto_reporting"
+ROLE_odonto_reporting=odonto_reporting
+ROLE_odonto_billing=odonto_billing"
 
   write_if_missing "$ETC_DIR/.pgpass" 0600 \
     "# Formato: host:puerto:base:usuario:contraseña   (usuario comodín: *)
@@ -1020,7 +1034,7 @@ install_systemd_units() {
     log "los servicios NO se habilitan ni arrancan automáticamente."
     log "  Cuando el código esté compilado (INSTALL.md §9), ejecute:"
     log "    sudo systemctl enable --now $(pg_unit) \\"
-    log "      odontocrm@{identity,patients,scheduling,notifications,clinical,odontogram,screens,reporting}.service \\"
+    log "      odontocrm@{identity,patients,scheduling,notifications,clinical,odontogram,screens,reporting,billing}.service \\"
     log "      odontocrm-gateway.service"
   fi
 }

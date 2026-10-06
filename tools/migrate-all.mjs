@@ -54,6 +54,11 @@ const SERVICES = [
     script: 'services/reporting/dist/db/migrate.js',
     envFile: 'services/reporting/.env',
   },
+  {
+    name: 'billing',
+    script: 'services/billing/dist/db/migrate.js',
+    envFile: 'services/billing/.env',
+  },
 ];
 
 const args = process.argv.slice(2);

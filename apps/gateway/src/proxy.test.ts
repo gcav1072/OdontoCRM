@@ -41,10 +41,11 @@ describe('mapa de rutas del gateway', () => {
         ODONTOGRAM_URL: 'http://127.0.0.1:4006',
         SCREENS_URL: 'http://127.0.0.1:4007',
         REPORTING_URL: 'http://127.0.0.1:4008',
+        BILLING_URL: 'http://127.0.0.1:4009',
       }),
     );
 
-    expect(routes).toHaveLength(14);
+    expect(routes).toHaveLength(15);
     expect(routes.map((route) => route.prefix)).toContain('/api/v1/screens');
   });
 

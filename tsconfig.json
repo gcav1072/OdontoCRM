@@ -15,6 +15,7 @@
     { "path": "services/clinical" },
     { "path": "services/odontogram" },
     { "path": "services/reporting" },
+    { "path": "services/billing" },
     { "path": "apps/gateway" }
   ]
 }

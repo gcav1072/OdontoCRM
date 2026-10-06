@@ -59,6 +59,7 @@ export const buildProxyRoutes = (config: GatewayConfig): ProxyRoute[] => {
   add('/api/v1/odontogram', config.ODONTOGRAM_URL, 'Odontograma');
   add('/api/v1/screens', config.SCREENS_URL, 'Pantallas de sala y consultorio (SSE)');
   add('/api/v1/reports', config.REPORTING_URL, 'Reportes y KPIs');
+  add('/api/v1/billing', config.BILLING_URL, 'Caja: borradores, facturas, cobros y tasa BCV');
 
   return routes;
 };

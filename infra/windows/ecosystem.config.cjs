@@ -74,5 +74,7 @@ module.exports = {
     },
     // Fase 9: el servicio de reportes (read model de KPIs y exportaciones).
     service('reporting', 'services/reporting/dist/index.js', 'services/reporting/.env'),
+    // Fase 11: la caja (borradores de factura, documentos y tasa BCV).
+    service('billing', 'services/billing/dist/index.js', 'services/billing/.env'),
   ],
 };

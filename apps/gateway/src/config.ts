@@ -47,6 +47,7 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
   ODONTOGRAM_URL: optionalUrl,
   SCREENS_URL: optionalUrl,
   REPORTING_URL: optionalUrl,
+  BILLING_URL: optionalUrl,
 });
 
 export type GatewayConfig = z.infer<typeof gatewayEnvSchema>;
