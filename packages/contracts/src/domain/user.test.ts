@@ -59,6 +59,33 @@ describe('permisos por rol', () => {
     expect(permissionsForRoles(['pantalla'])).toEqual(['screens:display']);
   });
 
+  it('la secretaría lleva la caja entera y el odontólogo solo mira (Fase 11)', () => {
+    // §3.5 del plan de facturación: la secretaría atiende sola el mostrador, así que anula también
+    // (`billing:void`), siempre con motivo; el odontólogo ve lo que se cobró de sus tratamientos.
+    const deFacturacion = [
+      'billing:read',
+      'billing:write',
+      'billing:collect',
+      'billing:rates',
+      'billing:void',
+    ] as const;
+
+    for (const permiso of deFacturacion) {
+      expect(hasPermission(['admin'], permiso), `admin debería tener ${permiso}`).toBe(true);
+      expect(hasPermission(['secretario'], permiso), `secretaría debería tener ${permiso}`).toBe(
+        true,
+      );
+    }
+    expect(hasPermission(['odontologo'], 'billing:read')).toBe(true);
+    for (const permiso of deFacturacion.filter((p) => p !== 'billing:read')) {
+      expect(hasPermission(['odontologo'], permiso), `odontólogo no debería tener ${permiso}`).toBe(
+        false,
+      );
+    }
+    // La pantalla kiosko no ve dinero.
+    expect(hasPermission(['pantalla'], 'billing:read')).toBe(false);
+  });
+
   it('acumula permisos cuando hay varios roles y no repite', () => {
     const combined = permissionsForRoles(['secretario', 'odontologo']);
     expect(new Set(combined).size).toBe(combined.length);

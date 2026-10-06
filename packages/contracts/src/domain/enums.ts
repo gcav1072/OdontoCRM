@@ -34,6 +34,17 @@ export const PERMISSIONS = [
    * `reports:read` no bastaba porque lo tienen los tres roles.
    */
   'reports:clinical',
+  // Facturación y pagos (Fase 11, [ADR 0044](../../../docs/adr/0044-modulo-de-facturacion-desacoplado.md)).
+  /** Ver la caja, las facturas y los libros. */
+  'billing:read',
+  /** Preparar borradores, catálogo y precios. */
+  'billing:write',
+  /** Registrar y anular cobros. */
+  'billing:collect',
+  /** Fijar la tasa del día y la configuración fiscal. */
+  'billing:rates',
+  /** Anular facturas y emitir notas de crédito, siempre con motivo. */
+  'billing:void',
   'audit:read',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
@@ -57,6 +68,16 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
      */
     'clinical:read',
     'odontogram:read',
+    /**
+     * **Facturación (Fase 11, decisión del 2026-10-05):** la secretaría los tiene **todos**, incluido
+     * `billing:void`, porque atiende sola el mostrador; anular exige motivo y queda auditado
+     * (`INVOICE_TRANSITIONS`). El odontólogo solo mira lo que se cobró.
+     */
+    'billing:read',
+    'billing:write',
+    'billing:collect',
+    'billing:rates',
+    'billing:void',
   ],
   /**
    * El odontólogo registra y edita pacientes (decisión del 2026-10-03): en un
@@ -84,6 +105,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     'odontogram:write',
     'reports:read',
     'reports:clinical',
+    /** Facturación: el odontólogo **mira** lo que se cobró de sus tratamientos; no cobra ni anula. */
+    'billing:read',
   ],
   pantalla: ['screens:display'],
 };

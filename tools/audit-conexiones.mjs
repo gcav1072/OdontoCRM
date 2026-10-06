@@ -26,10 +26,15 @@ import { join, relative } from 'node:path';
 const ROOT = process.cwd();
 const METODOS_HTTP = ['get', 'post', 'put', 'patch', 'delete'];
 
-/** Servicios que aún no existen: su contrato está listo y no cuentan como fallo. */
+/**
+ * El contrato de una fase futura ya está escrito pero el servicio **todavía no existe**: sus temas y
+ * sus permisos no cuentan como fallo estructural (no hay ruta que los exija ni código que los
+ * publique). **Al crear `services/billing` hay que vaciar las dos listas**: el servicio exige sus
+ * permisos en las rutas y publica sus temas, y entonces la excusa sobra.
+ */
 const FASES_FUTURAS = {
-  servicios: [],
-  permisos: [],
+  servicios: ['billing'],
+  permisos: ['billing:read', 'billing:write', 'billing:collect', 'billing:rates', 'billing:void'],
 };
 
 /** Variables que genera `db:bootstrap` en cada servicio (no van en la plantilla). */

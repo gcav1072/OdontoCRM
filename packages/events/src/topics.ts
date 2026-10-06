@@ -50,6 +50,19 @@ export const EVENT_TOPICS = {
 
   toothFindingRecorded: 'odontogram.finding.recorded',
   toothFindingRemoved: 'odontogram.finding.removed',
+
+  /**
+   * Facturación y pagos (Fase 11, ADR 0044–0048). El **borrador no publica evento**: es un acto
+   * interno que se puede descartar, así que el acto de dinero nace al emitir.
+   */
+  invoiceIssued: 'billing.invoice.issued',
+  invoiceVoided: 'billing.invoice.voided',
+  invoicePaid: 'billing.invoice.paid',
+  paymentReceived: 'billing.payment.received',
+  paymentVoided: 'billing.payment.voided',
+  creditNoteIssued: 'billing.credit_note.issued',
+  rateSet: 'billing.rate.set',
+  catalogItemChanged: 'billing.catalog.item_changed',
 } as const;
 
 export type EventTopic = (typeof EVENT_TOPICS)[keyof typeof EVENT_TOPICS];
@@ -70,6 +83,7 @@ export const SERVICE_NAMES = [
   'odontogram',
   'screens',
   'reporting',
+  'billing',
 ] as const;
 
 export type ServiceName = (typeof SERVICE_NAMES)[number];

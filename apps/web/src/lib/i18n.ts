@@ -733,6 +733,12 @@ const DICCIONARIO = {
   'permiso.reports:read': 'Ver reportes',
   'permiso.reports:clinical': 'Ver reportes clínicos (perfil clínico, salud bucal y récipes)',
   'permiso.audit:read': 'Consultar la auditoría',
+  // Facturación y pagos (Fase 11)
+  'permiso.billing:read': 'Ver la caja, las facturas y los libros',
+  'permiso.billing:write': 'Preparar borradores, catálogo y precios',
+  'permiso.billing:collect': 'Registrar y anular cobros',
+  'permiso.billing:rates': 'Fijar la tasa del día y la configuración fiscal',
+  'permiso.billing:void': 'Anular facturas y emitir notas de crédito',
 
   // --- Acciones de auditoría ----------------------------------------------
   'auditoria.login': 'Inicio de sesión',
@@ -757,8 +763,9 @@ const DICCIONARIO = {
   'auditoria.medical_record_printed': 'Historia clínica impresa',
   'auditoria.medical_record_consent_accepted': 'Consentimiento informado registrado',
 
-  // Las 32 que faltaban para cubrir las 53 de `AUDIT_ACTIONS`: mientras el
-  // diccionario no las tenga, la pantalla muestra el código crudo (`patient_updated`).
+  // Las que se añadieron para cubrir **todas** las `AUDIT_ACTIONS` (hoy 61). Si el servidor publica
+  // una acción sin etiqueta, la pantalla muestra el código crudo (`patient_updated`); hay una prueba
+  // que vigila que eso no pase (`i18n.test.ts`).
 
   // Pantallas kiosko
   'auditoria.device_login_failed': 'Acceso fallido desde una pantalla',
@@ -797,6 +804,15 @@ const DICCIONARIO = {
   'auditoria.tooth_finding_removed': 'Hallazgo quitado de una pieza',
   'auditoria.tooth_finding_superseded': 'Hallazgo reemplazado por uno nuevo',
   'auditoria.odontogram_printed': 'Odontograma impreso',
+  // Facturación y pagos (Fase 11)
+  'auditoria.invoice_issued': 'Factura emitida',
+  'auditoria.invoice_voided': 'Factura anulada con nota de crédito',
+  'auditoria.credit_note_issued': 'Nota de crédito emitida',
+  'auditoria.payment_received': 'Cobro registrado',
+  'auditoria.payment_voided': 'Cobro anulado',
+  'auditoria.exchange_rate_set': 'Tasa del día fijada o corregida',
+  'auditoria.catalog_item_changed': 'Arancel modificado',
+  'auditoria.billing_settings_changed': 'Configuración fiscal cambiada',
 
   // --- Módulo de auditoría (Fase 9) ---------------------------------------
   'auditoria.titulo': 'Auditoría',
@@ -2427,6 +2443,11 @@ export const PERMISSION_LABELS: Readonly<Record<Permission, string>> = {
   'reports:read': t('permiso.reports:read'),
   'reports:clinical': t('permiso.reports:clinical'),
   'audit:read': t('permiso.audit:read'),
+  'billing:read': t('permiso.billing:read'),
+  'billing:write': t('permiso.billing:write'),
+  'billing:collect': t('permiso.billing:collect'),
+  'billing:rates': t('permiso.billing:rates'),
+  'billing:void': t('permiso.billing:void'),
 };
 
 const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
@@ -2483,6 +2504,14 @@ const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   tooth_finding_removed: t('auditoria.tooth_finding_removed'),
   tooth_finding_superseded: t('auditoria.tooth_finding_superseded'),
   odontogram_printed: t('auditoria.odontogram_printed'),
+  invoice_issued: t('auditoria.invoice_issued'),
+  invoice_voided: t('auditoria.invoice_voided'),
+  credit_note_issued: t('auditoria.credit_note_issued'),
+  payment_received: t('auditoria.payment_received'),
+  payment_voided: t('auditoria.payment_voided'),
+  exchange_rate_set: t('auditoria.exchange_rate_set'),
+  catalog_item_changed: t('auditoria.catalog_item_changed'),
+  billing_settings_changed: t('auditoria.billing_settings_changed'),
 };
 
 /** Etiqueta de una acción de auditoría; si el servidor añade una nueva, se muestra tal cual. */

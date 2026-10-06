@@ -67,6 +67,15 @@ export const AUDIT_ACTIONS = [
   'tooth_finding_removed',
   'tooth_finding_superseded',
   'odontogram_printed',
+  // Facturación y pagos (Fase 11; llegan por el outbox desde el servicio de facturación)
+  'invoice_issued',
+  'invoice_voided',
+  'credit_note_issued',
+  'payment_received',
+  'payment_voided',
+  'exchange_rate_set',
+  'catalog_item_changed',
+  'billing_settings_changed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
