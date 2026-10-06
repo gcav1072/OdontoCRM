@@ -26,11 +26,11 @@ proyecto ya resuelve en otro sitio y conviene copiar · **R** = riesgo o decisi�
 | :-: | :--- | :--- | :--- |
 | B1 | Idempotencia del consumidor | No se menciona | `processed_events` + reclamar el `eventId` en la **misma transacción** (ADR [0003](adr/0003-outbox-y-pg-boss.md), [0026](adr/0026-cola-de-eventos-compartida.md)) + índice único por sesión: un reintento no crea dos borradores (§5.1) |
 | B2 | Nombre de base, puerto y cola | `odontocrm_billing` | `odonto_billing`, rol `odonto_billing` (ADR [0002](adr/0002-postgresql-una-base-por-servicio.md)), puerto **4009** y entrada en `EVENT_CONSUMERS` de [`packages/db/src/boss.ts`](../packages/db/src/boss.ts) — sin eso los eventos se pierden si la pila arranca desordenada (hallazgo medido en la Fase 10) (§7) |
-| B3 | Dinero | `numeric(14, 2)` para VES | **Enteros en todo el módulo**: `integer` céntimos USD, `bigint` céntimos VES, tasa en **micros** (`bigint`). El repositorio **no tiene una sola columna `numeric`/`decimal`** y Drizzle la devuelve como `string`; el propio ADR 0043 promete aritmética sin punto flotante (§3.4, §4) |
+| B3 | Dinero | `numeric(14, 2)` para VES | **Enteros en todo el módulo**: `integer` céntimos USD, `bigint` céntimos VES, tasa en **micros** (`bigint`). El repositorio **no tiene una sola columna `numeric`/`decimal`** y Drizzle la devuelve como `string`; el propio ADR 0044 promete aritmética sin punto flotante (§3.4, §4) |
 | B4 | Estados | `pgEnum` y valores en inglés | `text` + `CHECK` contra las constantes del contrato (`sqlLiteralList`, como `prescriptions`) y **valores en español** (`borrador`, `emitida`…): la convención de [`enums.ts`](../packages/contracts/src/domain/enums.ts) es «valores en snake_case y en español; identificadores en inglés» |
-| B5 | Tasa en el borrador | `exchange_rate_bcv` `notNull` en `invoices` | Contradicción: el ADR 0045 dice «se congela al emitir» y el flujo dice «el borrador nace con la tasa del día». Se separan: tasa **provisional** del borrador y tasa **definitiva** al emitir, con `CHECK` por estado (§5.2) |
+| B5 | Tasa en el borrador | `exchange_rate_bcv` `notNull` en `invoices` | Contradicción: el ADR 0046 dice «se congela al emitir» y el flujo dice «el borrador nace con la tasa del día». Se separan: tasa **provisional** del borrador y tasa **definitiva** al emitir, con `CHECK` por estado (§5.2) |
 | B6 | Imputación del pago en bolívares | «permite conciliar diferencias cambiarias», sin regla | **La decisión más importante del módulo**, hoy indefinida: ¿el paciente paga los Bs impresos en la factura o se recalcula con la tasa del día del pago? Se elige una política configurable, se guardan los dos hechos y se imprime la leyenda (§3.4, §5.3) |
-| B7 | Numeración fiscal | `last_invoice_number` en la tabla de perfil | Es una carrera y asume que el número lo da el software. Se usa **secuencia + serie + `unique(serie, número)`** (patrón `prescription_number_seq`) y un modo de numeración explícito, porque en Venezuela el número puede venir de una **máquina fiscal** o de **formas libres** autorizadas (§5.2, ADR 0046) |
+| B7 | Numeración fiscal | `last_invoice_number` en la tabla de perfil | Es una carrera y asume que el número lo da el software. Se usa **secuencia + serie + `unique(serie, número)`** (patrón `prescription_number_seq`) y un modo de numeración explícito, porque en Venezuela el número puede venir de una **máquina fiscal** o de **formas libres** autorizadas (§5.2, ADR 0047) |
 | B8 | Notas de crédito | Un comentario (`voided // Anulada por Nota de Crédito`) | Tabla propia, serie `NC-000001`, referencia obligatoria a la factura, motivo, PDF archivado y evento (§5.4) |
 | B9 | Anulación de pagos y recibos | No existe | Un pago **no se borra: se anula con motivo** (misma regla que el récipe emitido, ADR [0036](adr/0036-recipe-emitido-documento-archivado.md)) y el saldo se recalcula en la misma transacción (§4, §5.3) |
 | B10 | Auditoría | No se menciona | Cada acto de dinero publica `auditPayload` y aparece en `/auditoria`; hay que añadir las acciones a `AUDIT_ACTIONS` y sus etiquetas en `i18n.ts` (§3.5) |
@@ -48,7 +48,7 @@ proyecto ya resuelve en otro sitio y conviene copiar · **R** = riesgo o decisi�
 | M7 | Modo test | No se menciona | Numeración y series **reservadas** (`900.000+`, serie `T`) como los récipes y los tickets: la numeración real nunca ve un número de prueba (ADR 0020/0042) (§4) |
 | M8 | Tasa del día ausente | «el sistema opera con autonomía» | Falta la regla: **arrastre** de la última tasa publicada con aviso si el hueco supera N días, y confirmación explícita para cobrar con una tasa vieja (§5.5) |
 | R1 | IGTF | «3 % sobre efectivo en divisas» | Confirmado el **3 % para los supuestos de divisas** (Art. 24 de la Ley de IGTF), pero el 2 % general quedó en **0 %** (Decreto 4.972, jul-2024) y **quién lo percibe cambia según el medio**: en divisas por el sistema bancario nacional lo debita el **banco** (Art. 4.5, sin importar si la clínica es SPE); el efectivo en divisas y Zelle/USDT lo percibe **la clínica solo si está calificada como Sujeto Pasivo Especial** (Art. 4.6). Se modela **por medio de pago y con quién percibe** (§3.2, §5.3, §10). **Cerrado (§0.1): la clínica no es SPE, así que no percibe IGTF en caja.** |
-| R2 | Validez de la factura | Se asume que el PDF impreso **es** la factura | **Un PDF impreso en hoja blanca no es una factura válida** para un contribuyente ordinario: la Providencia SNAT/2011/0071 solo admite **formatos** o **formas libres** de imprenta autorizada (con **número de control preimpreso**) o **máquina fiscal** (Art. 6). Los servicios odontológicos **no** están en la lista del Art. 8, así que la máquina fiscal no es obligatoria; el régimen digital (Providencia SNAT/2024/000102) es **opt-in** salvo venta exclusivamente electrónica. Decide quién asigna el número (ADR 0046, §10) |
+| R2 | Validez de la factura | Se asume que el PDF impreso **es** la factura | **Un PDF impreso en hoja blanca no es una factura válida** para un contribuyente ordinario: la Providencia SNAT/2011/0071 solo admite **formatos** o **formas libres** de imprenta autorizada (con **número de control preimpreso**) o **máquina fiscal** (Art. 6). Los servicios odontológicos **no** están en la lista del Art. 8, así que la máquina fiscal no es obligatoria; el régimen digital (Providencia SNAT/2024/000102) es **opt-in** salvo venta exclusivamente electrónica. Decide quién asigna el número (ADR 0047, §10) |
 | R3 | Leyendas y artículo | «Exento de IVA de conformidad con el Art. 18, num. 4» | El artículo está mal: la exención de servicios odontológicos es el **Art. 19, numeral 6** de la Ley de IVA (el Art. 18.4 es de **ventas** de bienes, prótesis incluidas). Lo que exige la Providencia 0071 es la letra **`(E)`** junto a la descripción o al precio (Art. 13 num. 8) y el **total exento separado** (num. 10); «sin derecho a crédito fiscal» va **en las copias** (num. 13) (§6, §10) |
 | R4 | Alícuota adicional por pago en divisas | No se menciona | La Ley de IVA (Art. 27 ¶4 y **Art. 62**) prevé una alícuota **adicional** del 5 %–25 % para operaciones pagadas en divisas, y su parágrafo primero dice que en las operaciones **exentas** solo aplica esa adicional. **Solo rige por Decreto del Ejecutivo y no hay evidencia de que exista**: se deja el gancho en la configuración y en el modelo (0 % por defecto), no en el código (§3.3, §10) |
 | R5 | Sujeto Pasivo Especial | `is_special_taxpayer` como dato de la clínica | Es **el pivote de todo el IGTF**: la calificación la **notifica el SENIAT**, no se autodeclara. Hay que confirmarlo por escrito antes de cobrar 3 % en efectivo (y no cobrarlo si no aplica), porque el efectivo en divisas queda fuera del Art. 4.6 para quien no es SPE (§10). **Cerrado (§0.1, Anexo A): contribuyente ordinario, sin notificación de SPE ⇒ el interruptor queda apagado.** |
@@ -82,12 +82,12 @@ Lo que cambia de verdad en las secciones siguientes:
 1. **El IGTF no se cobra en esta instalación**; y además **nunca** en pagos bancarizados en divisas, donde
    el agente de percepción es el **banco** (Art. 4.5): cobrarlo sería cobrar dos veces. Con
    `is_special_taxpayer = false` la pantalla **bloquea** añadir IGTF y muestra «Clínica no calificada como
-   Sujeto Pasivo Especial (IGTF no percibido)» (§5.3, ADR 0044).
+   Sujeto Pasivo Especial (IGTF no percibido)» (§5.3, ADR 0045).
 2. **La factura lleva la leyenda de doble tasa** (emisión + pago) con el **texto exacto** que fijó el
    contador, porque los Bs se liquidan a la tasa de la fecha del pago (§6).
 3. **El modo de emisión es `formas_libres`**: el software genera su **correlativo interno**
    (`invoice_number_seq`) y el **número de control** va aparte, el que viene preimpreso. La plantilla se
-   calibra para **no pisar** el membrete ni el control de la imprenta (§5.2, §6, ADR 0046).
+   calibra para **no pisar** el membrete ni el control de la imprenta (§5.2, §6, ADR 0047).
 4. **Los datos del consultorio dejan de ser código**: pasan a un bloque `CLINIC_*` del entorno, con
    genéricos `CAMBIAR_*` siguiendo el formato, `.env.example` y el archivo **común** de producción
    (§2.4). Es un cambio que beneficia también al récipe y a los reportes.
@@ -107,16 +107,34 @@ Lo que cambia de verdad en las secciones siguientes:
 ## 1. Registro de decisiones (ADR)
 
 **Convención del proyecto (y no se rompe aquí):** una ADR por decisión, en su archivo
-`docs/adr/NNNN-slug.md`, enlazada desde el índice [`docs/adr/README.md`](adr/README.md). Hoy el
-directorio termina en **0042**, así que estas cinco entran como 0043–0047 y **la v1 de este documento
-deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta que se creen los archivos).
+`docs/adr/NNNN-slug.md`, enlazada desde el índice [`docs/adr/README.md`](adr/README.md). **El número
+0043 ya está ocupado**: lo tomó el [ADR 0043](adr/0043-se-descarta-el-enfoque-de-instalacion-actual.md)
+—instalación y despliegue, 2026-10-05—, que se escribió **después** de la v1 de este documento. Así que
+el directorio termina en **0043** y estas cinco entran como **0044–0048**.
 
-> Tarea de orden: el plan maestro dice «45 ADRs» en la fila de la Fase 10 y en `docs/adr/` hay **42**
-> (0042 es el último). Al crear los nuevos hay que dejar la cuenta cuadrada.
+**Ya están escritas** (2026-10-06): las cinco viven en `docs/adr/` y están enlazadas desde el índice. Lo
+que sigue en esta sección es el **resumen operativo** del plan, no la decisión registrada:
 
-### ADR 0043 — Módulo de facturación desacoplado y gestión de pagos
+| # | Archivo |
+| :-: | :--- |
+| 0044 | [`adr/0044-modulo-de-facturacion-desacoplado.md`](adr/0044-modulo-de-facturacion-desacoplado.md) |
+| 0045 | [`adr/0045-regimen-tributario-iva-e-igtf.md`](adr/0045-regimen-tributario-iva-e-igtf.md) |
+| 0046 | [`adr/0046-tasa-bcv-historica-y-regla-de-imputacion.md`](adr/0046-tasa-bcv-historica-y-regla-de-imputacion.md) |
+| 0047 | [`adr/0047-quien-asigna-el-numero-de-la-factura.md`](adr/0047-quien-asigna-el-numero-de-la-factura.md) |
+| 0048 | [`adr/0048-el-documento-de-cobro-se-archiva.md`](adr/0048-el-documento-de-cobro-se-archiva.md) |
 
-* **Estado:** aceptado (2026-10-05) · pendiente de materializarse como `docs/adr/0043-*.md`
+> **Corrección de numeración (2026-10-06):** la v1 las numeraba 0043–0047 dando por hecho que 0042 era el
+> último. El ADR del instalador se adelantó y el primero de estos cinco chocaba de frente con él (el
+> propio §7.5, punto 17, ya citaba «ADR 0043» refiriéndose al instalador: el documento se contradecía
+> consigo mismo). **Los números buenos son 0044–0048.**
+
+> Cuenta cuadrada (2026-10-06): en `docs/adr/` hay **48** entradas; el `README.md` ya dice 48 y la fila de
+> la Fase 10 del plan maestro dice **42**, que es lo que existía al cerrarla (el 0043 llegó después).
+
+### ADR 0044 — Módulo de facturación desacoplado y gestión de pagos
+
+* **Estado:** aceptada (2026-10-05) · registrada en
+  [`adr/0044-modulo-de-facturacion-desacoplado.md`](adr/0044-modulo-de-facturacion-desacoplado.md)
 * **Contexto:** el cierre de una sesión clínica (`services/clinical`) genera una obligación de cobro.
   Meter contabilidad o pasarelas dentro del servicio clínico acoplaría el expediente a reglas fiscales
   mutables y pondría el cobro en el camino crítico del odontólogo.
@@ -128,18 +146,19 @@ deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta qu
   3. El dinero se modela **solo con enteros**: céntimos de USD (`integer`), céntimos de VES (`bigint`) y
      tasa en micros (`bigint`). Una sola regla de redondeo, en un solo sitio.
   4. Emitir un documento (factura, recibo, nota de crédito) lo **archiva**: número, PDF y `sha256`. Desde
-     ahí solo se anula con motivo (ADR 0047).
+     ahí solo se anula con motivo (ADR 0048).
 * **Consecuencias:**
   * ✅ La atención clínica sigue aunque la caja esté parada o sin tasa.
   * ✅ La contabilidad se puede auditar sin leer una sola tabla clínica.
   * ⚠️ Los datos del paciente se copian al documento (instantánea) y se sincronizan por evento y por la
     ruta interna de pacientes; hay reconciliación periódica de saldos.
 
-### ADR 0044 — Régimen tributario: IVA exento, IVA general e IGTF percibido
+### ADR 0045 — Régimen tributario: IVA exento, IVA general e IGTF percibido
 
-* **Estado:** aceptado (2026-10-05, cierre con el contador) · la clínica es **contribuyente ordinario y
-  no está calificada como Sujeto Pasivo Especial**: **no percibe IGTF**, pero el modelo lo soporta
-  encendido por si el SENIAT la notifica algún día.
+* **Estado:** aceptada (2026-10-05, cierre con el contador) · registrada en
+  [`adr/0045-regimen-tributario-iva-e-igtf.md`](adr/0045-regimen-tributario-iva-e-igtf.md) · la clínica es
+  **contribuyente ordinario y no está calificada como Sujeto Pasivo Especial**: **no percibe IGTF**, pero
+  el modelo lo soporta encendido por si el SENIAT la notifica algún día.
 * **Contexto:**
   * Los **servicios odontológicos y médico-asistenciales están exentos de IVA** (Ley de IVA, **Art. 19,
     numeral 6**; *no* el Art. 18.4, que habla de ventas de bienes —prótesis incluidas—, y que conviene
@@ -196,10 +215,11 @@ deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta qu
   * ⚠️ La respuesta sobre **SPE** es la que más cambia el comportamiento real del módulo: hasta tenerla,
     el medio sujeto se configura pero la interfaz lo marca como **«pendiente de confirmar»**.
 
-### ADR 0045 — Tasa BCV: histórica, congelada por documento y con regla de imputación
+### ADR 0046 — Tasa BCV: histórica, congelada por documento y con regla de imputación
 
-* **Estado:** aceptado (2026-10-05, cierre con el contador): se liquida a la **tasa del día del pago**
-  (`tasa_del_pago`), con la leyenda de doble tasa impresa en la factura.
+* **Estado:** aceptada (2026-10-05, cierre con el contador): se liquida a la **tasa del día del pago**
+  (`tasa_del_pago`), con la leyenda de doble tasa impresa en la factura · registrada en
+  [`adr/0046-tasa-bcv-historica-y-regla-de-imputacion.md`](adr/0046-tasa-bcv-historica-y-regla-de-imputacion.md).
 * **Contexto:** los valores se expresan en moneda de cuenta (USD) y se pagan en moneda de curso legal
   (VES). Es **legal y está expresamente previsto**: el **Convenio Cambiario N° 1** (Gaceta 6.405 Ext.,
   7-sep-2018, que desarrolla el Art. 128 de la Ley del BCV) dice en su **Art. 8.a** que, cuando la
@@ -235,11 +255,12 @@ deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta qu
   funciona sin internet; y la política cambiaria es una decisión explícita y visible, no un efecto
   colateral del redondeo. La factura cumple el doble requisito de mostrar las dos monedas y la tasa.
 
-### ADR 0046 — Quién asigna el número de la factura (formas libres, máquina fiscal o régimen digital)
+### ADR 0047 — Quién asigna el número de la factura (formas libres, máquina fiscal o régimen digital)
 
-* **Estado:** aceptado (2026-10-05, cierre con el contador): se factura en **formas libres** de imprenta
+* **Estado:** aceptada (2026-10-05, cierre con el contador): se factura en **formas libres** de imprenta
   autorizada, con el software propio imprimiendo los datos sobre la forma. Máquina fiscal y régimen
-  digital quedan modelados y sin usar.
+  digital quedan modelados y sin usar · registrada en
+  [`adr/0047-quien-asigna-el-numero-de-la-factura.md`](adr/0047-quien-asigna-el-numero-de-la-factura.md).
 * **Contexto:** la factura de un contribuyente ordinario solo puede emitirse por **tres caminos**
   (Providencia SNAT/2011/0071, **Art. 6**): **formatos** o **formas libres** de una imprenta autorizada
   —con el **número de control preimpreso** y, en las formas libres, la razón social y RIF de la imprenta,
@@ -291,9 +312,10 @@ deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta qu
   máquina fiscal, la pantalla de caja gana un paso manual y el PDF del sistema pasa a ser el
   **comprobante interno**, no la factura.
 
-### ADR 0047 — El documento de cobro se archiva (y se anula, nunca se borra)
+### ADR 0048 — El documento de cobro se archiva (y se anula, nunca se borra)
 
-* **Estado:** aceptado (2026-10-05) · pendiente de materializarse como `docs/adr/0047-*.md`
+* **Estado:** aceptada (2026-10-05) · registrada en
+  [`adr/0048-el-documento-de-cobro-se-archiva.md`](adr/0048-el-documento-de-cobro-se-archiva.md)
 * **Contexto:** es el ADR [0036](adr/0036-recipe-emitido-documento-archivado.md) aplicado al dinero, y
   las preguntas son las mismas: el paciente corrige su nombre después de emitir, se cambia un precio del
   catálogo, hay un error en un cobro ya entregado.
@@ -597,7 +619,7 @@ Se copia el helper `sqlLiteralList` de `clinical`. Las tablas e índices se decl
 **valores** en español.
 
 ```ts
-/* ── 1. Tasas BCV: histórico, de solo agregado (ADR 0045) ───────────────────── */
+/* ── 1. Tasas BCV: histórico, de solo agregado (ADR 0046) ───────────────────── */
 export const exchangeRates = pgTable(
   'exchange_rates',
   {
@@ -663,7 +685,7 @@ export const billingSettings = pgTable(
   ],
 );
 
-/* ── 3. Series y numeración (ADR 0046) ──────────────────────────────────────── */
+/* ── 3. Series y numeración (ADR 0047) ──────────────────────────────────────── */
 export const invoiceSeries = pgTable('invoice_series', {
   id: uuid('id').primaryKey().defaultRandom(),
   series: text('series').notNull().unique(),          // 'A', 'T' (modo test)
@@ -673,7 +695,7 @@ export const invoiceSeries = pgTable('invoice_series', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** Lote de formas libres autorizadas: el número de control viene preimpreso (ADR 0046). */
+/** Lote de formas libres autorizadas: el número de control viene preimpreso (ADR 0047). */
 export const fiscalForms = pgTable('fiscal_forms', {
   id: uuid('id').primaryKey().defaultRandom(),
   seriesId: uuid('series_id').notNull().references(() => invoiceSeries.id),
@@ -731,7 +753,7 @@ export const invoices = pgTable(
     fiscalFormId: uuid('fiscal_form_id').references(() => fiscalForms.id),
     status: text('status').notNull().default('borrador'),
 
-    // Instantánea del paciente (ADR 0047): el papel no cambia si la ficha cambia.
+    // Instantánea del paciente (ADR 0048): el papel no cambia si la ficha cambia.
     patientId: uuid('patient_id').notNull(),
     patientName: text('patient_name').notNull(),
     patientDocType: text('patient_doc_type').notNull(),
@@ -755,7 +777,7 @@ export const invoices = pgTable(
     ivaAmountVesCentimos: bigint('iva_amount_ves_centimos', { mode: 'number' }).notNull(),
     totalVesCentimos: bigint('total_ves_centimos', { mode: 'number' }).notNull(),
 
-    // PDF archivado (ADR 0047).
+    // PDF archivado (ADR 0048).
     pdfPath: text('pdf_path'),
     pdfSha256: text('pdf_sha256'),
     generatedAt: timestamp('generated_at', { withTimezone: true }),
@@ -1018,7 +1040,7 @@ Tres detalles que hacen que esto no se rompa en producción:
    transacción falla, el archivo se borra. La plantilla está **calibrada sobre la forma física**: el texto
    cae en las áreas en blanco y no pisa el membrete ni el control de la imprenta.
 4. Si falla el render: en `formas_libres` (el modo de esta clínica) la forma se registra como **anulada
-   por daño** ocupando su control y **se conserva** (ADR 0046); en modo `software` el hueco se acepta
+   por daño** ocupando su control y **se conserva** (ADR 0047); en modo `software` el hueco se acepta
    (ADR 0036).
 5. Publica `billing.invoice.issued` con la carga de auditoría y el bloque `invoice`.
 6. Al dar de alta un lote, la pantalla pide **rango desde/hasta, imprenta, RIF, providencia y fecha**, y
@@ -1105,7 +1127,7 @@ Una factura emitida **no se borra ni se edita**: se anula con una **nota de cré
 
 ## 6. Documento fiscal impreso
 
-**Dos documentos, dos series** (M6), sobre **formas libres** de imprenta autorizada (ADR 0046, cerrado):
+**Dos documentos, dos series** (M6), sobre **formas libres** de imprenta autorizada (ADR 0047, cerrado):
 
 | Documento | Serie | Qué lleva | Cuándo se imprime |
 | :--- | :--- | :--- | :--- |
@@ -1278,9 +1300,10 @@ nuevo» **se queda corto** (dice que las listas de respaldo son dos y no mencion
 
 ### 7.6 Documentación
 
-21. `docs/adr/0043…0047` + la tabla del índice `docs/adr/README.md`. Hay que **anotar el ADR 0004**
-    («Nueve microservicios») y actualizar la lista de bases del ADR 0002. Y cuadrar la cuenta de ADRs
-    del plan maestro (dice 45 y hay 42).
+21. `docs/adr/0044…0048` + la tabla del índice `docs/adr/README.md`. Hay que **anotar el ADR 0004**
+    («Nueve microservicios») y actualizar la lista de bases del ADR 0002. Y cuadrar la cuenta de ADRs:
+    el plan maestro (fila de la Fase 10) y el `README.md` dicen **45** y en `docs/adr/` hay **43** —al
+    cerrar la Fase 10 había **42**, que es lo que debe decir esa fila, porque el 0043 llegó después—.
 22. `docs/PLAN_MAESTRO_FASES.md`: §2.2 (tabla de servicios), §4 (modelo de datos), §6 (rutas), §7
     (catálogo de eventos), §13 (Fase 11), §16 (riesgos) y §17 — **además de la línea que hoy dice que
     facturación no está en el plan**.
@@ -1530,7 +1553,7 @@ propio commit** (toca `clinical`, `reporting` y la web) y su aceptación es: **e
 factura salen con los datos del `.env`** y con el aviso de faltantes cuando el perfil está incompleto.
 *(Se adelanta aquí porque la factura no puede imprimir un RIF que hoy vive en un archivo de código.)*
 
-**Sesión A — cimientos y borradores** (sin dinero todavía): ADRs 0043–0047 escritos y enlazados;
+**Sesión A — cimientos y borradores** (sin dinero todavía): ADRs 0044–0048 escritos y enlazados;
 contrato `billing.ts` con aritmética y transiciones probadas; permisos, acciones de auditoría y tópicos;
 `clinical.session.closed` con `procedures[]`; esqueleto del servicio, migración, `EVENT_CONSUMERS`,
 bootstrap, gateway y `/caja` con la lista de pendientes y el borrador. **Aceptación**: cerrar una sesión
@@ -1567,6 +1590,11 @@ una línea de código**: este documento es todo lo que hay. *(Ojo: en el momento
 trabajo en curso en `infra/fedora/nginx` y `tools/plantillas-fedora.mjs` — certificados y plantillas—
 ajeno a este módulo: no mezclar esos cambios con los de facturación.)*
 
+> **Actualización (2026-10-06, al empezar a implementar):** el árbol estaba **limpio** en `d695a55`
+> (rama `main`), `docs/adr/` tiene **43** entradas y **el 0043 es el del instalador** (§1): los cinco
+> ADRs de este documento son **0044–0048**. El trabajo en curso de `infra/fedora/nginx` ya está
+> commiteado, así que no hay nada que separar. El módulo de facturación sigue sin una línea de código.
+
 **Qué hacer al llegar a Windows, en este orden:**
 
 1. `git pull` y `npm ci`; comprobar `npm run verify` en verde **antes** de tocar nada. **Ya no hay
@@ -1574,8 +1602,9 @@ ajeno a este módulo: no mezclar esos cambios con los de facturación.)*
 2. **Tarea 0**: el perfil del consultorio por entorno (§2.4) — `CLINIC_*` con genéricos `CAMBIAR_*`,
    `resolveClinicProfile` en `packages/kernel`, el bloque público en `/api/v1/meta`, el `.env.example` y
    el archivo común de Fedora. Va en **su propio commit** porque toca `clinical`, `reporting` y la web.
-3. Escribir los ADRs 0043–0047 en `docs/adr/` (+ índice, + anotar el 0004 y el 0002) y el contrato
-   `billing.ts` con sus pruebas **antes** del servicio (regla del proyecto).
+3. Escribir los ADRs 0044–0048 en `docs/adr/` (+ índice, + anotar el 0004 y el 0002) y el contrato
+   `billing.ts` con sus pruebas **antes** del servicio (regla del proyecto). *(El **0043 no está libre**:
+   lo ocupa el ADR del instalador.)*
 4. Crear el esqueleto de `services/billing` copiando el de `reporting` (consumidor + `processed_events`)
    y el de `clinical` (outbox que publica + documentos archivados). Añadir `billing` a los `workspaces`
    del `package.json`, al `tsconfig.json` raíz y a `infra/db/bootstrap.mjs`; `npm install` y

@@ -32,3 +32,9 @@ microservicios desde el inicio para no migrar después.
   `/health`, `/ready` y el bootstrap automatizado.
 - ⚠️ Camino de repliegue acordado: si resulta pesado, se fusionan `odontogram`+`clinical` y
   `screens`+`reporting` sin cambiar los contratos públicos.
+
+> **Añadido (2026-10-06, al abrir la Fase 11):** el **décimo** servicio es **`services/billing`**
+> (facturación y pagos, puerto 4009, base `odonto_billing`), decidido en el
+> [ADR 0044](0044-modulo-de-facturacion-desacoplado.md). La tabla de arriba es la del 2026-10-02 y se
+> conserva como historia: lo que no cambia es la regla —**un servicio por contexto delimitado, con su base
+> y su contrato**—, solo la cuenta.

@@ -5,7 +5,14 @@ Las decisiones 0001–0021 provienen de la sesión de planificación del **2026-
 (§1 de [`../PLAN_MAESTRO_FASES.md`](../PLAN_MAESTRO_FASES.md)); las 0022–0025 se
 tomaron durante la Fase 0, la 0029 en la Fase 4.1, la 0030 en la Fase 5, las 0031–0033
 en la Fase 6, las 0034–0036 en la Fase 7, la 0038 en la Fase 8, las 0039–0041 en la
-Fase 9, y quedan documentadas por la misma razón.
+Fase 9, la 0042 en la Fase 10, la 0043 en la sesión de despliegue y las **0044–0048** al
+abrir la Fase 11 (facturación y pagos), y quedan documentadas por la misma razón.
+
+> **Numeración de la Fase 11:** el plan de facturación
+> ([`../feat_billing.md`](../feat_billing.md)) numeraba sus cinco ADRs **0043–0047** porque daba por hecho
+> que 0042 era el último. El [ADR 0043](0043-se-descarta-el-enfoque-de-instalacion-actual.md) —instalación
+> y despliegue— se escribió antes y ocupó ese número, así que el módulo de facturación entra como
+> **0044–0048**. El plan de la fase ya está corregido.
 
 | # | Decisión | Estado |
 | :-: | :--- | :--- |
@@ -52,3 +59,8 @@ Fase 9, y quedan documentadas por la misma razón.
 | [0041](0041-el-evento-lleva-lo-que-el-consumidor-necesita.md) | Un evento de dominio lleva lo que su consumidor necesita (bloques `patient`, `profile` y `session`) | aceptada (fase 9) |
 | [0042](0042-el-seed-escribe-filas-y-eventos.md) | El seed del modo test escribe las filas y los eventos, con identificadores derivados de la semilla | aceptada (fase 10) |
 | [0043](0043-se-descarta-el-enfoque-de-instalacion-actual.md) | Se descarta el enfoque de instalación y despliegue actual; el rediseño parte de una sola fuente de verdad para las credenciales | aceptada (despliegue) |
+| [0044](0044-modulo-de-facturacion-desacoplado.md) | El módulo de facturación es un servicio desacoplado, y el borrador nace de la sesión clínica | aceptada (fase 11) |
+| [0045](0045-regimen-tributario-iva-e-igtf.md) | Régimen tributario: servicios exentos, bienes al 16 % y el IGTF como dato del medio de pago | aceptada (fase 11) |
+| [0046](0046-tasa-bcv-historica-y-regla-de-imputacion.md) | La tasa BCV es histórica, se congela por documento y tiene una regla de imputación explícita | aceptada (fase 11) |
+| [0047](0047-quien-asigna-el-numero-de-la-factura.md) | Quién asigna el número de la factura: formas libres, máquina fiscal o régimen digital | aceptada (fase 11) |
+| [0048](0048-el-documento-de-cobro-se-archiva.md) | El documento de cobro se archiva: emitir es congelar, y anular no es borrar | aceptada (fase 11) |

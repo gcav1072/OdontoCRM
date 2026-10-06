@@ -26,3 +26,10 @@ Cada rol solo puede conectarse a su base; las credenciales las genera
 - ⚠️ Las consultas cruzadas exigen API interna o eventos: es el precio (deseado) del
   aislamiento.
 - ⚠️ Nueve bases implican nueve migraciones que ejecutar; se resuelve con `npm run db:migrate`.
+
+> **Añadido (2026-10-06, al abrir la Fase 11):** a la lista de arriba le faltan las bases posteriores a
+> esta decisión: **`odonto_events`** (la cola compartida de eventos,
+> [ADR 0026](0026-cola-de-eventos-compartida.md)) y **`odonto_billing`** (facturación y pagos,
+> [ADR 0044](0044-modulo-de-facturacion-desacoplado.md)). La decisión —**una base y un rol propietario por
+> servicio, y el rol solo se conecta a la suya**— no cambia; solo la cuenta, que pasa a **diez** bases con
+> la cola.
