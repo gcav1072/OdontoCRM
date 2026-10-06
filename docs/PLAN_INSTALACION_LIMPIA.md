@@ -20,16 +20,31 @@
   «parar en config» (solo habilita las fases posteriores), y eso costó una ronda entera de
   confusión.
 
-## Qué queda mientras tanto
+## Estado: implementado
 
-Nada se rompe ni se borra: **lo que hay sigue funcionando y sigue siendo el camino documentado**
-hasta que exista el nuevo. Para dejar un servidor operativo hoy:
+El plan que este documento dejaba abierto **ya está hecho**: el instalador nuevo está en
+`infra/fedora/instalar/` y hay una sola fuente de verdad para las credenciales
+(`/etc/odontocrm`). Un servidor se levanta con:
 
 ```bash
-cd /home/gabox/devp/OdontoCRM && npm run db:bootstrap          # converge base y archivos
-sudo odontocrm sincronizar-credenciales --desde=$PWD           # deja /etc de acuerdo y lo comprueba
-sudo odontocrm reiniciar && sudo odontocrm verificar           # arranca y comprueba los 9
+sudo bash infra/fedora/instalar/instalar.sh
 ```
+
+Son cuatro piezas que se pueden ejecutar y comprobar por separado
+(`10-preparar.sh` · `20-aprovisionar.sh` · `30-desplegar.sh` · `40-verificar.sh`).
+El detalle está en `infra/fedora/INSTALL.md` §3-bis y la decisión, en el
+[ADR 0043](adr/0043-se-descarta-el-enfoque-de-instalacion-actual.md).
+
+Las cuatro decisiones que este documento listaba como pendientes, resueltas:
+
+1. **Una sola fuente de verdad**: `/etc/odontocrm`. Los `.env` del repositorio siguen siendo
+   solo para desarrollo; en el servidor no existe una segunda copia que pueda desfasarse.
+2. **`aprovisionar` es un comando propio** (`20-aprovisionar.sh`), separado del despliegue, y
+   comprueba cada credencial con una conexión real.
+3. **Del ensayo se conserva la prueba** (restauración, reinicio, TLS desde otro equipo) y se
+   retira su papel de instalador.
+4. **Se prueba en esta PC** antes de tocar la de la clínica: cada pieza admite `--dry-run`, y
+   `instalar.sh --comprobar` dice si la máquina está lista sin tocar nada.
 
 ## Lo que hay que decidir en la próxima sesión
 

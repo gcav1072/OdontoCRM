@@ -17,7 +17,7 @@ más adelante, fuera de ella por VPN.
 >
 > | Quiero… | Documento |
 > | :--- | :--- |
-> | **Instalar el servidor de la clínica** | `sudo bash infra/fedora/instalar-servidor.sh --con-dns` y, para el detalle, [`INSTALL.md`](infra/fedora/INSTALL.md) §4-bis |
+> | **Instalar el servidor de la clínica** | `sudo bash infra/fedora/instalar/instalar.sh` y, para el detalle, [`INSTALL.md`](infra/fedora/INSTALL.md) §3-bis |
 > | **Operar el sistema ya instalado** | [`infra/fedora/RUNBOOK.md`](infra/fedora/RUNBOOK.md) y [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) |
 > | **Usar el consultorio** (sin terminal) | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) |
 > | **Conectar tablets, móviles y TVs** | [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) |
@@ -44,10 +44,13 @@ más adelante, fuera de ella por VPN.
 > despliegue, TLS, firewall, SELinux, respaldos y el nombre para los equipos):
 >
 > ```bash
-> sudo bash infra/fedora/instalar-servidor.sh --con-dns
+> sudo bash infra/fedora/instalar/instalar.sh
 > ```
 >
-> Detalle paso a paso en [`infra/fedora/INSTALL.md`](infra/fedora/INSTALL.md) §4-bis; para una
+> Son cuatro piezas que se pueden ejecutar y comprobar por separado (preparar · aprovisionar ·
+> desplegar · verificar) encadenadas por ese comando, y **una sola fuente de verdad para las
+> credenciales** (`/etc/odontocrm`): el código desplegado no contiene ninguna. Detalle paso a
+> paso en [`infra/fedora/INSTALL.md`](infra/fedora/INSTALL.md) §3-bis; para una
 > instalación que ya existe, `sudo odontocrm actualizar`. Lo de aquí abajo levanta una **pila
 > de desarrollo** con recarga automática.
 

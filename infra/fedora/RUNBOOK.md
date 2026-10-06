@@ -85,7 +85,7 @@ sudo ls -lh /var/backups/odontocrm | tail -5
 ### Con systemd (recomendado)
 
 ```bash
-sudo odontocrm sincronizar-credenciales --desde=/opt/odontocrm   # base y /etc de acuerdo (comprobado)
+sudo odontocrm credenciales   # ¿las 9 credenciales de /etc/odontocrm conectan? (no copia nada)
 sudo odontocrm nombre          # ¿los equipos entran por nombre? ¿qué falta?
 sudo odontocrm red             # ¿en qué IP está y qué apunta a la red anterior?
 sudo odontocrm red --arreglar  # adaptarlo (firewall, certificado y CORS) a la red actual

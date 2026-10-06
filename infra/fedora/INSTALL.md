@@ -213,46 +213,72 @@ grep -q odontocrm.local /etc/hosts || echo '127.0.1.1  odontocrm.local odontocrm
 
 ---
 
-## 3-bis. Instalación completa en un comando (el «seed»)
+## 3-bis. Instalación completa en un comando
 
 Para una **PC nueva**, el camino es uno solo:
 
 ```bash
 git clone https://github.com/gcav1072/OdontoCRM.git && cd OdontoCRM
-bash infra/fedora/instalar-servidor.sh --comprobar   # sin sudo: ¿está la máquina lista?
-sudo bash infra/fedora/instalar-servidor.sh --con-dns
+bash infra/fedora/instalar/instalar.sh --comprobar        # sin sudo: ¿está la máquina lista?
+sudo bash infra/fedora/instalar/instalar.sh
 ```
 
-El primer comando **no toca nada**: revisa Node, npm, PostgreSQL, git, que la carpeta sea un
-clon de git, la conexión y que no haya otra pila usando los puertos. Si todo sale en verde,
-el segundo hace la instalación completa.
+El primer comando **no toca nada**: revisa Fedora, Node, npm, PostgreSQL, git, que la carpeta
+sea un clon y que no haya otra pila usando los puertos. Si todo sale en verde, el segundo hace
+la instalación completa y termina diciendo cómo entrar desde cada aparato.
 
-Hace, en orden, lo que esta guía explica paso a paso —**sin reimplementar nada**: llama a los
-guiones que ya existen— y termina diciendo cómo entrar desde cada aparato:
+### Las cuatro piezas
 
-| Paso | Qué ejecuta por dentro |
-| :--- | :--- |
-| 1. La máquina | `instalar-base-fedora.sh --nombre-mdns=odontocrm`: paquetes, PostgreSQL del sistema, Node 26, nginx+mkcert, **`pg_hba.conf` en `scram-sha-256`** y el nombre por mDNS |
-| 2. Bases y usuarios | `npm run db:bootstrap` + `db:migrate` + `seed:users` (imprime la **contraseña temporal** de los usuarios iniciales) |
-| 3. Despliegue | `ensayo-despliegue.sh --hasta=respaldos`: código, unidades, secretos en `/etc/odontocrm`, migraciones, servicios, **TLS, firewall con el 80 y el 443, SELinux, respaldo y prueba de restauración** |
-| 4. El nombre | mDNS; con `--con-dns`, además el **DNS propio** (`infra/fedora/nombre/instalar-dns.sh`) para que funcione en todos los aparatos |
-| 5. Resumen | `tools/estado.mjs --alertas`, `odontocrm certificado` y la página del certificado para los equipos |
+El instalador no es un guion que hace siete cosas: son **cuatro piezas que se pueden ejecutar
+y comprobar por separado**, encadenadas por un comando. Si algo falla, se retoma exactamente
+desde la pieza que falló (todas son idempotentes).
 
-Y en dos momentos —después del bootstrap y al final— el seed ejecuta
-`odontocrm sincronizar-credenciales --desde=<repositorio>`, que pone de acuerdo las
-credenciales de la base, los `.env` del repositorio y `/etc/odontocrm` y **comprueba cada una
-con una conexión real**. Es el paso que evita la clase de fallo más costosa: que la base y el
-archivo que leen los servicios digan cosas distintas (el síntoma es un
-«password authentication failed» a mitad del despliegue, sin decir cuál de los dos está mal).
+| Pieza | Qué hace | Se ejecuta sola |
+| :--- | :--- | :--- |
+| `10-preparar.sh` | Paquetes, PostgreSQL del sistema, Node 26, nginx+mkcert, **`pg_hba` en `scram-sha-256`**, el usuario `odontocrm` y los directorios con sus permisos, y el nombre por mDNS | `sudo bash infra/fedora/instalar/10-preparar.sh` |
+| `20-aprovisionar.sh` | **Genera los secretos una vez** en `/etc/odontocrm`, crea los 9 roles y las 9 bases con *esas mismas* contraseñas y **comprueba cada una conectándose** | `sudo bash infra/fedora/instalar/20-aprovisionar.sh` |
+| `30-desplegar.sh` | Código en `/opt` (**sin secretos**: se clona, y un clon no trae los `.env`), compilación, claves JWT, migraciones, usuarios iniciales, unidades de systemd, certificado TLS, proxy, SELinux y firewall | `sudo bash infra/fedora/instalar/30-desplegar.sh` |
+| `40-verificar.sh` | El **efecto**: cada credencial que conecta, los 9 servicios escuchando, HTTPS sirviendo la aplicación, la CA descargable y los puertos correctos | `sudo bash infra/fedora/instalar/40-verificar.sh` |
 
-Es **idempotente** (repetirlo no rompe nada) y admite `--dry-run`, `--sin-respaldo`,
-`--sin-nombre` y `--admin-url=` si tu superusuario necesita contraseña.
+Opciones útiles: `--con-dns` (DNS propio para los Android que no entienden mDNS),
+`--lan-cidr=192.168.1.0/24` (abre el 443 solo a esa red), `--sin-respaldo`,
+`--rotar-credenciales`, `--solo=<pieza>` y `--dry-run`.
 
-> **Para una instalación que ya existe** no hace falta: se actualiza con
-> `sudo odontocrm actualizar`, que también pone al día la configuración del proxy y el nombre.
-> El seed es para la **primera** vez o para levantar otra PC de cero.
+### Una sola fuente de verdad para las credenciales (ADR 0043)
 
----
+**Este es el punto que más caro costó y el que el diseño nuevo protege.**
+
+El camino anterior tenía los secretos en **dos sitios** —los `.env` del repositorio y
+`/etc/odontocrm`— y un paso los copiaba de uno a otro. Cuando esa copia fallaba, la base y los
+archivos decían cosas distintas, y el síntoma aparecía **lejos de su causa**: un
+`password authentication failed` a mitad del despliegue. Se intentó arreglar cinco veces
+añadiendo capas (un sincronizador, una traza) y ninguna funcionó, porque el problema no era la
+robustez del copiado: era que **hubiera** copiado.
+
+Ahora:
+
+- **`20-aprovisionar.sh` es el único que escribe credenciales**, y las escribe en
+  `/etc/odontocrm/*.env` (0600 `root:root`). El código desplegado en `/opt` no contiene
+  ninguna y se puede borrar y volver a clonar sin perder nada.
+- Los servicios las leen con `EnvironmentFile=` de systemd, que las carga **como root**: el
+  proceso no necesita permisos sobre esos archivos.
+- Una credencial se da por buena **cuando conecta**, no cuando se escribió el archivo. La
+  comprobación se puede repetir sola: `sudo odontocrm credenciales` (o `40-verificar.sh`).
+- Si alguna no conecta, el arreglo es **volver a aprovisionar** (converge la base a lo que
+  dicen los archivos), nunca copiar de un sitio a otro.
+
+> **Para una instalación que ya existe** no hace falta reinstalar: se actualiza con
+> `sudo odontocrm actualizar`, que trae el código y pone al día unidades, migraciones, TLS y
+> proxy ejecutando la misma pieza `30-desplegar.sh`. **Las actualizaciones no rotan
+> credenciales**: para eso está `--rotar-credenciales`, a propósito.
+
+### Lo que se retiró (y por qué)
+
+`infra/fedora/instalar-servidor.sh` ya no existe: era el envoltorio del `ensayo-despliegue.sh`
+como instalador, con el traslado de secretos dentro. `odontocrm sincronizar-credenciales`
+tampoco copia ya nada: se llama `odontocrm credenciales` y solo **comprueba**. El ensayo
+(`ensayo-despliegue.sh`) se conserva como **prueba** —restauración fila a fila, reinicio de la
+máquina, TLS desde otro equipo—, que es donde tiene valor.
 
 ## 4. Paquetes base (dnf)
 

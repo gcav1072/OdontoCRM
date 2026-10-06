@@ -4,6 +4,78 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fedora] — El instalador nuevo: una sola fuente de verdad para las credenciales · 2026-10-05
+
+El rediseño que el ADR 0043 dejó pendiente, implementado. **Un comando instala el servidor
+entero** y la invariante que faltaba —una sola copia de cada secreto— ahora está protegida por
+la estructura, no por la disciplina de quien instala:
+
+```bash
+bash infra/fedora/instalar/instalar.sh --comprobar   # sin sudo: ¿está lista la máquina?
+sudo bash infra/fedora/instalar/instalar.sh          # instala todo
+```
+
+### Las cuatro piezas (cada una se ejecuta y se comprueba sola)
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `10-preparar.sh` | Paquetes, PostgreSQL, Node 26, nginx+mkcert, `pg_hba` en `scram-sha-256`, usuario `odontocrm`, directorios con permisos y el nombre por mDNS |
+| `20-aprovisionar.sh` | **Genera los secretos UNA vez** en `/etc/odontocrm`, crea los 9 roles y las 9 bases con esas mismas contraseñas y **comprueba cada una conectándose** |
+| `30-desplegar.sh` | Código en `/opt` **sin secretos** (se clona: un clon no trae lo ignorado por Git), compilación, claves JWT, migraciones, usuarios iniciales, unidades systemd, certificado TLS, proxy, SELinux y firewall |
+| `40-verificar.sh` | El efecto: credencial que conecta, servicio que escucha, HTTPS que sirve la app, CA descargable y puertos correctos |
+
+### Lo que se retira
+
+- **`infra/fedora/instalar-servidor.sh` se elimina**: era el envoltorio del ensayo como
+  instalador, con el **traslado de secretos** dentro —justo la causa raíz de los fallos.
+- **`odontocrm sincronizar-credenciales` ya no copia nada**: pasa a `odontocrm credenciales` y
+  solo comprueba. Si algo no conecta, se arregla **volviendo a aprovisionar** (que converge la
+  base a lo que dicen los archivos), nunca copiando de un sitio a otro.
+- **`odontocrm actualizar` ya no llama a `install.sh`** (un segundo escritor de
+  `/etc/odontocrm`): ahora ejecuta `30-desplegar.sh`, que es idempotente. Las actualizaciones
+  **no rotan credenciales**; para eso está `--rotar-credenciales`, a propósito.
+- El ensayo `ensayo-despliegue.sh` **se conserva como prueba** (restauración, reinicio, TLS
+  desde otro equipo), que es donde tiene valor.
+
+### Defectos que encontró la propia prueba (y quedaron corregidos)
+
+Probar de verdad —y no solo leer el código— encontró seis fallos que habrían aparecido en la
+clínica, uno de ellos con el síntoma exacto que se quería evitar:
+
+| Defecto | Cómo se descubrió | Corrección |
+| :--- | :--- | :--- |
+| `ORIGEN` apuntaba a `infra/` en vez de a la raíz del repositorio | El `--dry-run` anunciaba `git clone …/OdontoCRM/infra` | Tres niveles arriba, no dos; y se comprueba que exista `package.json` |
+| `TELEGRAM_BOT_USERNAME=` **vacío** rompía el servicio de notificaciones | Migrando de verdad: `ConfigError` y la migración no corría | Las claves sin valor **se omiten** (no es lo mismo `CLAVE=` que no ponerla) y quedan comentadas |
+| Un `null` en una clave gestionada **borraba** el token del bot ya configurado | Prueba de preservación | Si ya había valor, manda el que había |
+| `--dry-run` ejecutaba de verdad el instalador de nginx/DNS y `setsebool`/`semanage` | Lectura del flujo con `--dry-run` desde otro directorio | Todo lo que modifica el sistema queda detrás de la guarda de `--dry-run` |
+| El aviso de `--dry-run` tapaba la guarda de «ya estamos sobre el código desplegado» | Ejecutándolo desde el propio directorio desplegado | La comprobación va **antes** que el modo de prueba |
+| `firewall-cmd` **se colgaba indefinidamente** sin root (polkit pide contraseña y no hay agente) | Barrido de todos los modos de ejecución | Se omite la sección sin root con un aviso, y todas las llamadas llevan `timeout` |
+
+### Verificación (lo que se probó de verdad en esta sesión)
+
+- **El aprovisionador, contra el PostgreSQL real de esta máquina**: creó los 9 roles y las 9
+  bases, aplicó las contraseñas y **las 9 conectan** por TCP con `scram-sha-256`.
+- **Idempotencia**: la segunda corrida conserva los secretos (el archivo no cambia).
+- **Prueba negativa**: cambiar a mano la contraseña del rol `odonto_identity` en la base hace
+  que la comprobación lo detecte, **nombre el servicio y el archivo**, y salga con código 1 —
+  exactamente el fallo que antes costó cinco rondas, ahora localizado por su causa.
+- **Preservación**: las claves que añade una persona a mano se conservan; y una clave que el
+  instalador escribiría vacía (el token del bot) **no pisa** el valor que ya había.
+- `npm run fedora:check`: **123 comprobaciones, 0 fallos** (antes 95), reapuntadas al camino
+  nuevo: piezas completas, encadenadas, un solo escritor de credenciales, despliegue sin
+  secretos y documentación coherente.
+- **La secuencia del despliegue, ejecutada de verdad**: clon de git → `npm ci` → `npm run build`
+  (código 0), **las 8 migraciones** aplicadas con el entorno de `/etc/odontocrm`
+  (`tools/con-entorno.mjs`) y **la siembra de usuarios** (admin, recepcion y el odontólogo de
+  `clinic.ts`) con la contraseña temporal.
+- **Todas las piezas, en todos sus modos**, se ejecutan sin abortar por una variable sin
+  definir (`set -u`) y sin colgarse, incluido `instalar.sh --dry-run` completo (319 líneas de
+  previsualización, 0,2 s, sin sudo).
+
+> **Pendiente de comprobar con `sudo`** (esta sesión no tenía permisos): la ejecución real de
+> la instalación completa en la máquina. Las piezas están escritas para poder ejecutarse por
+> separado precisamente para eso: si una falla, se retoma desde ahí sin repetir lo anterior.
+
 ## [Fedora] — Se descarta el plan de instalación actual · 2026-10-05 (después del tag `fase-10`)
 
 El camino de instalación y despliegue (el ensayo como instalador, el traslado de secretos a

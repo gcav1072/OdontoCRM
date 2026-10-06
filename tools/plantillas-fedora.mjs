@@ -41,6 +41,29 @@ const leer = (ruta) => readFileSync(resolve(ROOT, ruta), 'utf8');
 const installSh = leer('infra/fedora/install.sh');
 
 /**
+ * Los guiones del despliegue que hay que revisar: los del índice de git **y los que
+ * todavía no se han confirmado**, descartando los que ya no están en disco.
+ *
+ * Así un guion recién añadido pasa por estas comprobaciones desde el primer momento
+ * —no cuando alguien se acuerde de `git add`— y borrar uno no rompe la comprobación
+ * antes de confirmar el borrado (pasó al retirar `instalar-servidor.sh`).
+ */
+const guionesDeFedora = (extensiones = ['.sh', '.mjs']) => {
+  const listar = (args) =>
+    execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
+  const todos = [
+    ...listar(['ls-files', 'infra/fedora']),
+    ...listar(['ls-files', '--others', '--exclude-standard', 'infra/fedora']),
+  ];
+  return todos
+    .filter(
+      (linea) =>
+        extensiones.some((ext) => linea.endsWith(ext)) || linea === 'infra/fedora/odontocrm',
+    )
+    .filter((linea) => existsSync(join(ROOT, linea)));
+};
+
+/**
  * Lo que el despliegue **pone** además de las plantillas. Son valores que genera
  * `npm run db:bootstrap` en el repositorio y que la guía traslada a `/etc/odontocrm`
  * (§8.6), más lo que añade la propia migración de `install.sh`.
@@ -226,12 +249,20 @@ revisarDefaultsRelativos();
 // ── 1-ter. Ningún guion del despliegue se corta en silencio ──────────────────
 console.log('\nAvisos de corte en los guiones (un guion mudo es el peor fallo):');
 {
-  const guiones = execFileSync('git', ['ls-files', 'infra/fedora'], { cwd: ROOT, encoding: 'utf8' })
-    .split('\n')
-    .filter((linea) => linea.endsWith('.sh') || linea === 'infra/fedora/odontocrm');
+  // Se enumeran los del índice **y los todavía sin confirmar**, y se descartan los que ya
+  // no están en disco: un guion recién añadido tiene que pasar esta prueba desde el primer
+  // momento (no cuando alguien se acuerde de `git add`), y uno borrado no puede romperla.
+  const guiones = guionesDeFedora(['.sh']);
   for (const guion of guiones) {
     comprobaciones += 1;
     const contenido = leer(guion);
+    // Una BIBLIOTECA que solo se carga con `source` no lleva traps propios: los pone
+    // quien la ejecuta, y ponerlos aquí los duplicaría en cada pieza. Se declara con
+    // la marca que ya usa el proyecto, en su cabecera.
+    if (/fedora:check-ok[^\n]*biblioteca/.test(contenido)) {
+      ok(`${guion.padEnd(42)} es una biblioteca (los traps los pone quien la carga)`);
+      continue;
+    }
     const tieneErr = /trap '.*ERR/.test(contenido);
     const tieneExit = /terminó con error/.test(contenido);
     if (tieneErr && tieneExit) {
@@ -254,12 +285,7 @@ console.log('\nDatos de una máquina concreta en los guiones:');
       motivo: 'ruta de un usuario concreto (dedúcela del propio guion)',
     },
   ];
-  const guiones = execFileSync('git', ['ls-files', 'infra/fedora'], { cwd: ROOT, encoding: 'utf8' })
-    .split('\n')
-    .filter(
-      (linea) =>
-        linea.endsWith('.sh') || linea.endsWith('.mjs') || linea === 'infra/fedora/odontocrm',
-    );
+  const guiones = guionesDeFedora();
   for (const guion of guiones) {
     for (const regla of prohibidosMaquina) {
       comprobaciones += 1;
@@ -607,50 +633,115 @@ const exigir = (condicion, bien, mal) => {
     `estas variables no las lee nadie y volvieron a la plantilla: ${reaparecidas.join(', ')} (los valores viven en packages/contracts)`,
   );
 
-  // (13-quinquies) EL SEED: que una PC nueva no dependa de la memoria de nadie.
-  // Todas las mejoras de esta temporada tienen que estar en el camino de instalación, no
-  // solo en un guion suelto que alguien recuerde ejecutar.
-  const seedRuta = 'infra/fedora/instalar-servidor.sh';
-  exigir(
-    existsSync(join(ROOT, seedRuta)),
-    'el seed de instalación completa existe (infra/fedora/instalar-servidor.sh)',
-    `falta ${seedRuta}: una PC nueva tendría que seguir la guía a mano`,
-  );
-  const seed = existsSync(join(ROOT, seedRuta)) ? leer(seedRuta) : '';
-  const piezasDelSeed = [
-    ['instalar-base-fedora.sh', 'la máquina (paquetes, PostgreSQL, pg_hba, Node, nombre)'],
-    ['db:bootstrap', 'las 8 bases, sus roles y las credenciales'],
-    ['db:migrate', 'el esquema'],
-    ['seed:users', 'los usuarios iniciales'],
-    ['ensayo-despliegue.sh', 'despliegue, unidades, secretos, TLS, firewall, SELinux y respaldos'],
-    ['instalar-dns.sh', 'el nombre por DNS (para los aparatos que no resuelven .local)'],
-    ['odontocrm', 'el comando del servidor'],
+  // (13-quinquies) EL INSTALADOR: una PC nueva se instala con UN comando.
+  //
+  // ADR 0043 descartó el camino anterior —el ensayo como instalador, el traslado de
+  // secretos de `services/*.env` a /etc/odontocrm, el `sincronizar-credenciales` que lo
+  // reparaba y las fases con `--hasta`— porque los secretos vivían en DOS sitios y el
+  // paso que los copiaba fallaba en silencio («password authentication failed» cinco
+  // veces, cada una en un sitio distinto del síntoma).
+  //
+  // Estas comprobaciones protegen el diseño nuevo: piezas separadas y comprobables,
+  // encadenadas por un comando, con UNA SOLA copia de cada credencial.
+  const INSTALADOR = 'infra/fedora/instalar';
+  const piezasDelInstalador = [
+    'instalar.sh',
+    '10-preparar.sh',
+    '20-aprovisionar.sh',
+    '30-desplegar.sh',
+    '40-verificar.sh',
+    'aprovisionar.mjs',
+    'comun.sh',
   ];
-  const sinPieza = piezasDelSeed.filter(([pista]) => !seed.includes(pista)).map(([, que]) => que);
-  exigir(
-    sinPieza.length === 0,
-    'el seed cubre la instalación completa (máquina, bases, usuarios, despliegue, respaldos y nombre)',
-    `al seed le falta: ${sinPieza.join(', ')}`,
-  );
-  // El seed tiene que usar el comando que sincroniza y **comprueba** las credenciales: es el
-  // arreglo de la clase de fallo que más rondas costó (base y /etc desfasados), y en una PC
-  // nueva es la única forma de dejar constancia de que la credencial que leen los servicios
-  // es la misma que la de la base.
-  exigir(
-    /sincronizar-credenciales/.test(seed),
-    'el seed sincroniza y comprueba las credenciales (base y /etc de acuerdo)',
-    'el seed no llama a `odontocrm sincronizar-credenciales`: una PC nueva podría quedar con la base y /etc desfasados',
+  const piezasQueFaltan = piezasDelInstalador.filter(
+    (pieza) => !existsSync(join(ROOT, INSTALADOR, pieza)),
   );
   exigir(
-    /sincronizar-credenciales/.test(guia) &&
-      /sincronizar-credenciales/.test(leer('infra/fedora/RUNBOOK.md')),
-    'la guía y el RUNBOOK explican `odontocrm sincronizar-credenciales`',
-    'ni INSTALL.md ni RUNBOOK.md mencionan `odontocrm sincronizar-credenciales`',
+    piezasQueFaltan.length === 0,
+    'el instalador está completo: el comando único y las cuatro piezas',
+    `faltan piezas del instalador: ${piezasQueFaltan.join(', ')}`,
+  );
+
+  const leerInstalador = (pieza) => leer(`${INSTALADOR}/${pieza}`);
+  const entrada = leerInstalador('instalar.sh');
+  const faltanEnLaEntrada = [
+    '10-preparar.sh',
+    '20-aprovisionar.sh',
+    '30-desplegar.sh',
+    '40-verificar.sh',
+  ].filter((pieza) => !entrada.includes(pieza));
+  exigir(
+    faltanEnLaEntrada.length === 0,
+    'el comando único encadena las cuatro piezas, en orden',
+    `instalar.sh no llama a: ${faltanEnLaEntrada.join(', ')}`,
+  );
+
+  // UNA SOLA FUENTE DE VERDAD: el aprovisionador es el único que escribe las
+  // credenciales, y las comprueba conectándose (no basta con que el archivo exista).
+  const aprovisionador = leerInstalador('aprovisionar.mjs');
+  exigir(
+    /EVENTS_DATABASE_URL/.test(aprovisionador) && /DATABASE_URL/.test(aprovisionador),
+    'el aprovisionador escribe las credenciales de los 9 servicios en /etc/odontocrm',
+    'aprovisionar.mjs no escribe DATABASE_URL/EVENTS_DATABASE_URL: alguien tendría que copiarlas',
   );
   exigir(
-    /instalar-servidor\.sh/.test(guia) && /instalar-servidor\.sh/.test(leer('README.md')),
-    'la guía y el README presentan el seed como el camino de una PC nueva',
-    'ni INSTALL.md ni README.md mencionan infra/fedora/instalar-servidor.sh',
+    /spawnSync\(\s*'psql'/.test(aprovisionador) && /PGPASSWORD/.test(aprovisionador),
+    'el aprovisionador COMPRUEBA cada credencial con una conexión real (no con el archivo)',
+    'aprovisionar.mjs no abre una conexión por credencial: un desfase pasaría inadvertido',
+  );
+  exigir(
+    /--solo-verificar|soloVerificar/.test(aprovisionador),
+    'hay un modo de solo comprobar, para poder verificar sin aprovisionar',
+    'falta el modo de solo comprobar: la verificación tendría que escribir para poder comprobar',
+  );
+
+  // Y NADIE traslada secretos desde el repositorio en el camino nuevo: eso es
+  // exactamente lo que el ADR descarta.
+  const caminoNuevo = [
+    entrada,
+    leerInstalador('20-aprovisionar.sh'),
+    leerInstalador('30-desplegar.sh'),
+  ].join('\n');
+  exigir(
+    !/sincronizar-credenciales/.test(caminoNuevo),
+    'el instalador nuevo no usa `sincronizar-credenciales` (el modelo de dos copias)',
+    'el instalador nuevo volvió a llamar a sincronizar-credenciales: eso reintroduce el traslado de secretos',
+  );
+  exigir(
+    !/services\/\$?\{?s?\}?\/\.env/.test(caminoNuevo),
+    'el instalador nuevo no lee los .env del repositorio (no hay segunda copia)',
+    'el instalador nuevo lee services/*/.env: volvería a haber dos copias que se desfasan',
+  );
+  exigir(
+    !/^\s*(DATABASE_URL|INTERNAL_SERVICE_SECRET|COOKIE_SECRET)=/m.test(
+      leerInstalador('30-desplegar.sh'),
+    ),
+    'el despliegue NO escribe credenciales: solo las lee de /etc/odontocrm',
+    '30-desplegar.sh escribe credenciales: habría dos escritores de /etc/odontocrm',
+  );
+  // El código desplegado en /opt se clona, y un clon nunca trae lo ignorado por Git
+  // (.env, .keys): así no puede contener secretos.
+  exigir(
+    /git clone/.test(leerInstalador('30-desplegar.sh')),
+    'el código se despliega con `git clone` (nunca copia los .env ignorados por Git)',
+    '30-desplegar.sh no usa git clone: copiar a mano podría arrastrar los .env al servidor',
+  );
+
+  // Y la documentación tiene que presentar ESE camino, no el viejo.
+  // No se prohíbe NOMBRARLO (la guía explica que se retiró y por qué: eso es
+  // documentación útil); lo que no puede haber es que se ofrezca como el comando a
+  // ejecutar, que es como vuelve un camino retirado.
+  const instaladorRetirado = /bash\s+infra\/fedora\/instalar-servidor\.sh/;
+  exigir(
+    !instaladorRetirado.test(guia) && !instaladorRetirado.test(leer('README.md')),
+    'ni la guía ni el README ofrecen ya el instalador retirado como comando',
+    'INSTALL.md o README.md mandan ejecutar infra/fedora/instalar-servidor.sh (retirado por el ADR 0043)',
+  );
+  exigir(
+    /infra\/fedora\/instalar\/instalar\.sh/.test(guia) &&
+      /infra\/fedora\/instalar\/instalar\.sh/.test(leer('README.md')),
+    'la guía y el README presentan el instalador nuevo como el camino de una PC nueva',
+    'ni INSTALL.md ni README.md mencionan infra/fedora/instalar/instalar.sh',
   );
 
   // (13-sexies) Los scripts de la CA NO pueden llevar una IP grabada.
@@ -687,8 +778,13 @@ const exigir = (condicion, bien, mal) => {
   // arrancar por una variable sin asignar o un error de sintaxis.
   console.log('\nPrueba de humo de los guiones (ninguno debe abortar al arrancar):');
   const humo = [
-    ['infra/fedora/instalar-servidor.sh', []],
-    ['infra/fedora/instalar-servidor.sh', ['--help']],
+    ['infra/fedora/instalar/instalar.sh', ['--help']],
+    ['infra/fedora/instalar/instalar.sh', ['--comprobar']],
+    ['infra/fedora/instalar/10-preparar.sh', ['--help']],
+    ['infra/fedora/instalar/20-aprovisionar.sh', ['--help']],
+    ['infra/fedora/instalar/30-desplegar.sh', ['--help']],
+    ['infra/fedora/instalar/40-verificar.sh', ['--help']],
+    ['infra/fedora/instalar/aprovisionar.mjs', ['--help']],
     ['infra/fedora/odontocrm', []],
     ['infra/fedora/ensayo-despliegue.sh', ['--hasta=inexistente']],
     ['infra/fedora/backup/odontocrm-backup.sh', ['--help']],
@@ -696,7 +792,9 @@ const exigir = (condicion, bien, mal) => {
   ];
   for (const [guion, args] of humo) {
     comprobaciones += 1;
-    const r = spawnSync('bash', [guion, ...args], {
+    // El intérprete depende del guion: un .mjs se ejecuta con node, no con bash.
+    const interprete = guion.endsWith('.mjs') ? 'node' : 'bash';
+    const r = spawnSync(interprete, [guion, ...args], {
       cwd: ROOT,
       encoding: 'utf8',
       timeout: 15_000,
@@ -707,7 +805,7 @@ const exigir = (condicion, bien, mal) => {
       salida,
     );
     if (roto) {
-      err(`bash ${guion} ${args.join(' ')} → aborta al arrancar:`);
+      err(`${interprete} ${guion} ${args.join(' ')} → aborta al arrancar:`);
       for (const linea of salida
         .split('\n')
         .filter((l) => l.trim() !== '')
@@ -715,7 +813,7 @@ const exigir = (condicion, bien, mal) => {
         console.error(`      ${linea.trim().slice(0, 110)}`);
       }
     } else {
-      ok(`bash ${guion.split('/').pop()} ${args.join(' ')}`.padEnd(46) + ' arranca sin caerse');
+      ok(`${guion.split('/').pop()} ${args.join(' ')}`.padEnd(46) + ' arranca sin caerse');
     }
   }
 

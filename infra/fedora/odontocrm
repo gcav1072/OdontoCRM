@@ -92,10 +92,11 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    exporta los archivos para instalar en tablets, móviles
                                    y TVs (--exportar /ruta). Es lo que quita el aviso de
                                    «conexión no privada» en los demás equipos.
-  sudo odontocrm sincronizar-credenciales [--desde=<repo>]
-                                   Pone de acuerdo las credenciales de los `.env` del
-                                   repositorio y /etc/odontocrm, y **comprueba cada una con
-                                   una conexión real** (no imprime secretos).
+  sudo odontocrm credenciales      Comprueba que las 9 credenciales de /etc/odontocrm
+                                   CONECTAN de verdad, una por una (no imprime secretos).
+                                   Ya no copia nada: hay una sola copia de cada secreto.
+                                   Si alguna falla, se arregla aprovisionando otra vez:
+                                   sudo bash infra/fedora/instalar/20-aprovisionar.sh
   sudo odontocrm red               En qué IP se está sirviendo y con qué dirección entrar
                                    desde otro equipo. Comprueba lo que se queda apuntando
                                    a la red anterior al cambiar de wifi/router (firewall,
@@ -267,18 +268,20 @@ case "$ORDEN" in
       morir "no pude cambiar a la rama '$rama' (¿existe en el origen? ¿la escribiste bien?)"
     ok "rama $rama · código en $(git rev-parse --short HEAD)"
 
-    # Plantillas de /etc/odontocrm, unidades de systemd, logrotate, temporizadores y
-    # **el propio comando** del servidor: `install.sh` es idempotente y nunca
-    # sobrescribe secretos ni archivos existentes. Se ejecuta DESPUÉS de traer el código
-    # (si se hiciera antes, copiaría la versión vieja: pasó con el filtro de SELinux y
-    # con la espera de `verificar`). Sin este paso, un cambio en una unidad o en una
-    # plantilla no llegaría con `actualizar` —que era justo lo que sí hacía el ensayo—.
-    if bash "$CODE_DIR/infra/fedora/install.sh" --apply --supervisor=systemd --enable-services \
-         >/tmp/odontocrm-install.log 2>&1; then
-      ok 'unidades, plantillas, temporizadores y comando del servidor al día'
+    # Código compilado, unidades, temporizadores, certificado, proxy, SELinux y
+    # firewall: lo pone al día la MISMA pieza del instalador, que es idempotente.
+    #
+    # Antes esto llamaba a `install.sh`, que además generaba plantillas de
+    # /etc/odontocrm. Eso era un SEGUNDO escritor de la configuración y la puerta
+    # por la que volvían los secretos desfasados (ADR 0043). Ahora la única pieza
+    # que escribe /etc/odontocrm es 20-aprovisionar.sh, y las actualizaciones NO la
+    # tocan: las credenciales no se rotan porque llegue una versión nueva.
+    if bash "$CODE_DIR/infra/fedora/instalar/30-desplegar.sh" \
+         >/tmp/odontocrm-actualizar.log 2>&1; then
+      ok 'código compilado, unidades, migraciones, TLS y proxy al día'
     else
-      tail -15 /tmp/odontocrm-install.log
-      av 'install.sh falló: el código se actualiza, pero revisa las unidades y las plantillas'
+      tail -20 /tmp/odontocrm-actualizar.log
+      av 'el despliegue falló: el código se actualizó, pero revisa /tmp/odontocrm-actualizar.log'
     fi
 
     # ── Cambiar de versión a mitad de camino, sin romperse ────────────────────
@@ -617,71 +620,27 @@ EOF
     echo "      sudo bash $CODE_DIR/infra/fedora/nombre/instalar-dns.sh"
     ;;
 
-  sincronizar-credenciales|credenciales|sincronizar)
+  credenciales|sincronizar-credenciales|sincronizar)
     necesita_root
-    # Las credenciales de los servicios viven en DOS sitios: los `.env` del código (los
-    # escribe el bootstrap) y /etc/odontocrm (los leen los servicios y las migraciones). Si se
-    # desfasan, todo falla con «password authentication failed» sin decir cuál de los dos está
-    # mal. Este comando los pone de acuerdo y **comprueba con una conexión real** cada uno.
-    DESDE=""
-    for arg in "$@"; do
-      case "$arg" in --desde=*) DESDE="${arg#*=}" ;; esac
-    done
-    if [[ -z "$DESDE" ]]; then
-      for candidato in "$CODE_DIR" "$PWD"; do
-        [[ -f "$candidato/services/identity/.env" ]] && { DESDE="$candidato"; break; }
-      done
+    # **Ya no copia nada.** Antes este comando "sincronizaba" las credenciales de los
+    # `.env` del repositorio hacia /etc/odontocrm, y ese traslado era justo la causa de
+    # fondo de los fallos: dos copias del mismo secreto que se desfasan en silencio
+    # (ADR 0043). Ahora hay UNA sola copia, la escriben 20-aprovisionar.sh y aquí solo
+    # se COMPRUEBA, con una conexión real por servicio.
+    #
+    # Si algo no conecta, el arreglo es volver a aprovisionar (que converge la base a lo
+    # que dicen los archivos), no copiar de un sitio a otro.
+    INFORME="$CODE_DIR/infra/fedora/instalar/aprovisionar.mjs"
+    [[ -f "$INFORME" ]] || INFORME="$PWD/infra/fedora/instalar/aprovisionar.mjs"
+    [[ -f "$INFORME" ]] || morir 'no encuentro infra/fedora/instalar/aprovisionar.mjs en el código'
+
+    if node "$INFORME" --env-dir="$ETC_DIR" --solo-verificar; then
+      ok 'las 9 credenciales conectan: /etc/odontocrm y la base están de acuerdo'
+    else
+      av 'alguna credencial NO conecta (arriba se dice cuál y qué archivo mirar)'
+      av "  se arregla volviendo a aprovisionar:  sudo bash $CODE_DIR/infra/fedora/instalar/20-aprovisionar.sh"
+      exit 1
     fi
-    [[ -n "$DESDE" && -f "$DESDE/services/identity/.env" ]] ||
-      morir 'no encuentro el repositorio con los .env; pásalo con --desde=<ruta del repositorio>'
-    ok "origen de las credenciales: $DESDE"
-
-    CLAVES='DATABASE_URL|EVENTS_DATABASE_URL|INTERNAL_SERVICE_SECRET|COOKIE_SECRET'
-    sincronizados=0; reparados=0
-    for s in "${SERVICIOS[@]}" gateway; do
-      destino="$ETC_DIR/$s.env"
-      origen="$DESDE/services/$s/.env"
-      [[ -f "$destino" ]] || continue
-      [[ -f "$origen" ]] || { av "$s: no hay $origen (¿corriste el bootstrap en el repositorio?)"; continue; }
-
-      # ¿Coinciden? Se compara la HUELLA, no el valor (los secretos no se imprimen).
-      antes="$(grep -E "^($CLAVES)=" "$destino" 2>/dev/null | sha256sum | cut -c1-12 || true)"
-      tmp="$(mktemp)"
-      grep -vE "^($CLAVES)=" "$destino" >"$tmp"
-      for clave in ${CLAVES//|/ }; do
-        valor="$(sed -n "s/^${clave}=//p" "$origen" | head -1 || true)"
-        [[ -n "$valor" ]] && printf '%s=%s\n' "$clave" "$valor" >>"$tmp"
-      done
-      install -m 0600 -o root -g root "$tmp" "$destino"
-      rm -f "$tmp"
-      despues="$(grep -E "^($CLAVES)=" "$destino" 2>/dev/null | sha256sum | cut -c1-12 || true)"
-
-      url="$(sed -n 's/^DATABASE_URL=//p' "$destino" | head -1 || true)"
-      if [[ -z "$url" ]]; then
-        av "$s: sin DATABASE_URL"
-      elif psql "$url" -tAc 'select 1' >/dev/null 2>&1; then
-        if [[ "$antes" == "$despues" ]]; then
-          ok "$s: credencial al día y comprobada"
-        else
-          ok "$s: credencial ACTUALIZADA y comprobada (estaba desfasada)"
-          reparados=$((reparados + 1))
-        fi
-        sincronizados=$((sincronizados + 1))
-      else
-        av "$s: la credencial de $destino NO conecta ni después de copiarla del repositorio"
-        av "    corre:  cd $DESDE && npm run db:bootstrap    (y repite esto)"
-      fi
-    done
-
-    if (( reparados > 0 )); then
-      for s in "${SERVICIOS[@]}"; do
-        systemctl try-restart "odontocrm@$s.service" >/dev/null 2>&1 || true
-      done
-      systemctl try-restart odontocrm-gateway.service >/dev/null 2>&1 || true
-      ok "$reparados servicio(s) con credencial corregida: se reiniciaron"
-    fi
-    (( sincronizados > 0 )) && ok "$sincronizados archivo(s) verificados" ||
-      av 'ningún archivo quedó verificado: revisa el bootstrap y los .env del repositorio'
     ;;
 
   red|ip|lan)
