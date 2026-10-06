@@ -172,7 +172,22 @@ const auditarHttp = () => {
       /add\(\s*'([^']+)'/g,
     ),
   ].map(([, prefijo]) => prefijo);
+
+  /**
+   * Rutas que la puerta sirve **por sí misma**, declaradas en su propio código con `app.get(...)`:
+   * hoy `/api/v1/meta` (estado del sistema y banner de modo test, Fase 10). Antes solo se miraban
+   * los `add(...)` de `routes.ts`, así que una ruta propia salía como «la interfaz llama y el
+   * gateway no la enruta» aunque la sirviera y tuviera prueba (`proxy.test.ts`).
+   */
+  const propiasDelGateway = archivosDe(join(ROOT, 'apps/gateway/src')).flatMap((archivo) => {
+    const fuente = readFileSync(archivo, 'utf8');
+    return [...fuente.matchAll(/app\.(?:get|post|put|patch|delete)\(\s*'([^']+)'/g)].map(
+      (coincidencia) => coincidencia[1],
+    );
+  });
+
   const cubierta = (ruta) =>
+    propiasDelGateway.includes(ruta) ||
     prefijos.some(
       (prefijo) => ruta === prefijo || ruta.startsWith(`${prefijo}/`) || ruta.startsWith(prefijo),
     );
@@ -206,7 +221,7 @@ const auditarHttp = () => {
   const expuestas = internas.filter((ruta) => cubierta(ruta.ruta));
 
   console.log(
-    `Prefijos del gateway: ${String(prefijos.length)} · rutas públicas: ${String(publicas.length)} · internas: ${String(internas.length)}`,
+    `Prefijos del gateway: ${String(prefijos.length)} (+${String(propiasDelGateway.length)} ruta(s) propia(s)) · rutas públicas: ${String(publicas.length)} · internas: ${String(internas.length)}`,
   );
   for (const ruta of sinPrefijo)
     estructurables.push(
