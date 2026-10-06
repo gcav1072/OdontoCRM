@@ -15,6 +15,7 @@
 #   sudo bash infra/fedora/instalar-servidor.sh
 #   sudo bash infra/fedora/instalar-servidor.sh --admin-url=postgres:///postgres?host=/var/run/postgresql
 #   sudo bash infra/fedora/instalar-servidor.sh --sin-nombre --sin-respaldo
+#   sudo bash infra/fedora/instalar-servidor.sh --comprobar   # ¿está lista la máquina?
 #   sudo bash infra/fedora/instalar-servidor.sh --dry-run
 #
 # Es **idempotente**: se puede repetir sin miedo (cada paso lo es por su cuenta). Si algo
@@ -51,16 +52,43 @@ for arg in "$@"; do
     --con-dns) CON_DNS=1 ;;
     --sin-respaldo) SIN_RESPALDO=1 ;;
     --dry-run) DRY_RUN=1 ;;
+    --comprobar) COMPROBAR=1 ;;
     -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) morir "opción no reconocida: $arg" ;;
   esac
 done
-[[ "$(id -u)" == "0" ]] || morir 'esta orden necesita sudo'
+# `--comprobar` solo lee, así que se puede ejecutar sin permisos (es lo primero que uno
+# quiere saber antes de empezar).
+if (( ! COMPROBAR )); then
+  [[ "$(id -u)" == "0" ]] || morir 'esta orden necesita sudo (usa --comprobar para revisar sin permisos)'
+fi
 [[ -f "$ORIGEN/package.json" ]] || morir "no encuentro el repositorio en $ORIGEN"
 
 USUARIO_REAL="${SUDO_USER:-root}"
-[[ "$USUARIO_REAL" == "root" ]] && av 'no pude deducir tu usuario (¿lo lanzaste desde root?): el bootstrap usará el rol root'
+# En `--comprobar` no hay sudo (ni usuario que deducir): no se avisa de nada.
+if (( ! COMPROBAR )) && [[ "$USUARIO_REAL" == "root" ]]; then
+  av 'no pude deducir tu usuario (¿lo lanzaste desde root?): el bootstrap usará el rol root'
+fi
 DRY=(); (( DRY_RUN )) && DRY=(--dry-run)
+COMPROBAR="${COMPROBAR:-0}"
+
+# ── Modo comprobación: ¿está la máquina lista para instalar? No toca nada. ──
+if (( COMPROBAR )); then
+  printf '%sOdontoCRM · ¿está esta máquina lista para instalar?%s\n\n' "$C_TI" "$C_RE"
+  problemas=0
+  revisar() { if eval "$2" >/dev/null 2>&1; then ok "$1"; else av "$1 → $3"; problemas=$((problemas + 1)); fi; }
+  revisar 'Node 22.9 o superior'            'node -e "process.exit(Number(process.versions.node.split(\".\")[0]) >= 22 ? 0 : 1)"' 'instala Node 26 (lo hace el paso 1)'
+  revisar 'npm disponible'                  'command -v npm' 'viene con Node'
+  revisar 'PostgreSQL instalado'            'command -v psql' 'lo instala el paso 1'
+  revisar 'git disponible'                  'command -v git' 'dnf install git'
+  revisar 'el repositorio es un clon de git' 'git -C "$ORIGEN" rev-parse --git-dir' 'clona el repositorio, no copies la carpeta'
+  revisar 'hay conexión (dnf/Node)'         'timeout 8 curl -fsSI https://rpm.nodesource.com >/dev/null' 'sin red no se puede preparar la máquina'
+  revisar 'no hay otra pila usando los puertos' '! pgrep -f "node --watch|tools/stack.mjs"' 'para la pila de desarrollo antes de instalar'
+  echo
+  (( problemas == 0 )) && ok 'todo listo:  sudo bash infra/fedora/instalar-servidor.sh --con-dns' ||
+    av "$problemas cosa(s) por resolver antes de empezar"
+  exit 0
+fi
 
 printf '%sOdontoCRM · instalación completa%s\n' "$C_TI" "$C_RE"
 printf '  repositorio: %s\n  usuario: %s\n' "$ORIGEN" "$USUARIO_REAL"
@@ -94,6 +122,16 @@ if [[ -z "$ADMIN_URL" ]]; then
 fi
 export PG_ADMIN_URL="$ADMIN_URL"
 
+# Las dependencias primero: en un clon recién hecho no hay `node_modules` y el bootstrap
+# fallaría (nos lo habría dicho en la primera PC nueva).
+if (( DRY_RUN )); then
+  printf '       [dry-run]$ npm ci\n'
+else
+  npm ci --silent >/tmp/odontocrm-npm-ci.log 2>&1 ||
+    { tail -20 /tmp/odontocrm-npm-ci.log; morir 'falló npm ci (registro: /tmp/odontocrm-npm-ci.log)'; }
+  ok 'dependencias instaladas (npm ci)'
+fi
+
 for paso_cmd in "db:bootstrap" "db:migrate"; do
   if (( DRY_RUN )); then
     printf '       [dry-run]$ npm run %s\n' "$paso_cmd"
@@ -109,8 +147,17 @@ else
   # Los usuarios sembrados piden contraseña en producción (SEED_PASSWORD_*): se generan
   # temporales y se imprimen UNA vez, que es lo que el operador necesita para entrar.
   claves="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-14)"
-  if SEED_PASSWORD_ADMIN="$claves" SEED_PASSWORD_RECEPCION="$claves" SEED_PASSWORD_EGOMEZ="$claves" \
-    npm run seed:users >/tmp/odontocrm-seed-users.log 2>&1; then
+  # Los usuarios salen de `packages/contracts/src/clinic.ts` (un odontólogo por entrada) más
+  # los fijos `admin` y `recepcion`. En producción el seed exige `SEED_PASSWORD_<USUARIO>` para
+  # cada uno, así que se los damos todos: con OTRA clínica los nombres son otros y sin esto el
+  # seed fallaba en los que no estuvieran en la lista.
+  usuarios="$( { printf 'admin\nrecepcion\n'; grep -oP "username: '\K[^']+" "$ORIGEN/packages/contracts/src/clinic.ts" 2>/dev/null; } |
+    tr 'a-z' 'A-Z' | sort -u)"
+  entorno_claves=()
+  while IFS= read -r usuario; do
+    [[ -n "$usuario" ]] && entorno_claves+=("SEED_PASSWORD_$usuario=$claves")
+  done <<<"$usuarios"
+  if env "${entorno_claves[@]}" npm run seed:users >/tmp/odontocrm-seed-users.log 2>&1; then
     ok 'usuarios sembrados'
     echo "       contraseña temporal de los usuarios iniciales: $C_TI$claves$C_RE"
     echo "       (el sistema obliga a cambiarla al primer ingreso)"

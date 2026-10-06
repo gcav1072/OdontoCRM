@@ -56,7 +56,7 @@ echo "== 1/6 · Paquetes base y herramientas del sistema =======================
 sudo dnf install -y \
   git tar gzip xz zstd rsync curl ca-certificates logrotate chrony firewalld \
   policycoreutils-python-utils setools-console setroubleshoot-server audit \
-  postgresql-contrib nginx mkcert nss-tools
+  postgresql-contrib nginx mkcert nss-tools bind-utils
 
 echo
 echo "== 2/6 · PostgreSQL 18: clúster y arranque ================================="

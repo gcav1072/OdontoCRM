@@ -219,8 +219,13 @@ Para una **PC nueva**, el camino es uno solo:
 
 ```bash
 git clone https://github.com/gcav1072/OdontoCRM.git && cd OdontoCRM
+bash infra/fedora/instalar-servidor.sh --comprobar   # sin sudo: ¿está la máquina lista?
 sudo bash infra/fedora/instalar-servidor.sh --con-dns
 ```
+
+El primer comando **no toca nada**: revisa Node, npm, PostgreSQL, git, que la carpeta sea un
+clon de git, la conexión y que no haya otra pila usando los puertos. Si todo sale en verde,
+el segundo hace la instalación completa.
 
 Hace, en orden, lo que esta guía explica paso a paso —**sin reimplementar nada**: llama a los
 guiones que ya existen— y termina diciendo cómo entrar desde cada aparato:
