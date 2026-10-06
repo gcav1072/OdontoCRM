@@ -410,6 +410,7 @@ un puerto lo ocupa un programa ajeno, avisa y lo deja en paz.
 | odontogram | 4006 | | | |
 | screens | 4007 | | | |
 | reporting | 4008 | | | |
+| billing | 4009 | | | |
 
 Todos los servicios escuchan en `127.0.0.1`: se entra **solo** por el gateway.
 

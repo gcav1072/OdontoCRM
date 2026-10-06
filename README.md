@@ -197,6 +197,7 @@ odontólogo, `npm run seed:users`. El logo se deja en [`assets/clinic/`](assets/
 | odontogram | 4006 | ✅ Fase 6, sesión B (odontograma FDI) |
 | screens | 4007 | ✅ Fase 5 (secretaría y pantallas con SSE) |
 | reporting | 4008 | ✅ Fase 9 (read model, KPIs y auditoría UI) |
+| billing | 4009 | 🚧 Fase 11 (la caja: borradores de factura, en curso — sin dinero todavía) |
 
 Además, la Fase 10 dejó el **modo test** (`TEST_MODE`, banner y envíos bloqueados), el **seed
 determinista** (`npm run seed:test`, `seed:reset`, `seed:verify`) y el **tablero de estado**
