@@ -171,7 +171,15 @@ else
   fi
 fi
 
-# Las credenciales se comprueban AHORA, no tres pasos después: si el bootstrap dejara la
+# El comando del servidor deja las credenciales de /etc y del repositorio de acuerdo y las
+# comprueba una por una con una conexión real (no imprime secretos). Es el mismo paso que se
+# puede repetir a mano: `sudo odontocrm sincronizar-credenciales --desde=<repo>`.
+if (( ! DRY_RUN )) && [[ -x /usr/local/bin/odontocrm ]]; then
+  /usr/local/bin/odontocrm sincronizar-credenciales --desde="$ORIGEN" ||
+    av 'no pude sincronizar las credenciales; revisa la salida de arriba'
+fi
+
+# Y una comprobación propia, por si el comando todavía no está instalado (primera vez): si el bootstrap dejara la
 # base y los archivos desincronizados, se ve aquí, con el servicio y los dos archivos
 # nombrados, en vez de aparecer como «password authentication failed» en las migraciones
 # (que es lo que nos costó tres rondas de depuración).

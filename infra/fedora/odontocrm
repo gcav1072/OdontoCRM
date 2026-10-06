@@ -92,6 +92,10 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    exporta los archivos para instalar en tablets, móviles
                                    y TVs (--exportar /ruta). Es lo que quita el aviso de
                                    «conexión no privada» en los demás equipos.
+  sudo odontocrm sincronizar-credenciales [--desde=<repo>]
+                                   Pone de acuerdo las credenciales de los `.env` del
+                                   repositorio y /etc/odontocrm, y **comprueba cada una con
+                                   una conexión real** (no imprime secretos).
   sudo odontocrm red               En qué IP se está sirviendo y con qué dirección entrar
                                    desde otro equipo. Comprueba lo que se queda apuntando
                                    a la red anterior al cambiar de wifi/router (firewall,
@@ -611,6 +615,73 @@ EOF
     echo
     echo "  Si un equipo no resuelve el nombre y quieres el camino 1, en ESTE servidor:"
     echo "      sudo bash $CODE_DIR/infra/fedora/nombre/instalar-dns.sh"
+    ;;
+
+  sincronizar-credenciales|credenciales|sincronizar)
+    necesita_root
+    # Las credenciales de los servicios viven en DOS sitios: los `.env` del código (los
+    # escribe el bootstrap) y /etc/odontocrm (los leen los servicios y las migraciones). Si se
+    # desfasan, todo falla con «password authentication failed» sin decir cuál de los dos está
+    # mal. Este comando los pone de acuerdo y **comprueba con una conexión real** cada uno.
+    DESDE=""
+    for arg in "$@"; do
+      case "$arg" in --desde=*) DESDE="${arg#*=}" ;; esac
+    done
+    if [[ -z "$DESDE" ]]; then
+      for candidato in "$CODE_DIR" "$PWD"; do
+        [[ -f "$candidato/services/identity/.env" ]] && { DESDE="$candidato"; break; }
+      done
+    fi
+    [[ -n "$DESDE" && -f "$DESDE/services/identity/.env" ]] ||
+      morir 'no encuentro el repositorio con los .env; pásalo con --desde=<ruta del repositorio>'
+    ok "origen de las credenciales: $DESDE"
+
+    CLAVES='DATABASE_URL|EVENTS_DATABASE_URL|INTERNAL_SERVICE_SECRET|COOKIE_SECRET'
+    sincronizados=0; reparados=0
+    for s in "${SERVICIOS[@]}" gateway; do
+      destino="$ETC_DIR/$s.env"
+      origen="$DESDE/services/$s/.env"
+      [[ -f "$destino" ]] || continue
+      [[ -f "$origen" ]] || { av "$s: no hay $origen (¿corriste el bootstrap en el repositorio?)"; continue; }
+
+      # ¿Coinciden? Se compara la HUELLA, no el valor (los secretos no se imprimen).
+      antes="$(grep -E "^($CLAVES)=" "$destino" 2>/dev/null | sha256sum | cut -c1-12 || true)"
+      tmp="$(mktemp)"
+      grep -vE "^($CLAVES)=" "$destino" >"$tmp"
+      for clave in ${CLAVES//|/ }; do
+        valor="$(sed -n "s/^${clave}=//p" "$origen" | head -1 || true)"
+        [[ -n "$valor" ]] && printf '%s=%s\n' "$clave" "$valor" >>"$tmp"
+      done
+      install -m 0600 -o root -g root "$tmp" "$destino"
+      rm -f "$tmp"
+      despues="$(grep -E "^($CLAVES)=" "$destino" 2>/dev/null | sha256sum | cut -c1-12 || true)"
+
+      url="$(sed -n 's/^DATABASE_URL=//p' "$destino" | head -1 || true)"
+      if [[ -z "$url" ]]; then
+        av "$s: sin DATABASE_URL"
+      elif psql "$url" -tAc 'select 1' >/dev/null 2>&1; then
+        if [[ "$antes" == "$despues" ]]; then
+          ok "$s: credencial al día y comprobada"
+        else
+          ok "$s: credencial ACTUALIZADA y comprobada (estaba desfasada)"
+          reparados=$((reparados + 1))
+        fi
+        sincronizados=$((sincronizados + 1))
+      else
+        av "$s: la credencial de $destino NO conecta ni después de copiarla del repositorio"
+        av "    corre:  cd $DESDE && npm run db:bootstrap    (y repite esto)"
+      fi
+    done
+
+    if (( reparados > 0 )); then
+      for s in "${SERVICIOS[@]}"; do
+        systemctl try-restart "odontocrm@$s.service" >/dev/null 2>&1 || true
+      done
+      systemctl try-restart odontocrm-gateway.service >/dev/null 2>&1 || true
+      ok "$reparados servicio(s) con credencial corregida: se reiniciaron"
+    fi
+    (( sincronizados > 0 )) && ok "$sincronizados archivo(s) verificados" ||
+      av 'ningún archivo quedó verificado: revisa el bootstrap y los .env del repositorio'
     ;;
 
   red|ip|lan)
