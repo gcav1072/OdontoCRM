@@ -181,6 +181,11 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
   afterAll(async () => {
     if (!ready) return;
 
+    // Lo último que hace la suite es volver a subir el cupo, y eso deja su evento en el outbox. Sin
+    // este vaciado, **cada corrida** dejaba un evento sin publicar y el auditor de conexiones
+    // denunciaba un «outbox atascado en scheduling» que no era del sistema, sino de la prueba.
+    await flush().catch(() => undefined);
+
     await identityHandle.db
       .delete(identitySchema.auditEvents)
       .where(eq(identitySchema.auditEvents.actorUsername, MARKER));
