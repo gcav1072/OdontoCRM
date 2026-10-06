@@ -171,6 +171,27 @@ else
   fi
 fi
 
+# Las credenciales se comprueban AHORA, no tres pasos después: si el bootstrap dejara la
+# base y los archivos desincronizados, se ve aquí, con el servicio y los dos archivos
+# nombrados, en vez de aparecer como «password authentication failed» en las migraciones
+# (que es lo que nos costó tres rondas de depuración).
+if (( ! DRY_RUN )); then
+  malas=0
+  for s in "${SERVICIOS[@]:-identity patients scheduling notifications clinical odontogram screens reporting}"; do
+    url="$(sed -n 's/^DATABASE_URL=//p' "$ORIGEN/services/$s/.env" 2>/dev/null | head -1 || true)"
+    [[ -n "$url" ]] || continue
+    psql "$url" -tAc 'select 1' >/dev/null 2>&1 || {
+      av "$s: la credencial de services/$s/.env NO conecta (revisa: sudo odontocrm estado)"
+      malas=$((malas + 1))
+    }
+  done
+  if (( malas == 0 )); then
+    ok 'las 8 credenciales de servicio conectan'
+  else
+    av "$malas credencial(es) no conectan; se puede repetir con: npm run db:bootstrap"
+  fi
+fi
+
 # ── 2. Despliegue completo --------------------------------------------------
 paso '3/5 · Despliegue (código, unidades, secretos, TLS, firewall, respaldos)'
 

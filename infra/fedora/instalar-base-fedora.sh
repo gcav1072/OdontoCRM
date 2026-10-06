@@ -142,13 +142,21 @@ fi
 echo
 echo "== 4/6 · Dependencias de Chromium (récipe A5 y PDF de reportes) ============"
 cd "$(dirname "$0")/../.." || exit 1   # la raíz del repositorio, no infra/
-if ! sudo npx playwright install-deps chromium; then
-  echo "install-deps no soporta esta distribución: instalo la lista a mano"
-  sudo dnf install -y nss nspr atk at-spi2-atk cups-libs libdrm mesa-libgbm \
-    libxshmfence libX11 libXext libXcursor libXi libXtst libXcomposite libXdamage \
-    libXfixes libXrandr pango alsa-lib libxkbcommon libxkbcommon-x11 \
-    liberation-fonts dejavu-sans-fonts
+# `playwright install-deps` NO soporta Fedora: intenta `apt-get` y falla con un error que
+# asusta («sh: línea 1: apt-get: orden no encontrada») antes de caer a la lista de `dnf`.
+# En Fedora se va **directo a la lista** (menos ruido y menos tiempo); en otras
+# distribuciones se intenta primero y, si falla, también se usa la lista.
+if [[ -f /etc/fedora-release ]]; then
+  echo "install-deps no soporta esta distribución: instalo la lista de dnf directamente"
+elif ! sudo npx playwright install-deps chromium; then
+  echo "install-deps falló: instalo la lista de dnf a mano"
 fi
+
+# La lista, siempre: es la que deja Chromium en condiciones en Fedora.
+sudo dnf install -y nss nspr atk at-spi2-atk cups-libs libdrm mesa-libgbm \
+  libxshmfence libX11 libXext libXcursor libXi libXtst libXcomposite libXdamage \
+  libXfixes libXrandr pango alsa-lib libxkbcommon libxkbcommon-x11 \
+  liberation-fonts dejavu-sans-fonts
 
 echo
 echo "== 5/6 · Node.js 26 (NodeSource) en lugar del Node 22 de Fedora ==========="
