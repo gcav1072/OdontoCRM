@@ -1,0 +1,32 @@
+# =============================================================================
+# OdontoCRM · temporizador de la red (cada 5 minutos)
+# Archivo : infra/fedora/systemd/odontocrm-red.timer
+# Destino : /etc/systemd/system/odontocrm-red.timer
+#
+# Lanza `odontocrm-red.service` cada cinco minutos. Con `--si-cambio`, cuando la IP no ha
+# cambiado el servicio sale sin hacer nada (ni certificado ni reinicios), así que puede
+# correr siempre: en la clínica, con la IP fija, nunca hace nada; en un portátil que
+# cambia de red, deja todo adaptado en menos de cinco minutos sin tocar nada a mano.
+#
+# Instalación:
+#   sudo install -m 0644 -o root -g root \
+#     infra/fedora/systemd/odontocrm-red.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now odontocrm-red.timer
+# =============================================================================
+
+[Unit]
+Description=OdontoCRM · revisar si la red cambió (cada 5 minutos)
+Documentation=file:///opt/odontocrm/infra/fedora/RUNBOOK.md
+
+[Timer]
+# Dos minutos después del arranque (deja que la red esté lista de verdad) y luego cada
+# cinco. Sin `Persistent`: si la máquina estuvo apagada, la primera pasada ya comprueba
+# la red actual; recuperar ejecuciones viejas no aporta nada.
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=odontocrm-red.service
+
+[Install]
+WantedBy=timers.target

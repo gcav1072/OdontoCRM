@@ -392,7 +392,11 @@ fi
 # ════════════════════════════════════════════════════════════════════════════
 paso '6/9 · Unidades de systemd'
 UNIDADES=(odontocrm@.service odontocrm-gateway.service)
+# El de la red va SIEMPRE (no depende de los respaldos): es el que vuelve a adaptar
+# firewall, certificado, CORS y el DNS del nombre cuando cambia la IP. En la clínica, con
+# IP fija, sale sin hacer nada; en un portátil de pruebas, deja todo al día solo.
 TIMERS=(odontocrm-alertas.service odontocrm-alertas.timer)
+TIMERS+=(odontocrm-red.service odontocrm-red.timer)
 (( ! SIN_RESPALDO )) && TIMERS+=(odontocrm-backup.service odontocrm-backup.timer)
 
 for unidad in "${UNIDADES[@]}" "${TIMERS[@]}"; do
@@ -442,6 +446,7 @@ else
     systemctl enable --now odontocrm-backup.timer >/dev/null 2>&1 || true
   fi
   systemctl enable --now odontocrm-alertas.timer >/dev/null 2>&1 || true
+  systemctl enable --now odontocrm-red.timer >/dev/null 2>&1 || true
   ok 'los 9 servicios habilitados (arrancan solos al encender la máquina)'
   detalle 'esperando a que escuchen…'
   for _ in $(seq 1 30); do

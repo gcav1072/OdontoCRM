@@ -1,0 +1,56 @@
+# =============================================================================
+# OdontoCRM · adaptar la red cuando cambia (servicio)
+# Archivo : infra/fedora/systemd/odontocrm-red.service
+# Destino : /etc/systemd/system/odontocrm-red.service
+# Pareja  : odontocrm-red.timer (lo lanza cada 5 minutos)
+#
+# Ejecuta `odontocrm red --arreglar --si-cambio`: si la IP de la LAN es la misma con la
+# que ya se adaptó todo, **no hace nada y sale en silencio**; si cambió, reajusta el
+# firewall, reemite el certificado con la IP nueva (misma CA: los equipos no tocan nada),
+# actualiza WEB_ORIGIN, recarga el proxy y reescribe el DNS del nombre.
+#
+# Existe por un caso real: la PC de pruebas es un portátil que cambia de red, y al
+# cambiarle la IP se quedaban viejos el firewall, el certificado y —sobre todo— el DNS
+# propio: dnsmasq se quedaba esperando una dirección que ya no existía, así que los
+# Android (que no entienden mDNS) dejaban de resolver el nombre sin que nadie se enterara.
+#
+# Es idempotente y barato: sin cambio de IP no toca ni el certificado ni los servicios.
+#
+#   systemctl list-timers odontocrm-red.timer
+#   systemctl status odontocrm-red.service
+#   journalctl -u odontocrm-red -n 50 --no-pager
+#
+# Instalación:
+#   sudo install -m 0644 -o root -g root \
+#     infra/fedora/systemd/odontocrm-red.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now odontocrm-red.timer
+# =============================================================================
+
+[Unit]
+Description=OdontoCRM · adaptar la red actual (IP, certificado, CORS y DNS del nombre)
+Documentation=file:///opt/odontocrm/infra/fedora/RUNBOOK.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Corre como root porque reescribe el certificado, /etc/nginx, /etc/odontocrm/*.env y la
+# configuración de dnsmasq: aquí NO se puede endurecer con ProtectSystem=strict como en
+# las alertas, porque su trabajo es justamente escribir.
+User=root
+WorkingDirectory=/opt/odontocrm
+
+# `--si-cambio` es lo que lo hace apto para un temporizador: si la IP es la misma con la
+# que ya se adaptó todo, sale sin tocar el certificado ni reiniciar servicios.
+ExecStart=/usr/local/bin/odontocrm red --arreglar --si-cambio
+
+# Es una reparación: no debe competir con la clínica ni retrasar el arranque de la red.
+Nice=10
+IOSchedulingClass=idle
+# mkcert + recarga de nginx + reinicio de tres servicios: unos segundos, no minutos.
+TimeoutStartSec=180
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=odontocrm-red

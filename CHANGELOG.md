@@ -4,6 +4,36 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Red] — El servidor se adapta solo cuando cambia la IP (y el nombre en Android) · 2026-10-06
+
+Probar en un portátil que cambia de red destapó el último hueco de «lo que se queda apuntando
+a la red anterior»: al cambiar la IP se adaptaban el firewall, el certificado y `WEB_ORIGIN`,
+pero **el DNS del nombre se quedaba con la dirección vieja**. Con la IP anterior en
+`listen-address`, `dnsmasq` ni siquiera escucha (`bind-dynamic` espera una dirección que ya
+no existe), así que los Android —que **no** resuelven `.local` por mDNS— dejaban de resolver
+`odontocrm.local` sin que nadie se enterara. El certificado no tenía nada que ver: por IP
+entraban seguros.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `odontocrm red` | Ahora también comprueba el **DNS del nombre**: que `listen-address` y cada `address=` apunten a la IP de ahora, que `dnsmasq` esté activo y que **escuche de verdad** en esa dirección. Si está desalineado, lo cuenta como problema y dice cómo arreglarlo |
+| `odontocrm red --arreglar` | Reescribe el DNS con la IP actual (reutilizando `nombre/instalar-dns.sh`: esa configuración sigue teniendo un solo dueño) y comprueba con `dig` que responde |
+| `odontocrm-red.timer` + `.service` | **Nuevos**: cada 5 minutos ejecutan `odontocrm red --arreglar --si-cambio`. Guarda la última IP con la que se adaptó todo (`/var/lib/odontocrm/red-ultima-ip`) y, si no cambió, **no toca nada** (ni certificado ni servicios). En la clínica, con IP fija, nunca hace nada; en un portátil que cambia de red, deja firewall, certificado, CORS y DNS al día solo |
+| `fedora:check` | Dos candados: **toda unidad de `infra/fedora/systemd/` se instala en el despliegue** (una unidad que nadie copia es un archivo muerto) y el temporizador de la red usa `--si-cambio`. El primero encontró que a la unidad nueva le faltaba el `ExecStart` |
+
+Y una corrección de documentación con la prueba real de la consulta: la tabla de equipos decía
+que **Android «suele resolver» `.local`** (probado en un Pixel 7); con un Pixel 7 y un Redmi
+Note 8 Pro delante, el resultado es que **no lo resuelve**. `CERTIFICADO_EN_LOS_EQUIPOS.md`
+ahora lo dice tal cual y manda al DNS propio, con el detalle que se olvida: el móvil tiene que
+usar este servidor como DNS **y con el «DNS privado» desactivado**.
+
+Y otro fallo latente que apareció al validar las unidades con `systemd-analyze verify`:
+`odontocrm-backup.service` ponía `Environment=TZ=America/Caracas` en la sección **`[Unit]`**,
+donde systemd **lo ignora** («Unknown key» en el journal) — así que el respaldo diario corría
+con la zona horaria del sistema y la carpeta del día podía caer en la fecha equivocada, justo
+lo que ese comentario decía evitar. Ahora está en `[Service]`, y `fedora:check` comprueba que
+ninguna unidad vuelva a poner `Environment=` en `[Unit]`.
+
 ## [Instalador] — Pregunta lo que hace falta y siembra solo el administrador · 2026-10-06
 
 Instalar ya no termina con deberes: el instalador **pregunta** lo que no se puede inventar

@@ -31,7 +31,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -554,6 +554,48 @@ const exigir = (condicion, bien, mal) => {
       /con-entorno\.mjs/.test(leer('infra/fedora/odontocrm')),
     'el cargador de entorno (tools/con-entorno.mjs) existe y se usa en el despliegue',
     'falta el uso de tools/con-entorno.mjs en el despliegue: los .env volverían a leerse como shell',
+  );
+
+  // (11-bis) Toda unidad de systemd que vive en el repositorio se instala en el despliegue.
+  //     Una unidad que existe pero que nadie copia a /etc/systemd/system es un archivo
+  //     muerto: se escribe, se revisa… y no corre. Este hueco es justo el del temporizador
+  //     de la red, que es el que vuelve a adaptar la IP, el certificado y el DNS del nombre.
+  const despliegue = leer('infra/fedora/instalar/30-desplegar.sh');
+  const unidadesHuerfanas = readdirSync(join(ROOT, 'infra/fedora/systemd')).filter(
+    (archivo) => !despliegue.includes(archivo),
+  );
+  exigir(
+    unidadesHuerfanas.length === 0,
+    'todas las unidades de systemd del repositorio se instalan en el despliegue',
+    `estas unidades existen pero 30-desplegar.sh no las instala: ${unidadesHuerfanas.join(', ')}`,
+  );
+
+  // (11-ter) Y el temporizador de la red tiene que ser IDEMPOTENTE: sin `--si-cambio`
+  //     reemitiría el certificado y reiniciaría servicios cada cinco minutos.
+  exigir(
+    /ExecStart=\/usr\/local\/bin\/odontocrm red --arreglar --si-cambio/.test(
+      leer('infra/fedora/systemd/odontocrm-red.service'),
+    ),
+    'el temporizador de la red usa --si-cambio (no toca nada si la IP no cambió)',
+    'odontocrm-red.service no usa --si-cambio: reemitiría el certificado y reiniciaría servicios cada 5 minutos',
+  );
+
+  // (11-quáter) `Environment=` no puede vivir en la sección `[Unit]`: systemd lo IGNORA
+  //     (con un «Unknown key» en el journal) y la variable no llega al proceso. Pasó de
+  //     verdad: el `TZ` del respaldo estaba ahí y el respaldo corría con otra zona horaria.
+  //     Lo destapó `systemd-analyze verify`; esta comprobación lo pilla sin systemd.
+  const unidadesConEntornoEnUnit = readdirSync(join(ROOT, 'infra/fedora/systemd')).filter(
+    (archivo) => {
+      const seccion = leer(`infra/fedora/systemd/${archivo}`)
+        .split(/^\[/m)
+        .find((parte) => parte.startsWith('Unit]'));
+      return seccion !== undefined && /^Environment=/m.test(seccion);
+    },
+  );
+  exigir(
+    unidadesConEntornoEnUnit.length === 0,
+    'las unidades no ponen Environment= en [Unit] (systemd lo ignora)',
+    `estas unidades ponen Environment= en [Unit] y systemd lo ignora: ${unidadesConEntornoEnUnit.join(', ')}`,
   );
 
   // (12) Las SONDAS no deben disparar los avisos de error. Un `x="$(… | grep …)"` devuelve 1

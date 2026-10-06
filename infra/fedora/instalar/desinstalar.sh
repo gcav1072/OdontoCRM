@@ -67,6 +67,7 @@ export DRY_RUN
 UNIDADES=()
 for s in "${SERVICIOS[@]}"; do UNIDADES+=("odontocrm@$s.service"); done
 UNIDADES+=(odontocrm-gateway.service odontocrm-alertas.service odontocrm-alertas.timer)
+UNIDADES+=(odontocrm-red.service odontocrm-red.timer)
 UNIDADES+=(odontocrm-backup.service odontocrm-backup.timer)
 RUTAS_FIJAS=("$CODE_DIR" "$ETC_DIR" /usr/local/bin/odontocrm /etc/logrotate.d/odontocrm)
 RUTAS_FIJAS+=(/etc/nginx/conf.d/odontocrm.conf /etc/dnsmasq.d/odontocrm.conf)

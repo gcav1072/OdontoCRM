@@ -1000,13 +1000,18 @@ install_systemd_units() {
   install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-backup.timer" "/etc/systemd/system/odontocrm-backup.timer"
   install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-alertas.service" "/etc/systemd/system/odontocrm-alertas.service"
   install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-alertas.timer" "/etc/systemd/system/odontocrm-alertas.timer"
+  # Y el de la red: vuelve a adaptar firewall, certificado, CORS y el DNS del nombre
+  # cuando cambia la IP (en la clínica, con IP fija, no hace nada).
+  install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-red.service" "/etc/systemd/system/odontocrm-red.service"
+  install_unit_if_changed "$SCRIPT_DIR/systemd/odontocrm-red.timer" "/etc/systemd/system/odontocrm-red.timer"
   run systemctl daemon-reload
-  # Los DOS temporizadores: antes solo se habilitaba el de alertas y el respaldo diario
+  # Los TRES temporizadores: antes solo se habilitaba el de alertas y el respaldo diario
   # quedaba sin programar (el ensayo lo habilitaba a mano, así que en la PC de pruebas
   # funcionaba y en una instalación nueva no habría respaldos). El RUNBOOK decía que
   # `install.sh` lo programaba: ahora es verdad.
   run systemctl enable --now odontocrm-alertas.timer
   run systemctl enable --now odontocrm-backup.timer
+  run systemctl enable --now odontocrm-red.timer
 
   if (( ENABLE_SERVICES )); then
     log "habilitando servicios (no se arrancan en este paso)"

@@ -403,12 +403,18 @@ sudo odontocrm red
 ```
 
 Dice la IP de la máquina en la red actual, las direcciones para entrar
-(`https://odontocrm.local` y `https://<IP>`) y comprueba las tres cosas que se quedan
-apuntando a la red anterior cuando el servidor cambia de wifi o de router: la regla de
-**`firewalld`**, el **certificado** (que cubre la IP con la que se emitió) y **`WEB_ORIGIN`**
-(el CORS del gateway: **solo interviene si sirves la interfaz desde otro origen**; con
-nginx sirviendo SPA y API en el mismo host, el navegador no aplica CORS).
+(`https://odontocrm.local` y `https://<IP>`) y comprueba lo que se queda apuntando a la red
+anterior cuando el servidor cambia de wifi o de router: la regla de **`firewalld`**, el
+**certificado** (que cubre la IP con la que se emitió), **`WEB_ORIGIN`** (el CORS del
+gateway: **solo interviene si sirves la interfaz desde otro origen**; con nginx sirviendo
+SPA y API en el mismo host, el navegador no aplica CORS) y el **DNS del nombre**, si está
+instalado (el que hace que `odontocrm.local` funcione en los Android, que no entienden mDNS).
 Si algo está desalineado, imprime el comando exacto que lo arregla.
+
+`sudo odontocrm red --arreglar` lo deja todo al día, y el temporizador
+**`odontocrm-red.timer`** lo ejecuta cada 5 minutos con `--si-cambio`: si la IP no cambió
+no toca nada (en la clínica, con IP fija, nunca hace nada; en un portátil que cambia de red,
+deja el firewall, el certificado, el CORS y el DNS al día sin intervención).
 
 Detalle completo (y el truco de entrar siempre por el nombre): 
 [`CERTIFICADO_EN_LOS_EQUIPOS.md`](CERTIFICADO_EN_LOS_EQUIPOS.md) §9-bis.

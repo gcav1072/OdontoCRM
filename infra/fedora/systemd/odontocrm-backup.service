@@ -8,12 +8,16 @@ Wants=postgresql.service postgresql-18.service network-online.target
 # TZ del consultorio: sin esto, con el reloj del servidor en UTC la carpeta del día y la
 # retención se calculan en la zona del sistema y una corrida de las 21:00 en Caracas cae
 # en el día siguiente (los «días completos» de los reportes no cuadrarían).
-Environment=TZ=America/Caracas
+#
+# OJO: `Environment=` va en `[Service]`, NO aquí. En `[Unit]` systemd lo **ignora** con un
+# «Unknown key» en el journal, así que la variable nunca llegaba al respaldo (lo encontró
+# `systemd-analyze verify`, que avisa de esa línea justo así).
 ConditionPathExists=/etc/odontocrm/backup.env
 
 [Service]
 Type=oneshot
 User=root
+Environment=TZ=America/Caracas
 
 # --include-config copia /etc/odontocrm (CONTINENE SECRETOS): el archivo resultante
 # va cifrado o en un medio protegido, nunca suelto en un directorio compartido.
