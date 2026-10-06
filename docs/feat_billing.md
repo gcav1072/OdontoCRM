@@ -1,14 +1,16 @@
-# Módulo de Facturación y Pagos — plan de la Fase 11 (revisión 2)
+# Módulo de Facturación y Pagos — plan de la Fase 11 (revisión 3: decisiones cerradas)
 
-> **Estado:** propuesta revisada · 2026-10-05 · Gabriel + revisión del agente
+> **Estado:** propuesta revisada · 2026-10-05 · Gabriel + revisión del agente · **cierre fiscal con el
+> contador (2026-10-05, Anexo A)**
 > **Alcance:** el décimo servicio `services/billing` (puerto **4009**, base `odonto_billing`) y su
 > pantalla `/caja`.
 > **Nada de esto está implementado todavía.** Este documento es la fuente de verdad y, como manda
 > [`PLAN_MAESTRO_FASES.md`](PLAN_MAESTRO_FASES.md) §14/§17, **cada decisión se registra como ADR antes de
 > escribir código**.
-> **La revisión 2** añade una **verificación normativa** (Ley de IVA, Ley de IGTF, Providencia
-> SNAT/2011/0071 y Convenio Cambiario N.º 1): las fuentes y su nivel de confianza están en §10, y las
-> premisas que resultaron falsas, corregidas en el §0.
+> **La revisión 2** añadió la **verificación normativa** (Ley de IVA, Ley de IGTF, Providencia
+> SNAT/2011/0071 y Convenio Cambiario N.º 1); **la revisión 3 cierra las tres decisiones que estaban
+> abiertas** con el contador (§0.1): política de imputación, IGTF y modo de emisión. Ya no hay bloqueos:
+> se puede empezar a programar.
 > *(Nota del autor: «si se puede mejorar algo con una mejor solución, es válido presentarlo». Esta
 > revisión hace exactamente eso: mantiene la arquitectura de la v1 y corrige lo que chocaría con las
 > convenciones ya decididas, más los huecos de dominio que habrían dolido en producción.)*
@@ -33,25 +35,72 @@ proyecto ya resuelve en otro sitio y conviene copiar · **R** = riesgo o decisi�
 | B9 | Anulación de pagos y recibos | No existe | Un pago **no se borra: se anula con motivo** (misma regla que el récipe emitido, ADR [0036](adr/0036-recipe-emitido-documento-archivado.md)) y el saldo se recalcula en la misma transacción (§4, §5.3) |
 | B10 | Auditoría | No se menciona | Cada acto de dinero publica `auditPayload` y aparece en `/auditoria`; hay que añadir las acciones a `AUDIT_ACTIONS` y sus etiquetas en `i18n.ts` (§3.5) |
 | B11 | Permisos | No se mencionan | Cinco permisos nuevos y su reparto por rol (§3.5) |
-| B12 | Datos del emisor | Tabla `clinic_fiscal_profiles` nueva | Duplica [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) (nombre, RIF, dirección, teléfonos, logo), que ya leen los ocho servicios y el membrete. Se reutiliza; en la base solo queda lo fiscal mutable (§4, §6) |
+| B12 | Datos del emisor | Tabla `clinic_fiscal_profiles` nueva | Duplica los datos del consultorio, que ya viven en [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) y leen los ocho servicios. Se reutilizan, pero **sacándolos del código**: pasan a un bloque `CLINIC_*` del entorno con genéricos `CAMBIAR_*` (§2.4); en la base solo queda lo fiscal mutable (§4, §6) |
 | B13 | Alícuotas | `igtf_percentage` en una columna e IVA 16 % cableado en el enum | Tarifas **con vigencia** (`tax_rates`, `igtf_rules`) y **alícuota aplicada copiada en el documento**: cambiar el 16 % o el 3 % mañana no puede reescribir lo ya emitido. Fuera `reduced_8`: **no existe alícuota reducida vigente** (§3.3, §11) |
 | B14 | El evento no lleva lo que el consumidor necesita | `session.procedureCodes` a secas | El borrador necesita **código, pieza, caras y detalle** de cada procedimiento (ADR [0041](adr/0041-el-evento-lleva-lo-que-el-consumidor-necesita.md)): se completa el bloque `session` de `clinical.session.closed` de forma **aditiva** y con aviso en el `CHANGELOG` (§5.1) |
 | B15 | Factura ↔ sesión | `clinical_session_id` en `invoices` (1:1) | Un tratamiento que se cobra al final cubre **varias sesiones**. Tabla de enlace N:M desde el principio (con unicidad por sesión, que además es la segunda red de idempotencia); la v1 emite una factura por sesión y la unificación queda como camino abierto (§4, §11) |
 | M1 | Documento | «Motor PDF» que recompone al imprimir | **Emitir archiva**: PDF generado una vez, `sha256`, `print_count` y `last_printed_at` (ADR 0036). Lo que se reimprime es el mismo archivo (§6) |
 | M2 | Máquina de estados | Implícita en los `if` | `INVOICE_TRANSITIONS` **como dato** con roles y motivo, igual que `APPOINTMENT_TRANSITIONS` (§3.1) |
 | M3 | Catálogo | Libre | Alineado con los **28 códigos de `SESSION_PROCEDURES`** para que el borrador se genere solo; lo que no tenga precio entra en 0 y **marcado**, para que la caja nunca se bloquee (§5.6) |
-| M4 | Libro de ventas e IGTF | No está | Libro de ventas en CSV (base **desglosada por alícuota** y total exento aparte, como pide el Art. 13 num. 10) e **IGTF percibido por día** (el período del impuesto es diario): es lo primero que pide el contador (§9) |
+| M4 | Libro de ventas e IGTF | No está | Libro de ventas en CSV (base **desglosada por alícuota** y total exento aparte, como pide el Art. 13 num. 10) y el de IGTF **el día que haya algo que declarar**: es lo primero que pide el contador (§9) |
 | M5 | Pruebas, seed y humo | No están | Base temporal propia, `npm run smoke:billing`, mundo determinista del ADR [0042](adr/0042-el-seed-escribe-filas-y-eventos.md) y un e2e de caja (§9, §12) |
 | M6 | Recibo vs. factura | Mezclados | Dos series y dos documentos: **factura** (fiscal) y **recibo** `REC-000001` (interno, con el IGTF y la tasa del pago) (§6) |
 | M7 | Modo test | No se menciona | Numeración y series **reservadas** (`900.000+`, serie `T`) como los récipes y los tickets: la numeración real nunca ve un número de prueba (ADR 0020/0042) (§4) |
 | M8 | Tasa del día ausente | «el sistema opera con autonomía» | Falta la regla: **arrastre** de la última tasa publicada con aviso si el hueco supera N días, y confirmación explícita para cobrar con una tasa vieja (§5.5) |
-| R1 | IGTF | «3 % sobre efectivo en divisas» | Confirmado el **3 % para los supuestos de divisas** (Art. 24 de la Ley de IGTF), pero el 2 % general quedó en **0 %** (Decreto 4.972, jul-2024) y **quién lo percibe cambia según el medio**: en divisas por el sistema bancario nacional lo debita el **banco** (Art. 4.5, sin importar si la clínica es SPE); el efectivo en divisas y Zelle/USDT lo percibe **la clínica solo si está calificada como Sujeto Pasivo Especial** (Art. 4.6). Se modela **por medio de pago y con quién percibe** (§3.2, §5.3, §10) |
+| R1 | IGTF | «3 % sobre efectivo en divisas» | Confirmado el **3 % para los supuestos de divisas** (Art. 24 de la Ley de IGTF), pero el 2 % general quedó en **0 %** (Decreto 4.972, jul-2024) y **quién lo percibe cambia según el medio**: en divisas por el sistema bancario nacional lo debita el **banco** (Art. 4.5, sin importar si la clínica es SPE); el efectivo en divisas y Zelle/USDT lo percibe **la clínica solo si está calificada como Sujeto Pasivo Especial** (Art. 4.6). Se modela **por medio de pago y con quién percibe** (§3.2, §5.3, §10). **Cerrado (§0.1): la clínica no es SPE, así que no percibe IGTF en caja.** |
 | R2 | Validez de la factura | Se asume que el PDF impreso **es** la factura | **Un PDF impreso en hoja blanca no es una factura válida** para un contribuyente ordinario: la Providencia SNAT/2011/0071 solo admite **formatos** o **formas libres** de imprenta autorizada (con **número de control preimpreso**) o **máquina fiscal** (Art. 6). Los servicios odontológicos **no** están en la lista del Art. 8, así que la máquina fiscal no es obligatoria; el régimen digital (Providencia SNAT/2024/000102) es **opt-in** salvo venta exclusivamente electrónica. Decide quién asigna el número (ADR 0046, §10) |
 | R3 | Leyendas y artículo | «Exento de IVA de conformidad con el Art. 18, num. 4» | El artículo está mal: la exención de servicios odontológicos es el **Art. 19, numeral 6** de la Ley de IVA (el Art. 18.4 es de **ventas** de bienes, prótesis incluidas). Lo que exige la Providencia 0071 es la letra **`(E)`** junto a la descripción o al precio (Art. 13 num. 8) y el **total exento separado** (num. 10); «sin derecho a crédito fiscal» va **en las copias** (num. 13) (§6, §10) |
 | R4 | Alícuota adicional por pago en divisas | No se menciona | La Ley de IVA (Art. 27 ¶4 y **Art. 62**) prevé una alícuota **adicional** del 5 %–25 % para operaciones pagadas en divisas, y su parágrafo primero dice que en las operaciones **exentas** solo aplica esa adicional. **Solo rige por Decreto del Ejecutivo y no hay evidencia de que exista**: se deja el gancho en la configuración y en el modelo (0 % por defecto), no en el código (§3.3, §10) |
-| R5 | Sujeto Pasivo Especial | `is_special_taxpayer` como dato de la clínica | Es **el pivote de todo el IGTF**: la calificación la **notifica el SENIAT**, no se autodeclara. Hay que confirmarlo por escrito antes de cobrar 3 % en efectivo (y no cobrarlo si no aplica), porque el efectivo en divisas queda fuera del Art. 4.6 para quien no es SPE (§10) |
+| R5 | Sujeto Pasivo Especial | `is_special_taxpayer` como dato de la clínica | Es **el pivote de todo el IGTF**: la calificación la **notifica el SENIAT**, no se autodeclara. Hay que confirmarlo por escrito antes de cobrar 3 % en efectivo (y no cobrarlo si no aplica), porque el efectivo en divisas queda fuera del Art. 4.6 para quien no es SPE (§10). **Cerrado (§0.1, Anexo A): contribuyente ordinario, sin notificación de SPE ⇒ el interruptor queda apagado.** |
 | R6 | Forma del documento | «Imprime A5 / Carta» | La Providencia 0071 exige **una página por documento, mínimo 8 cm** (Art. 33: si la operación no cabe, se emiten **varios documentos, cada uno con su número**), fechas **DDMMAAAA** (Art. 34), sin enmiendas (Art. 41) y conservando **originales y copias** de lo anulado (Art. 36). Con **formas libres**, una factura larga consume **varias formas**: el diseño no puede asumir «una factura = un papel» (§6) |
 | R7 | Crédito fiscal de compras | No se menciona | Como la clínica factura sobre todo **exento**, **no tiene derecho a deducir el IVA de sus compras** (Ley de IVA Art. 33): no se construye ningún libro de crédito fiscal de compras. El IVA de insumos, laboratorio y alquiler es **costo** (§11) |
+
+### 0.1 Cierre fiscal y de alcance con el contador y con Gabriel (2026-10-05) — ya no hay bloqueos
+
+La hoja de confirmación (Anexo A) volvió marcada y después se cerraron las decisiones que quedaban
+abiertas. Esto es lo que queda fijado:
+
+| Pregunta | Respuesta | Efecto en el plan |
+| :--- | :--- | :--- |
+| Régimen fiscal | **Contribuyente ordinario** (no Sujeto Pasivo Especial) | `is_special_taxpayer = false`: la clínica **no percibe IGTF** |
+| Formato de facturación | **Formas libres** de imprenta autorizada | Modo por defecto `formas_libres`: **dos números** (correlativo propio + control preimpreso) |
+| Pago en bolívares | **Tasa del día en que el paciente paga** (Conv. Cambiario N.º 1) | `imputation_policy = 'tasa_del_pago'` — la que el plan ya recomendaba |
+| IGTF en caja | **No se percibe** | El IGTF queda **dormido pero modelado y probado**: si algún día notifican a la clínica como SPE, se enciende con un interruptor |
+| **Anticipos** (abono antes de emitir) | **No**: primero se emite la factura y luego se cobra | Se queda fuera de la v1 (§11); los abonos parciales sobre una factura emitida sí entran |
+| **Bienes al 16 %** (cepillos, geles) | **Sí, hay que poder facturarlos** | El catálogo nace con bienes de ejemplo y el camino gravado (base desglosada + IVA) queda **activo** |
+| **Emisión a crédito** | **No**: emitir y cobrar son el mismo acto | `emitida` sin cobro no es el flujo normal; la factura puede quedar con saldo (pago parcial) pero se emite en el mostrador |
+| **Prótesis e implantes** | **Dentro del servicio exento** | Todas las partidas odontológicas nacen `exento` con la letra `(E)` |
+| **Libro de compras** | **Solo el de ventas** | El de compras lo lleva el contador: no se registran facturas de proveedores |
+| **Cambio de contrato en `clinical`** | **Aprobado**: `session.procedures[]` aditivo | El borrador se arma solo desde la sesión (ADR 0041), con aviso en el `CHANGELOG` |
+| **Tasa BCV** | Captura **automática** con respaldo manual | Worker diario + ingreso a mano si falla; el arrastre se confirma en pantalla |
+| **Quién anula** | **Administrador y secretaría**, con motivo | `billing:void` para los dos; el odontólogo solo lectura |
+| **Nombre de la interfaz** | **«Caja» en `/caja`** | Es el nombre que usa el personal para el mostrador |
+| **Datos del consultorio** | **Por entorno**, con genéricos `CAMBIAR_*` | Perfil `CLINIC_*` en el `.env` común y en `/etc/odontocrm/odontocrm.env` (§2.4) |
+
+Lo que cambia de verdad en las secciones siguientes:
+
+1. **El IGTF no se cobra en esta instalación**; y además **nunca** en pagos bancarizados en divisas, donde
+   el agente de percepción es el **banco** (Art. 4.5): cobrarlo sería cobrar dos veces. Con
+   `is_special_taxpayer = false` la pantalla **bloquea** añadir IGTF y muestra «Clínica no calificada como
+   Sujeto Pasivo Especial (IGTF no percibido)» (§5.3, ADR 0044).
+2. **La factura lleva la leyenda de doble tasa** (emisión + pago) con el **texto exacto** que fijó el
+   contador, porque los Bs se liquidan a la tasa de la fecha del pago (§6).
+3. **El modo de emisión es `formas_libres`**: el software genera su **correlativo interno**
+   (`invoice_number_seq`) y el **número de control** va aparte, el que viene preimpreso. La plantilla se
+   calibra para **no pisar** el membrete ni el control de la imprenta (§5.2, §6, ADR 0046).
+4. **Los datos del consultorio dejan de ser código**: pasan a un bloque `CLINIC_*` del entorno, con
+   genéricos `CAMBIAR_*` siguiendo el formato, `.env.example` y el archivo **común** de producción
+   (§2.4). Es un cambio que beneficia también al récipe y a los reportes.
+5. Los caminos de **máquina fiscal** y de **régimen digital** quedan modelados y sin usar: si cambia el
+   criterio, es configuración y alta de un lote, no una migración.
+
+> **Un matiz que conviene dejar escrito** (por si alguien lo relee dentro de un año): la Providencia
+> **SNAT/2026/00084** (Gaceta 43.435, 12-ago-2026) eliminó el **registro y homologación de proveedores de
+> sistemas informáticos de facturación** (derogó la SNAT/2024/000121) —eso es lo que habilita que el
+> software propio de la clínica imprima las facturas—, pero **no** tocó la exigencia de soporte del
+> **Art. 6 de la Providencia SNAT/2011/0071**: se sigue facturando **sobre formas libres autorizadas**,
+> con su número de control preimpreso. «Sin homologación de proveedor» **no** significa «cualquier PDF en
+> hoja blanca vale».
 
 ---
 
@@ -67,7 +116,7 @@ deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta qu
 
 ### ADR 0043 — Módulo de facturación desacoplado y gestión de pagos
 
-* **Estado:** propuesto
+* **Estado:** aceptado (2026-10-05) · pendiente de materializarse como `docs/adr/0043-*.md`
 * **Contexto:** el cierre de una sesión clínica (`services/clinical`) genera una obligación de cobro.
   Meter contabilidad o pasarelas dentro del servicio clínico acoplaría el expediente a reglas fiscales
   mutables y pondría el cobro en el camino crítico del odontólogo.
@@ -88,7 +137,9 @@ deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta qu
 
 ### ADR 0044 — Régimen tributario: IVA exento, IVA general e IGTF percibido
 
-* **Estado:** propuesto · **necesita confirmación del contador** (R1, R3, R4, R5)
+* **Estado:** aceptado (2026-10-05, cierre con el contador) · la clínica es **contribuyente ordinario y
+  no está calificada como Sujeto Pasivo Especial**: **no percibe IGTF**, pero el modelo lo soporta
+  encendido por si el SENIAT la notifica algún día.
 * **Contexto:**
   * Los **servicios odontológicos y médico-asistenciales están exentos de IVA** (Ley de IVA, **Art. 19,
     numeral 6**; *no* el Art. 18.4, que habla de ventas de bienes —prótesis incluidas—, y que conviene
@@ -121,11 +172,15 @@ deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta qu
      **quién lo percibe** (`clinica` | `banco`), y se imprime en el **recibo**, con su propia línea. Si lo
      debita el banco, la clínica **no lo cobra dos veces**: solo lo registra para conciliar.
   4. Qué medios causan IGTF y quién lo percibe es **configuración por medio de pago** (`igtf_rules`), no un
-     `if`: hoy efectivo en divisas y Zelle (percibe la clínica **si es SPE**) y tarjeta/transferencia en
-     divisas (percibe el banco).
-  5. La **calificación de SPE** es un dato de configuración con su fecha y su constancia, y la interfaz
-     **avisa** cuando un medio sujeto se cobra sin SPE declarado (es el error más caro: cobrar un tributo
-     que no corresponde, o no cobrarlo cuando sí).
+     `if`. **Configuración de esta clínica (cerrada el 2026-10-05): `is_special_taxpayer = false`, ningún
+     medio con percepción de la clínica** —todos `no_aplica` o `banco`—, así que el recibo **no cobra
+     IGTF**; tarjeta y transferencia en divisas quedan marcadas como «lo debita el banco» solo para
+     conciliar el extracto.
+  5. La **calificación de SPE** es un dato de configuración con su fecha y su constancia (hoy: sin
+     constancia ⇒ `false`). Mientras esté en `false`, la interfaz **bloquea** añadir IGTF a un cobro y
+     muestra la etiqueta informativa «Clínica no calificada como Sujeto Pasivo Especial (IGTF no
+     percibido)»; con `true`, el 3 % se calcula solo sobre la partida del recibo. Es el error más caro en
+     los dos sentidos: cobrar un tributo que no corresponde, o no cobrarlo cuando sí.
   6. La **alícuota adicional por pago en divisas** (Art. 27 ¶4 y **Art. 62**, 5 %–25 %) queda como
      **gancho de configuración en 0 %** mientras no exista el Decreto que la active: si aparece, el
      parágrafo primero dice que en las operaciones exentas **solo aplica esa adicional** (R4).
@@ -143,7 +198,8 @@ deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta qu
 
 ### ADR 0045 — Tasa BCV: histórica, congelada por documento y con regla de imputación
 
-* **Estado:** propuesto (la regla de imputación se apoya en el Convenio Cambiario; el resto no)
+* **Estado:** aceptado (2026-10-05, cierre con el contador): se liquida a la **tasa del día del pago**
+  (`tasa_del_pago`), con la leyenda de doble tasa impresa en la factura.
 * **Contexto:** los valores se expresan en moneda de cuenta (USD) y se pagan en moneda de curso legal
   (VES). Es **legal y está expresamente previsto**: el **Convenio Cambiario N° 1** (Gaceta 6.405 Ext.,
   7-sep-2018, que desarrolla el Art. 128 de la Ley del BCV) dice en su **Art. 8.a** que, cuando la
@@ -181,8 +237,9 @@ deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta qu
 
 ### ADR 0046 — Quién asigna el número de la factura (formas libres, máquina fiscal o régimen digital)
 
-* **Estado:** **propuesto y abierto** — se cierra con el contador (R2). Es el único que puede forzar un
-  rediseño, por eso va antes del código.
+* **Estado:** aceptado (2026-10-05, cierre con el contador): se factura en **formas libres** de imprenta
+  autorizada, con el software propio imprimiendo los datos sobre la forma. Máquina fiscal y régimen
+  digital quedan modelados y sin usar.
 * **Contexto:** la factura de un contribuyente ordinario solo puede emitirse por **tres caminos**
   (Providencia SNAT/2011/0071, **Art. 6**): **formatos** o **formas libres** de una imprenta autorizada
   —con el **número de control preimpreso** y, en las formas libres, la razón social y RIF de la imprenta,
@@ -193,8 +250,12 @@ deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta qu
   fiscal **no es obligatoria** para la clínica (ojo: si crecen las ventas de cosméticos o de artículos
   ortopédicos/farmacéuticos del catálogo, esas letras sí están en la lista). El **régimen de facturación
   digital** (Providencia SNAT/2024/000102) es **opt-in**, obligatorio solo para quien opera
-  **exclusivamente** por medios electrónicos. Así que el camino realista de esta clínica es **formas
-  libres** —y ahí el número de control **no lo da el software**.
+  **exclusivamente** por medios electrónicos. Y la providencia que obligaba a **registrar y homologar a
+  los proveedores de sistemas informáticos de facturación** (SNAT/2024/000121) fue **derogada** por la
+  **SNAT/2026/00084** (Gaceta 43.435, 12-ago-2026): por eso el software propio de la clínica puede emitir
+  los datos sobre las formas libres **sin homologación de proveedor** —lo que no desaparece es la
+  exigencia de soporte del Art. 6—. Así que el camino de esta clínica es **formas libres** —y ahí el
+  número de control **no lo da el software**.
   Requisitos que condicionan el papel: **una página por documento, mínimo 8 cm**; si la operación no
   cabe, se emiten **varios documentos, cada uno con su número** (Art. 33); fechas en **DDMMAAAA**
   (Art. 34); **sin enmiendas ni tachaduras** (Art. 41); los **originales y copias de lo anulado se
@@ -204,18 +265,23 @@ deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta qu
      **rango de control** autorizado y registramos el lote con los datos de la imprenta) o
      `maquina_fiscal` (el número lo da la máquina y se registra/valida al vuelo).
   2. **Dos números distintos, y no se confunden**: el **número consecutivo y único** de la factura
-     (Art. 13 num. 2), que sale de una **secuencia** nuestra (atómica), y el **número de control**
-     preimpreso (num. 3), que **viene de la forma**. La emisión es el único punto donde se consumen los
-     dos; `unique(series, number)` + `CHECK` de emitida (patrón exacto de `prescriptions`).
+     (Art. 13 num. 2), que sale de una **secuencia** nuestra (atómica) —el correlativo interno del
+     software, `A-000123`—, y el **número de control** preimpreso (num. 3), que **viene de la forma** y se
+     teclea o se escanea al dar de alta el lote. La emisión es el único punto donde se consumen los dos;
+     `unique(series, number)` + `CHECK` de emitida (patrón exacto de `prescriptions`).
   3. **En formas libres**, un fallo al generar el PDF **no deja un hueco mudo**: la forma se registra
      como anulada con motivo (`forma dañada`) ocupando su control, y el documento **se conserva**
      (Art. 36). Lo mismo para el rango agotado o un lote dado de baja.
-  4. La **factura larga se parte**: si las partidas no caben en una página, se emiten **varios documentos
+  4. La **plantilla se calibra sobre la forma física** (muestra de la imprenta): márgenes `@page` medidos
+     para que el texto caiga **solo en las áreas en blanco**, sin pisar el membrete ni el **número de
+     control** de la imprenta. La calibración se prueba imprimiendo sobre una forma real antes de dar la
+     fase por cerrada.
+  5. La **factura larga se parte**: si las partidas no caben en una página, se emiten **varios documentos
      con su propio número**, no un papel de dos caras.
-  5. El **recibo** interno (`REC-`) y la **nota de crédito** (`NC-`) son series nuestras en cualquier
+  6. El **recibo** interno (`REC-`) y la **nota de crédito** (`NC-`) son series nuestras en cualquier
      modo —la nota de crédito, además, **obligatoria por ley** cuando la operación queda sin efecto total
      o parcialmente (Art. 22)—.
-  6. **Contingencia** (Art. 10): si el sistema está caído, se emite en **formatos autorizados** con el
+  7. **Contingencia** (Art. 10): si el sistema está caído, se emite en **formatos autorizados** con el
      número precedido de la palabra «serie» y se carga después: el procedimiento se documenta en la
      pantalla de caja, no se improvisa.
 * **Consecuencias:** ✅ el módulo sirve para los tres escenarios sin migración y la numeración sigue
@@ -227,7 +293,7 @@ deja de ser el sitio donde viven** (aquí quedan como resumen operativo hasta qu
 
 ### ADR 0047 — El documento de cobro se archiva (y se anula, nunca se borra)
 
-* **Estado:** propuesto
+* **Estado:** aceptado (2026-10-05) · pendiente de materializarse como `docs/adr/0047-*.md`
 * **Contexto:** es el ADR [0036](adr/0036-recipe-emitido-documento-archivado.md) aplicado al dinero, y
   las preguntas son las mismas: el paciente corrige su nombre después de emitir, se cambia un precio del
   catálogo, hay un error en un cobro ya entregado.
@@ -311,6 +377,71 @@ services/billing/
 * **Configuración**: `baseEnvSchema` + `loadConfig` de `@odontocrm/kernel`, con `SERVICE_VERSION`.
 * **Modo test**: `resolveTestMode` y numeración reservada (ADR [0020](adr/0020-modo-test.md)).
 
+### 2.4 Datos del consultorio y configuración por entorno (`CLINIC_*`)
+
+**El problema que resuelve:** hoy los datos del consultorio (nombre, razón social, RIF, dirección,
+teléfonos, logo y los odontólogos que firman) viven en
+[`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) —una constante de código que hay
+que **editar y recompilar** en cada instalación— y el RIF nace vacío. La factura los necesita, y dentro
+del repositorio no pueden estar: van al **entorno**, como el resto de los datos de cada instalación
+(ADR [0024](adr/0024-secretos-fuera-del-repositorio.md)).
+
+**Cómo queda:**
+
+1. `clinic.ts` conserva el **tipo** (`ClinicIdentity`, `ClinicDentist`), los **genéricos de ejemplo** y los
+   ayudantes que ya existen —`clinicFullAddress`, `clinicContactLine`, `clinicLeadDentist`,
+   `clinicDentistFor`, `letterheadMissingFields`, **todos con el perfil como parámetro opcional**—, así
+   que esto **no es un refactor**: es pasar el perfil resuelto en vez de confiar en el valor por defecto.
+2. `packages/kernel` gana `clinicEnvSchema` + `resolveClinicProfile(env)`: lee el bloque `CLINIC_*` y
+   **pisa** los genéricos. Precedencia: entorno > genérico.
+3. Los genéricos llevan el marcador **`CAMBIAR_*`** que el proyecto ya usa para «falta reemplazar»:
+   `infra/fedora/install.sh` los escribe en las plantillas, `sudo odontocrm verificar` **avisa** de
+   cualquiera sin sustituir y `letterheadMissingFields()` los enumera. El sistema **no se cae** por datos
+   incompletos: imprime lo que hay y avisa —igual que hace hoy el diálogo del récipe—, porque la clínica
+   tiene que poder cobrar el primer día aunque el logo llegue después.
+4. **El navegador no lee `.env`**: el bloque público del perfil se publica en `GET /api/v1/meta` —que ya
+   es público, ya lo consume la interfaz para el banner de modo test y no lleva datos de pacientes— y la
+   web lo toma de ahí; mientras no llegue, muestra el estado de carga en vez de un membrete inventado.
+5. **Producción**: `CLINIC_*` va en el archivo **común** `/etc/odontocrm/odontocrm.env` (el mismo para
+   todos), porque lo necesitan los seis servicios que imprimen o firman: `clinical` (récipe A5),
+   `reporting` (PDF A4), `billing` (factura y recibo), `screens`, `scheduling` y `notifications`.
+6. **Genérico vs. operativo**: al entorno va lo que **describe** a la clínica (identidad y datos fiscales
+   del emisor). Lo **operativo con historia** —el lote de formas libres, la tasa del día, los aranceles—
+   vive en la base, porque se consume en orden, se audita y cambia con el tiempo. La configuración fiscal
+   (SPE, política de imputación, alícuota adicional) nace del entorno como **valor inicial** y después
+   manda la base, editable por el `admin` y auditada.
+
+**El bloque del entorno** (genéricos que van al `.env.example` y a la plantilla de Fedora):
+
+```dotenv
+# ── Datos del consultorio (los imprimen la factura, el récipe y los reportes) ──
+CLINIC_NAME="Consultorio Odontológico CAMBIAR_NOMBRE"
+CLINIC_LEGAL_NAME="CAMBIAR_RAZON_SOCIAL, C.A."
+CLINIC_RIF="J-CAMBIAR_RIF"
+CLINIC_ADDRESS="CAMBIAR_DIRECCION_FISCAL"
+CLINIC_CITY="CAMBIAR_CIUDAD"
+CLINIC_PHONE_1="+58 000-0000000"
+CLINIC_PHONE_2=""
+CLINIC_EMAIL=""
+CLINIC_WEBSITE=""
+CLINIC_LOGO_PATH="assets/clinic/logo.png"
+# Odontólogos que firman (el primero es el titular).
+CLINIC_DENTISTS_JSON='[{"username":"odontologo","fullName":"Od. CAMBIAR_NOMBRE","mpps":"CAMBIAR_MPPS","specialty":"Odontología general","licenseNumber":null,"email":null}]'
+```
+
+**Lo que hay que tocar** (es un cambio **compartido**, no de facturación): `packages/contracts/src/clinic.ts`
+· `packages/kernel` (esquema y resolución) · los seis servicios que imprimen o firman · `SystemMeta` en
+contratos y `apps/gateway/src/meta.ts` · la web (el hook del meta y `VerifyPrescriptionPage`) ·
+`.env.example` de la raíz · `infra/fedora/install.sh` (archivo común) y `infra/fedora/INSTALL.md` §8.0,
+que hoy enseña a editar el archivo de código · `tools/plantillas-fedora.mjs` y
+`tools/audit-conexiones.mjs`, que exigen que toda variable declarada esté en las plantillas y en el
+`.env.example`.
+
+> **Por qué se hace ahora y no después:** el récipe A5 y los reportes ya sufren este problema (hay que
+> editar código y recompilar para poner el RIF), y la factura lo hereda. Se arregla **una vez**, en un
+> commit propio, con su prueba de impresión; y a partir de ahí la instalación de una clínica nueva no
+> toca el repositorio.
+
 ---
 
 ## 3. Contrato compartido: `packages/contracts/src/domain/billing.ts`
@@ -365,6 +496,8 @@ export const PAYMENT_METHODS = [
 `percibe: null` = **lo decide el contador**; el valor efectivo vive en `igtf_rules` con vigencia y la
 pantalla avisa cuando un medio no está configurado. Lo que **no** se hace es cobrar dos veces: si el banco
 ya debitó el 3 % (tarjeta o transferencia en divisas, Art. 4.5), la clínica **no** lo suma al cobro.
+**Configuración de esta clínica (cerrada el 2026-10-05):** `is_special_taxpayer = false` ⇒ **ningún medio
+se percibe en caja**; los de divisas bancarizada quedan en `banco` solo para conciliar el extracto.
 
 ### 3.3 Categorías fiscales y alícuotas
 
@@ -427,10 +560,12 @@ aplica **una sola vez por conversión**, los totales de la factura se calculan *
 | `billing:write` — borradores, catálogo y precios | ✅ | ✅ | — |
 | `billing:collect` — registrar y anular cobros | ✅ | ✅ | — |
 | `billing:rates` — tasa del día y configuración fiscal | ✅ | ✅ | — |
-| `billing:void` — anular facturas y emitir notas de crédito | ✅ | — | — |
+| `billing:void` — anular facturas y emitir notas de crédito | ✅ | ✅ (**con motivo**) | — |
 
-*(Si algún día la odontóloga trabaja sola y cobra, se le añade `billing:collect`: es una línea en
-`ROLE_PERMISSIONS`, como pasó con `scheduling:write` en el ADR [0038](adr/0038-permisos-del-odontologo-en-el-flujo.md).)*
+*(Decisión del 2026-10-05: la secretaría **también** anula, porque atiende sola el mostrador; queda
+auditado con actor y motivo, y el odontólogo solo mira. Si algún día la odontóloga trabaja sola y cobra,
+se le añade `billing:collect`: es una línea en `ROLE_PERMISSIONS`, como pasó con `scheduling:write` en el
+ADR [0038](adr/0038-permisos-del-odontologo-en-el-flujo.md).)*
 
 **Acciones de auditoría** (a `AUDIT_ACTIONS` + etiqueta en `apps/web/src/lib/i18n.ts`):
 `invoice_issued`, `invoice_voided`, `credit_note_issued`, `payment_received`, `payment_voided`,
@@ -851,8 +986,8 @@ si `applies_igtf`.
         │                                   │ 6. Emite: número + tasa congelada   │
         │                                   │◄────────────────────────────────────┤
         │                                   │    (PDF generado ANTES de la tx)    │
-        │                                   │ 7. Cobra: medio, entregado, tasa    │
-        │                                   │    del pago e IGTF si aplica        │
+        │                                   │ 7. Cobra: medio, entregado y    │
+        │                                   │    tasa del pago (IGTF: no)     │
         │                                   │◄────────────────────────────────────┤
         │                                   │ 8. Recibo REC-xxxxxx archivado      │
         │                                   ├────────────────────────────────────►│ 9. Imprime A4
@@ -873,33 +1008,48 @@ Tres detalles que hacen que esto no se rompa en producción:
 
 ### 5.2 Emisión
 
-1. Se toma el número de la secuencia (`nextval`, atómico) **antes** de renderizar; dos emisiones
-   simultáneas nunca comparten número (la segunda recibe **409** porque el `update` solo avanza desde
-   `borrador`, patrón exacto de `issuePrescription`).
-2. Se calculan los totales en VES con la **tasa del día de emisión** y se congelan.
+1. Se toma el **correlativo interno** de la secuencia (`nextval`, atómico) **antes** de renderizar; dos
+   emisiones simultáneas nunca comparten número (la segunda recibe **409** porque el `update` solo avanza
+   desde `borrador`, patrón exacto de `issuePrescription`). El **número de control** se toma del lote de
+   formas libres que esté activo y se guarda en la misma fila: son **dos números**, y el papel lleva los
+   dos.
+2. Se calculan los totales en VES con la **tasa del día de emisión** (Art. 25) y se congelan.
 3. Se genera el PDF **fuera** de la transacción (Chromium tarda) y se archiva con su `sha256`; si la
-   transacción falla, el archivo se borra.
-4. Si falla el render: en modo `software` el hueco se acepta (ADR 0036); en modo `formas_libres` la forma
-   se registra como **anulada por daño** ocupando su número (ADR 0046).
+   transacción falla, el archivo se borra. La plantilla está **calibrada sobre la forma física**: el texto
+   cae en las áreas en blanco y no pisa el membrete ni el control de la imprenta.
+4. Si falla el render: en `formas_libres` (el modo de esta clínica) la forma se registra como **anulada
+   por daño** ocupando su control y **se conserva** (ADR 0046); en modo `software` el hueco se acepta
+   (ADR 0036).
 5. Publica `billing.invoice.issued` con la carga de auditoría y el bloque `invoice`.
+6. Al dar de alta un lote, la pantalla pide **rango desde/hasta, imprenta, RIF, providencia y fecha**, y
+   avisa cuando quedan pocas formas: **quedarse sin formas es quedarse sin poder facturar**.
 
 ### 5.3 Cobro
 
 ```text
 entregado (Bs)  ──►  usdCents imputados = round(entregado × 1e6 / tasa_del_pago)
-                     IGTF, si el medio está en un supuesto de divisas:
+                     IGTF: 0 en esta clínica (no es SPE y no percibe).
+                     Si algún día la notificaran como SPE:
                         · percibe el BANCO (tarjeta/transferencia en divisas) → se registra, no se suma
-                        · percibe la CLÍNICA (efectivo USD, Zelle, USDT) y SOLO si es SPE
+                        · percibe la CLÍNICA (efectivo USD, Zelle, USDT)
                              = round(usdCents × puntos_básicos / 10 000)
-                     efectivo que se lleva la caja = imputado + IGTF que percibe la clínica
+                     efectivo que se lleva la caja = imputado + IGTF que perciba la clínica
 ```
 
-* El **IGTF no reduce la deuda**: el paciente abona su saldo y paga el tributo aparte (grava el medio de
-  pago). Va en el **recibo**, con su línea, su etiqueta y **quién lo entera**.
-* **No se cobra dos veces**: si el banco ya debitó el 3 % (Art. 4.5), el cobro no lo suma; se registra
-  para conciliar el extracto.
-* **Es dinero de terceros con período diario** (Art. 15) y no deducible de ISLR (Art. 18): la pantalla de
-  caja cuadra **lo percibido hoy** contra lo que hay que enterar, y el libro lo exporta por día.
+* **Esta instalación no cobra IGTF** (contribuyente ordinario, no SPE, decisión del 2026-10-05). La
+  pantalla lo deja explícito en vez de esconderlo: al abrir el cobro muestra «Clínica no calificada como
+  Sujeto Pasivo Especial (IGTF no percibido)» y **no permite** añadir la línea a mano —un `if` en la
+  interfaz no, un dato de configuración sí—.
+* **Nunca se cobra en pagos bancarizados en divisas**: ahí el agente de percepción es el **banco**
+  (Art. 4.5), así que sumarlo sería cobrar dos veces. Esos medios quedan marcados para **conciliar el
+  extracto**, no para cobrar.
+* El IGTF, cuando aplique en el futuro, **no reduce la deuda**: el paciente abona su saldo y paga el
+  tributo aparte. Va en el **recibo**, con su línea y **quién lo entera**, y es dinero de terceros con
+  **período diario** (Art. 15) y no deducible de ISLR (Art. 18).
+* **Se guardan siempre los tres hechos** (`tendered_amount`, `exchange_rate_micros` y
+  `fx_difference_cents_usd`), así que el diferencial cambiario se puede recalcular y reportar sin volver a
+  tomar la decisión; y si el contador algún día pide `tasa_de_la_factura`, es un `update` de una fila en
+  `billing_settings`.
 * El **saldo se recalcula en la misma transacción** desde los pagos vigentes (no anulados) y se guarda en
   `balance_cents_usd` con el `CHECK` de coherencia. Una prueba de integración recalcula el saldo desde
   cero y lo compara con el guardado: si alguien introduce un camino que no lo actualiza, se ve.
@@ -921,8 +1071,8 @@ Una factura emitida **no se borra ni se edita**: se anula con una **nota de cré
   líneas): el modelo soporta las dos desde el principio porque la ley no distingue, aunque **la interfaz
   de la v1 solo ofrezca la total**, que es el caso real de la clínica.
 
-Solo `admin`, siempre con motivo. El original y la copia de la factura anulada **se conservan** (Art. 36):
-nada se destruye.
+`admin` **y secretaría** (`billing:void`), siempre con motivo. El original y la copia de la factura anulada
+**se conservan** (Art. 36): nada se destruye.
 
 ### 5.5 Tasas BCV
 
@@ -943,7 +1093,10 @@ nada se destruye.
 
 * Los códigos de **servicio** son los 28 de `SESSION_PROCEDURES` (`consulta_evaluacion`,
   `obturacion_resina`…): así el borrador se arma solo desde la sesión y los reportes cruzan por código.
-* Los **bienes** (cepillos, geles) llevan códigos propios y `tax_category = general`.
+* Los **bienes** (cepillos, geles, blanqueadores) llevan códigos propios y `tax_category = general`
+  (**decisión cerrada del 2026-10-05: sí se facturan**). La migración siembra unos pocos de ejemplo —con
+  sus precios genéricos— para que el camino del 16 % no quede sin probar en producción, y la factura
+  puede salir **mixta**: partidas `(E)` exentas y partidas `(G)` gravadas, con las bases desglosadas.
 * Cambiar un precio **no** reescribe nada: las partidas emitidas son instantáneas y el cambio queda
   auditado con su valor anterior y nuevo. *(Si más adelante llegan los presupuestos, ahí sí hará falta un
   histórico de precios con vigencia; hoy sería una tabla que nadie consulta.)*
@@ -952,12 +1105,12 @@ nada se destruye.
 
 ## 6. Documento fiscal impreso
 
-**Dos documentos, dos series** (M6), sobre el soporte que confirme el contador (ADR 0046):
+**Dos documentos, dos series** (M6), sobre **formas libres** de imprenta autorizada (ADR 0046, cerrado):
 
 | Documento | Serie | Qué lleva | Cuándo se imprime |
 | :--- | :--- | :--- | :--- |
-| **Factura** | la de la instalación (`A-000001` **+ el número de control de la forma**) | Partidas con `(E)`/`(G)`, bases por alícuota, total exento, IVA, totales en Bs y USD, tasa aplicada, datos de la imprenta y rango asignado | Al emitir |
-| **Recibo de cobro** | `REC-000001` | Medio de pago, monto entregado, tasa del pago, **IGTF percibido y quién lo entera**, saldo después del abono | En cada cobro |
+| **Factura** | correlativo propio (`A-000123`) **+ el número de control de la forma** | Partidas con `(E)`/`(G)`, bases por alícuota, total exento, IVA, totales en Bs y USD, tasa aplicada, leyenda de doble tasa, datos de la imprenta y rango asignado | Al emitir, **sobre la forma preimpresa** |
+| **Recibo de cobro** | `REC-000001` | Medio de pago, monto entregado, tasa del pago, **IGTF percibido y quién lo entera** (hoy: «no percibido»), saldo después del abono | En cada cobro |
 | **Nota de crédito** | `NC-000001` | Motivo, referencia (fecha, número y monto de la factura), monto y tasa | Al anular |
 
 **Datos obligatorios de la factura** (Providencia SNAT/2011/0071, Art. 13; el módulo los imprime todos o
@@ -977,21 +1130,25 @@ el documento no vale):
 15/16. Razón social y RIF de la **imprenta** autorizada, la providencia que la autoriza y la fecha de
     elaboración de la forma.
 
-**Encabezado legal** (los datos salen de `packages/contracts/src/clinic.ts`, no de una tabla duplicada —
-B12): razón social y nombre comercial, **RIF**, dirección fiscal, teléfonos, logo, y la condición
-`Contribuyente Especial` cuando corresponde.
+**Encabezado legal** (los datos salen del **perfil del consultorio resuelto por entorno**, §2.4, no de una
+tabla duplicada —B12— ni de una constante de código): razón social y nombre comercial, **RIF**, dirección
+fiscal, teléfonos, logo, y la condición `Contribuyente Especial` **solo si algún día aplica**. Mientras el
+perfil esté incompleto, la factura sale con el aviso de datos faltantes en vez de un membrete inventado.
 
 **Leyendas** (con la corrección R3):
 
 * La letra **`(E)`** junto a la partida exenta y **`(G)`** junto a la gravada (Art. 13 num. 8).
 * **En la copia**, «**Sin derecho a crédito fiscal**» (Art. 13 num. 13) y la mención de la exención:
   «Servicios exentos de IVA — Art. 19, numeral 6 de la Ley de IVA».
-* `Tasa oficial BCV aplicada: 36,5420 Bs./USD del DD/MM/AAAA`, y en el recibo la **tasa del pago**.
-* Bloque **IGTF percibido** separado, con la aclaratoria de que **no forma parte del monto de la
-  factura** y con quién lo entera (la clínica o el banco).
-* Si la política es `tasa_del_pago`: «Los montos en Bs. de esta factura son referenciales a la tasa del
-  día de emisión; el pago se calcula a la tasa oficial vigente al momento de cobrar» (es lo que permite
-  el Convenio Cambiario Art. 8.a y evita la discusión en el mostrador).
+* **Leyenda de doble tasa** (texto fijado por el contador, va en la factura tal cual):
+  > «Montos en VES calculados a la tasa oficial BCV de la fecha de emisión (Art. 25 Ley IVA, Prov. 0071
+  > Art. 13 num. 14). Si el pago se efectúa en fecha posterior, la obligación en bolívares se liquidará a
+  > la tasa oficial BCV vigente a la fecha del pago (Convenio Cambiario N.º 1, Art. 8.a)».
+* Y el dato concreto: `Tasa oficial BCV aplicada: 36,5420 Bs./USD del DD/MM/AAAA`, más la **tasa del
+  pago** en el recibo.
+* Bloque **IGTF** separado: hoy imprime «**IGTF: no percibido por la clínica**» (contribuyente ordinario,
+  no SPE); si algún día se enciende, va con su alícuota y quién lo entera, y siempre con la aclaratoria de
+  que **no forma parte del monto de la factura**.
 
 **Restricciones de forma que condicionan la plantilla** (no son cosmética):
 
@@ -1002,6 +1159,10 @@ B12): razón social y nombre comercial, **RIF**, dirección fiscal, teléfonos, 
 * Las copias llevan su leyenda y **originales y copias de lo anulado se conservan** (Art. 36).
 * **Contingencia** (Art. 10): si el sistema está caído se emite en formatos autorizados con el número
   precedido de «serie»; el procedimiento queda escrito en la pantalla de caja.
+* **La plantilla no dibuja lo que ya viene impreso**: el membrete, el RIF del emisor y los datos de la
+  imprenta **están en la forma**; el sistema solo imprime el contenido variable (número, control, fecha,
+  cliente, partidas, totales y leyendas) en las áreas en blanco. Se calibra con una **forma de muestra**
+  y se comprueba imprimiendo de verdad antes de cerrar la fase.
 
 **Archivado e impresión** (M1): el PDF se compone una vez con Chromium (`@page { size: A4 }`, como los
 reportes) y se guarda en `storage/billing` con su `sha256`; toda descarga o impresión incrementa
@@ -1138,6 +1299,25 @@ nuevo» **se queda corto** (dice que las listas de respaldo son dos y no mencion
 de puertos) y `infra/windows/ecosystem.config.cjs`. **No hay CI** (`.github/` no existe): la única
 puerta es `npm run verify`, que incluye `fedora:check` y el auditor de conexiones.
 
+### 7.9 Tarea 0 — el perfil del consultorio por entorno
+
+Es un cambio **compartido** (§2.4) y tiene su propia lista, porque no lo cubre ninguna guardia del
+servicio de facturación:
+
+1. `packages/contracts/src/clinic.ts`: tipo, genéricos `CAMBIAR_*` y los ayudantes con el perfil como
+   parámetro (ya lo aceptan).
+2. `packages/kernel`: `clinicEnvSchema` + `resolveClinicProfile(env)` y su prueba.
+3. Los **seis** consumidores que imprimen o firman: `clinical` (récipe A5), `reporting` (PDF A4),
+   `billing` (factura y recibo), `screens`, `scheduling` y `notifications` (membrete de plantillas).
+4. `SystemMeta` (contratos) y `apps/gateway/src/meta.ts`: bloque `clinic` en el `GET /api/v1/meta` público
+   (es lo que lee el navegador, que no puede leer `.env`).
+5. La web: el hook del meta, `VerifyPrescriptionPage` y el aviso de membrete incompleto.
+6. `.env.example` de la raíz (bloque `CLINIC_*`) y `infra/fedora/install.sh` → `/etc/odontocrm/odontocrm.env`
+   (el archivo **común**).
+7. `tools/plantillas-fedora.mjs` y `tools/audit-conexiones.mjs`: las variables nuevas tienen que estar en
+   las plantillas y en el `.env.example`, o `npm run verify` se pone rojo.
+8. `infra/fedora/INSTALL.md` §8.0, que hoy enseña a editar el archivo de código.
+
 ---
 
 ## 8. Pantalla `/caja`
@@ -1147,19 +1327,24 @@ Una sola pantalla, pensada para el mostrador (y para la tableta, como `/flujo`):
 * **Pendientes de caja** — la cola del día: pacientes con sesión cerrada y borrador sin emitir, con el
   total y el aviso de partidas sin precio.
 * **Borrador** — revisar, corregir cantidades, añadir un bien (cepillo, gel), quitar una línea.
-* **Emitir** — un botón, con la tasa que se va a congelar a la vista; después, documento archivado.
-* **Cobrar** — medio de pago, monto entregado, **vista previa del IGTF** y del saldo resultante antes de
-  confirmar; botón para imprimir factura y recibo.
+* **Emitir** — un botón, con la tasa que se va a congelar y el **número de control que se va a consumir**
+  a la vista; después, documento archivado.
+* **Cobrar** — medio de pago, monto entregado, **tasa del día aplicada** y saldo resultante antes de
+  confirmar; botón para imprimir factura y recibo. El IGTF aparece como **«no percibido»** con la etiqueta
+  «Clínica no calificada como Sujeto Pasivo Especial (IGTF no percibido)» y **sin campo editable** (con la
+  bandera encendida el día que corresponda, el 3 % se calcula solo).
 * **Tasa del día** — el widget de la jornada: valor vigente, origen (`BCV` / manual / arrastre), botón
   para fijarla o corregirla (con motivo), y el aviso cuando el hueco de días supera el umbral.
+* **Formas libres** — el lote activo: control siguiente, cuántas quedan y aviso cuando el rango se está
+  agotando (con el alta del lote a mano: rango, imprenta, RIF, providencia y fecha).
 * **Historial** — facturas del día/semana con estado, saldo, reimpresión (contada y auditada), anulación
-  (solo `admin`, con motivo) y descarga del PDF archivado.
+  (`admin` o secretaría, con motivo) y descarga del PDF archivado.
 * **Libros** — libro de ventas (con la base **desglosada por alícuota y el total exento aparte**, que es
-  lo que pide el Art. 13 num. 10) e **IGTF percibido por día** (el período del impuesto es diario,
-  Art. 15), en CSV. Si más adelante hay ventas en línea, el libro tiene que poder **separarlas** de las
-  presenciales (Providencia SNAT/2024/000102, Art. 6).
+  lo que pide el Art. 13 num. 10) en CSV, y el de IGTF cuando algún día haya algo que declarar. **No** se
+  genera libro de compras (decisión cerrada: lo lleva el contador). Si más adelante hay ventas en línea,
+  el libro tiene que poder **separarlas** de las presenciales (Providencia SNAT/2024/000102, Art. 6).
 * **Catálogo y configuración** — aranceles con su categoría fiscal, y los interruptores de la clínica
-  (contribuyente especial, política de imputación, modo de numeración): solo `admin`.
+  (SPE, política de imputación, alícuota adicional, modo de numeración): solo `admin`.
 * **Modo test** — el banner de ADR 0020 ya existe; la caja muestra además que la numeración es la de
   prueba (`T-900001`).
 
@@ -1172,7 +1357,9 @@ Una sola pantalla, pensada para el mostrador (y para la tableta, como `/flujo`):
 1. Aritmética: `vesCentimosFromUsd` y `usdCentsFromVes` son inversas dentro del céntimo; el redondeo es
    half-up y se aplica una sola vez; los productos grandes no pierden precisión (casos de 10⁹ y 10¹²).
 2. `igtfCents`: 3 % de 100,00 USD = 3,00 USD; 0 cuando no aplica; **0 para los medios cuyo IGTF ya debitó
-   el banco** (no se suma dos veces) y **0 si la clínica no está calificada como SPE**.
+   el banco** (no se suma dos veces) y **0 en la configuración de esta clínica, que no es SPE**; con
+   `is_special_taxpayer = true` (caso de prueba, para que el camino no quede muerto) vuelve a calcular el
+   3 %.
 3. La alícuota **adicional del Art. 62 está en 0** por defecto y, si se configura, se aplica **también a
    las líneas exentas** (parágrafo primero) y se copia en el documento.
 4. Las transiciones de `INVOICE_TRANSITIONS` cubren todos los estados y ninguna deja un estado sin salida.
@@ -1183,9 +1370,10 @@ Una sola pantalla, pensada para el mostrador (y para la tableta, como `/flujo`):
 6. Dos sesiones cerradas del mismo paciente ⇒ dos borradores, y `emitir` de ambos asigna **números
    distintos**; dos emisiones simultáneas de la misma factura ⇒ una 409 y un solo número.
 7. Emitir congela la tasa: cambiar la tasa del día después **no** altera la factura emitida.
-8. Cobro con `cash_usd` de una clínica **SPE** ⇒ IGTF 3 % en el recibo y **saldo igual al imputado**; con
-   `cash_ves` o con `card_usd` (lo debita el banco) ⇒ IGTF **0** en el recibo; y sin SPE declarado, un
-   cobro en efectivo USD **avisa** y no percibe.
+8. Cobro normal (la configuración real): **IGTF 0 en todos los medios**, el recibo dice «no percibido» y
+   **el saldo baja exactamente lo imputado**. Con la bandera `is_special_taxpayer` encendida en la prueba,
+   `cash_usd` calcula el 3 % en el recibo sin tocar el saldo, `card_usd` sigue en 0 (lo debita el banco) y
+   **la API rechaza** un cobro con IGTF si la clínica no está calificada.
 9. Abono parcial ⇒ `parcial` y saldo correcto; el que completa ⇒ `pagada` con saldo 0; anular un pago ⇒
    el saldo vuelve y el estado retrocede.
 10. La suma de las partidas cuadra con los totales y los `CHECK` rechazan una fila incoherente (se prueba
@@ -1194,18 +1382,22 @@ Una sola pantalla, pensada para el mostrador (y para la tableta, como `/flujo`):
 12. Anular exige nota de crédito con número propio, motivo y la **referencia copiada** (fecha, número y
     monto de la factura); sin motivo, 400. La nota de crédito **parcial** cuadra con sus líneas.
 13. Sin tasa para la fecha ⇒ arrastre con aviso; con hueco mayor al umbral ⇒ 409 hasta confirmar.
-14. Formas libres (si aplica): el rango se consume **en orden**, una forma dañada queda registrada y
+14. **Factura mixta** (servicios exentos + un bien): el total cuadra, el IVA sale solo de la partida
+    gravada, la base exenta y la gravada van desglosadas y el libro de ventas las separa. Es la prueba que
+    mantiene vivo el camino del 16 %.
+15. Formas libres: el rango se consume **en orden**, una forma dañada queda registrada y
     conservada, y el lote avisa cuando queda poco. Una factura que no cabe en una página se parte en
     **varios documentos con su número propio**.
 
 **Humo y e2e**:
 
-15. `npm run smoke:billing` (modelo `smoke:prescription`): tasa del día → borrador → emitir → cobrar en
-    USD con IGTF → cobrar el resto en Bs → factura pagada → reimpresión contada → anular con NC.
-16. `npm run e2e:caja` (si el flujo lo pide): cerrar una sesión en `/flujo`, cobrar en `/caja` e imprimir
+16. `npm run smoke:billing` (modelo `smoke:prescription`): tasa del día → borrador → emitir → cobrar con
+    la tasa del pago → factura pagada → reimpresión contada → anular con nota de crédito. Con el IGTF
+    apagado (la configuración real) y con la bandera encendida, para que el camino no quede muerto.
+17. `npm run e2e:caja` (si el flujo lo pide): cerrar una sesión en `/flujo`, cobrar en `/caja` e imprimir
     el PDF, con las comprobaciones de siempre (URL vigilada, PDF descargado y abrible).
-17. `seed:test` siembra tasas, catálogo, facturas y pagos en la numeración de prueba, y `seed:verify`
-    cuadra sus huellas.
+18. `seed:test` siembra tasas, catálogo (servicios y bienes), facturas y pagos en la numeración de prueba,
+    y `seed:verify` cuadra sus huellas.
 
 **Criterios de aceptación de la fase** (al estilo del plan maestro): `npm run verify` en verde; la
 migración desde cero crea todas las tablas; cerrar una sesión no tarda más que antes (la factura es
@@ -1214,43 +1406,45 @@ asíncrona); un cobro completo en caja se resuelve en **menos de 30 segundos** c
 
 ---
 
-## 10. Preguntas para el contador (bloquean la numeración, no el resto)
+## 10. Decisiones: cerradas y residuales
 
-Estas decisiones cambian el diseño de la numeración y de las leyendas. **Se pueden implementar §2–§5 sin
-ellas** (borradores, tasas, cobros, saldos), pero la emisión no debería congelarse hasta tener la
-respuesta. Van por orden de impacto:
+**Cerradas el 2026-10-05** — con el contador (hoja de confirmación en el Anexo A) y después con Gabriel.
+El detalle y el efecto de cada una están en §0.1:
 
-1. **¿Cómo factura hoy la clínica?** ¿**Formas libres** de una imprenta autorizada, **máquina fiscal**, o
-   **régimen digital**? Si son formas libres: ¿tenemos el **rango de números de control asignado**, la
-   providencia de la imprenta y su fecha? Si es máquina fiscal: ¿el número y el control los da la máquina
-   y los tecleamos nosotros?
-2. **¿La clínica está notificada como Sujeto Pasivo Especial (SPE) por el SENIAT?** ¿Podemos ver el oficio
-   o la constancia? — **es el pivote de todo el IGTF**: sin SPE, el 3 % del efectivo en divisas y de Zelle
-   probablemente no se percibe, y cobrarlo sería un error.
-3. **¿Cómo se cobra hoy en divisas?** Efectivo USD, Zelle/PayPal/USDT, tarjeta en divisas, transferencia
-   del exterior: **quién entera el IGTF en cada caso** (el banco lo debita o lo percibe la clínica) y
-   **con qué periodicidad** se declara (el período legal es **diario** y el formulario/portal del SENIAT
-   no lo tenemos confirmado).
-4. **¿Los precios se expresan en USD y se pagan en Bs a la tasa del día del pago** (política
-   `tasa_del_pago`, la que describe el Convenio Cambiario Art. 8.a) **o el paciente paga los Bs impresos**
-   (`tasa_de_la_factura`)? ¿Cómo se ha hecho hasta ahora con los tratamientos en cuotas? ¿El 3 % de IGTF
-   va **incluido** en el precio en dólares o se suma?
-5. **¿Existe algún Decreto que active la alícuota adicional del Art. 62** (5 %–25 % por pagos en moneda
-   extranjera)? Si existiera, su parágrafo primero la aplica **incluso a las operaciones exentas**: por eso
-   el gancho está en la configuración.
-6. **¿Las prótesis e implantes dentales** se facturan como **venta de bien** (Art. 18.4, «prótesis») o
-   dentro del **servicio exento** (Art. 19.6)? Decide la categoría fiscal de esos ítems del catálogo.
-7. **¿La clínica es contribuyente ordinario de IVA** (porque vende insumos) y lleva **libro de compras y
-   ventas**? Confirmamos que el IVA de las compras **no** se deduce (Art. 33) y que por tanto **no** hay
-   libro de crédito fiscal.
-8. **Anulación y reembolso**: confirmamos que siempre se hace con **nota de crédito** numerada que
-   referencia fecha, número y monto de la factura original, que **las anuladas se conservan** y que las
-   formas en blanco no se destruyen sin autorización del SENIAT.
-9. **¿Hay venta en línea** (web, app, reserva con pago)? Eso activaría la obligación de medios digitales
-   (Providencia SNAT/2024/000102, Art. 4) y obligaría a separar esas ventas en el libro.
+| Decisión | Resultado | Dónde vive |
+| :--- | :--- | :--- |
+| Régimen fiscal | Contribuyente **ordinario**, **no** SPE | `billing_settings.is_special_taxpayer = false` |
+| Formato de facturación | **Formas libres** de imprenta autorizada | `invoice_series.numbering_mode = 'formas_libres'` + alta del lote |
+| Pago en Bs de tratamientos cotizados en USD | **Tasa BCV del día exacto del pago** | `billing_settings.imputation_policy = 'tasa_del_pago'` |
+| IGTF en caja | **No se percibe** (y nunca en pagos bancarizados) | `igtf_rules` sin percepción de la clínica; la UI bloquea añadirlo |
+| Art. 62 (5 %–25 % por divisas) | Sin Decreto que lo active | `foreign_currency_iva_basis_points = 0` |
+| Anulación | **Nota de crédito** numerada que referencia la factura | `credit_notes` + `NC-000001` |
+| Quién anula | **admin y secretaría**, con motivo | `billing:void` en `ROLE_PERMISSIONS` |
+| IVA de compras | **No deducible** (Art. 33) y **sin libro de compras** | Nada que construir (§11) |
+| RIF del paciente | **Opcional** (consumidor final salvo que lo pidan) | `patient_tax_id` nullable |
+| Anticipos | **Primero la factura, después el cobro** | Fuera de alcance con camino documentado (§11) |
+| Bienes al 16 % | **Sí se facturan**, con catálogo de ejemplo | `treatment_catalog.kind = 'bien'` + `tax_category = 'general'` |
+| Emisión a crédito | **No**: emitir y cobrar son el mismo acto | Flujo de `/caja`; el pago parcial sigue permitido |
+| Prótesis e implantes | Dentro del **servicio exento** | `tax_category = 'exento'` en el catálogo |
+| Cambio en `clinical.session.closed` | **Aprobado** (`procedures[]` aditivo) | Commit de contrato + `CHANGELOG` |
+| Tasa BCV | Captura **automática** con respaldo manual | Worker diario + ingreso manual auditado |
+| Nombre de la interfaz | **«Caja» en `/caja`** | `MODULES` de `lib/nav.ts` |
+| Datos del consultorio | **Por entorno** con genéricos `CAMBIAR_*` | Bloque `CLINIC_*` (§2.4) |
 
-Y una de forma: ¿el **RIF del paciente** hace falta en cada factura o se emite «consumidor final» salvo
-que lo pidan? (La v1 lo deja **opcional** por eso.)
+**Residuales** (ninguno bloquea programar; los dos primeros hay que resolverlos antes de **facturar**):
+
+1. **El lote de formas libres**: rango de números de control **desde/hasta**, razón social y RIF de la
+   imprenta, número y fecha de la providencia que la autoriza, y fecha de elaboración. Y **una forma de
+   muestra** para **calibrar la plantilla** antes de imprimir de verdad. Mientras no haya formas, en
+   producción solo se puede emitir el comprobante interno.
+2. **Los datos reales del consultorio**: los valores que sustituyen a los genéricos `CAMBIAR_*`
+   (razón social, RIF, dirección fiscal, teléfonos, logo y el odontólogo que firma). El sistema arranca y
+   avisa; no se cae.
+3. **Prótesis o ítems que se quieran como venta de bien**: hoy van exentos; si alguno se quiere gravado, se
+   marca en el catálogo con `tax_category = 'general'`. Decisión por ítem, no de arquitectura.
+4. **Vigilancia**: si el SENIAT notifica a la clínica como **SPE**, se enciende el interruptor del IGTF; si
+   aparece un **Decreto del Art. 62**, se pone la alícuota adicional en configuración. Ninguna de las dos
+   exige tocar código.
 
 ### Fuentes de esta revisión (verificadas el 2026-10-05)
 
@@ -1292,9 +1486,11 @@ que lo pidan? (La v1 lo deja **opcional** por eso.)
   por partida (`clinical.ts`) y el odontograma distingue fases (implante quirúrgico / carga de corona).
   Cuando lleguen, la factura se genera **desde el presupuesto aceptado**, y ahí hará falta el histórico
   de precios con vigencia. Hoy: no.
-* **Anticipos** (dinero antes de que exista la factura): en la v1 el cobro se imputa a una factura
-  emitida. El camino de ampliación es una tabla de aplicaciones (recibo ↔ factura), y está previsto en
-  el modelo (`invoice_sessions` ya separa documentos de hechos).
+* **Anticipos** (dinero antes de que exista la factura): **decisión cerrada del 2026-10-05 — siempre se
+  emite la factura primero** y el cobro se imputa a una factura emitida (con abonos parciales, que es como
+  se cobran las cuotas). El camino de ampliación queda documentado por si algún día hace falta: una tabla
+  de aplicaciones (recibo ↔ factura), que el modelo ya insinúa (`invoice_sessions` separa documentos de
+  hechos).
 * **Unificar varios borradores en una sola factura** (la «cuenta del tratamiento» que se cobra al final):
   la tabla de enlace N:M ya lo permite; la v1 emite una factura por sesión, que es el flujo del
   mostrador.
@@ -1313,21 +1509,33 @@ que lo pidan? (La v1 lo deja **opcional** por eso.)
 
 ## 12. Ejecución por sesiones
 
+**Tarea 0 — el perfil del consultorio por entorno** (compartida, va antes o en paralelo a la Sesión A):
+bloque `CLINIC_*` con genéricos `CAMBIAR_*` (§2.4), `clinicEnvSchema` + `resolveClinicProfile` en
+`packages/kernel`, los seis servicios que imprimen pasando el perfil resuelto, el bloque público en
+`GET /api/v1/meta`, `.env.example`, el archivo común de Fedora y los guardianes de plantillas. **Va en su
+propio commit** (toca `clinical`, `reporting` y la web) y su aceptación es: **el récipe, el reporte y la
+factura salen con los datos del `.env`** y con el aviso de faltantes cuando el perfil está incompleto.
+*(Se adelanta aquí porque la factura no puede imprimir un RIF que hoy vive en un archivo de código.)*
+
 **Sesión A — cimientos y borradores** (sin dinero todavía): ADRs 0043–0047 escritos y enlazados;
 contrato `billing.ts` con aritmética y transiciones probadas; permisos, acciones de auditoría y tópicos;
 `clinical.session.closed` con `procedures[]`; esqueleto del servicio, migración, `EVENT_CONSUMERS`,
 bootstrap, gateway y `/caja` con la lista de pendientes y el borrador. **Aceptación**: cerrar una sesión
 crea el borrador correcto (una sola vez) y se ve en `/caja`.
 
-**Sesión B — el dinero**: tasas (historial, arrastre, corrección, widget), emisión con número y PDF
-archivado, cobros con IGTF y saldo, recibos, anulación de pagos, `smoke:billing`. **Aceptación**: el
-criterio de los 30 segundos del §9 y la factura cobrada en dos monedas.
+**Sesión B — el dinero**: tasas (historial, arrastre, corrección, widget), emisión con **los dos números**
+(correlativo de la secuencia + control del lote de formas libres) y PDF archivado, cobros con la **tasa del
+pago** y saldo, recibos, **factura mixta** (servicios exentos + bienes al 16 %), anulación de pagos, el
+**IGTF dormido** (config en cero, camino probado con la bandera encendida), `smoke:billing`. **Aceptación**:
+el criterio de los 30 segundos del §9, la factura cobrada en dos monedas y el PDF **impreso sobre una forma
+libre real** sin pisar el membrete (o, si las formas aún no llegaron, la calibración queda como pendiente
+declarado y la fase **no** se cierra).
 
-**Sesión C — cierre**: notas de crédito (con la parcial soportada en el modelo), libros (ventas con el
-desglose por alícuota e **IGTF por día**) en CSV, catálogo y configuración fiscal (SPE, alícuota
-adicional, modos de numeración), seed determinista, `seed:verify`, pruebas de aceptación de la fase,
-despliegue en Fedora (`bootstrap --only billing`, systemd, respaldos, `estado`) y documentación (plan
-maestro, README, COMANDOS, CHANGELOG).
+**Sesión C — cierre**: notas de crédito (con la parcial soportada en el modelo), libro de ventas en CSV
+con el desglose por alícuota, **alta del lote de formas libres** (rango, imprenta, providencia y aviso de
+agotamiento), catálogo y configuración fiscal, seed determinista con la configuración cerrada,
+`seed:verify`, pruebas de aceptación de la fase, despliegue en Fedora (`bootstrap --only billing`,
+systemd, respaldos, `estado`) y documentación (plan maestro, README, COMANDOS, CHANGELOG).
 
 Cada sesión termina con `npm run verify` en verde y su commit atómico (convención §14 del plan maestro).
 
@@ -1348,9 +1556,11 @@ ajeno a este módulo: no mezclar esos cambios con los de facturación.)*
 
 **Qué hacer al llegar a Windows, en este orden:**
 
-1. `git pull` y `npm ci`; comprobar `npm run verify` en verde **antes** de tocar nada.
-2. **Mandar al contador las nueve preguntas del §10** (son el único bloqueo real: la Sesión A no las
-   necesita, la B sí). Mientras llegan, seguir con los ADRs.
+1. `git pull` y `npm ci`; comprobar `npm run verify` en verde **antes** de tocar nada. **Ya no hay
+   bloqueos fiscales**: todas las decisiones están cerradas (§0.1) y el Anexo A queda como constancia.
+2. **Tarea 0**: el perfil del consultorio por entorno (§2.4) — `CLINIC_*` con genéricos `CAMBIAR_*`,
+   `resolveClinicProfile` en `packages/kernel`, el bloque público en `/api/v1/meta`, el `.env.example` y
+   el archivo común de Fedora. Va en **su propio commit** porque toca `clinical`, `reporting` y la web.
 3. Escribir los ADRs 0043–0047 en `docs/adr/` (+ índice, + anotar el 0004 y el 0002) y el contrato
    `billing.ts` con sus pruebas **antes** del servicio (regla del proyecto).
 4. Crear el esqueleto de `services/billing` copiando el de `reporting` (consumidor + `processed_events`)
@@ -1361,9 +1571,12 @@ ajeno a este módulo: no mezclar esos cambios con los de facturación.)*
 6. `npm run db:generate:billing` → revisar la migración **a mano** (lección de la Fase 9: una migración
    escrita a mano puede quedar invisible para el migrador) → `npm run db:migrate` →
    `npm run db:verify-migrations -- --only billing`.
-7. Implementar en el orden de §12, con `npm run dev` y `npm run smoke:billing` en cada paso.
-8. Antes de dar una sesión por cerrada: `npm run verify` (incluye `fedora:check` y el auditor de
-   conexiones) y repasar el §7.7 (las guardias que **no** existen: respaldos de `restore`/`crear-rol`,
+7. Sembrar la **configuración cerrada**: `is_special_taxpayer = false`, `imputation_policy =
+   'tasa_del_pago'`, serie `A` en modo `formas_libres`, catálogo con los 28 servicios exentos y un par de
+   bienes al 16 %. Es parte de la migración o del seed, no un paso manual olvidable.
+8. Implementar en el orden de §12, con `npm run dev` y `npm run smoke:billing` en cada paso.
+9. Antes de dar una sesión por cerrada: `npm run verify` (incluye `fedora:check` y el auditor de
+   conexiones) y repasar el §7.8 (las guardias que **no** existen: respaldos de `restore`/`crear-rol`,
    `tools/lib/stack.mjs` y `infra/windows/ecosystem.config.cjs`).
 
 **Advertencias para no romper la Fedora de pruebas:**
@@ -1371,21 +1584,83 @@ ajeno a este módulo: no mezclar esos cambios con los de facturación.)*
 * **No** correr `npm run db:reset`, `seed:reset` ni `seed:test` en Fedora por probar el módulo: borran y
   reescriben las bases (y `db-reset` toca las nueve). Para validar aquí, `--only billing`.
 * El `.env` real no está en el repositorio: en Windows hay que regenerar los secretos de desarrollo
-  (`npm run keys:generate` si tocan las claves) y el bootstrap del punto 5 para la base nueva.
+  (`npm run keys:generate` si tocan las claves), el bootstrap del punto 5 para la base nueva y **el bloque
+  `CLINIC_*`** con los datos reales del consultorio (o quedará el genérico `CAMBIAR_*` y la factura saldrá
+  con el aviso de datos faltantes).
 * Cambiar `packages/contracts` (permisos, acciones de auditoría, tópicos) **obliga a recompilar todos los
   servicios**: en Fedora eso es `sudo odontocrm recompilar` y reiniciar, no un `npm run dev`.
 * El commit del evento `clinical.session.closed` es un **cambio de contrato**: va en su propio commit,
   con aviso en el `CHANGELOG`, y sin él el borrador sale sin partidas.
 * **`billing` imprime PDF con Chromium**: en Fedora necesita el mismo `PLAYWRIGHT_BROWSERS_PATH` que
   `clinical` y `reporting` (`install.sh` ya lo hace para esos dos; hay que sumar el tercero).
+* **La plantilla de la factura no se puede validar en pantalla**: hasta tener las **formas libres** y una
+  impresora, la calibración del `@page` es una hipótesis. El código puede ir cerrado; la fase no.
 
 **Pendientes del proyecto que NO son de este módulo** (no mezclarlos): los P-36…P-42 de la auditoría de
 portabilidad, registrados en `infra/fedora/INSTALL.md` §20.2, y el trabajo en curso de `infra/fedora/nginx`.
 
-**Lo que sigue abierto y hay que decidir con el contador antes de emitir** (no antes de empezar):
-el **modo de numeración** (formas libres / máquina fiscal / digital), la **calificación de SPE**, **quién
-entera el IGTF** en cada medio y si algún día aparece el **Decreto del Art. 62**. Todo lo demás —tasas,
-borradores, catálogo, cobros, saldos y libros— se puede construir ya.
+**Lo que sigue pendiente del lado de la clínica** (no bloquea programar, sí bloquea facturar de verdad):
+el **lote de formas libres** con su rango de control y una **forma de muestra** para calibrar la
+plantilla, y los **datos reales del consultorio** que sustituyen a los genéricos `CAMBIAR_*` (§10,
+residuales 1 y 2).
 
-**La primera decisión al retomar:** mandar las preguntas del §10. Con eso, la Sesión A puede empezar el
-mismo día.
+---
+
+## Anexo A — Hoja de confirmación operativa devuelta por el contador (2026-10-05)
+
+Se conserva **literal** como constancia de la decisión (es lo que respalda la configuración del sistema
+ante una revisión posterior):
+
+```text
+ESTIMADO CONTADOR, PARA CONFIGURAR EL SISTEMA DE FACTURACIÓN DE LA CLÍNICA:
+
+1. RÉGIMEN FISCAL:
+   [ ] Sujeto Pasivo Especial (Contribuyente Especial) -> N° Notificación: _________
+   [X] Contribuyente Ordinario (Persona Jurídica o Natural)
+
+2. FORMATO DE FACTURACIÓN ACTUAL:
+   [X] Formas Libres de imprenta autorizada: Nota extra: podemos implementar facturación en el soft:
+       El SENIAT eliminó la obligación de utilizar y homologar sistemas informáticos de facturación
+       mediante la Providencia Administrativa SNAT/2026/00084, publicada en la Gaceta Oficial
+       N.º 43.435 el 12 de agosto de 2026.
+   [ ] Máquina Fiscal (Marca/Modelo: ______________)
+   [ ] Talonario manual de contingencia
+
+3. PAGOS EN BOLÍVARES DE TRATAMIENTOS COTIZADOS EN DÓLARES:
+   [X] Se cobra al cambio BCV del día exacto en que el paciente viene a pagar (Conv. Cambiario N° 1)
+   [ ] Se congelan los bolívares que decía la factura emitida originalmente
+
+4. IGTF EN DIVISAS:
+   [ ] La clínica percibe el 3% en caja para pagos en efectivo USD / Zelle (Aplica si es Especial)
+   [X] No percibimos IGTF en caja
+```
+
+**Traducción a configuración del sistema** (lo que el arranque del servicio tiene que dejar sembrado):
+`is_special_taxpayer = false` · `imputation_policy = 'tasa_del_pago'` · `foreign_currency_iva_basis_points
+= 0` · serie `A` con `numbering_mode = 'formas_libres'` · `igtf_rules` sin percepción de la clínica
+(`banco` o `no_aplica` en todos los medios) · `patient_tax_id` opcional.
+
+---
+
+## Anexo B — Cierre de las decisiones que quedaban abiertas (2026-10-05)
+
+Segunda ronda de confirmación, ya sin el contador delante. Se conserva como constancia porque **fija
+alcance**: varias de estas respuestas recortan cosas que el plan tenía modeladas y otras activan caminos
+que habrían quedado dormidos.
+
+| # | Pregunta | Respuesta de Gabriel | Qué se hace |
+| :-: | :--- | :--- | :--- |
+| 1 | ¿Anticipos antes de emitir la factura? | **No: siempre se emite factura primero** | Queda fuera de la v1; el cobro se imputa a una factura emitida |
+| 2 | ¿Se venden bienes gravados al 16 %? | **Sí, hay que poder facturarlos** | Catálogo con bienes de ejemplo y factura mixta `(E)`/`(G)` probada |
+| 3 | ¿La factura puede quedar a crédito? | **No: emitir y cobrar son el mismo acto** | El flujo de `/caja` es emitir → cobrar; el saldo parcial sigue permitido |
+| 4 | Prótesis e implantes | **Dentro del servicio exento** | Todas las partidas odontológicas nacen `exento` |
+| 5 | Libro de compras | **Solo el de ventas** | No se registran facturas de proveedores |
+| 6 | ¿Se toca `clinical.session.closed`? | **Sí, aditivo** con `procedures[]` | Commit de contrato + aviso en el `CHANGELOG` |
+| 7 | Captura de la tasa BCV | **Automática con confirmación si falla** | Worker diario + ingreso manual auditado + arrastre confirmado |
+| 8 | ¿Quién anula una factura? | **También la secretaría, con motivo** | `billing:void` para admin y secretaría; el odontólogo solo lectura |
+| 9 | Nombre y ruta de la interfaz | **«Caja» en `/caja`** | `ModuleId` `caja` en `lib/nav.ts` |
+| 10 | Datos del consultorio y del lote de formas | **Genéricos siguiendo el formato, en un `.env` con su `.env.example`** | Bloque `CLINIC_*` con `CAMBIAR_*` (§2.4); el lote de formas, operativo, va en la base |
+
+**Configuración que deja sembrada el arranque** (además de la del Anexo A): catálogo con los 28 servicios
+exentos + bienes de ejemplo al 16 % · libro de compras **no** implementado · `CLINIC_*` con genéricos
+`CAMBIAR_*` en el `.env` común · `billing:void` extendido a la secretaría.
