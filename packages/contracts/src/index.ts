@@ -6,6 +6,7 @@ export * from './common/pagination.js';
 export * from './common/problem.js';
 export * from './domain/audit.js';
 export * from './domain/auth.js';
+export * from './domain/billing.js';
 export * from './domain/channel.js';
 export * from './domain/clinical.js';
 export * from './domain/clinical-session.js';

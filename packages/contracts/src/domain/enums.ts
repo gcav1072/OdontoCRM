@@ -124,6 +124,15 @@ export type ClinicalSessionStatus = (typeof CLINICAL_SESSION_STATUSES)[number];
 export const PRESCRIPTION_STATUSES = ['borrador', 'emitida', 'anulada'] as const;
 export type PrescriptionStatus = (typeof PRESCRIPTION_STATUSES)[number];
 
+/**
+ * Estados de la factura (Fase 11, [ADR 0044](../../../docs/adr/0044-modulo-de-facturacion-desacoplado.md)):
+ * `borrador` no es un documento —no consumió número fiscal—; `emitida`, `parcial` y `pagada` son el
+ * mismo documento con distinto saldo (el estado lo mueve el dinero, no una persona); `anulada` no
+ * vuelve. La máquina de transiciones vive en `billing.ts`.
+ */
+export const INVOICE_STATUSES = ['borrador', 'emitida', 'parcial', 'pagada', 'anulada'] as const;
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+
 export const NOTIFICATION_STATUSES = [
   'queued',
   'sending',
