@@ -464,7 +464,10 @@ const sqlClave = (valor) => {
 
 /** Literal de SQL para texto corriente (zona horaria, nombre de base). Se escapa. */
 const sqlTexto = (valor) => {
-  if (/[\u0000-\u001f]/.test(valor)) morir('texto con caracteres de control');
+  // `\p{Cc}` (categoría «Control» de Unicode) en vez de `[\u0000-\u001f]`: comprueba lo mismo
+  // —y también DEL y los controles C1— sin meter caracteres de control en el propio patrón, que
+  // es lo que la regla `no-control-regex` de ESLint marca como error.
+  if (/\p{Cc}/u.test(valor)) morir('texto con caracteres de control');
   return `'${valor.replace(/'/g, "''")}'`;
 };
 
