@@ -73,6 +73,40 @@ sobre el clon del operador; las claves JWT se verifican **dónde** aterrizan (el
 una ruta de emergencia que las escribiría dentro de `/opt`, justo lo que el ADR prohíbe); el
 registro de `actualizar` pasa a 0600; y los guiones de respaldo respetan `ODONTOCRM_ENV_DIR`.
 
+### El fallo que apareció en la primera instalación real
+
+La primera ejecución de verdad —en la PC de la clínica, con `sudo`— se detuvo en el paso 3/4:
+
+```
+fatal: falló al crear link '/opt/odontocrm/.git/objects/pack/…':
+       Enlace cruzado entre dispositivos no permitido
+✖ no pude clonar el repositorio en /opt/odontocrm
+```
+
+**Causa**: `git clone --local` no copia los objetos, los **enlaza**; y enlazar falla con
+`EXDEV` cuando el origen y el destino están en submontajes distintos —aquí `/home` y `/opt`
+son subvolúmenes btrfs diferentes—, que es el caso normal: el repositorio del operador vive en
+su home y el despliegue va a `/opt`.
+
+Lo llamativo es que **ya me había pasado**: al probar el clon en `/tmp` salió el mismo error y
+lo workaroundé en la prueba con `--no-hardlinks`, sin arreglarlo en el instalador. La lección
+es la de siempre: un fallo que se esquiva en la prueba no está arreglado.
+
+**Corrección** (tres cosas, no una):
+
+1. `--no-hardlinks`: copia los objetos y funciona en los dos casos. Cuesta segundos.
+2. Se clona en un directorio **temporal** y se mueve a su sitio al terminar: así una clonación
+   que falle no deja `/opt/odontocrm` a medias con un `.git` incompleto que bloqueaba el
+   reintento (que es justo lo que quedó en la máquina).
+3. Si el destino tiene un `.git` que git no reconoce, es la ruina de un intento anterior: se
+   retira y se clona de nuevo —en vez de morir pidiendo que lo muevas a mano—. Si lo que hay
+   es contenido que **no** es un clon, no se toca y se explica.
+
+Probado ejecutando el bloque real del guion (extraído del archivo, no una copia) con el destino
+en otro montaje: destino inexistente, destino **vacío**, `.git` roto de un intento anterior,
+clon que ya funciona y directorio con contenido ajeno. Los cinco caminos se comportan como
+deben y no queda ningún temporal.
+
 ### Verificación (lo que se probó de verdad en esta sesión)
 
 - **El aprovisionador, contra el PostgreSQL real de esta máquina**: creó los 9 roles y las 9

@@ -110,11 +110,47 @@ fi
 EN_SU_SITIO=0
 [[ "$(cd "$ORIGEN" && pwd)" == "$(cd "$CODE_DIR" 2>/dev/null && pwd)" ]] && EN_SU_SITIO=1
 
+# `safe.directory`: el instalador corre como root y el clon es del operador. Sin esto,
+# git (>= 2.35.2) se niega a trabajar sobre él («dubious ownership») y el clon
+# fallaría —o, peor, seguiría sin `origin`— en la instalación normal, que es
+# `sudo bash instalar.sh` desde el clon del usuario.
+git config --global --add safe.directory "$ORIGEN" 2>/dev/null || true
+
+# Clona en un directorio TEMPORAL y lo mueve a su sitio al terminar.
+#
+# Las dos razones vienen de fallos reales:
+#
+# 1. `--no-hardlinks`. Sin él, `git clone --local` **enlaza** los objetos en vez de
+#    copiarlos, y eso falla con «Enlace cruzado entre dispositivos no permitido»
+#    (EXDEV) en cuanto el origen y el destino están en subvolúmenes o sistemas de
+#    archivos distintos —que es el caso normal: el repositorio del operador está en
+#    /home y el despliegue va a /opt—. Abortaba la instalación en el paso 3/4.
+#    Copiar los objetos funciona siempre y el coste, para este repositorio, es de
+#    segundos.
+# 2. Clonar en temporal y moverlo después evita dejar `/opt/odontocrm` a medias si la
+#    clonación falla: un `.git` incompleto en el destino bloqueaba el reintento.
+clonar_codigo() {
+  local temporal="${CODE_DIR}.clon-nuevo"
+  rm -rf "$temporal"
+  if ! git clone --local --no-hardlinks --quiet "$ORIGEN" "$temporal"; then
+    rm -rf "$temporal"
+    morir "no pude clonar el repositorio en $temporal"
+  fi
+  rm -rf "$CODE_DIR"
+  mv "$temporal" "$CODE_DIR" || morir "no pude mover el clon a $CODE_DIR"
+  # La rama, creada en el commit desplegado (no desacoplar la cabeza: ver arriba).
+  if [[ -n "$RAMA" && "$RAMA" != "HEAD" ]]; then
+    git -C "$CODE_DIR" checkout --quiet -B "$RAMA" "$COMMIT" 2>/dev/null ||
+      av "no pude dejar la rama $RAMA en $COMMIT"
+  fi
+  ok "código clonado en $CODE_DIR (rama $RAMA, commit $COMMIT)"
+}
+
 if (( EN_SU_SITIO )); then
   ok "ya estamos sobre el código desplegado ($CODE_DIR), commit $COMMIT"
 elif (( DRY_RUN )); then
-  detalle "[dry-run] git clone --local $ORIGEN $CODE_DIR   (rama $RAMA, commit $COMMIT)"
-elif [[ -d "$CODE_DIR/.git" ]]; then
+  detalle "[dry-run] git clone --local --no-hardlinks $ORIGEN $CODE_DIR (rama $RAMA, commit $COMMIT)"
+elif git -C "$CODE_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   git -C "$CODE_DIR" fetch --prune --quiet "$ORIGEN" 2>/dev/null || true
   # `checkout -B <rama> <commit>` deja la rama CREADA en ese commit. Un
   # `git checkout <sha>` a secas **desacopla** la cabeza (HEAD), y entonces
@@ -128,23 +164,18 @@ elif [[ -d "$CODE_DIR/.git" ]]; then
     git -C "$CODE_DIR" checkout --quiet "$COMMIT" 2>/dev/null || true
   fi
   ok "clon ya existente en $CODE_DIR (rama $RAMA, commit $COMMIT)"
+elif [[ -d "$CODE_DIR/.git" ]]; then
+  # Hay un `.git` que git no reconoce: es la ruina de un intento anterior que se
+  # cortó a medias. No sirve para nada y bloquea la instalación, así que se retira.
+  av "$CODE_DIR tenía un clon incompleto de un intento anterior: se retira y se clona de nuevo"
+  rm -rf "$CODE_DIR"
+  clonar_codigo
 elif [[ -n "$(ls -A "$CODE_DIR" 2>/dev/null)" ]]; then
   morir "$CODE_DIR no está vacío y no es un clon de git. No lo borro por si hay algo dentro:
     muévelo aparte (p. ej. mv $CODE_DIR ${CODE_DIR}.viejo) y vuelve a ejecutar."
 else
   mkdir -p "$(dirname "$CODE_DIR")"
-  # `safe.directory`: el instalador corre como root y el clon es del operador. Sin
-  # esto, git (>= 2.35.2) se niega a trabajar sobre él («dubious ownership») y el
-  # clon fallaría —o, peor, seguiría sin `origin`— en la instalación normal, que es
-  # `sudo bash instalar.sh` desde el clon del usuario.
-  git config --global --add safe.directory "$ORIGEN" 2>/dev/null || true
-  git clone --local --quiet "$ORIGEN" "$CODE_DIR" || morir "no pude clonar el repositorio en $CODE_DIR"
-  # La rama, creada en el commit desplegado (ver arriba: no desacoplar la cabeza).
-  if [[ -n "$RAMA" && "$RAMA" != "HEAD" ]]; then
-    git -C "$CODE_DIR" checkout --quiet -B "$RAMA" "$COMMIT" 2>/dev/null ||
-      av "no pude dejar la rama $RAMA en $COMMIT"
-  fi
-  ok "código clonado en $CODE_DIR (rama $RAMA, commit $COMMIT)"
+  clonar_codigo
 fi
 
 if (( ! DRY_RUN )) && [[ -n "$REMOTO" ]]; then
