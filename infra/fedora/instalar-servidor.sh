@@ -139,6 +139,10 @@ for paso_cmd in "db:bootstrap" "db:migrate"; do
     npm run "$paso_cmd" >/tmp/odontocrm-$paso_cmd.log 2>&1 ||
       { tail -20 /tmp/odontocrm-$paso_cmd.log; morir "falló npm run $paso_cmd (registro: /tmp/odontocrm-$paso_cmd.log)"; }
     ok "npm run $paso_cmd"
+    if [[ "$paso_cmd" == "db:bootstrap" ]] && grep -qE '\b(nueva|rotada)\b' /tmp/odontocrm-$paso_cmd.log 2>/dev/null; then
+      av 'el bootstrap regeneró alguna credencial (los .env del repositorio no estaban)'
+      av '  se sincronizan con /etc/odontocrm en el paso 3, antes de migrar'
+    fi
   fi
 done
 if (( DRY_RUN )); then
@@ -169,6 +173,21 @@ fi
 
 # ── 2. Despliegue completo --------------------------------------------------
 paso '3/5 · Despliegue (código, unidades, secretos, TLS, firewall, respaldos)'
+
+# ORDEN IMPORTANTE: primero se trasladan los secretos a /etc/odontocrm (fase de
+# configuración del ensayo) y DESPUÉS se migra. En el orden contrario el despliegue se rompe
+# si el bootstrap acaba de regenerar las contraseñas: el bootstrap las escribe en los `.env`
+# del repositorio (los servicios no los leen) y las migraciones se conectan con las de
+# /etc/odontocrm, que son las viejas → «password authentication failed» y los servicios en
+# bucle. Nos pasó en el primer ensayo real del seed.
+if (( ! DRY_RUN )); then
+  if ! bash "$ORIGEN/infra/fedora/ensayo-despliegue.sh" --hasta=config >/tmp/odontocrm-config.log 2>&1; then
+    tail -20 /tmp/odontocrm-config.log
+    morir 'falló el paso de configuración (secretos a /etc/odontocrm); revisa /tmp/odontocrm-config.log'
+  fi
+  ok 'secretos sincronizados con /etc/odontocrm antes de migrar'
+fi
+
 hasta='respaldos'; (( SIN_RESPALDO )) && hasta='tls'
 aviso_resumen="$(
   bash "$ORIGEN/infra/fedora/ensayo-despliegue.sh" "${DRY[@]}" --hasta="$hasta" 2>&1 |
