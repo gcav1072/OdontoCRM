@@ -315,8 +315,21 @@ else
     node services/identity/dist/seed.js) >"$registro" 2>&1; then
     ok "usuarios al día: $(printf '%s' "$usuarios" | tr '\n' ' ')"
     if (( ya_hay )); then
-      av 'ya había usuarios: el seed NO toca los que existen y la contraseña de arriba no vale'
-      detalle 'para entrar usa la que ya tenías; para regenerarlas a propósito: --reset'
+      # Los usuarios ya estaban: el seed NO los toca, así que aquí NO hay contraseña
+      # nueva que dar. Se dice claro y se da la receta exacta para poner una que el
+      # operador elija — sin esto, quien instala se queda fuera del sistema sin
+      # ninguna pista de cómo entrar (pasó en la primera instalación real).
+      av "los $existentes_db usuario(s) ya existían: no se les ha cambiado la contraseña"
+      detalle 'para entrar vale la que ya tuvieran'
+      echo
+      printf '      %spara ponerles una contraseña que elijas TÚ (cámbiala en las 3 veces):%s\n' "$C_TI" "$C_RE"
+      receta=""
+      while IFS= read -r u; do
+        [[ -n "$u" ]] && receta+="SEED_PASSWORD_$u='TU_CLAVE' "
+      done <<<"$usuarios"
+      printf '        cd %s && sudo %s \\\n' "$CODE_DIR" "$receta"
+      printf '          node tools/con-entorno.mjs %s identity -- node services/identity/dist/seed.js --reset\n\n' "$ETC_DIR"
+      detalle 'el sistema pedirá cambiarla en el primer acceso'
     else
       # Se deja en un archivo de root (0600) además de imprimirla: si esto corre
       # desde `odontocrm actualizar`, la salida va a un registro y una contraseña
@@ -466,9 +479,9 @@ paso '8/9 · Proxy inverso, SELinux y firewall'
 # está el DNS propio (--con-dns), que es lo que funciona en TODOS.
 if (( CON_DNS )); then
   if (( DRY_RUN )); then
-    detalle "[dry-run] instalaría el DNS propio para ${NOMBRE_MDNS}.home.arpa"
+    detalle "[dry-run] instalaría el DNS propio para $(nombre_corto "$NOMBRE_MDNS").home.arpa"
   elif [[ -f "$CODE_DIR/infra/fedora/nombre/instalar-dns.sh" ]]; then
-    bash "$CODE_DIR/infra/fedora/nombre/instalar-dns.sh" --nombre="${NOMBRE_MDNS}.home.arpa" ||
+    bash "$CODE_DIR/infra/fedora/nombre/instalar-dns.sh" --nombre="$(nombre_corto "$NOMBRE_MDNS").home.arpa" ||
       av 'no pude configurar el DNS propio (el mDNS y la IP siguen funcionando)'
   else
     av 'no encuentro nombre/instalar-dns.sh en el código desplegado'

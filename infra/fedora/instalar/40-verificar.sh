@@ -38,6 +38,7 @@ fallo() {
 }
 
 NOMBRE_MDNS="$(resolver_nombre "$NOMBRE_MDNS")"
+FQDN="$(nombre_fqdn "$NOMBRE_MDNS")"
 printf '%sOdontoCRM · 4/4 · Verificar%s\n' "$C_TI" "$C_RE"
 IP_LAN="$(ip_lan)"
 
@@ -117,17 +118,42 @@ else
 
   # La CA en los formatos que piden los aparatos: si esto falla, cada equipo
   # tendría que copiarla a mano y el aviso de certificado no se quitaría nunca.
-  ca="$(curl -s -o /tmp/odontocrm-ca-verif.crt -w '%{http_code}' --max-time 8 http://127.0.0.1/ca.crt || true)"
-  [[ -n "$ca" ]] || ca=000
-  if [[ "$ca" == "200" ]] && openssl x509 -in /tmp/odontocrm-ca-verif.crt -noout -subject >/dev/null 2>&1; then
-    ok "la CA se descarga desde http://<servidor>/ca.crt ($(openssl x509 -in /tmp/odontocrm-ca-verif.crt -noout -subject 2>/dev/null | head -c 46)…)"
+  # Archivo temporal ÚNICO por corrida: con un nombre fijo, un resto de una ejecución
+  # anterior (de otro usuario, o a medias) podía interferir en la comprobación.
+  ca_archivo="$(mktemp -t odontocrm-ca-XXXXXX)"
+  ca="000"
+  # Se intenta dos veces: esto corre justo después de reiniciar nginx y publicar la CA,
+  # y en la primera instalación real devolvió un 200 cuyo cuerpo no era el certificado.
+  # El reintento cubre un estado transitorio; si aun así falla, abajo se dice QUÉ llegó.
+  for intento in 1 2; do
+    ca="$(curl -s -o "$ca_archivo" -w '%{http_code} %{content_type}' --max-time 8 \
+      http://127.0.0.1/ca.crt 2>/dev/null || true)"
+    [[ -n "$ca" ]] || ca=000
+    openssl x509 -in "$ca_archivo" -noout -subject >/dev/null 2>&1 && break
+    (( intento == 1 )) && sleep 2
+  done
+
+  if [[ "$ca" == 200* ]] && openssl x509 -in "$ca_archivo" -noout -subject >/dev/null 2>&1; then
+    ok "la CA se descarga desde http://<servidor>/ca.crt ($(openssl x509 -in "$ca_archivo" -noout -subject 2>/dev/null | head -c 46)…)"
   else
-    fallo "no pude descargar la CA (código $ca): los aparatos no podrían quitar el aviso"
+    # Sin esto, un fallo aquí era un callejón sin salida: se sabía que fallaba, no por qué.
+    fallo "no pude descargar la CA (respuesta: $ca)"
+    detalle "lo que llegó no es un certificado; empieza por: $(head -c 60 "$ca_archivo" 2>/dev/null | tr -d '\n')"
+    detalle "si es HTML, nginx está sirviendo la interfaz en vez de la CA: revisa «location = /ca.crt»"
+    detalle "si es 403, SELinux no deja a nginx leer /var/www/odontocrm/ca"
   fi
+  rm -f "$ca_archivo"
   for formato in ca.der odontocrm.mobileconfig ca-windows.ps1 ca-linux.sh; do
-    codigo="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://127.0.0.1/$formato" || true)"
-    [[ -n "$codigo" ]] || codigo=000
-    [[ "$codigo" == "200" ]] && ok "  /$formato disponible" || av "  /$formato devolvió $codigo"
+    # Se mira el TIPO, no solo el código: la interfaz responde 200 a cualquier ruta
+    # desconocida, así que un 200 a secas podía dar por bueno un enlace que en
+    # realidad devolvía la página de la aplicación.
+    tipo="$(curl -s -o /dev/null -w '%{http_code} %{content_type}' --max-time 8 "http://127.0.0.1/$formato" || true)"
+    [[ -n "$tipo" ]] || tipo=000
+    case "$tipo" in
+      200*text/html*) av "  /$formato devuelve la interfaz, no el archivo (¿location mal puesta?)" ;;
+      200*) ok "  /$formato disponible ($tipo)" ;;
+      *) av "  /$formato devolvió $tipo" ;;
+    esac
   done
 
   # El SSE de las pantallas: sin búfer, o la pantalla de la sala se queda congelada.
@@ -153,7 +179,7 @@ else
   ok "certificado válido hasta $vence"
   # `grep -q ""` casa SIEMPRE: si la IP saliera vacía, la comprobación diría «cubre »
   # en blanco y daría por bueno un certificado que no sirve para esa dirección.
-  for esperado in "$(nombre_fqdn "$NOMBRE_MDNS")" "$IP_LAN"; do
+  for esperado in "$FQDN" "$IP_LAN"; do
     [[ -n "$esperado" ]] || continue
     grep -q -- "$esperado" <<<"$nombres" && ok "  cubre $esperado" ||
       fallo "  NO cubre $esperado: los equipos que entren así verán un aviso"
@@ -232,7 +258,10 @@ if command -v getenforce >/dev/null 2>&1 && [[ "$(getenforce 2>/dev/null)" == "E
     if [[ "${denegaciones:-0}" == "0" ]]; then
       ok 'SELinux en Enforcing, sin denegaciones hoy'
     else
-      av "SELinux: $denegaciones denegaciones hoy — ausearch -m avc -ts today | tail -20"
+      av "SELinux: $denegaciones denegación(es) hoy. La última, para saber de qué es:"
+      ausearch -m avc -ts today 2>/dev/null | grep 'denied' | tail -1 |
+        grep -oE 'denied\{[^}]*\} for [^ ]*[^ ]*' | head -c 160 | sed 's/^/      /' || true
+      detalle 'el detalle completo:  sudo ausearch -m avc -ts today | tail -20'
     fi
   else
     ok 'SELinux en Enforcing'
@@ -258,9 +287,9 @@ printf '       %shttp://%s/ca.crt%s            (Android, Linux)\n' "$C_TI" "${IP
 printf '       %shttp://%s/ca.der%s            (Windows: doble clic)\n' "$C_TI" "${IP_LAN:-<IP>}" "$C_RE"
 printf '       %shttp://%s/odontocrm.mobileconfig%s   (iPhone, iPad, macOS)\n' "$C_TI" "${IP_LAN:-<IP>}" "$C_RE"
 printf '  2. Y entra en la aplicación:\n'
-printf '       %shttps://%s.local%s   o   %shttps://%s%s\n\n' "$C_TI" "$NOMBRE_MDNS" "$C_RE" "$C_TI" "${IP_LAN:-<IP>}" "$C_RE"
-printf '  Si algún Android no resuelve «%s.local», repite el despliegue con %s--con-dns%s\n' \
-  "$NOMBRE_MDNS" "$C_TI" "$C_RE"
+printf '       %shttps://%s%s   o   %shttps://%s%s\n\n' "$C_TI" "$FQDN" "$C_RE" "$C_TI" "${IP_LAN:-<IP>}" "$C_RE"
+printf '  Si algún Android no resuelve «%s», repite el despliegue con %s--con-dns%s\n' \
+  "$FQDN" "$C_TI" "$C_RE"
 printf '  Para mirar cómo va:  sudo odontocrm estado  ·  sudo odontocrm verificar\n\n'
 
 (( PROBLEMAS == 0 )) && exit 0 || exit 1

@@ -113,9 +113,20 @@ resolver_nombre() {
 # un dominio propio. Es el error que hacía que WEB_ORIGIN y PUBLIC_APP_URL dijeran
 # `https://odontocrm` mientras el certificado y nginx usaban `odontocrm.local`: el QR
 # de todos los récipes apuntaba a un nombre que no resuelve en ningún equipo.
+#
+# Y hay que usarlo SIEMPRE para componer una dirección: `resolver_nombre` devuelve el
+# nombre ya completo (`odontocrm.local`), así que escribir `$NOMBRE_MDNS.local` a mano
+# producía `odontocrm.local.local` —que no resuelve— en el resumen final y en el
+# mensaje del DNS. Se vio en la primera instalación de verdad.
 nombre_fqdn() {
   local nombre="${1:-}"
   if [[ "$nombre" == *.* ]]; then printf '%s' "$nombre"; else printf '%s.local' "$nombre"; fi
+}
+
+# El nombre sin dominio (`odontocrm.local` → `odontocrm`). Lo necesita el DNS propio,
+# que publica el nombre en su propia zona (`<corto>.home.arpa`).
+nombre_corto() {
+  printf '%s' "${1%%.*}"
 }
 
 # ¿El certificado cubre TODOS estos nombres? Se mira el `subjectAltName` real, no

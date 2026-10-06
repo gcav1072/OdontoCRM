@@ -124,6 +124,7 @@ detalle "usuario     : $(usuario_real)"
 (( ROTAR )) && av '--rotar-credenciales: se generan contraseñas NUEVAS'
 
 NOMBRE_MDNS="$(resolver_nombre "$NOMBRE_MDNS")"
+FQDN="$(nombre_fqdn "$NOMBRE_MDNS")"
 COMUNES=(--nombre-mdns="$NOMBRE_MDNS")
 (( DRY_RUN )) && COMUNES+=(--dry-run)
 
@@ -174,7 +175,7 @@ printf '\n%s══════════════════════�
 printf '%s  Instalación terminada%s\n' "$C_TI" "$C_RE"
 printf '%s══════════════════════════════════════════════════════════════════%s\n\n' "$C_TI" "$C_RE"
 printf '  Desde los aparatos de la consulta:\n'
-printf '      %shttps://%s.local%s\n\n' "$C_TI" "$NOMBRE_MDNS" "$C_RE"
+printf '      %shttps://%s%s\n\n' "$C_TI" "$FQDN" "$C_RE"
 printf '  El día a día del servidor:\n'
 printf '      sudo odontocrm estado        cómo va todo\n'
 printf '      sudo odontocrm verificar     los 9 servicios, uno a uno\n'

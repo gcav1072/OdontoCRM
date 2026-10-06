@@ -107,6 +107,30 @@ en otro montaje: destino inexistente, destino **vacío**, `.git` roto de un inte
 clon que ya funciona y directorio con contenido ajeno. Los cinco caminos se comportan como
 deben y no queda ningún temporal.
 
+### La primera instalación real (y lo que se vio en ella)
+
+El despliegue completo funcionó: 9 servicios escuchando y respondiendo `/health` y `/ready`,
+TLS emitido, proxy sirviendo la interfaz, firewall con el 80 y el 443, y **el código de
+`/opt` sin un solo `.env`**. Tres cosas salieron de ahí:
+
+1. **`odontocrm.local.local`** en el resumen final. `resolver_nombre` devuelve el nombre YA
+   completo (`odontocrm.local`), y el resumen le volvía a pegar `.local`. Afectaba también al
+   mensaje del DNS propio (`odontocrm.local.home.arpa`). Se corrigió componiendo la dirección
+   siempre con `nombre_fqdn`, y se añadió `nombre_corto` para la zona del DNS. **Era una
+   dirección de entrada rota impresa justo donde el operador la copia.**
+2. **El «código 200» de la CA**: la descarga devolvía 200 pero el cuerpo no era un
+   certificado. **No se pudo reproducir** —con nginx en marcha, la descarga es correcta y los
+   cinco formatos salen con su tipo MIME bueno—, así que en vez de adivinar la comprobación se
+   hizo robusta y **auto-diagnosticable**: archivo temporal único por corrida, un reintento, y
+   si vuelve a fallar dice **qué llegó** (código, tipo y primeras líneas) en lugar de dejar un
+   callejón sin salida. De paso, los cinco formatos de la CA se comprueban ahora por **tipo**:
+   la interfaz responde 200 a cualquier ruta, así que un 200 a secas podía dar por bueno un
+   enlace que en realidad devolvía la página de la aplicación.
+3. **Los usuarios ya existían** y el mensaje decía «la contraseña de arriba no vale» —cuando
+   arriba no había ninguna—: quien instalaba se quedaba **fuera del sistema sin ninguna
+   pista**. Ahora se dice cuántos son y se imprime la receta exacta, con los nombres reales,
+   para ponerles una contraseña elegida por el operador.
+
 ### Verificación (lo que se probó de verdad en esta sesión)
 
 - **El aprovisionador, contra el PostgreSQL real de esta máquina**: creó los 9 roles y las 9
