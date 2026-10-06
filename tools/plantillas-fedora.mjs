@@ -801,6 +801,22 @@ const exigir = (condicion, bien, mal) => {
       env: { ...process.env, SUDO_USER: 'prueba-de-humo' },
     });
     const salida = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+
+    // Si el intérprete NO EXISTE (p. ej. `bash` en Windows, que es el entorno de
+    // desarrollo del proyecto), `spawnSync` no devuelve salida y la comprobación diría
+    // «arranca sin caerse» sin haber ejecutado nada: un OK falso, que es la peor clase
+    // de comprobación. Se dice que no se pudo probar y se cuenta como fallo.
+    if (r.error) {
+      err(
+        `${guion.split('/').pop()} `.padEnd(46) +
+          `no se pudo probar: falta «${interprete}» en este sistema (${r.error.code ?? 'error'})`,
+      );
+      console.error(
+        '      estas pruebas de humo necesitan bash; ejecútalas en Linux o con Git Bash',
+      );
+      continue;
+    }
+
     const roto = /variable sin asignar|unbound variable|syntax error|error de sintaxis/i.test(
       salida,
     );
