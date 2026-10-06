@@ -324,6 +324,9 @@ const envComun = () => {
     ALLOW_TEST_MODE: 'false',
     GATEWAY_HOST: '127.0.0.1',
     GATEWAY_PORT: String(PUERTO_GATEWAY),
+    // El nombre se guarda aquí para que las actualizaciones no lo pierdan: el
+    // despliegue lo lee de este archivo cuando no se le pasa --nombre-mdns.
+    ODONTOCRM_NOMBRE: opciones.host,
   };
   for (const servicio of SERVICIOS) {
     const alto = servicio.nombre.toUpperCase();

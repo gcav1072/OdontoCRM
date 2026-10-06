@@ -276,6 +276,9 @@ case "$ORDEN" in
     # por la que volvían los secretos desfasados (ADR 0043). Ahora la única pieza
     # que escribe /etc/odontocrm es 20-aprovisionar.sh, y las actualizaciones NO la
     # tocan: las credenciales no se rotan porque llegue una versión nueva.
+    # El registro se pre-crea 0600: la salida del despliegue puede traer datos que no
+    # deben quedar legibles para cualquiera en /tmp (contraseñas temporales, rutas).
+    install -m 0600 -o root -g root /dev/null /tmp/odontocrm-actualizar.log 2>/dev/null || true
     if bash "$CODE_DIR/infra/fedora/instalar/30-desplegar.sh" \
          >/tmp/odontocrm-actualizar.log 2>&1; then
       ok 'código compilado, unidades, migraciones, TLS y proxy al día'

@@ -77,11 +77,11 @@ LOG_FILE="/var/log/odontocrm/backup.log"
 PG_HOST="/var/run/postgresql"
 PG_PORT="5432"
 PG_USER="postgres"
-PGPASSFILE="/etc/odontocrm/.pgpass"
+PGPASSFILE="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}/.pgpass"
 DATABASES="odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_events"
 STORAGE_DIR="/var/lib/odontocrm/storage"
-CONFIG_DIR="/etc/odontocrm"
-CONFIG_FILE="/etc/odontocrm/backup.env"
+CONFIG_DIR="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}"
+CONFIG_FILE="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}/backup.env"
 
 INCLUDE_CONFIG=0
 INCLUDE_STORAGE=0

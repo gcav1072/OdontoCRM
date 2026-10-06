@@ -30,7 +30,7 @@ trap 'codigo=$?; if (( codigo != 0 )) && [[ "$BASH_COMMAND" != exit* ]]; then pr
 
 source "$(dirname "${BASH_SOURCE[0]}")/comun.sh"
 
-NOMBRE_MDNS="$NOMBRE_MDNS_POR_DEFECTO"
+NOMBRE_MDNS=""   # vacío = el que ya estuviera aprovisionado (ver comun.sh)
 LAN_CIDR=""
 ADMIN_URL=""
 CON_DNS=0
@@ -66,13 +66,18 @@ if [[ ! -f "$ETC_DIR/odontocrm.env" ]]; then
   fi
 fi
 
+NOMBRE_MDNS="$(resolver_nombre "$NOMBRE_MDNS")"
 IP_LAN="$(ip_lan)"
 [[ -n "$IP_LAN" ]] || IP_LAN="127.0.0.1"
 USUARIO_REAL="$(usuario_real)"
 
+# El nombre completo (con su dominio) se calcula UNA vez y se usa en todas partes:
+# certificado, proxy, DNS y el resumen. Antes se componía a mano en cada sitio.
+FQDN="$(nombre_fqdn "$NOMBRE_MDNS")"
+
 printf '%sOdontoCRM · 3/4 · Desplegar%s\n' "$C_TI" "$C_RE"
 detalle "código → $CODE_DIR      entorno → $ETC_DIR"
-detalle "nombre → $NOMBRE_MDNS.local   IP → $IP_LAN"
+detalle "nombre → $FQDN   IP → $IP_LAN"
 
 # ════════════════════════════════════════════════════════════════════════════
 # 1. Código en /opt — un clon de git, y SIN secretos
@@ -87,6 +92,7 @@ paso '1/9 · Código en /opt/odontocrm'
 # El clon es --local (del repositorio de trabajo): no hace falta ni red ni
 # credenciales de GitHub para instalar. Después se apunta `origin` al remoto de
 # verdad, para que las actualizaciones futuras sí vengan de ahí.
+git config --global --add safe.directory "$ORIGEN" 2>/dev/null || true
 REMOTO="$(git -C "$ORIGEN" remote get-url origin 2>/dev/null || true)"
 RAMA="$(git -C "$ORIGEN" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
 COMMIT="$(git -C "$ORIGEN" rev-parse --short HEAD 2>/dev/null || echo '?')"
@@ -110,17 +116,35 @@ elif (( DRY_RUN )); then
   detalle "[dry-run] git clone --local $ORIGEN $CODE_DIR   (rama $RAMA, commit $COMMIT)"
 elif [[ -d "$CODE_DIR/.git" ]]; then
   git -C "$CODE_DIR" fetch --prune --quiet "$ORIGEN" 2>/dev/null || true
-  git -C "$CODE_DIR" checkout --quiet "$COMMIT" 2>/dev/null ||
-    av "no pude poner el clon en el commit $COMMIT: se deja como estaba"
-  ok "clon ya existente en $CODE_DIR (actualizado a $COMMIT)"
+  # `checkout -B <rama> <commit>` deja la rama CREADA en ese commit. Un
+  # `git checkout <sha>` a secas **desacopla** la cabeza (HEAD), y entonces
+  # `odontocrm actualizar` —que lee la rama con `rev-parse --abbrev-ref HEAD`— recibe
+  # «HEAD» y muere con «'HEAD' no es un nombre válido de rama»: la instalación
+  # terminaba bien y la PRIMERA actualización era imposible.
+  if [[ -n "$RAMA" && "$RAMA" != "HEAD" ]]; then
+    git -C "$CODE_DIR" checkout --quiet -B "$RAMA" "$COMMIT" 2>/dev/null ||
+      av "no pude poner el clon en $COMMIT: se deja como estaba"
+  else
+    git -C "$CODE_DIR" checkout --quiet "$COMMIT" 2>/dev/null || true
+  fi
+  ok "clon ya existente en $CODE_DIR (rama $RAMA, commit $COMMIT)"
 elif [[ -n "$(ls -A "$CODE_DIR" 2>/dev/null)" ]]; then
   morir "$CODE_DIR no está vacío y no es un clon de git. No lo borro por si hay algo dentro:
     muévelo aparte (p. ej. mv $CODE_DIR ${CODE_DIR}.viejo) y vuelve a ejecutar."
 else
   mkdir -p "$(dirname "$CODE_DIR")"
+  # `safe.directory`: el instalador corre como root y el clon es del operador. Sin
+  # esto, git (>= 2.35.2) se niega a trabajar sobre él («dubious ownership») y el
+  # clon fallaría —o, peor, seguiría sin `origin`— en la instalación normal, que es
+  # `sudo bash instalar.sh` desde el clon del usuario.
+  git config --global --add safe.directory "$ORIGEN" 2>/dev/null || true
   git clone --local --quiet "$ORIGEN" "$CODE_DIR" || morir "no pude clonar el repositorio en $CODE_DIR"
-  git -C "$CODE_DIR" checkout --quiet "$COMMIT" 2>/dev/null || true
-  ok "código clonado en $CODE_DIR (commit $COMMIT)"
+  # La rama, creada en el commit desplegado (ver arriba: no desacoplar la cabeza).
+  if [[ -n "$RAMA" && "$RAMA" != "HEAD" ]]; then
+    git -C "$CODE_DIR" checkout --quiet -B "$RAMA" "$COMMIT" 2>/dev/null ||
+      av "no pude dejar la rama $RAMA en $COMMIT"
+  fi
+  ok "código clonado en $CODE_DIR (rama $RAMA, commit $COMMIT)"
 fi
 
 if (( ! DRY_RUN )) && [[ -n "$REMOTO" ]]; then
@@ -155,22 +179,35 @@ fi
 # 3. Claves EdDSA de los JWT
 # ════════════════════════════════════════════════════════════════════════════
 paso '3/9 · Claves de firma de los JWT'
-if [[ -f "$ETC_DIR/keys/jwt-private.pem" ]]; then
-  ok 'ya existen: se conservan (regenerarlas cerraría todas las sesiones abiertas)'
+CLAVE_PRIV="$ETC_DIR/keys/jwt-private.pem"
+CLAVE_PUB="$ETC_DIR/keys/jwt-public.pem"
+if [[ -f "$CLAVE_PRIV" && -f "$CLAVE_PUB" ]]; then
+  ok 'ya existen las dos: se conservan (regenerarlas cerraría todas las sesiones abiertas)'
 elif (( DRY_RUN )); then
   detalle "[dry-run] generaría $ETC_DIR/keys/jwt-{private,public}.pem"
 else
-  # Se usa el generador del propio proyecto, con el entorno del servicio, para que
-  # el formato sea exactamente el que espera el código (no uno parecido).
+  # Se usa el generador del propio proyecto, con el entorno del servicio, para que el
+  # formato sea exactamente el que espera el código (no uno parecido).
+  #
+  # OJO: con el entorno incompleto, `keys.js` cae a su ruta por defecto, que es
+  # RELATIVA AL CÓDIGO (`services/identity/.keys/`). Eso dejaría la clave privada
+  # DENTRO de /opt —justo lo que el ADR 0043 prohíbe— y el servicio no la
+  # encontraría. Por eso se comprueba DÓNDE quedó, y si quedó en el código se
+  # retira y se aborta en vez de seguir con una instalación que parece correcta.
+  registro=/tmp/odontocrm-keys.log
   (cd "$CODE_DIR" && node tools/con-entorno.mjs "$ETC_DIR" identity -- \
-    node services/identity/dist/keys.js) >/tmp/odontocrm-keys.log 2>&1 ||
-    {
-      tail -10 /tmp/odontocrm-keys.log
-      morir 'no pude generar las claves EdDSA'
-    }
+    node services/identity/dist/keys.js) >"$registro" 2>&1 || true
+
+  perdida="$CODE_DIR/services/identity/.keys/jwt-private.pem"
+  if [[ ! -f "$CLAVE_PRIV" ]]; then
+    [[ -f "$perdida" ]] && rm -rf "$CODE_DIR/services/identity/.keys"
+    tail -10 "$registro" 2>/dev/null | sed 's/^/      /'
+    morir "las claves no quedaron en $ETC_DIR/keys. Se habrían escrito dentro del código
+    (que es lo que NO debe pasar: los secretos no viven en $CODE_DIR)."
+  fi
   chown root:"$SERVICE_GROUP" "$ETC_DIR/keys"/*.pem 2>/dev/null || true
-  chmod 0640 "$ETC_DIR/keys/jwt-private.pem"
-  chmod 0644 "$ETC_DIR/keys/jwt-public.pem"
+  chmod 0640 "$CLAVE_PRIV"
+  chmod 0644 "$CLAVE_PUB"
   ok "claves nuevas en $ETC_DIR/keys (privada 0640 root:$SERVICE_GROUP)"
 fi
 
@@ -202,6 +239,8 @@ fi
 # 5. Usuarios iniciales
 # ════════════════════════════════════════════════════════════════════════════
 paso '5/9 · Usuarios iniciales'
+SIN_USUARIOS=0
+INFORME_CLAVE=/root/odontocrm-contrasena-inicial.txt
 if (( DRY_RUN )); then
   detalle '[dry-run] sembraría admin, recepcion y los odontólogos de clinic.ts'
 else
@@ -215,6 +254,23 @@ else
     } | tr 'a-z' 'A-Z' | sort -u
   )"
 
+  # ¿Hay ya usuarios? El seed **omite los que existen** (sin `--reset`), así que
+  # repetir la instalación y volver a imprimir una contraseña recién generada daría
+  # una clave que no vale para nadie y dejaría al operador sin poder entrar.
+  # Se cuenta antes de sembrar, con la credencial de /etc/odontocrm.
+  url_identidad="$(leer_clave_entorno "$ETC_DIR/identity.env" DATABASE_URL)"
+  ya_hay=0
+  if [[ -n "$url_identidad" ]]; then
+    resto="${url_identidad#postgres://}"
+    usuario_db="${resto%%:*}"
+    resto="${resto#*:}"
+    clave_db="${resto%%@*}"
+    base_db="${url_identidad##*/}"
+    existentes_db="$(PGPASSWORD="$clave_db" PGPASSFILE=/dev/null psql -X -w -tAc 'select count(*) from users' \
+      -h 127.0.0.1 -p 5432 -U "$usuario_db" -d "$base_db" 2>/dev/null || echo '?')"
+    [[ "$existentes_db" =~ ^[0-9]+$ ]] && (( existentes_db > 0 )) && ya_hay=1
+  fi
+
   # Contraseña temporal: se imprime UNA vez y el sistema obliga a cambiarla al
   # primer ingreso. No se guarda en ningún archivo.
   temporal="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-14)"
@@ -227,12 +283,28 @@ else
   if (cd "$CODE_DIR" && env "${entorno_claves[@]}" node tools/con-entorno.mjs "$ETC_DIR" identity -- \
     node services/identity/dist/seed.js) >"$registro" 2>&1; then
     ok "usuarios al día: $(printf '%s' "$usuarios" | tr '\n' ' ')"
-    printf '\n  %sContraseña temporal: %s%s%s\n' "$C_TI" "$C_TI" "$temporal" "$C_RE"
-    printf '  %s(se pide cambiarla al primer ingreso; no queda guardada en ningún archivo)%s\n\n' "$C_DIM" "$C_RE"
+    if (( ya_hay )); then
+      av 'ya había usuarios: el seed NO toca los que existen y la contraseña de arriba no vale'
+      detalle 'para entrar usa la que ya tenías; para regenerarlas a propósito: --reset'
+    else
+      # Se deja en un archivo de root (0600) además de imprimirla: si esto corre
+      # desde `odontocrm actualizar`, la salida va a un registro y una contraseña
+      # suelta en /tmp la lee cualquiera.
+      printf 'Contraseña temporal de los usuarios iniciales: %s\n' "$temporal" >"$INFORME_CLAVE"
+      chmod 0600 "$INFORME_CLAVE"; chown root:root "$INFORME_CLAVE" 2>/dev/null || true
+      if [[ -t 1 ]]; then
+        printf '\n  %sContraseña temporal: %s%s%s\n' "$C_TI" "$C_TI" "$temporal" "$C_RE"
+        printf '  %s(se pide cambiarla al primer ingreso)%s\n\n' "$C_DIM" "$C_RE"
+      else
+        ok "contraseña temporal de los usuarios iniciales → $INFORME_CLAVE (0600, solo root)"
+        detalle 'se pide cambiarla al primer ingreso'
+      fi
+    fi
   else
     tail -20 "$registro" | sed 's/^/    /'
-    av 'no pude sembrar los usuarios; el resto de la instalación sigue'
-    detalle "se puede repetir a mano: ver RUNBOOK §5 (registro: $registro)"
+    err 'NO se pudieron sembrar los usuarios: sin usuarios no se puede entrar al sistema'
+    detalle "mira $registro y repítelo a mano (RUNBOOK §5) antes de dar la instalación por buena"
+    SIN_USUARIOS=1
   fi
 fi
 
@@ -279,7 +351,13 @@ UNIDADES_SERVICIO+=(odontocrm-gateway.service)
 if (( DRY_RUN )); then
   detalle "[dry-run] systemctl enable --now ${UNIDADES_SERVICIO[*]}"
 else
-  systemctl enable --now "${UNIDADES_SERVICIO[@]}" >/dev/null 2>&1 ||
+  # `enable` para que arranquen al encender la máquina, y `restart` —no `--now`— para
+  # que los procesos tomen el entorno ACTUAL: `enable --now` no reinicia una unidad
+  # que ya estaba activa, así que tras un `--rotar-credenciales` los 9 procesos se
+  # quedaban con el DATABASE_URL viejo y fallaban con 28P01 hasta un reinicio a mano.
+  systemctl enable "${UNIDADES_SERVICIO[@]}" >/dev/null 2>&1 ||
+    av 'alguna unidad no se pudo habilitar para el arranque'
+  systemctl restart "${UNIDADES_SERVICIO[@]}" >/dev/null 2>&1 ||
     av 'alguna unidad no arrancó: se detalla al verificar (pieza 4)'
   if (( ! SIN_RESPALDO )); then
     systemctl enable --now odontocrm-backup.timer >/dev/null 2>&1 || true
@@ -307,11 +385,17 @@ paso '7/9 · Certificado TLS interno'
 # Con TLS interno el navegador avisa la primera vez hasta que se instala la CA en
 # cada aparato. No es un fallo: la CA se descarga desde el propio servidor (paso 8)
 # y se instala una sola vez por equipo.
-NOMBRES_TLS=("$NOMBRE_MDNS.local" localhost 127.0.0.1 "$IP_LAN")
+NOMBRES_TLS=("$FQDN" localhost 127.0.0.1 "$IP_LAN")
 CERT=/etc/pki/tls/certs/odontocrm.crt
 CLAVE=/etc/pki/tls/private/odontocrm.key
 
-if ! command -v mkcert >/dev/null 2>&1; then
+if cert_cubre "$CERT" "${NOMBRES_TLS[@]}"; then
+  # Ya hay un certificado que sirve para estos nombres. NO se reemite: podría ser
+  # uno propio de la clínica (de su proveedor), y pisarlo sin avisar es perderlo.
+  vence="$(openssl x509 -in "$CERT" -noout -enddate 2>/dev/null | cut -d= -f2 || true)"
+  ok "ya hay un certificado que cubre ${NOMBRES_TLS[*]}: se conserva"
+  [[ -n "$vence" ]] && detalle "válido hasta $vence"
+elif ! command -v mkcert >/dev/null 2>&1; then
   av 'mkcert no está instalado: sin certificado, el proxy no arrancará'
   detalle 'lo instala 10-preparar.sh (paquete mkcert)'
 elif (( DRY_RUN )); then
@@ -359,15 +443,15 @@ if (( CON_DNS )); then
     av 'no encuentro nombre/instalar-dns.sh en el código desplegado'
   fi
 else
-  ok "mDNS: los equipos entran por https://${NOMBRE_MDNS}.local"
+  ok "mDNS: los equipos entran por https://$FQDN"
   detalle 'si algún Android no resuelve el nombre, repite con --con-dns'
 fi
 
 # ── El proxy ────────────────────────────────────────────────────────────────
 if (( DRY_RUN )); then
-  detalle "[dry-run] nginx/instalar.sh --host=\"$NOMBRE_MDNS.local $IP_LAN\""
+  detalle "[dry-run] nginx/instalar.sh --host=\"$FQDN $IP_LAN\""
 elif [[ -f "$CODE_DIR/infra/fedora/nginx/instalar.sh" ]]; then
-  bash "$CODE_DIR/infra/fedora/nginx/instalar.sh" --host="$NOMBRE_MDNS.local $IP_LAN" | sed 's/^/  /' ||
+  bash "$CODE_DIR/infra/fedora/nginx/instalar.sh" --host="$FQDN $IP_LAN" | sed 's/^/  /' ||
     av 'el instalador del proxy reportó un problema'
 else
   av 'no encuentro nginx/instalar.sh en el código desplegado'
@@ -413,29 +497,57 @@ elif (( DRY_RUN )); then
   detalle '[dry-run] firewall-cmd --add-service={http,https} en la zona de la LAN'
 else
   systemctl enable --now firewalld >/dev/null 2>&1 || true
+
   if [[ -n "$LAN_CIDR" ]]; then
-    timeout 20 firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=${LAN_CIDR} port port=443 protocol=tcp accept" >/dev/null
-    timeout 20 firewall-cmd --permanent --add-service=http >/dev/null 2>&1 || true
+    ZONA=""
+    if timeout 20 firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=${LAN_CIDR} port port=443 protocol=tcp accept" >/dev/null 2>&1 &&
+       timeout 20 firewall-cmd --permanent --add-service=http >/dev/null 2>&1; then
+      abierto=1
+    else
+      abierto=0
+    fi
     modo_fw="regla estricta para $LAN_CIDR"
   else
     IFACE="$(interfaz_lan)"
     ZONA="$(timeout 15 firewall-cmd --get-zone-of-interface="${IFACE}" 2>/dev/null || echo public)"
     [[ -n "$ZONA" && "$ZONA" != "no" ]] || ZONA=public
-    timeout 20 firewall-cmd --permanent --zone="$ZONA" --add-service=https >/dev/null 2>&1 || true
-    timeout 20 firewall-cmd --permanent --zone="$ZONA" --add-service=http >/dev/null 2>&1 || true
+    if timeout 20 firewall-cmd --permanent --zone="$ZONA" --add-service=https >/dev/null 2>&1 &&
+       timeout 20 firewall-cmd --permanent --zone="$ZONA" --add-service=http >/dev/null 2>&1; then
+      abierto=1
+    else
+      abierto=0
+    fi
     modo_fw="zona «$ZONA» de ${IFACE:-la interfaz de la LAN} (vale en cualquier red)"
   fi
-  timeout 30 firewall-cmd --reload >/dev/null
-  ok "80 y 443 abiertos para la LAN — $modo_fw"
 
-  # Lo que NO debe estar abierto. Es una comprobación, no un adorno: publicar la
-  # base de datos en la red de la clínica es el fallo de seguridad más fácil de
-  # cometer y el más silencioso.
-  abiertos="$(timeout 15 firewall-cmd --list-ports 2>/dev/null || true)"
-  for puerto in 5432 4001 4002 4003 4004 4005 4006 4007 4008 8090; do
-    grep -q "\b${puerto}/tcp\b" <<<"$abiertos" && av "el puerto $puerto está abierto y no debería"
+  # El `ok` va DESPUÉS de comprobar el código de salida. Antes se imprimía «80 y 443
+  # abiertos» pasara lo que pasara: si firewall-cmd fallaba, la instalación decía
+  # haber abierto los puertos y desde los aparatos no entraba nadie.
+  if (( abierto )) && timeout 30 firewall-cmd --reload >/dev/null 2>&1; then
+    ok "80 y 443 abiertos para la LAN — $modo_fw"
+  else
+    err 'NO se pudieron abrir el 80 y el 443: desde otro aparato no cargará la aplicación'
+    detalle "abre a mano el https (y el http) en la zona de la LAN:  sudo firewall-cmd --permanent --add-service=https && sudo firewall-cmd --reload"
+  fi
+
+  # Lo que NO debe estar abierto. Se consulta la zona de la LAN **y** la de por
+  # defecto: `--list-ports` a secas mira solo la de por defecto, así que un puerto
+  # publicado en la zona de la interfaz no se veía y el «no están publicados» mentía.
+  zonas=(public)
+  [[ -n "${ZONA:-}" && "$ZONA" != "public" ]] && zonas+=("$ZONA")
+  abiertos=""
+  for z in "${zonas[@]}"; do
+    abiertos+="$(timeout 15 firewall-cmd --zone="$z" --list-ports 2>/dev/null || true)"$'\n'
+    abiertos+="$(timeout 15 firewall-cmd --zone="$z" --list-rich-rules 2>/dev/null || true)"$'\n'
   done
-  ok 'comprobado: la base y los servicios internos NO están publicados'
+  publicados=0
+  for puerto in 5432 4001 4002 4003 4004 4005 4006 4007 4008 8090; do
+    if grep -qE "(^|[^0-9])${puerto}/(tcp|udp)" <<<"$abiertos"; then
+      av "el puerto $puerto está abierto a la red y no debería (la base y los servicios van por dentro)"
+      publicados=$((publicados + 1))
+    fi
+  done
+  (( publicados == 0 )) && ok 'comprobado: la base y los servicios internos NO están publicados'
 fi
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -504,5 +616,10 @@ if (( ! DRY_RUN )); then
   fi
 fi
 
-printf '\n%s3/4 listo.%s El servidor está desplegado y arrancado.\n' "$C_TI" "$C_RE"
+if (( SIN_USUARIOS )); then
+  printf '\n%s! El servidor está desplegado, pero NO hay usuarios con los que entrar.%s\n' "$C_TI" "$C_AV" "$C_RE"
+  printf '  No lo des por bueno hasta sembrarlos (arriba está el registro con el fallo).\n'
+else
+  printf '\n%s3/4 listo.%s El servidor está desplegado y arrancado.\n' "$C_TI" "$C_RE"
+fi
 detalle "siguiente:  sudo bash $INSTALADOR_DIR/40-verificar.sh"

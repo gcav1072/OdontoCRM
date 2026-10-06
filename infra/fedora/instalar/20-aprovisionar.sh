@@ -24,7 +24,7 @@ trap 'codigo=$?; if (( codigo != 0 )) && [[ "$BASH_COMMAND" != exit* ]]; then pr
 
 source "$(dirname "${BASH_SOURCE[0]}")/comun.sh"
 
-NOMBRE_MDNS="$NOMBRE_MDNS_POR_DEFECTO"
+NOMBRE_MDNS=""   # vacío = recuperar el que ya tuviera, o el de por defecto
 IP=""
 ADMIN_URL=""
 EXTRAS=()
@@ -50,13 +50,20 @@ printf '%sOdontoCRM · 2/4 · Aprovisionar%s\n' "$C_TI" "$C_RE"
 
 # La IP de la LAN se deduce sola: es la que van a teclear los aparatos de la
 # consulta, y con ella se forma WEB_ORIGIN (el CORS del gateway).
+NOMBRE_MDNS="$(resolver_nombre "$NOMBRE_MDNS")"
 [[ -n "$IP" ]] || IP="$(ip_lan)"
 [[ -n "$IP" ]] && detalle "IP de la LAN: $IP" || av 'no pude deducir la IP de la LAN (usa --ip=…)'
+
+# El nombre se escribe COMPLETO (`odontocrm.local`), no a secas: va dentro de
+# WEB_ORIGIN (CORS) y de PUBLIC_APP_URL (el QR del récipe), y tiene que ser el mismo
+# por el que se entra —el del certificado y el del proxy— o el enlace no resuelve.
+FQDN="$(nombre_fqdn "$NOMBRE_MDNS")"
+detalle "nombre de los equipos: $FQDN"
 
 argumentos=(
   "$ORIGEN/infra/fedora/instalar/aprovisionar.mjs"
   "--env-dir=$ETC_DIR"
-  "--host=$NOMBRE_MDNS"
+  "--host=$FQDN"
   "--tz=$ZONA_HORARIA"
 )
 [[ -n "$IP" ]] && argumentos+=("--ip=$IP")

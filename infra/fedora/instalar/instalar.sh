@@ -37,7 +37,7 @@ trap 'codigo=$?; if (( codigo != 0 )) && [[ "$BASH_COMMAND" != exit* ]]; then pr
 
 source "$(dirname "${BASH_SOURCE[0]}")/comun.sh"
 
-NOMBRE_MDNS="$NOMBRE_MDNS_POR_DEFECTO"
+NOMBRE_MDNS=""   # vacío = el que ya estuviera aprovisionado (ver comun.sh)
 LAN_CIDR=""
 ADMIN_URL=""
 CON_DNS=0
@@ -123,12 +123,17 @@ detalle "usuario     : $(usuario_real)"
 (( DRY_RUN )) && av '--dry-run: no se cambia nada'
 (( ROTAR )) && av '--rotar-credenciales: se generan contraseñas NUEVAS'
 
+NOMBRE_MDNS="$(resolver_nombre "$NOMBRE_MDNS")"
 COMUNES=(--nombre-mdns="$NOMBRE_MDNS")
 (( DRY_RUN )) && COMUNES+=(--dry-run)
-[[ -n "$ADMIN_URL" ]] && COMUNES+=(--admin-url="$ADMIN_URL")
 
+# OJO: `--admin-url` NO va en COMUNES. Lo entienden las piezas 2 y 3, pero la 1
+# (preparar la máquina) no lo conoce y abortaría con «opción no reconocida» en el
+# primer paso de la instalación —que es exactamente lo que hacía—.
 ARGS_APROV=("${COMUNES[@]}")
 ARGS_DESP=("${COMUNES[@]}")
+[[ -n "$ADMIN_URL" ]] && ARGS_APROV+=(--admin-url="$ADMIN_URL")
+[[ -n "$ADMIN_URL" ]] && ARGS_DESP+=(--admin-url="$ADMIN_URL")
 (( ROTAR )) && ARGS_APROV+=(--rotate)
 (( CON_DNS )) && ARGS_DESP+=(--con-dns)
 (( SIN_RESPALDO )) && ARGS_DESP+=(--sin-respaldo)

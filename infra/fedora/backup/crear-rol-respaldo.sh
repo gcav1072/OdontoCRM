@@ -48,7 +48,9 @@ morir(){ err "$1"; exit 1; }
 [[ $EUID -eq 0 ]] || morir 'hay que ejecutarlo como root (sudo)'
 
 ADMIN_URL="${ADMIN_URL:-postgres:///postgres?host=/var/run/postgresql}"
-ETC_DIR="/etc/odontocrm"
+# El mismo directorio de entorno que el resto del instalador, para poder probarlo
+# en otro sitio sin tocar la configuración del servidor.
+ETC_DIR="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}"
 backup_env="$ETC_DIR/backup.env"
 pgpass="$ETC_DIR/.pgpass"
 rol="odonto_backup"
@@ -78,13 +80,15 @@ psql "$ADMIN_URL" -tAc 'select 1' >/dev/null 2>&1 ||
 
 [[ -f "$backup_env" ]] || morir "falta $backup_env: ejecuta antes infra/fedora/install.sh --apply"
 
-# ── Contraseña: la que te den o una nueva; nunca sale por pantalla ───────────
-if [[ "$rotar" == "1" || -z "$password" ]]; then
-  password="$(openssl rand -base64 32 | tr -d '/+=' | cut -c1-32)"
-fi
-
+# ── Contraseña: la que te den, o la que ya había, o una nueva ────────────────
+# El orden importa. Antes se generaba una contraseña NUEVA antes de mirar si el rol
+# ya existía, y la condición para reutilizar la de `.pgpass` era `-z "${1:-}"` (que
+# con cualquier argumento —y el instalador siempre pasa `--admin-role=`— es falsa):
+# la rama de reutilización era inalcanzable. Resultado: cada despliegue rotaba la
+# credencial de respaldo sin que nadie lo pidiera, `--rotar` perdía sentido y un
+# respaldo en curso fallaba con 28P01.
 existe="$(psql "$ADMIN_URL" -tAc "select 1 from pg_roles where rolname = '$rol'" | tr -d ' ')"
-if [[ "$existe" == "1" && "$rotar" != "1" && -z "${1:-}" ]]; then
+if [[ "$existe" == "1" && "$rotar" != "1" && -z "$password" ]]; then
   # El rol ya está: se reutiliza la contraseña que haya en .pgpass para no dejarlo fuera.
   if [[ -r "$pgpass" ]] && grep -q "^127.0.0.1:5432:\*:$rol:" "$pgpass"; then
     av "el rol $rol ya existe: reutilizo su contraseña de $pgpass (usa --rotar para cambiarla)"
@@ -92,6 +96,9 @@ if [[ "$existe" == "1" && "$rotar" != "1" && -z "${1:-}" ]]; then
   else
     av "el rol $rol ya existe y no hay .pgpass: se le pone una contraseña nueva"
   fi
+fi
+if [[ -z "$password" ]]; then
+  password="$(openssl rand -base64 32 | tr -d '/+=' | cut -c1-32)"
 fi
 
 # ── 1. El rol ────────────────────────────────────────────────────────────────
@@ -164,9 +171,23 @@ ok "CONNECT y USAGE en todos los esquemas de las bases existentes (${#bases[@]} 
 
 # ── 3. .pgpass y backup.env ──────────────────────────────────────────────────
 cp -n "$pgpass" "$pgpass.antes" 2>/dev/null || true
-printf '# OdontoCRM · credenciales de respaldo (0600 root:root, no versionar)\n127.0.0.1:5432:*:%s:%s\n' "$rol" "$password" >"$pgpass"
+# Se ACTUALIZA la línea del rol de respaldo y se CONSERVA el resto del archivo.
+#
+# Antes se truncaba (`>`): eso borraba la credencial de administración que este
+# mismo guion añade más abajo para la restauración, así que en la corrida siguiente
+# no la encontraba y volvía a generar OTRA contraseña —al superusuario del operador
+# le cambiaba la clave en cada despliegue— y `.pgpass` ganaba una línea por corrida.
+# Es la misma clase de fallo que el resto del rediseño: dos escritores del mismo
+# dato, uno de ellos sin mirar lo que había.
+if [[ -r "$pgpass" ]]; then
+  grep -v "^127.0.0.1:5432:\*:$rol:" "$pgpass" >"$pgpass.nuevo" 2>/dev/null || true
+fi
+[[ -s "$pgpass.nuevo" ]] ||
+  printf '# OdontoCRM · credenciales de respaldo (0600 root:root, no versionar)\n' >"$pgpass.nuevo"
+printf '127.0.0.1:5432:*:%s:%s\n' "$rol" "$password" >>"$pgpass.nuevo"
+mv -f "$pgpass.nuevo" "$pgpass"
 chown root:root "$pgpass"; chmod 0600 "$pgpass"
-ok "$pgpass escrito"
+ok "$pgpass actualizado (se conservan las credenciales que ya hubiera)"
 
 # backup.env: se ajustan solo las claves de conexión (se respeta el resto).
 for par in "PG_HOST:127.0.0.1" "PG_PORT:5432" "PG_USER:$rol" "PGPASSFILE:$pgpass"; do
@@ -190,12 +211,20 @@ if [[ -n "$admin_role" ]]; then
   es_super="$(psql "$ADMIN_URL" -tAc "select coalesce((select rolsuper from pg_roles where rolname='$admin_role')::text, 'no-existe')" | tr -d ' ')"
   case "$es_super" in
     true)
-      admin_pass="$(openssl rand -base64 32 | tr -d '/+=' | cut -c1-32)"
-      if psql "$ADMIN_URL" -q -c "alter role $admin_role password '$admin_pass'" >/dev/null 2>&1; then
-        printf '127.0.0.1:5432:*:%s:%s\n' "$admin_role" "$admin_pass" >>"$pgpass"
-        ok "credencial de administración añadida a .pgpass para el rol $admin_role (solo la usa la restauración)"
+      # Si ya hay una credencial suya en .pgpass, se CONSERVA. El instalador llama a
+      # este guion en cada despliegue, y cambiarle la contraseña al superusuario del
+      # operador en cada corrida —y añadir otra línea a .pgpass— es una sorpresa que
+      # nadie pidió: la restauración seguiría funcionando con la que ya estaba.
+      if grep -q "^127.0.0.1:5432:\*:$admin_role:" "$pgpass" 2>/dev/null; then
+        ok "el rol $admin_role ya tiene credencial en .pgpass: se conserva"
       else
-        av "no pude poner contraseña al rol $admin_role: la restauración pedirá credenciales a mano"
+        admin_pass="$(openssl rand -base64 32 | tr -d '/+=' | cut -c1-32)"
+        if psql "$ADMIN_URL" -q -c "alter role $admin_role password '$admin_pass'" >/dev/null 2>&1; then
+          printf '127.0.0.1:5432:*:%s:%s\n' "$admin_role" "$admin_pass" >>"$pgpass"
+          ok "credencial de administración añadida a .pgpass para el rol $admin_role (solo la usa la restauración)"
+        else
+          av "no pude poner contraseña al rol $admin_role: la restauración pedirá credenciales a mano"
+        fi
       fi
       ;;
     no-existe) av "el rol $admin_role no existe: la restauración necesitará --admin-user" ;;

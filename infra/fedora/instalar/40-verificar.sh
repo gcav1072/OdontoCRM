@@ -17,11 +17,10 @@ set -uo pipefail
 
 trap 'codigo=$?; printf "\n✖ %s: un comando devolvió error en la línea %s (código %s):\n    %s\n" "${0##*/}" "$LINENO" "$codigo" "$(sed -n "${LINENO}p" "$0" | sed "s/^ *//")" >&2' ERR
 trap 'codigo=$?; if (( codigo != 0 )) && [[ "$BASH_COMMAND" != exit* ]]; then printf "\n✖ %s terminó con error (código %s). Última orden:\n    %s\n" "${0##*/}" "$codigo" "$BASH_COMMAND" >&2; fi' EXIT
-trap 'codigo=$?; if (( codigo != 0 )) && [[ "$BASH_COMMAND" != exit* ]]; then printf "\n✖ %s terminó con error (código %s). Última orden:\n    %s\n" "${0##*/}" "$codigo" "$BASH_COMMAND" >&2; fi' EXIT
 
 source "$(dirname "${BASH_SOURCE[0]}")/comun.sh"
 
-NOMBRE_MDNS="$NOMBRE_MDNS_POR_DEFECTO"
+NOMBRE_MDNS=""   # vacío = el que ya estuviera aprovisionado (ver comun.sh)
 RAPIDO=0
 for arg in "$@"; do
   case "$arg" in
@@ -38,11 +37,12 @@ fallo() {
   PROBLEMAS=$((PROBLEMAS + 1))
 }
 
+NOMBRE_MDNS="$(resolver_nombre "$NOMBRE_MDNS")"
 printf '%sOdontoCRM · 4/4 · Verificar%s\n' "$C_TI" "$C_RE"
 IP_LAN="$(ip_lan)"
 
 # ── 1. Las credenciales CONECTAN (la prueba que faltaba antes) ──────────────
-paso '1/6 · Credenciales: cada una tiene que conectar'
+paso '1/6 · Credenciales y usuarios: cada credencial tiene que conectar'
 if [[ ! -f "$ETC_DIR/odontocrm.env" ]]; then
   fallo "no hay entorno en $ETC_DIR — falta ejecutar 20-aprovisionar.sh"
 else
@@ -51,6 +51,25 @@ else
   else
     fallo 'alguna credencial NO conecta (arriba se dice cuál y qué archivo revisar)'
     detalle 'se arregla volviendo a aprovisionar:  sudo bash 20-aprovisionar.sh'
+  fi
+
+  # ¿Y se puede ENTRAR? Un servidor con los 9 servicios sanos y sin usuarios deja a
+  # la consulta fuera, y el resumen diría «listo para la consulta». Se comprueba el
+  # EFECTO: que existan las cuentas en la base de identidad.
+  url_id="$(leer_clave_entorno "$ETC_DIR/identity.env" DATABASE_URL)"
+  if [[ -z "$url_id" ]]; then
+    av 'no pude leer la credencial de identidad para contar los usuarios'
+  else
+    resto="${url_id#postgres://}"; usu_db="${resto%%:*}"; resto="${resto#*:}"
+    cla_db="${resto%%@*}"; bas_db="${url_id##*/}"
+    cuantos="$(PGPASSWORD="$cla_db" PGPASSFILE=/dev/null psql -X -w -tAc 'select count(*) from users' \
+      -h 127.0.0.1 -p 5432 -U "$usu_db" -d "$bas_db" 2>/dev/null || echo '?')"
+    if [[ "$cuantos" =~ ^[0-9]+$ ]] && (( cuantos > 0 )); then
+      ok "hay $cuantos usuario(s) con los que entrar"
+    else
+      fallo 'NO hay usuarios en la base de identidad: nadie puede iniciar sesión'
+      detalle "siémbralos:  cd $CODE_DIR && node tools/con-entorno.mjs $ETC_DIR identity -- node services/identity/dist/seed.js"
+    fi
   fi
 fi
 
@@ -81,9 +100,13 @@ if (( RAPIDO )); then
   detalle 'omitido (--rapido)'
 else
   systemctl is-active --quiet nginx || fallo 'nginx no está activo'
-  spa="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 8 https://127.0.0.1/ || echo 000)"
-  api="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 8 https://127.0.0.1/api/v1/meta || echo 000)"
-  redirect="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 -H 'Host: 127.0.0.1' http://127.0.0.1/ || echo 000)"
+  spa="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 8 https://127.0.0.1/ || true)"
+  api="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 8 https://127.0.0.1/api/v1/meta || true)"
+  redirect="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 -H 'Host: 127.0.0.1' http://127.0.0.1/ || true)"
+  # `curl` escribe el código aunque falle (000), pero si ni arranca no escribe nada.
+  [[ -n "$spa" ]] || spa=000
+  [[ -n "$api" ]] || api=000
+  [[ -n "$redirect" ]] || redirect=000
 
   [[ "$spa" == "200" ]] && ok 'la interfaz se sirve por HTTPS (200)' ||
     fallo "la interfaz devolvió $spa (¿nginx? ¿la SPA compilada? ¿SELinux?)"
@@ -94,20 +117,22 @@ else
 
   # La CA en los formatos que piden los aparatos: si esto falla, cada equipo
   # tendría que copiarla a mano y el aviso de certificado no se quitaría nunca.
-  ca="$(curl -s -o /tmp/odontocrm-ca-verif.crt -w '%{http_code}' --max-time 8 http://127.0.0.1/ca.crt || echo 000)"
+  ca="$(curl -s -o /tmp/odontocrm-ca-verif.crt -w '%{http_code}' --max-time 8 http://127.0.0.1/ca.crt || true)"
+  [[ -n "$ca" ]] || ca=000
   if [[ "$ca" == "200" ]] && openssl x509 -in /tmp/odontocrm-ca-verif.crt -noout -subject >/dev/null 2>&1; then
     ok "la CA se descarga desde http://<servidor>/ca.crt ($(openssl x509 -in /tmp/odontocrm-ca-verif.crt -noout -subject 2>/dev/null | head -c 46)…)"
   else
     fallo "no pude descargar la CA (código $ca): los aparatos no podrían quitar el aviso"
   fi
   for formato in ca.der odontocrm.mobileconfig ca-windows.ps1 ca-linux.sh; do
-    codigo="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://127.0.0.1/$formato" || echo 000)"
+    codigo="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://127.0.0.1/$formato" || true)"
+    [[ -n "$codigo" ]] || codigo=000
     [[ "$codigo" == "200" ]] && ok "  /$formato disponible" || av "  /$formato devolvió $codigo"
   done
 
   # El SSE de las pantallas: sin búfer, o la pantalla de la sala se queda congelada.
   sse="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 8 -H 'Accept: text/event-stream' \
-    "https://127.0.0.1/api/v1/screens/lobby/stream" || echo 000)"
+    "https://127.0.0.1/api/v1/screens/lobby/stream" || true)"
   case "$sse" in
     200 | 401 | 403) ok "las pantallas SSE llegan al servicio ($sse sin token: correcto)" ;;
     404) fallo 'el SSE devuelve 404: falta la location /api/v1/screens/ en el proxy' ;;
@@ -126,8 +151,11 @@ else
   nombres="$(openssl x509 -in "$CERT" -noout -ext subjectAltName 2>/dev/null | tail -n +2 | tr -d ' ')"
   vence="$(openssl x509 -in "$CERT" -noout -enddate 2>/dev/null | cut -d= -f2)"
   ok "certificado válido hasta $vence"
-  for esperado in "$NOMBRE_MDNS.local" "$IP_LAN"; do
-    grep -q "$esperado" <<<"$nombres" && ok "  cubre $esperado" ||
+  # `grep -q ""` casa SIEMPRE: si la IP saliera vacía, la comprobación diría «cubre »
+  # en blanco y daría por bueno un certificado que no sirve para esa dirección.
+  for esperado in "$(nombre_fqdn "$NOMBRE_MDNS")" "$IP_LAN"; do
+    [[ -n "$esperado" ]] || continue
+    grep -q -- "$esperado" <<<"$nombres" && ok "  cubre $esperado" ||
       fallo "  NO cubre $esperado: los equipos que entren así verán un aviso"
   done
   # Y que HTTPS funcione de verdad con él (no solo que el archivo exista).
@@ -154,8 +182,17 @@ elif (( $(id -u) != 0 )); then
   detalle 'repítelo con:  sudo bash infra/fedora/instalar/40-verificar.sh'
 else
   # `timeout` por si acaso: una comprobación nunca debe poder colgarse.
-  servicios_fw="$(timeout 15 firewall-cmd --list-services 2>/dev/null || true)"
-  puertos_fw="$(timeout 15 firewall-cmd --list-ports 2>/dev/null || true)"
+  # Se miran la zona por defecto Y la de la interfaz de la LAN: `--list-ports` a
+  # secas solo ve la primera, así que lo publicado en la zona de la LAN no aparecía.
+  IFACE_FW="$(interfaz_lan)"
+  ZONA_FW="$(timeout 15 firewall-cmd --get-zone-of-interface="${IFACE_FW}" 2>/dev/null || echo public)"
+  [[ -n "$ZONA_FW" && "$ZONA_FW" != "no" ]] || ZONA_FW=public
+  servicios_fw=""
+  puertos_fw=""
+  for z in public "$ZONA_FW"; do
+    servicios_fw+="$(timeout 15 firewall-cmd --zone="$z" --list-services 2>/dev/null || true) "
+    puertos_fw+="$(timeout 15 firewall-cmd --zone="$z" --list-ports 2>/dev/null || true) "
+  done
   if grep -qE '\bhttps\b' <<<"$servicios_fw" || grep -q '443/tcp' <<<"$puertos_fw"; then
     ok '443 abierto: los aparatos de la LAN pueden entrar'
   else

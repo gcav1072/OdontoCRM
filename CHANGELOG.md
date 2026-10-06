@@ -51,6 +51,28 @@ clínica, uno de ellos con el síntoma exacto que se quería evitar:
 | El aviso de `--dry-run` tapaba la guarda de «ya estamos sobre el código desplegado» | Ejecutándolo desde el propio directorio desplegado | La comprobación va **antes** que el modo de prueba |
 | `firewall-cmd` **se colgaba indefinidamente** sin root (polkit pide contraseña y no hay agente) | Barrido de todos los modos de ejecución | Se omite la sección sin root con un aviso, y todas las llamadas llevan `timeout` |
 
+### Lo que encontró la revisión adversarial (y quedó corregido)
+
+Una revisión independiente del instalador encontró **nueve defectos más**, dos de ellos
+graves. Todos verificados reproduciéndolos antes de arreglarlos:
+
+| Defecto | Consecuencia | Corrección |
+| :--- | :--- | :--- |
+| `--admin-url` se pasaba también a la pieza 1, que no lo conoce | La opción documentada **abortaba la instalación en el paso 1/4** | Solo se pasa a las piezas 2 y 3 |
+| El clon quedaba con la cabeza **desacoplada** (`git checkout <sha>`) | `odontocrm actualizar` moría siempre con *«'HEAD' no es un nombre válido de rama»*: la instalación acababa bien y **la primera actualización era imposible** | `git checkout -B <rama> <commit>`: la rama queda creada |
+| El nombre iba sin `.local` en `WEB_ORIGIN` y `PUBLIC_APP_URL` | El **QR de todos los récipes** apuntaba a un host que no resuelve | Se escribe el nombre completo |
+| El nombre no se recordaba entre corridas | Cada `actualizar` reemitía el certificado para `odontocrm.local`: una clínica con otro nombre perdía el suyo | Se persiste en `odontocrm.env` y las piezas lo recuperan |
+| El certificado se reemitía **siempre** | Pisaba sin avisar un certificado propio de la clínica | Solo se emite si falta o si no cubre los nombres |
+| `crear-rol-respaldo.sh` **truncaba** `.pgpass` y la guarda de reutilización era inalcanzable | Rotaba la credencial de respaldo **y la del superusuario** en cada despliegue | Se conserva el archivo; probado en tres corridas seguidas |
+| No se reiniciaban los servicios tras `--rotar-credenciales` | Los 9 procesos seguían con el `DATABASE_URL` viejo (28P01) | `systemctl restart`, no `enable --now` |
+| El firewall imprimía «80 y 443 abiertos» sin comprobar nada | Decía haber abierto puertos que seguían cerrados | Se comprueba el código de salida y se inspecciona la zona de la LAN |
+| El fallo del seed era solo un aviso | Podía terminar con «listo para la consulta» y **nadie podía entrar** | Se comprueba que existan usuarios, y no se imprime una contraseña que no vale al repetir |
+
+También: `git safe.directory` para que el clon funcione cuando el instalador corre como root
+sobre el clon del operador; las claves JWT se verifican **dónde** aterrizan (el generador tiene
+una ruta de emergencia que las escribiría dentro de `/opt`, justo lo que el ADR prohíbe); el
+registro de `actualizar` pasa a 0600; y los guiones de respaldo respetan `ODONTOCRM_ENV_DIR`.
+
 ### Verificación (lo que se probó de verdad en esta sesión)
 
 - **El aprovisionador, contra el PostgreSQL real de esta máquina**: creó los 9 roles y las 9

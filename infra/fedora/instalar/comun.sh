@@ -87,12 +87,53 @@ interfaz_lan() {
   ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1 || true
 }
 
-# La red /24 de la interfaz por la que se sale a la LAN (para abrir 443 solo ahí).
-red_lan() {
-  local iface
-  iface="$(interfaz_lan)"
-  [[ -n "$iface" ]] || return 0
-  ip -o -f inet addr show dev "$iface" 2>/dev/null | awk 'NR==1 {print $4; exit}' || true
+# Lee `CLAVE=VALOR` de un archivo de entorno, sin interpretarlo (nada de `source`).
+leer_clave_entorno() {
+  local archivo="$1" clave="$2"
+  [[ -r "$archivo" ]] || return 0
+  sed -n "s/^${clave}=//p" "$archivo" 2>/dev/null | head -1 || true
+}
+
+# El nombre con el que entran los equipos de la consulta.
+#
+# Si no se pasa `--nombre-mdns`, se RECUPERA el que se usó al aprovisionar (queda en
+# odontocrm.env). Importa: `odontocrm actualizar` llama al despliegue sin argumentos,
+# y sin esto una clínica instalada como `consultorio` volvía a `odontocrm.local` en
+# cada actualización —reemitiendo el certificado para el nombre equivocado—, con lo
+# que los equipos se quedaban con el aviso de certificado.
+resolver_nombre() {
+  local nombre="${1:-}"
+  if [[ -z "$nombre" ]]; then
+    nombre="$(leer_clave_entorno "$ETC_DIR/odontocrm.env" ODONTOCRM_NOMBRE || true)"
+  fi
+  printf '%s' "${nombre:-$NOMBRE_MDNS_POR_DEFECTO}"
+}
+
+# El nombre completo: se le añade `.local` (el espacio de mDNS) salvo que ya traiga
+# un dominio propio. Es el error que hacía que WEB_ORIGIN y PUBLIC_APP_URL dijeran
+# `https://odontocrm` mientras el certificado y nginx usaban `odontocrm.local`: el QR
+# de todos los récipes apuntaba a un nombre que no resuelve en ningún equipo.
+nombre_fqdn() {
+  local nombre="${1:-}"
+  if [[ "$nombre" == *.* ]]; then printf '%s' "$nombre"; else printf '%s.local' "$nombre"; fi
+}
+
+# ¿El certificado cubre TODOS estos nombres? Se mira el `subjectAltName` real, no
+# el archivo: se usa para no reemitir un certificado que ya sirve (pisar uno propio
+# de la clínica sin avisar sería perder el que emitió su proveedor) y para que la
+# verificación diga la verdad.
+cert_cubre() {
+  local cert="$1"
+  shift
+  [[ -f "$cert" ]] || return 1
+  local alt
+  alt="$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null | tail -n +2 | tr -d ' ')" || true
+  [[ -n "$alt" ]] || return 1
+  local nombre
+  for nombre in "$@"; do
+    grep -q "$nombre" <<<"$alt" || return 1
+  done
+  return 0
 }
 
 # ── Ejecución que respeta --dry-run ──────────────────────────────────────────
