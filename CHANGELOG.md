@@ -131,6 +131,17 @@ TLS emitido, proxy sirviendo la interfaz, firewall con el 80 y el 443, y **el c�
    pista**. Ahora se dice cuántos son y se imprime la receta exacta, con los nombres reales,
    para ponerles una contraseña elegida por el operador.
 
+**La verificación final pasó entera** (`40-verificar.sh`, 6/6): las 9 credenciales conectan,
+los 9 servicios responden `/health` y `/ready`, la interfaz y la API por HTTPS, la CA en los
+cinco formatos con su tipo correcto, el certificado cubriendo nombre e IP, y el firewall con el
+80 y el 443 abiertos y la base sin publicar. **«Todo correcto. El servidor está listo para la
+consulta.»**
+
+Último detalle corregido: el aviso de SELinux prometía decir *cuál* era la denegación y no
+imprimía nada — el patrón esperaba `denied{` y una línea AVC real trae `denied  { read }`, con
+espacios. Ahora resume los campos que importan:
+`denied { read } comm="nginx" name="ca" tclass=dir`.
+
 ### Verificación (lo que se probó de verdad en esta sesión)
 
 - **El aprovisionador, contra el PostgreSQL real de esta máquina**: creó los 9 roles y las 9

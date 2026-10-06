@@ -259,8 +259,15 @@ if command -v getenforce >/dev/null 2>&1 && [[ "$(getenforce 2>/dev/null)" == "E
       ok 'SELinux en Enforcing, sin denegaciones hoy'
     else
       av "SELinux: $denegaciones denegación(es) hoy. La última, para saber de qué es:"
-      ausearch -m avc -ts today 2>/dev/null | grep 'denied' | tail -1 |
-        grep -oE 'denied\{[^}]*\} for [^ ]*[^ ]*' | head -c 160 | sed 's/^/      /' || true
+      # Se extraen los campos que importan del AVC. El patrón anterior esperaba
+      # `denied{` y en una línea real hay `denied  { read }` (con espacios): no
+      # coincidía nunca y el aviso se quedaba sin decir de qué era la denegación,
+      # que es justo para lo que existe.
+      resumen_avc="$(ausearch -m avc -ts today 2>/dev/null | grep 'denied' | tail -1 |
+        grep -oE 'denied[[:space:]]+\{[^}]*\}|comm="[^"]*"|name="[^"]*"|tclass=[a-z_]+' |
+        tr '\n' ' ' | tr -s ' ' || true)"
+      [[ -n "$resumen_avc" ]] && detalle "$resumen_avc" ||
+        detalle 'no pude leerla de ausearch (prueba: sudo ausearch -m avc -ts today | tail -20)'
       detalle 'el detalle completo:  sudo ausearch -m avc -ts today | tail -20'
     fi
   else
