@@ -22,6 +22,7 @@ import { PatientRegistryPage } from './pages/PatientRegistryPage';
 import { PatientsPage } from './pages/PatientsPage';
 import { ReportesPage } from './pages/ReportesPage';
 import { AuditoriaPage } from './pages/AuditoriaPage';
+import { CajaPage } from './pages/CajaPage';
 import { SchedulingPage } from './pages/SchedulingPage';
 import { ScreensPage } from './pages/ScreensPage';
 import { ScreenConsultorioPage } from './pages/ScreenConsultorioPage';
@@ -54,6 +55,7 @@ export const App = () => {
         'programacion',
         'notificaciones',
         'secretaria',
+        'caja',
         'pantallas',
         'consultorio',
         'flujo',
@@ -266,6 +268,18 @@ export const App = () => {
             element={
               <RequirePermission permission="audit:read">
                 <AuditoriaPage />
+              </RequirePermission>
+            }
+          />
+
+          {/* Fase 11: la caja. Se entra con `billing:read` (ver la cola de borradores y
+            el arancel); preparar el borrador exige `billing:write`, y emitir y cobrar
+            llegan con el dinero (sesión B) con sus propios permisos. */}
+          <Route
+            path="caja"
+            element={
+              <RequirePermission permission="billing:read">
+                <CajaPage />
               </RequirePermission>
             }
           />

@@ -331,6 +331,8 @@ export const api = {
     solicitar<T>('POST', path, { ...options, body }),
   patch: <T>(path: string, body?: unknown, options?: Omit<RequestOptions, 'body'>): Promise<T> =>
     solicitar<T>('PATCH', path, { ...options, body }),
+  put: <T>(path: string, body?: unknown, options?: Omit<RequestOptions, 'body'>): Promise<T> =>
+    solicitar<T>('PUT', path, { ...options, body }),
   delete: <T>(path: string, options?: Omit<RequestOptions, 'body'>): Promise<T> =>
     solicitar<T>('DELETE', path, options),
   /** Petición con el cuerpo crudo (multipart); mantiene 401 → refresco → reintento. */

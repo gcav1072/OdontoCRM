@@ -2,7 +2,11 @@ import {
   IVA_GENERAL_BASIS_POINTS,
   invoiceTotalsFromItems,
   ivaCentsForItem,
+  type BillingDraftDetail,
+  type BillingDraftItem,
+  type BillingDraftSummary,
   type DraftItemInput,
+  type InvoiceStatus,
   type InvoiceTotals,
   type TaxCategory,
 } from '@odontocrm/contracts';
@@ -33,41 +37,13 @@ export const taxRateForItem = (taxCategory: TaxCategory): number =>
 
 /* ── Lo que ve la caja ─────────────────────────────────────────────────────── */
 
-export interface DraftSummary {
-  id: string;
-  status: string;
-  patientId: string;
-  patientName: string;
-  patientDocType: string;
-  patientDocNumber: string;
-  createdAt: string;
-  itemCount: number;
-  totalCentsUsd: number;
-  balanceCentsUsd: number;
-  /** Alguna partida sin precio en el catálogo: la caja lo resuelve antes de emitir (M3). */
-  needsPricing: boolean;
-}
-
-export interface DraftItem {
-  id: string;
-  code: string;
-  description: string;
-  toothNumber: number | null;
-  surfaces: string[] | null;
-  quantity: number;
-  unitPriceCentsUsd: number;
-  totalPriceCentsUsd: number;
-  taxCategory: string;
-  taxRateBasisPoints: number;
-  ivaAmountCentsUsd: number;
-  needsPricing: boolean;
-}
-
-export interface DraftDetail extends DraftSummary {
-  items: DraftItem[];
-  /** Sesiones clínicas que cubre la factura (todavía no tiene número: eso es al emitir). */
-  clinicalSessionIds: string[];
-}
+/**
+ * Las formas de la respuesta viven en el **contrato** (`billingDraftSummarySchema` y compañía), no
+ * aquí: la interfaz las valida contra el mismo esquema que documenta la API.
+ */
+export type DraftSummary = BillingDraftSummary;
+export type DraftItem = BillingDraftItem;
+export type DraftDetail = BillingDraftDetail;
 
 /* ── Las líneas, desde el catálogo ─────────────────────────────────────────── */
 
@@ -256,7 +232,8 @@ const resumen = (fila: {
   balanceCentsUsd: number;
 }): Omit<DraftSummary, 'itemCount' | 'needsPricing'> => ({
   id: fila.id,
-  status: fila.status,
+  // El `CHECK` de la tabla garantiza que es un estado del contrato.
+  status: fila.status as InvoiceStatus,
   patientId: fila.patientId,
   patientName: fila.patientName,
   patientDocType: fila.patientDocType,
@@ -359,7 +336,8 @@ export const getDraft = async (db: BillingDb, invoiceId: string): Promise<DraftD
     ...resumen(fila),
     itemCount: agregados.get(invoiceId)?.itemCount ?? 0,
     needsPricing: agregados.get(invoiceId)?.needsPricing ?? false,
-    items,
+    // La categoría la garantiza el `CHECK` de la tabla; el tipo la pide del contrato.
+    items: items.map((item) => ({ ...item, taxCategory: item.taxCategory as TaxCategory })),
     clinicalSessionIds: sesiones.map((sesion) => sesion.clinicalSessionId),
   };
 };

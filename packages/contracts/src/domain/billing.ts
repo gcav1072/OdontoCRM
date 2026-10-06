@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { optionalText } from '../common/optional.js';
-import type { InvoiceStatus, Role } from './enums.js';
+import { INVOICE_STATUSES, type InvoiceStatus, type Role } from './enums.js';
 import { toothNumberSchema, toothSurfaceSchema } from './odontogram.js';
 
 /**
@@ -612,3 +612,80 @@ export const replaceDraftItemsSchema = z
   .strict();
 
 export type ReplaceDraftItemsInput = z.infer<typeof replaceDraftItemsSchema>;
+
+/* ── 9. Lo que responde la caja (contrato de la API) ─────────────────────── */
+
+/** Una línea ya guardada: el arancel **copiado** (ADR 0048), no una referencia viva. */
+export const billingDraftItemSchema = z.object({
+  id: z.uuid(),
+  code: z.string(),
+  description: z.string(),
+  toothNumber: z.number().int().nullable(),
+  surfaces: z.array(z.string()).nullable(),
+  quantity: z.number().int(),
+  unitPriceCentsUsd: z.number().int(),
+  totalPriceCentsUsd: z.number().int(),
+  taxCategory: z.enum(TAX_CATEGORIES),
+  taxRateBasisPoints: z.number().int(),
+  ivaAmountCentsUsd: z.number().int(),
+  needsPricing: z.boolean(),
+});
+
+export type BillingDraftItem = z.infer<typeof billingDraftItemSchema>;
+
+/** Un borrador en la cola de la caja: lo justo para decidir cuál abrir. */
+export const billingDraftSummarySchema = z.object({
+  id: z.uuid(),
+  status: z.enum(INVOICE_STATUSES),
+  patientId: z.uuid(),
+  patientName: z.string(),
+  patientDocType: z.string(),
+  patientDocNumber: z.string(),
+  createdAt: z.string(),
+  itemCount: z.number().int(),
+  totalCentsUsd: z.number().int(),
+  balanceCentsUsd: z.number().int(),
+  /** Alguna partida sin precio: la caja lo resuelve antes de emitir (M3). */
+  needsPricing: z.boolean(),
+});
+
+export type BillingDraftSummary = z.infer<typeof billingDraftSummarySchema>;
+
+export const billingDraftDetailSchema = billingDraftSummarySchema.extend({
+  items: z.array(billingDraftItemSchema),
+  /** Sesiones clínicas que cubre; el número de factura llega al emitir. */
+  clinicalSessionIds: z.array(z.uuid()),
+});
+
+export type BillingDraftDetail = z.infer<typeof billingDraftDetailSchema>;
+
+export const billingDraftListSchema = z.object({ items: z.array(billingDraftSummarySchema) });
+
+export const billingDraftTotalsSchema = z.object({
+  exemptAmountCentsUsd: z.number().int(),
+  taxableAmountCentsUsd: z.number().int(),
+  ivaAmountCentsUsd: z.number().int(),
+  totalCentsUsd: z.number().int(),
+});
+
+export type BillingDraftTotals = z.infer<typeof billingDraftTotalsSchema>;
+
+/** El detalle que devuelve guardar: el borrador ya recalculado y sus totales. */
+export const billingDraftSavedSchema = billingDraftDetailSchema.extend({
+  totals: billingDraftTotalsSchema,
+});
+
+export type BillingDraftSaved = z.infer<typeof billingDraftSavedSchema>;
+
+export const billingCatalogItemSchema = z.object({
+  id: z.uuid(),
+  code: z.string(),
+  name: z.string(),
+  kind: z.enum(CATALOG_KINDS),
+  priceCentsUsd: z.number().int(),
+  taxCategory: z.enum(TAX_CATEGORIES),
+});
+
+export type BillingCatalogItem = z.infer<typeof billingCatalogItemSchema>;
+
+export const billingCatalogListSchema = z.object({ items: z.array(billingCatalogItemSchema) });

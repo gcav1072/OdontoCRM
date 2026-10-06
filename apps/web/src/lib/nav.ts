@@ -8,6 +8,7 @@ import {
   House,
   IdCard,
   MonitorPlay,
+  Receipt,
   ScrollText,
   Stethoscope,
   Users,
@@ -33,6 +34,7 @@ export type ModuleId =
   | 'programacion'
   | 'notificaciones'
   | 'secretaria'
+  | 'caja'
   | 'consultorio'
   | 'flujo'
   | 'reportes'
@@ -106,6 +108,16 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     icon: ClipboardList,
     permission: 'scheduling:read',
   },
+  caja: {
+    id: 'caja',
+    path: '/caja',
+    labelKey: 'modulo.caja.titulo',
+    descriptionKey: 'modulo.caja.descripcion',
+    icon: Receipt,
+    // Ver la cola de pendientes basta para entrar; cobrar exige `billing:collect` y se
+    // comprueba dentro de la pantalla (llega con el dinero, sesión B).
+    permission: 'billing:read',
+  },
   consultorio: {
     id: 'consultorio',
     path: '/consultorio',
@@ -175,6 +187,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
       'programacion',
       'notificaciones',
       'secretaria',
+      'caja',
       'consultorio',
     ],
   },

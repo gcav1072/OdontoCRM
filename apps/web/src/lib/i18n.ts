@@ -714,6 +714,33 @@ const DICCIONARIO = {
   'rol.descripcion.pantalla':
     'Solo lectura para las pantallas de la sala de espera y del consultorio.',
 
+  // --- Caja (Fase 11) ------------------------------------------------------
+  'modulo.caja.titulo': 'Caja',
+  'modulo.caja.descripcion': 'Cobros del mostrador: borradores de factura pendientes',
+  'caja.titulo': 'Caja',
+  'caja.pendientes': 'Pendientes de caja',
+  'caja.vacio': 'No hay borradores pendientes',
+  'caja.vacio.texto':
+    'Cuando se cierre una sesión clínica, su factura aparece aquí para revisarla y cobrarla.',
+  'caja.revisar': 'Revisar',
+  'caja.borrador': 'Borrador de factura',
+  'caja.col.partida': 'Partida',
+  'caja.col.cantidad': 'Cantidad',
+  'caja.col.precio': 'Precio (US$)',
+  'caja.col.total': 'Total',
+  'caja.sinPrecio': 'Sin precio en el arancel: escríbelo antes de emitir',
+  'caja.quitar': 'Quitar',
+  'caja.anadir': 'Añadir del arancel',
+  'caja.elegir': 'Elegir…',
+  'caja.guardar': 'Guardar cambios',
+  'caja.guardado': 'Borrador guardado',
+  'caja.total.exento': 'Exento',
+  'caja.total.gravado': 'Gravado (16 %)',
+  'caja.total.iva': 'IVA',
+  'caja.total.general': 'Total',
+  'caja.dinero.pendiente':
+    'Emitir la factura y cobrar llegan en la próxima entrega del módulo (el dinero).',
+
   // --- Permisos (§5.4 del plan) -------------------------------------------
   'permiso.users:manage': 'Gestionar usuarios y contraseñas',
   'permiso.patients:read': 'Consultar pacientes',

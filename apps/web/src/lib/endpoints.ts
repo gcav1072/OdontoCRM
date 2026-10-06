@@ -7,6 +7,10 @@ import {
   type AssignAppointmentInput,
   type AttendAppointmentInput,
   type AuditEventRecord,
+  type BillingCatalogItem,
+  type BillingDraftDetail,
+  type BillingDraftSaved,
+  type BillingDraftSummary,
   type BotStatus,
   type CancelAppointmentInput,
   type CancelRequestInput,
@@ -30,6 +34,7 @@ import {
   type CreatePrescriptionInput,
   type CreateRequestInput,
   type CreateUserInput,
+  type ReplaceDraftItemsInput,
   type DayCapacity,
   type DayView,
   type DeletePatientInput,
@@ -333,6 +338,23 @@ export interface PatientRemoveResult {
  * como `ApiError` (el 409 del documento duplicado trae `existingPatientId` en
  * `error.payload`).
  */
+/**
+ * La caja (Fase 11). Rutas del servicio de facturación a través de la puerta
+ * (`/api/v1/billing/...`): los borradores que deja el cierre de cada sesión clínica, el detalle para
+ * revisarlos y el arancel del que la secretaría añade un bien.
+ */
+export const billingApi = {
+  drafts: (signal?: AbortSignal): Promise<{ items: BillingDraftSummary[] }> =>
+    api.get<{ items: BillingDraftSummary[] }>('/billing/drafts', { signal }),
+  draft: (id: string, signal?: AbortSignal): Promise<BillingDraftDetail> =>
+    api.get<BillingDraftDetail>(`/billing/drafts/${id}`, { signal }),
+  /** La caja manda la lista **completa**: quitar una línea es no mandarla. */
+  saveDraft: (id: string, input: ReplaceDraftItemsInput): Promise<BillingDraftSaved> =>
+    api.put<BillingDraftSaved>(`/billing/drafts/${id}/items`, input),
+  catalog: (signal?: AbortSignal): Promise<{ items: BillingCatalogItem[] }> =>
+    api.get<{ items: BillingCatalogItem[] }>('/billing/catalog', { signal }),
+};
+
 export const patientsApi = {
   list: (filters: PatientFilters, signal?: AbortSignal): Promise<Paginated<PatientSummary>> =>
     api.get<Paginated<PatientSummary>>('/patients', {
