@@ -4,6 +4,15 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fedora] — Se descarta el plan de instalación actual · 2026-10-05 (después del tag `fase-10`)
+
+El camino de instalación y despliegue (el ensayo como instalador, el traslado de secretos a
+`/etc/odontocrm`, el sincronizador que lo repara y las fases con `--hasta`) **se descarta como
+diseño**: los secretos viven en dos sitios y cada fallo era un síntoma de esa única causa.
+No se le añaden más parches. **El rediseño y su implementación se harán en otra sesión**, y
+mientras tanto lo que hay sigue funcionando y documentado (ver
+`docs/PLAN_INSTALACION_LIMPIA.md`).
+
 ## [Fedora] — Del «funciona en mi PC» al «funciona en la clínica» · 2026-10-05 (después del tag `fase-10`)
 
 ### Lo que se cerró con pruebas en aparatos reales
