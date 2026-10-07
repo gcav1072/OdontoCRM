@@ -92,6 +92,8 @@ describe('gateway: proxy y guardia de autenticación', () => {
   let token = '';
   let otherToken = '';
   let userId = '';
+  /** Clave con la que la puerta valida: se necesita para firmar tokens de otros roles. */
+  let privateKey: Awaited<ReturnType<typeof importPrivateKeyPem>>;
 
   const identityHeaders = (extra: Record<string, string> = {}): Record<string, string> => ({
     authorization: `Bearer ${token}`,
@@ -101,7 +103,7 @@ describe('gateway: proxy y guardia de autenticación', () => {
   beforeAll(async () => {
     const pair = await generateKeyPairPem();
     const publicKey = await importPublicKeyPem(pair.publicPem);
-    const privateKey = await importPrivateKeyPem(pair.privatePem);
+    privateKey = await importPrivateKeyPem(pair.privatePem);
     const otherPair = await generateKeyPairPem();
     const otherPrivateKey = await importPrivateKeyPem(otherPair.privatePem);
 
@@ -216,6 +218,45 @@ describe('gateway: proxy y guardia de autenticación', () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get('content-type')).toContain('application/problem+json');
+  });
+
+  it('el estado consolidado del sistema es solo del administrador', async () => {
+    // Sin sesión no se ve ni la puerta.
+    const anonimo = await fetch(`${gatewayUrl}/api/v1/system/health/detailed`);
+    expect(anonimo.status).toBe(401);
+
+    // Un secretario con sesión tampoco: enseña puertos internos y conexiones.
+    const secretario = await signAccessToken(
+      {
+        sub: globalThis.crypto.randomUUID(),
+        username: 'recepcion',
+        fullName: 'Recepción',
+        roles: ['secretario'],
+        permissions: ['scheduling:read'],
+        mustChangePassword: false,
+        sid: globalThis.crypto.randomUUID(),
+      },
+      { privateKey },
+    );
+    const sinPermiso = await fetch(`${gatewayUrl}/api/v1/system/health/detailed`, {
+      headers: { authorization: `Bearer ${secretario}` },
+    });
+    expect(sinPermiso.status).toBe(403);
+
+    // El administrador sí, y el informe llega agregado (el upstream simulado no
+    // contesta un informe de salud, así que su servicio sale como «respuesta
+    // inesperada»: lo que importa aquí es que la puerta responde el informe).
+    const respuesta = await fetch(`${gatewayUrl}/api/v1/system/health/detailed`, {
+      headers: identityHeaders(),
+    });
+    expect(respuesta.status).toBe(200);
+    const informe = (await respuesta.json()) as {
+      gateway: { service: string };
+      services: { name: string }[];
+      totals: { unreachable: number };
+    };
+    expect(informe.gateway.service).toBe('gateway');
+    expect(informe.services.map((servicio) => servicio.name)).toEqual(['identity']);
   });
 
   it('rechaza un token firmado con otra clave', async () => {

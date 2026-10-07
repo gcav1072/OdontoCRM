@@ -5,8 +5,10 @@ import { buildServer, isProduction, loadPublicKey } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 
 import { registerAuthGuard } from './auth-guard.js';
+import { requireAdmin } from './admin-guard.js';
 import { jwtPublicKeyPath, origenesPermitidos, type GatewayConfig } from './config.js';
 import { buildSystemMeta } from './meta.js';
+import { SYSTEM_HEALTH_PATH, collectSystemHealth } from './system-health.js';
 import { buildUpstreamChecks } from './upstreams.js';
 import { buildProxyRoutes } from './routes.js';
 
@@ -60,6 +62,25 @@ export const createGatewayServer = async (
    * banner de MODO TEST, incluso en la pantalla de acceso.
    */
   app.get('/api/v1/meta', async () => buildSystemMeta(config));
+
+  /**
+   * Estado **consolidado** del sistema, solo para el administrador: la puerta pregunta a
+   * los nueve servicios a la vez y junta sus informes (pool de la base, outbox, latencia)
+   * en una sola respuesta. Es lo que pinta el panel de `/inicio`.
+   *
+   * Se registra **antes** de las rutas del proxy para que ninguna pueda taparlo, aunque no
+   * colisiona: los prefijos proxeados son de otros servicios.
+   */
+  app.get(SYSTEM_HEALTH_PATH, { preHandler: requireAdmin }, async () =>
+    collectSystemHealth(config, {
+      gateway: {
+        service: 'gateway',
+        version: config.SERVICE_VERSION,
+        uptimeSeconds: Math.round(process.uptime()),
+        timestamp: new Date().toISOString(),
+      },
+    }),
+  );
 
   for (const route of buildProxyRoutes(config)) {
     // Cada ruta en su propio ámbito para poder declarar el mismo plugin varias
