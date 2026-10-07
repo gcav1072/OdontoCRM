@@ -8,15 +8,19 @@ import type { ClinicalConfig } from './config.js';
 import type { ClinicalDatabaseHandle } from './db/client.js';
 import type { PdfRenderer } from './prescriptions/pdf-renderer.js';
 import { registerClinicalRoutes } from './routes/clinical-routes.js';
+import { registerDossierRoutes } from './routes/dossier-routes.js';
 import { registerInternalRoutes } from './routes/internal-routes.js';
 import { registerPrescriptionRoutes } from './routes/prescription-routes.js';
 import type { ClinicalServices } from './services.js';
+import type { OdontogramChartLookup } from './shared/odontogram-client.js';
 import type { PatientSnapshotLookup } from './shared/patient-client.js';
 
 export interface CreateClinicalServerOptions {
   config: ClinicalConfig;
   database: ClinicalDatabaseHandle;
   patientLookup: PatientSnapshotLookup;
+  /** La boca del paciente (del servicio de odontograma), para el dossier. */
+  odontogramLookup: OdontogramChartLookup;
   /** Almacén de adjuntos y PDF de récipes. */
   blobStore: BlobStore;
   /** Renderizador del PDF A5 (Chromium). */
@@ -68,6 +72,7 @@ export const createClinicalServer = async (
     db: database.db,
     pool: database.pool,
     patientLookup: options.patientLookup,
+    odontogramLookup: options.odontogramLookup,
     blobStore: options.blobStore,
     pdfRenderer: options.pdfRenderer,
     ...(options.kickOutbox === undefined ? {} : { kickOutbox: options.kickOutbox }),
@@ -76,6 +81,7 @@ export const createClinicalServer = async (
   registerInternalRoutes(app, services);
   registerClinicalRoutes(app, services);
   registerPrescriptionRoutes(app, services);
+  registerDossierRoutes(app, services);
 
   return app;
 };

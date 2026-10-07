@@ -398,3 +398,59 @@ export type ClinicalSessionFileRow = typeof clinicalSessionFiles.$inferSelect;
 export type MedicationRow = typeof medicationsCatalog.$inferSelect;
 export type PrescriptionRow = typeof prescriptions.$inferSelect;
 export type PrescriptionItemRow = typeof prescriptionItems.$inferSelect;
+
+/* ── Dossier del expediente ────────────────────────────────────────────────── */
+
+/** Secuencia del número de dossier: `EXP-000001` es el 1 (atómico, sin carreras). */
+export const dossierExportsNumberSequence = pgSequence('dossier_exports_number_seq', {
+  startWith: 1,
+});
+
+/**
+ * Exportaciones del **dossier** del expediente: el PDF A4 que reúne filiación,
+ * odontograma, evolución y farmacia de un paciente.
+ *
+ * No es un acto clínico y por eso no se «emite» como un récipe, pero sí uno de
+ * **custodia**: sale del sistema el historial completo de una persona. Por eso cada
+ * exportación se archiva —con su correlativo global, su huella y su código de
+ * verificación— en vez de componerse y olvidarse: así se puede comprobar que el papel
+ * que alguien trae es el que el consultorio generó, y el SHA-256 denuncia cualquier
+ * cambio en el archivo.
+ *
+ * El correlativo es **global** (`EXP-000001`, `EXP-000002`…), no por paciente ni por
+ * odontólogo: es un libro de expedientes del consultorio.
+ */
+export const dossierExports = pgTable(
+  'dossier_exports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Número de la secuencia global; se asigna al exportar. */
+    number: integer('number').notNull(),
+    patientId: uuid('patient_id').notNull(),
+    /**
+     * Copia de los datos del paciente **tal como se imprimieron**: el dossier es un
+     * documento que sale del consultorio, y lo que decía el día que se emitió no debe
+     * cambiar porque después se corrija un dato.
+     */
+    patientSnapshot: jsonb('patient_snapshot').$type<Record<string, unknown>>(),
+    issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+    issuedBy: uuid('issued_by'),
+    issuedByUsername: text('issued_by_username'),
+    /** Código que lleva el QR y resuelve `/verificar-expediente/<código>`. */
+    verifyCode: text('verify_code').notNull(),
+    /** PDF A4 archivado (ruta dentro del almacén) y su huella. */
+    pdfPath: text('pdf_path').notNull(),
+    pdfSha256: text('pdf_sha256').notNull(),
+    /** Hojas que salieron, para el registro (Chromium no lo dice: se mide al componer). */
+    pageCount: integer('page_count'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('uq_dossier_exports_number').on(table.number),
+    uniqueIndex('uq_dossier_exports_verify_code').on(table.verifyCode),
+    index('idx_dossier_exports_patient').on(table.patientId, table.issuedAt),
+    check('chk_dossier_exports_number', sql`${table.number} > 0`),
+  ],
+);
+
+export type DossierExportRow = typeof dossierExports.$inferSelect;

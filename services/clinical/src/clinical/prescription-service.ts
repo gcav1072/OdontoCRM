@@ -30,6 +30,7 @@ import {
 } from '../db/schema.js';
 import type { ActorContext } from '../shared/context.js';
 import { auditPayload, publish } from '../shared/events.js';
+import { buildVerifyCode, formatVerifyCode, normalizeVerifyCode } from '../shared/verify-code.js';
 import { requireSession } from './session-service.js';
 import type { PdfRenderer } from '../prescriptions/pdf-renderer.js';
 import {
@@ -55,21 +56,12 @@ import type { PatientSnapshotLookup } from '../shared/patient-client.js';
 
 const iso = (value: Date | null): string | null => (value === null ? null : value.toISOString());
 
-/** Alfabeto sin letras ni números que se confunden al dictarlos (0/O, 1/I/L). */
-const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-
-/** Código de verificación: se dicta por teléfono y se lee en un QR. */
-const buildVerifyCode = (): string => {
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(10));
-  return [...bytes].map((byte) => CODE_ALPHABET[byte % CODE_ALPHABET.length] ?? 'A').join('');
-};
-
-/** El código se muestra y se busca con guion: `ABCDE-FGHJK`. */
-export const formatVerifyCode = (code: string): string =>
-  code.length === 10 ? `${code.slice(0, 5)}-${code.slice(5)}` : code;
-
-export const normalizeVerifyCode = (code: string): string =>
-  code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+/*
+ * El código de verificación es compartido con el dossier del expediente: el alfabeto,
+ * el guion y la normalización tienen que ser los mismos o un código no encontraría su
+ * documento. Se reexporta para no cambiar la superficie pública de este módulo.
+ */
+export { formatVerifyCode, normalizeVerifyCode };
 
 /* ── Catálogo ──────────────────────────────────────────────────────────────── */
 

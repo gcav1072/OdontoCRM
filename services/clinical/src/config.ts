@@ -21,6 +21,12 @@ export const clinicalEnvSchema = baseEnvSchema.extend({
   PATIENTS_URL: z.string().min(1).default('http://127.0.0.1:4002'),
 
   /**
+   * Servicio de odontograma: el **dossier** del expediente lee ahí la boca del paciente
+   * para dibujarla en el PDF. Si no responde, el dossier sale igual, sin el dibujo.
+   */
+  ODONTOGRAM_URL: z.string().min(1).default('http://127.0.0.1:4006'),
+
+  /**
    * Almacén de binarios del servicio: adjuntos de la sesión y los PDF de los
    * récipes. Es una carpeta relativa a la raíz del repositorio (ignorada por Git),
    * separada de la de pacientes.

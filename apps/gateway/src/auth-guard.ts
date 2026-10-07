@@ -44,6 +44,7 @@ export const PUBLIC_PATHS: readonly string[] = [
 export const PUBLIC_PREFIXES: readonly string[] = [
   '/api/v1/notifications/webhook/',
   '/api/v1/clinical/verify/',
+  '/api/v1/clinical/verify-expediente/',
 ];
 
 export const isPublicPath = (path: string): boolean =>

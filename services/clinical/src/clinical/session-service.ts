@@ -17,7 +17,7 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS } from '@odontocrm/events';
 import { ConflictError, NotFoundError } from '@odontocrm/kernel';
-import { desc, eq, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, sql, type SQL } from 'drizzle-orm';
 
 import type { ClinicalDb } from '../db/client.js';
 import { clinicalSessions, type ClinicalSessionRow } from '../db/schema.js';
@@ -95,6 +95,27 @@ export const listSessionsByAppointment = async (
   db: ClinicalDb,
   appointmentId: string,
 ): Promise<SessionsMap> => listSessions(db, eq(clinicalSessions.appointmentId, appointmentId));
+
+/**
+ * Sesiones **cerradas** del paciente con su contenido, de la más antigua a la más
+ * reciente.
+ *
+ * El orden es el contrario al de la pantalla a propósito: esto alimenta la **evolución
+ * cronológica** del dossier —un documento que se lee de principio a fin, como una
+ * historia—, no la lista de trabajo del odontólogo, que enseña lo último primero. Las
+ * sesiones enmendadas se incluyen: la corrección es parte del historial.
+ */
+export const listClosedSessionsChronological = async (
+  db: ClinicalDb,
+  patientId: string,
+): Promise<ClinicalSessionDetail[]> => {
+  const rows = await db
+    .select()
+    .from(clinicalSessions)
+    .where(and(eq(clinicalSessions.patientId, patientId), eq(clinicalSessions.status, 'cerrada')))
+    .orderBy(asc(clinicalSessions.sessionNumber));
+  return rows.map(toDetail);
+};
 
 const findSessionRow = async (db: ClinicalDb, id: string): Promise<ClinicalSessionRow | null> => {
   const rows = await db.select().from(clinicalSessions).where(eq(clinicalSessions.id, id)).limit(1);

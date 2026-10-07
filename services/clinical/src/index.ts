@@ -14,6 +14,7 @@ import { loadClinicalConfig } from './config.js';
 import { createClinicalDatabase } from './db/client.js';
 import { createPdfRenderer } from './prescriptions/pdf-renderer.js';
 import { createClinicalServer } from './server.js';
+import { createOdontogramChartLookup } from './shared/odontogram-client.js';
 import { createPatientSnapshotLookup } from './shared/patient-client.js';
 
 const main = async (): Promise<void> => {
@@ -50,6 +51,7 @@ const main = async (): Promise<void> => {
     config,
     database,
     patientLookup: createPatientSnapshotLookup(config),
+    odontogramLookup: createOdontogramChartLookup(config),
     blobStore,
     pdfRenderer,
     kickOutbox: () => publicador.kick(),
