@@ -29,6 +29,7 @@ import { ScreenConsultorioPage } from './pages/ScreenConsultorioPage';
 import { ScreenLobbyPage } from './pages/ScreenLobbyPage';
 import { SecretariaPage } from './pages/SecretariaPage';
 import { UsersPage } from './pages/UsersPage';
+import { VerifyDossierPage } from './pages/VerifyDossierPage';
 import { VerifyPrescriptionPage } from './pages/VerifyPrescriptionPage';
 
 /**
@@ -77,6 +78,11 @@ export const App = () => {
           una farmacia): fuera del shell y sin sesión. Lo que muestra no lleva datos
           clínicos (ADR 0015). */}
         <Route path="/verificar/:code" element={<VerifyPrescriptionPage />} />
+
+        {/* El QR del **expediente** (dossier) va por su propia ruta: el papel que se
+          entrega al paciente o a un especialista también lo abre cualquiera, y lo que
+          responde tampoco lleva datos clínicos. */}
+        <Route path="/verificar-expediente/:code" element={<VerifyDossierPage />} />
 
         {/* Kiosko: la pantalla se configura con su token y no usa la sesión del
           personal. Se monta fuera del shell para que no haya navegación. */}

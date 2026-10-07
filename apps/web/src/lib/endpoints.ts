@@ -41,6 +41,8 @@ import {
   type DeviceLoginResponse,
   type DeviceTokenCreated,
   type DeviceTokenInput,
+  type DossierExport,
+  type DossierVerificationResult,
   type LinkCode,
   type LobbyState,
   type LoginInput,
@@ -106,7 +108,11 @@ import {
 } from '@odontocrm/contracts';
 
 import { API_BASE, api, apiBinary, refreshSession, type QueryParams } from './api';
-
+/** Las exportaciones del expediente de un paciente (respuesta de la lista). */
+export interface DossierExportList {
+  items: DossierExport[];
+  total: number;
+}
 /**
  * Mapa tipado del contrato de la API (Fase 1). Es el único lugar donde se
  * escriben rutas: si el contrato cambia, se cambia aquí y TypeScript señala a
@@ -895,6 +901,34 @@ export const clinicalApi = {
     signal?: AbortSignal,
   ): Promise<PrescriptionVerificationResult> =>
     api.get<PrescriptionVerificationResult>(`/clinical/verify/${encodeURIComponent(code)}`, {
+      anonymous: true,
+      signal,
+    }),
+
+  /* ── Dossier del expediente ──────────────────────────────────────────────── */
+
+  /**
+   * Exporta el expediente del paciente: el servidor compone el PDF A4, lo archiva con
+   * su huella y lo devuelve. Se pide **con la sesión** (`apiBinary`), como el récipe, y
+   * la interfaz lo abre como objeto local.
+   */
+  createDossier: (patientId: string, signal?: AbortSignal): Promise<Blob> =>
+    apiBinary('GET', `/clinical/patients/${patientId}/dossier`, { signal }),
+
+  /** Las exportaciones archivadas del paciente (para volver a abrir una). */
+  dossiersByPatient: (patientId: string, signal?: AbortSignal): Promise<DossierExportList> =>
+    api.get<DossierExportList>(`/clinical/patients/${patientId}/dossiers`, { signal }),
+
+  /** Un dossier ya archivado: es el mismo archivo, no se recompone. */
+  downloadDossierPdf: (id: string, signal?: AbortSignal): Promise<Blob> =>
+    apiBinary('GET', `/clinical/dossiers/${id}/pdf`, { signal }),
+
+  /**
+   * Verificación **pública** del dossier: la abre el QR del papel, sin sesión, y no
+   * devuelve datos clínicos (ADR 0015).
+   */
+  verifyDossier: (code: string, signal?: AbortSignal): Promise<DossierVerificationResult> =>
+    api.get<DossierVerificationResult>(`/clinical/verify-expediente/${encodeURIComponent(code)}`, {
       anonymous: true,
       signal,
     }),

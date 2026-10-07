@@ -2331,6 +2331,28 @@ const DICCIONARIO = {
     'El código {codigo} no corresponde a ningún récipe emitido por este consultorio. Si te lo entregaron en papel, avisa al consultorio.',
   'verificar.privacidad':
     'Esta página solo confirma la autenticidad del documento: no muestra el diagnóstico ni los medicamentos.',
+
+  // --- Expediente del paciente (dossier en PDF, mejoras post-Fase 11) -------
+  'expediente.titulo': 'Expediente del paciente',
+  'expediente.texto':
+    'Reúne en un solo PDF la filiación, las alertas, el odontograma, la evolución y los récipes. Cada expediente exportado se archiva con su número y se puede volver a abrir.',
+  'expediente.generar': 'Exportar expediente (PDF)',
+  'expediente.generando': 'Componiendo el expediente…',
+  'expediente.historial': 'Expedientes exportados',
+  'expediente.cargando': 'Leyendo el historial de exportaciones…',
+  'expediente.sinExportaciones': 'Todavía no se ha exportado el expediente de este paciente.',
+  'expediente.abrir': 'Abrir',
+  'expediente.exito.generado': 'Expediente compuesto y archivado con su número.',
+
+  'verificarExpediente.subtitulo': 'Verificación de expedientes',
+  'verificarExpediente.titulo': '¿Este expediente es auténtico?',
+  'verificarExpediente.texto':
+    'Comprobación del código que lleva impreso el expediente. No se muestran datos clínicos.',
+  'verificarExpediente.valido': 'Expediente auténtico: consta en el sistema del consultorio.',
+  'verificarExpediente.numero': 'Expediente',
+  'verificarExpediente.noConsta': 'Este expediente no consta',
+  'verificarExpediente.noConstaTexto':
+    'El código no corresponde a ningún expediente emitido por este consultorio. Si te lo entregaron en papel, avisa al consultorio.',
   // ── Fase 6B · odontograma: pestaña, impresión A4 y accesos (Lead) ──────────
   'odonto.pestana.historia': 'Historia clínica',
   'odonto.pestana.odontograma': 'Odontograma',

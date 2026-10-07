@@ -32,6 +32,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { LinkButton } from '../components/LinkButton';
 import { NoticeBanner } from '../components/NoticeBanner';
 import { PatientAttachments } from '../components/patients/PatientAttachments';
+import { DossierCard } from '../components/clinical/DossierCard';
 import { PatientAttachmentsCard } from '../components/clinical/SessionAttachments';
 import { PatientSessionsCard } from '../components/clinical/PatientSessionsCard';
 import { PatientDeleteDialog } from '../components/patients/PatientDeleteDialog';
@@ -255,6 +256,11 @@ export const PatientDetailPage = () => {
       />
 
       <PatientAttachments patientId={paciente.id} />
+
+      {/* El expediente (dossier en PDF): reúne historia, odontograma, evolución y récipes
+          en un solo documento para entregar o remitir. Exige `clinical:read`, el mismo
+          permiso con el que la secretaría imprime. */}
+      {hasPermission('clinical:read') && <DossierCard patientId={paciente.id} />}
 
       {/* Fase 7B: las radiografías y fotos que se subieron en cada sesión clínica,
           con su pieza. La subida se hace desde la sesión en la que se tomaron. */}
