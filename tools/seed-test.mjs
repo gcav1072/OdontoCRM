@@ -559,13 +559,24 @@ const sembrarClinica = async (client) => {
 const sembrarOdontograma = async (client) => {
   const porPaciente = new Map();
   for (const finding of world.findings) {
-    if (!porPaciente.has(finding.patientId))
-      porPaciente.set(finding.patientId, finding.odontogramId);
+    if (!porPaciente.has(finding.patientId)) {
+      porPaciente.set(finding.patientId, {
+        odontogramId: finding.odontogramId,
+        denticiones: new Set(),
+      });
+    }
+    // La dentición se **deriva de los hallazgos**, igual que el servicio (ADR 0051):
+    // temporales los cuadrantes 5–8, permanentes el resto, y las dos cosas = mixta. Si
+    // se pusiera por edad, el mundo sembrado diría «temporal» con una permanente dentro.
+    const entrada = porPaciente.get(finding.patientId);
+    const temporal = finding.toothNumber >= 51 && finding.toothNumber <= 85;
+    entrada.denticiones.add(temporal ? 'temporal' : 'permanente');
   }
 
-  for (const [patientId, odontogramId] of porPaciente.entries()) {
-    const paciente = world.patients.find((item) => item.id === patientId);
-    const denticion = (paciente?.age ?? 30) <= 12 ? 'temporal' : 'permanente';
+  for (const [patientId, entrada] of porPaciente.entries()) {
+    const { odontogramId } = entrada;
+    const denticiones = [...entrada.denticiones];
+    const denticion = denticiones.length === 2 ? 'mixta' : (denticiones[0] ?? 'permanente');
     await client.query(
       `insert into odontograms (id, patient_id, dentition, notes, print_count, recorded_by, recorded_by_username, created_at, updated_at)
        values ($1,$2,$3,'MODO TEST: odontograma ficticio',0,null,'seed-test',now(),now())

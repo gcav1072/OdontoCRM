@@ -1,0 +1,2 @@
+ALTER TABLE "odontograms" DROP CONSTRAINT "chk_odontograms_dentition";--> statement-breakpoint
+ALTER TABLE "odontograms" ADD CONSTRAINT "chk_odontograms_dentition" CHECK ("odontograms"."dentition" in ('permanente', 'temporal', 'mixta'));

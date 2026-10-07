@@ -28,11 +28,20 @@ import { cleanText } from './patient.js';
 /* ── Dominio FDI ───────────────────────────────────────────────────────────── */
 
 /**
- * La dentición **no se elige**: se deduce del número FDI. El 1.º dígito del 11–48
- * es el cuadrante permanente y el del 51–85 el temporal, así que no pueden
+ * Las denticiones del odontograma.
+ *
+ * `permanente` y `temporal` describen una boca de una sola dentición. **`mixta`** es
+ * la del paciente que está mudando: conviven piezas permanentes y temporales (los
+ * incisivos y molares permanentes ya salieron y quedan molares de leche). No es una
+ * dentición de una pieza —eso lo dice `dentitionOfTooth`— sino un **estado del
+ * odontograma**, que se deriva de los hallazgos vigentes (ver
+ * [ADR 0051](../../../../docs/adr/0051-denticion-mixta-en-el-odontograma.md)).
+ *
+ * La dentición de una **pieza** sigue deduciéndose de su número FDI: el 1.º dígito del
+ * 11–48 es el cuadrante permanente y el del 51–85 el temporal, así que no pueden
  * contradecirse.
  */
-export const DENTITIONS = ['permanente', 'temporal'] as const;
+export const DENTITIONS = ['permanente', 'temporal', 'mixta'] as const;
 export type Dentition = (typeof DENTITIONS)[number];
 
 export const dentitionSchema = z.enum(DENTITIONS);
@@ -349,6 +358,21 @@ export const isPrimaryTooth = (value: number): boolean =>
 /** Dentición a la que pertenece una pieza válida. */
 export const dentitionOfTooth = (toothNumber: number): Dentition =>
   isPrimaryTooth(toothNumber) ? 'temporal' : 'permanente';
+
+/**
+ * La pieza **permanente que sustituye** a una temporal (mismo cuadrante menos 4 y
+ * misma posición): `51 → 11`, `54 → 14`, `55 → 15`, `85 → 45`.
+ *
+ * Es la anatomía del recambio —el primer molar temporal cae donde entra el primer
+ * premolar— y por eso la dentición mixta coloca cada pieza temporal **en la ranura de
+ * su sucesor**: así la arcada se lee como la transición que es (ADR 0051). Las piezas
+ * permanentes 6–8 no tienen predecesor temporal.
+ *
+ * Solo tiene sentido con una pieza temporal: con una permanente devuelve una pieza
+ * inexistente, así que conviene comprobar `isPrimaryTooth` antes.
+ */
+export const primarySuccessor = (toothNumber: number): number =>
+  (quadrantOfTooth(toothNumber) - 4) * 10 + positionOfTooth(toothNumber);
 
 /** Cuadrante FDI de una pieza (1–8). */
 export const quadrantOfTooth = (toothNumber: number): FdiQuadrant =>
@@ -729,12 +753,16 @@ export const odontogramSummary = (detail: {
   }
 
   return {
+    // Las piezas que la arcada **dibuja**: 32 en permanente, 20 en temporal y las dos
+    // cosas en la mixta (la huella permanente más las temporales que quedan).
     teeth:
       detail.dentition === 'temporal'
         ? PRIMARY_TOOTH_NUMBERS.length
-        : PERMANENT_TOOTH_NUMBERS.length,
-    permanentTeeth: PERMANENT_TOOTH_NUMBERS.length,
-    primaryTeeth: PRIMARY_TOOTH_NUMBERS.length,
+        : detail.dentition === 'mixta'
+          ? PERMANENT_TOOTH_NUMBERS.length + PRIMARY_TOOTH_NUMBERS.length
+          : PERMANENT_TOOTH_NUMBERS.length,
+    permanentTeeth: detail.dentition === 'temporal' ? 0 : PERMANENT_TOOTH_NUMBERS.length,
+    primaryTeeth: detail.dentition === 'permanente' ? 0 : PRIMARY_TOOTH_NUMBERS.length,
     affectedTeeth: teeth.size,
     conditionCounts,
     pendingCount,
@@ -930,6 +958,14 @@ export interface ArchLayout {
   width: number;
   upper: readonly ToothPlacement[];
   lower: readonly ToothPlacement[];
+  /**
+   * Arcadas **primarias** de un odontograma **mixto**: las piezas de leche, cada una en
+   * la ranura de su sucesor permanente. Van vacías en `permanente` y `temporal` (ahí lo
+   * temporal ya está en `upper`/`lower`), y se dibujan como **una banda más** debajo de
+   * la principal (ADR 0051).
+   */
+  upperPrimary: readonly ToothPlacement[];
+  lowerPrimary: readonly ToothPlacement[];
 }
 
 /**
@@ -940,6 +976,11 @@ export interface ArchLayout {
  * Una dentición **temporal** no dibuja los molares que no existen (posiciones 6–8
  * del cuadrante temporal): pintarlos como si fueran piezas permanentes sería un
  * error clínico, así que la arcada se acorta sola.
+ *
+ * Una dentición **mixta** dibuja la huella **permanente** (la boca a la que va el
+ * paciente) y, aparte, las piezas temporales que quedan, cada una **en la ranura de su
+ * sucesor** (`primarySuccessor`), que es como se ve el recambio en la boca real
+ * (ADR 0051).
  */
 export const archLayout = (dentition: Dentition = 'permanente'): ArchLayout => {
   // El reparto del doc §7.2, leído **en el orden en que se ve** mirando al
@@ -948,10 +989,15 @@ export const archLayout = (dentition: Dentition = 'permanente'): ArchLayout => {
   // la línea media, así que dentro de cada cuadrante el orden de pintado es el
   // inverso: primero el molar del extremo (posición 8) y al final el incisivo
   // central (posición 1).
-  const posiciones: readonly FdiPosition[] =
-    dentition === 'temporal' ? [5, 4, 3, 2, 1] : [8, 7, 6, 5, 4, 3, 2, 1];
-  const cuadrantesSuperiores: readonly FdiQuadrant[] = dentition === 'temporal' ? [5, 6] : [1, 2];
-  const cuadrantesInferiores: readonly FdiQuadrant[] = dentition === 'temporal' ? [8, 7] : [4, 3];
+  //
+  // La arcada **principal** solo es la temporal cuando el paciente no tiene ninguna
+  // pieza permanente; en la mixta manda la permanente (las temporales van aparte).
+  const soloTemporal = dentition === 'temporal';
+  const posiciones: readonly FdiPosition[] = soloTemporal
+    ? [5, 4, 3, 2, 1]
+    : [8, 7, 6, 5, 4, 3, 2, 1];
+  const cuadrantesSuperiores: readonly FdiQuadrant[] = soloTemporal ? [5, 6] : [1, 2];
+  const cuadrantesInferiores: readonly FdiQuadrant[] = soloTemporal ? [8, 7] : [4, 3];
 
   const colocar = (cuadrantes: readonly FdiQuadrant[], upper: boolean): ToothPlacement[] =>
     cuadrantes.flatMap((quadrant, indice) =>
@@ -993,12 +1039,49 @@ export const archLayout = (dentition: Dentition = 'permanente'): ArchLayout => {
 
   const upper = sinCoordenadas(colocar(cuadrantesSuperiores, true));
   const lower = sinCoordenadas(colocar(cuadrantesInferiores, false));
+  const width = Math.max(upper.length, lower.length) * TOOTH_STRIDE + MIDLINE_GAP;
+
+  if (dentition !== 'mixta') {
+    return { dentition, width, upper, lower, upperPrimary: [], lowerPrimary: [] };
+  }
+
+  // La mixta: la huella es la permanente (`upper`/`lower` de arriba) y cada pieza
+  // temporal se coloca en la ranura de **su sucesor**. Los cuadrantes temporales 5–8
+  // caen del mismo lado que los permanentes 1–4 (5 con 1, 6 con 2, 8 con 4, 7 con 3).
+  const porNumero = new Map([...upper, ...lower].map((tooth) => [tooth.toothNumber, tooth]));
+  const posicionesPrimarias: readonly FdiPosition[] = [5, 4, 3, 2, 1];
+
+  const colocarPrimarias = (
+    cuadrantes: readonly FdiQuadrant[],
+    upperArcada: boolean,
+  ): ToothPlacement[] =>
+    cuadrantes.flatMap((quadrant, indice) =>
+      (indice === 0 ? posicionesPrimarias : [...posicionesPrimarias].reverse()).map((position) => {
+        const toothNumber = quadrant * 10 + position;
+        const kind = toothKind(toothNumber);
+        return {
+          toothNumber,
+          quadrant,
+          position,
+          kind,
+          upper: upperArcada,
+          // La ranura del sucesor: donde estará su permanente. Sin sucesor en la
+          // arcada (no debería pasar: la temporal siempre tiene posición 1–5) va al 0.
+          x: porNumero.get(primarySuccessor(toothNumber))?.x ?? 0,
+          flipped: !upperArcada,
+          mirrorX: isPatientRightQuadrant(quadrant),
+          surfaces: TOOTH_SURFACES_BY_KIND[kind],
+        };
+      }),
+    );
 
   return {
     dentition,
-    width: Math.max(upper.length, lower.length) * TOOTH_STRIDE + MIDLINE_GAP,
+    width,
     upper,
     lower,
+    upperPrimary: colocarPrimarias([5, 6], true),
+    lowerPrimary: colocarPrimarias([8, 7], false),
   };
 };
 

@@ -14,6 +14,7 @@ import {
   PERMANENT_TOOTH_NUMBERS,
   PRIMARY_TOOTH_NUMBERS,
   parsePolygonPoints,
+  primarySuccessor,
   quickEntryKey,
   quickEntryLabel,
   initialQuickEntryState,
@@ -297,6 +298,50 @@ describe('geometría del componente SVG', () => {
     ]);
     expect(width).toBe(10 * TOOTH_STRIDE + MIDLINE_GAP);
     expect([...upper, ...lower].every((tooth) => tooth.flipped === !tooth.upper)).toBe(true);
+  });
+
+  it('la pieza permanente que sustituye a una temporal es la del mismo cuadrante y posición', () => {
+    // El primer molar de leche cae donde entra el primer premolar.
+    expect(primarySuccessor(51)).toBe(11);
+    expect(primarySuccessor(54)).toBe(14);
+    expect(primarySuccessor(55)).toBe(15);
+    expect(primarySuccessor(85)).toBe(45);
+  });
+
+  it('la dentición mixta dibuja la huella permanente y las temporales en su ranura', () => {
+    const mixta = archLayout('mixta');
+
+    // La arcada principal es la **permanente** (32 piezas), la boca a la que va.
+    expect(mixta.upper).toHaveLength(16);
+    expect(mixta.lower).toHaveLength(16);
+    expect(mixta.width).toBe(16 * TOOTH_STRIDE + MIDLINE_GAP);
+
+    // Y las de leche van aparte, 20 en total, sin molares de leche inventados.
+    expect(mixta.upperPrimary.map((tooth) => tooth.toothNumber)).toEqual([
+      55, 54, 53, 52, 51, 61, 62, 63, 64, 65,
+    ]);
+    expect(mixta.lowerPrimary.map((tooth) => tooth.toothNumber)).toEqual([
+      85, 84, 83, 82, 81, 71, 72, 73, 74, 75,
+    ]);
+
+    // Cada temporal comparte la **x de su sucesor**: es donde está en la boca.
+    const porNumero = new Map(
+      [...mixta.upper, ...mixta.lower].map((tooth) => [tooth.toothNumber, tooth.x]),
+    );
+    for (const temporal of [...mixta.upperPrimary, ...mixta.lowerPrimary]) {
+      expect(temporal.x).toBe(porNumero.get(primarySuccessor(temporal.toothNumber)));
+    }
+
+    // Las temporales conservan el espejo anatómico (5 y 8 son la derecha del paciente).
+    expect(mixta.upperPrimary.slice(0, 5).every((tooth) => tooth.mirrorX)).toBe(true);
+    expect(mixta.upperPrimary.slice(5).every((tooth) => !tooth.mirrorX)).toBe(true);
+  });
+
+  it('las denticiones simples no traen bandas primarias', () => {
+    expect(archLayout('permanente').upperPrimary).toEqual([]);
+    expect(archLayout('permanente').lowerPrimary).toEqual([]);
+    expect(archLayout('temporal').upperPrimary).toEqual([]);
+    expect(archLayout('temporal').lowerPrimary).toEqual([]);
   });
 });
 

@@ -373,6 +373,43 @@ const touchOdontogram = async (
   return row;
 };
 
+/**
+ * La dentición del odontograma **derivada de los hallazgos vigentes** (ADR 0051): solo
+ * permanentes → `permanente`, solo temporales → `temporal`, de las dos → **`mixta`**. Con
+ * la boca vacía se conserva la que hubiera.
+ *
+ * La dentición es un **estado clínico**, no una estampa del primer hallazgo: el día que
+ * erupciona el primer molar permanente —o el día que se corrige una captura— la boca
+ * cambia de dentición, y el gráfico tiene que seguirle. Por eso se recalcula en cada
+ * escritura y no se fija una sola vez.
+ */
+const syncDentition = async (
+  db: OdontogramDb,
+  odontogram: OdontogramRow,
+): Promise<OdontogramRow> => {
+  const vigentes = await db
+    .select({ toothNumber: toothFindings.toothNumber })
+    .from(toothFindings)
+    .where(and(eq(toothFindings.odontogramId, odontogram.id), isNull(toothFindings.resolvedAt)));
+
+  const denticiones = new Set(vigentes.map((fila) => dentitionOfTooth(fila.toothNumber)));
+  const next: Dentition =
+    denticiones.size === 0
+      ? (odontogram.dentition as Dentition)
+      : denticiones.size === 1
+        ? ([...denticiones][0] as Dentition)
+        : 'mixta';
+
+  if (next === odontogram.dentition) return odontogram;
+
+  const rows = await db
+    .update(odontograms)
+    .set({ dentition: next })
+    .where(eq(odontograms.id, odontogram.id))
+    .returning();
+  return rows[0] ?? { ...odontogram, dentition: next };
+};
+
 /** La clave natural del hallazgo: pieza + cara (`null` = pieza completa) + condición. */
 const findByKey = async (
   db: OdontogramDb,
@@ -867,7 +904,12 @@ export const recordFinding = async (
       dentitionOfTooth(input.toothNumber),
       actor,
     );
-    return applyFinding(tx, odontogram, patientId, input, actor);
+    const applied = await applyFinding(tx, odontogram, patientId, input, actor);
+    // La dentición sigue a los hallazgos: al entrar una pieza de la otra dentición la
+    // boca pasa a `mixta` (y al revés al corregir una captura).
+    return applied.unchanged
+      ? applied
+      : { ...applied, odontogram: await syncDentition(tx, applied.odontogram) };
   });
 
   return toMutationResult(db, outcome);
@@ -921,7 +963,11 @@ export const recordFindingsBatch = async (
       for (const surface of applied.resolvedSurfaces) resueltas.add(surface);
     }
 
-    return { odontogram, unchanged, resolvedSurfaces: [...resueltas].sort(byFormOrder) };
+    return {
+      odontogram: unchanged ? odontogram : await syncDentition(tx, odontogram),
+      unchanged,
+      resolvedSurfaces: [...resueltas].sort(byFormOrder),
+    };
   });
 
   return toMutationResult(db, outcome);
@@ -957,7 +1003,7 @@ export const deleteFinding = async (
     });
 
     return {
-      odontogram: await touchOdontogram(tx, odontogram.id, at),
+      odontogram: await syncDentition(tx, await touchOdontogram(tx, odontogram.id, at)),
       unchanged: false,
       resolvedSurfaces: [],
     };
@@ -1008,7 +1054,7 @@ export const clearSurface = async (
     }
 
     return {
-      odontogram: await touchOdontogram(tx, odontogram.id, at),
+      odontogram: await syncDentition(tx, await touchOdontogram(tx, odontogram.id, at)),
       unchanged: false,
       resolvedSurfaces: [],
     };

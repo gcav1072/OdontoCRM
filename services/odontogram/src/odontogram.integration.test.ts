@@ -298,7 +298,7 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
     expect(rows.every((row) => row.entityType === 'odontogram')).toBe(true);
   }, 40_000);
 
-  it('la dentición la deduce el servidor del FDI y no la mueve el cliente', async () => {
+  it('la dentición se deriva de los hallazgos vigentes: aparece la mixta (ADR 0051)', async () => {
     const primera = await recordFinding(
       handle.db,
       pacienteTemporal,
@@ -307,14 +307,25 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
     );
     expect(primera.odontogram.dentition).toBe('temporal');
 
-    // Un hallazgo permanente no cambia la dentición ya fijada por el primero.
+    // Al entrar una pieza permanente, la boca pasa a **mixta**: el paciente está
+    // mudando. Ya no se queda fijada en la dentición del primer hallazgo.
     const segunda = await recordFinding(
       handle.db,
       pacienteTemporal,
       hallazgo({ toothNumber: 11, surface: 'occlusal', condition: 'caries' }),
       actor,
     );
-    expect(segunda.odontogram.dentition).toBe('temporal');
+    expect(segunda.odontogram.dentition).toBe('mixta');
+
+    // Y al corregir la captura (se borra la permanente) vuelve a ser temporal: la
+    // dentición sigue a los hallazgos **vigentes**, no a la historia.
+    const tercera = await deleteFinding(
+      handle.db,
+      pacienteTemporal,
+      { toothNumber: 11, surface: 'occlusal', condition: 'caries' },
+      actor,
+    );
+    expect(tercera.odontogram.dentition).toBe('temporal');
 
     const sinBoca = await getOdontogramByPatient(handle.db, pacienteSinBoca);
     expect(sinBoca).toMatchObject({ exists: false, patientId: pacienteSinBoca, patient: null });
