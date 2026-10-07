@@ -3,11 +3,15 @@
  *
  * Carga Tailwind y los tokens del sistema de diseño, que viven en
  * `packages/ui` (fuente única de verdad del tema claro y oscuro) y se exponen
- * como `@odontocrm/ui/tokens.css`.
+ * como `@odontocrm/ui/tokens.css`. La **marca** (paleta y tipografías
+ * impresas, `--brand-*`) viene de `@odontocrm/ui/marca.css`, generado desde
+ * `packages/contracts/src/brand.ts`: es lo que comparten la interfaz y los
+ * documentos que compone el servidor.
  */
 
 @import 'tailwindcss';
 @import '@odontocrm/ui/tokens.css';
+@import '@odontocrm/ui/marca.css';
 
 /* El tema oscuro se activa con la clase `dark` en <html> (ThemeProvider). */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -72,7 +76,17 @@
     html,
     body {
       background: #fff !important;
-      color: #000;
+      color: var(--brand-ink);
+    }
+
+    /*
+     * El papel del navegador (odontograma e historia clínica) usa la **tipografía de
+     * la marca**, la misma que los PDF que compone el servidor (récipe, reporte,
+     * dossier): una historia clínica impresa y su récipe no deben salir con dos
+     * familias distintas. La tinta también es la de la marca.
+     */
+    body {
+      font-family: var(--brand-font-doc);
     }
   }
 
