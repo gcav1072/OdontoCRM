@@ -61,7 +61,7 @@ export interface ClinicIdentity {
   website: string | null;
   /**
    * Logo del membrete: ruta **relativa a la raíz del repositorio**
-   * (`assets/clinic/logo.png`). Si el archivo no existe, el membrete sale sin logo.
+   * (`assets/clinic/logo.svg`). Si el archivo no existe, el membrete sale sin logo.
    */
   logoPath: string | null;
   /** Odontólogos del consultorio; el primero es el titular. */
@@ -83,7 +83,8 @@ export const CLINIC: ClinicIdentity = {
   rif: null,
   website: null,
   // Deja el logo en esa ruta y aparece en el récipe; si no está, el membrete sale sin él.
-  logoPath: 'assets/clinic/logo.png',
+  // La paleta y las tipografías del membrete viven en `brand.ts`.
+  logoPath: 'assets/clinic/logo.svg',
 
   dentists: [
     {

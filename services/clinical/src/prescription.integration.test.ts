@@ -181,7 +181,7 @@ describeWithDatabases('récipes y adjuntos: número, PDF A5, QR y auditoría', (
   const emitir = (id: string, patient: string = patientId) =>
     issuePrescription(handle.db, blobStore, pdfRenderer, id, actor, {
       publicAppUrl: 'http://127.0.0.1:5173',
-      logoPath: resolve('assets/clinic/logo.png'),
+      logoPath: resolve('assets/clinic/logo.svg'),
       patientLookup: async (consultado) => (consultado === patient ? paciente : null),
     });
 

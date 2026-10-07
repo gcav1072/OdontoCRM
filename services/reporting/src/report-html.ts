@@ -1,5 +1,6 @@
 import {
   CLINIC,
+  brandStyles,
   clinicContactLine,
   clinicFullAddress,
   type ReportDocument,
@@ -55,31 +56,33 @@ const fechaHora = (iso: string): string => {
 };
 
 const estilos = `
+  ${brandStyles()}
   @page { size: A4 landscape; margin: 10mm 12mm; }
   * { box-sizing: border-box; }
-  body { font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #17202a; margin: 0; }
-  .letterhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; border-bottom: 0.6mm solid #1f6f6b; padding-bottom: 3mm; }
-  .clinic-name { font-size: 14pt; font-weight: 700; color: #14504d; margin: 0; }
-  .clinic-line { font-size: 8pt; color: #4a5560; margin: 0.6mm 0 0; }
-  .doc-meta { text-align: right; font-size: 8pt; color: #4a5560; min-width: 60mm; }
-  h1 { font-size: 13pt; margin: 4mm 0 0; color: #14504d; }
-  .subtitle { font-size: 8.5pt; color: #4a5560; margin: 1mm 0 0; }
+  /* El cuerpo (fuente y tinta) lo pone brandStyles(): la MISMA marca que el récipe y el
+     dossier, para que los documentos del consultorio no salgan cada uno de un color. */
+  .letterhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; border-bottom: 0.6mm solid var(--brand-accent); padding-bottom: 3mm; }
+  .clinic-name { font-size: 14pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
+  .clinic-line { font-size: 8pt; color: var(--brand-ink-muted); margin: 0.6mm 0 0; }
+  .doc-meta { text-align: right; font-size: 8pt; color: var(--brand-ink-muted); min-width: 60mm; }
+  h1 { font-size: 13pt; margin: 4mm 0 0; color: var(--brand-primary); }
+  .subtitle { font-size: 8.5pt; color: var(--brand-ink-muted); margin: 1mm 0 0; }
   .kpis { display: flex; flex-wrap: wrap; gap: 3mm; margin-top: 4mm; }
-  .kpi { border: 0.25mm solid #cfdedd; border-radius: 1.5mm; padding: 2mm 3mm; min-width: 34mm; flex: 1 1 34mm; }
-  .kpi-label { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.2mm; color: #4a5560; margin: 0; }
+  .kpi { border: 0.25mm solid var(--brand-line); border-radius: 1.5mm; padding: 2mm 3mm; min-width: 34mm; flex: 1 1 34mm; }
+  .kpi-label { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.2mm; color: var(--brand-ink-muted); margin: 0; }
   .kpi-value { font-size: 13pt; font-weight: 700; margin: 0.8mm 0 0; }
-  .kpi-hint { font-size: 7pt; color: #6b7680; margin: 0.6mm 0 0; }
-  .kpi.good .kpi-value { color: #14663f; }
-  .kpi.warn .kpi-value { color: #8a5a00; }
-  .kpi.bad .kpi-value { color: #97231f; }
-  h2 { font-size: 10pt; color: #14504d; margin: 5mm 0 1.5mm; }
+  .kpi-hint { font-size: 7pt; color: var(--brand-ink-subtle); margin: 0.6mm 0 0; }
+  .kpi.good .kpi-value { color: var(--brand-good); }
+  .kpi.warn .kpi-value { color: var(--brand-warn); }
+  .kpi.bad .kpi-value { color: var(--brand-bad); }
+  h2 { font-size: 10pt; color: var(--brand-primary); margin: 5mm 0 1.5mm; }
   table { width: 100%; border-collapse: collapse; font-size: 8pt; }
-  th { text-align: left; background: #eef5f4; color: #14504d; font-size: 7pt; text-transform: uppercase; letter-spacing: 0.2mm; padding: 1.4mm 2mm; border-bottom: 0.3mm solid #cfdedd; }
-  td { padding: 1.4mm 2mm; border-bottom: 0.2mm solid #e3e9ea; }
+  th { text-align: left; background: var(--brand-table-head-bg); color: var(--brand-primary); font-size: 7pt; text-transform: uppercase; letter-spacing: 0.2mm; padding: 1.4mm 2mm; border-bottom: 0.3mm solid var(--brand-line); }
+  td { padding: 1.4mm 2mm; border-bottom: 0.2mm solid var(--brand-line-soft); }
   td.num, th.num { text-align: right; }
-  .notes { margin-top: 4mm; font-size: 7.5pt; color: #4a5560; }
+  .notes { margin-top: 4mm; font-size: 7.5pt; color: var(--brand-ink-muted); }
   .notes li { margin-bottom: 0.8mm; }
-  .footer { margin-top: 5mm; font-size: 7pt; color: #6b7680; }
+  .footer { margin-top: 5mm; font-size: 7pt; color: var(--brand-ink-subtle); }
 `;
 
 /**

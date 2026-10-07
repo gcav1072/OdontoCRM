@@ -3,8 +3,10 @@ import { resolve } from 'node:path';
 
 import {
   CLINIC,
+  brandStyles,
   clinicContactLine,
   clinicFullAddress,
+  logoMimeType,
   type ClinicDentist,
 } from '@odontocrm/contracts';
 
@@ -95,11 +97,9 @@ const logoDataUri = async (logoPath: string | null): Promise<string | null> => {
   if (logoPath === null) return null;
   try {
     const data = await readFile(resolve(logoPath));
-    const extension =
-      logoPath.toLowerCase().endsWith('.jpg') || logoPath.toLowerCase().endsWith('.jpeg')
-        ? 'jpeg'
-        : 'png';
-    return `data:image/${extension};base64,${data.toString('base64')}`;
+    // El tipo MIME sale de la marca (`logoMimeType`), que reconoce el SVG además de
+    // PNG y JPG: el logo por defecto del consultorio es un vector.
+    return `data:${logoMimeType(logoPath)};base64,${data.toString('base64')}`;
   } catch {
     // Sin archivo no hay logo: el membrete sale igual (y `letterheadMissingFields` avisa).
     return null;
@@ -107,35 +107,37 @@ const logoDataUri = async (logoPath: string | null): Promise<string | null> => {
 };
 
 const styles = `
+  ${brandStyles()}
   @page { size: A5; margin: 8mm 10mm; }
   * { box-sizing: border-box; }
-  body { font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #17202a; margin: 0; }
-  .letterhead { display: flex; align-items: flex-start; gap: 6mm; border-bottom: 0.6mm solid #1f6f6b; padding-bottom: 3mm; }
-  .logo { height: 18mm; width: auto; }
+  /* El cuerpo (fuente y tinta) lo pone brandStyles(), la marca compartida con el
+     reporte y el dossier: el membrete del consultorio no sale de dos colores. */
+  .letterhead { display: flex; align-items: flex-start; gap: 6mm; border-bottom: 0.6mm solid var(--brand-accent); padding-bottom: 3mm; }
+  .logo { height: var(--brand-logo-height-mm); width: auto; }
   .letterhead-text { flex: 1; }
-  .clinic-name { font-size: 13pt; font-weight: 700; color: #14504d; margin: 0; }
-  .clinic-line { font-size: 8pt; color: #4a5560; margin: 0.6mm 0 0; }
+  .clinic-name { font-size: var(--brand-doc-title-pt); font-weight: 700; color: var(--brand-primary); margin: 0; }
+  .clinic-line { font-size: 8pt; color: var(--brand-ink-muted); margin: 0.6mm 0 0; }
   .rx { display: flex; justify-content: space-between; align-items: baseline; margin-top: 3mm; }
   .rx-title { font-size: 12pt; font-weight: 700; letter-spacing: 0.4mm; margin: 0; }
-  .rx-number { font-size: 9pt; color: #4a5560; }
+  .rx-number { font-size: 9pt; color: var(--brand-ink-muted); }
   .patient { margin-top: 2mm; font-size: 9pt; }
   .patient strong { font-weight: 600; }
   table { width: 100%; border-collapse: collapse; margin-top: 3mm; font-size: 9pt; }
-  th { text-align: left; background: #eef5f4; color: #14504d; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.2mm; padding: 1.6mm 2mm; border-bottom: 0.3mm solid #cfdedd; }
-  td { padding: 1.8mm 2mm; border-bottom: 0.2mm solid #e3e9ea; vertical-align: top; }
+  th { text-align: left; background: var(--brand-table-head-bg); color: var(--brand-primary); font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.2mm; padding: 1.6mm 2mm; border-bottom: 0.3mm solid var(--brand-line); }
+  td { padding: 1.8mm 2mm; border-bottom: 0.2mm solid var(--brand-line-soft); vertical-align: top; }
   .med { font-weight: 600; }
-  .detail { color: #46535f; font-size: 8pt; }
+  .detail { color: var(--brand-ink-strong); font-size: 8pt; }
   .instructions { margin-top: 3mm; font-size: 8.5pt; }
-  .instructions h2 { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.2mm; color: #14504d; margin: 0 0 1mm; }
+  .instructions h2 { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.2mm; color: var(--brand-primary); margin: 0 0 1mm; }
   .footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 6mm; margin-top: 10mm; }
   .signature { text-align: center; font-size: 8.5pt; min-width: 62mm; }
-  .signature-line { border-top: 0.3mm solid #17202a; margin-bottom: 1.5mm; }
+  .signature-line { border-top: 0.3mm solid var(--brand-ink); margin-bottom: 1.5mm; }
   .signature-name { font-weight: 600; }
-  .signature-detail { font-size: 7.5pt; color: #4a5560; }
-  .verify { text-align: center; font-size: 6.5pt; color: #4a5560; }
+  .signature-detail { font-size: 7.5pt; color: var(--brand-ink-muted); }
+  .verify { text-align: center; font-size: 6.5pt; color: var(--brand-ink-muted); }
   .verify svg { width: 22mm; height: 22mm; display: block; margin: 0 auto 1mm; }
   .verify code { font-size: 7pt; letter-spacing: 0.3mm; }
-  .note { margin-top: 2mm; font-size: 7pt; color: #6b7680; }
+  .note { margin-top: 2mm; font-size: 7pt; color: var(--brand-ink-subtle); }
 `;
 
 /**
