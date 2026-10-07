@@ -17,12 +17,12 @@ más adelante, fuera de ella por VPN.
 >
 > | Quiero… | Documento |
 > | :--- | :--- |
-> | **Instalar el servidor de la clínica** | `sudo bash infra/fedora/instalar/instalar.sh` y, para el detalle, [`INSTALL.md`](infra/fedora/INSTALL.md) §3-bis |
-> | **Operar el sistema ya instalado** | [`infra/fedora/RUNBOOK.md`](infra/fedora/RUNBOOK.md) y [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) |
+> | **Instalar el servidor de la clínica** | `sudo bash infra/fedora/instalar/instalar.sh` (Fedora) o `powershell -ExecutionPolicy Bypass -File infra\windows\instalar\instalar.ps1` (Windows) y, para el detalle, [`INSTALL.md`](infra/fedora/INSTALL.md) §3-bis o [`infra/windows/INSTALL.md`](infra/windows/INSTALL.md) |
+> | **Operar el sistema ya instalado** | [`infra/fedora/RUNBOOK.md`](infra/fedora/RUNBOOK.md) y [`infra/windows/RUNBOOK.md`](infra/windows/RUNBOOK.md) y [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) |
 > | **Usar el consultorio** (sin terminal) | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) |
 > | **Conectar tablets, móviles y TVs** | [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) |
 > | **Desarrollar** | este README y [`docs/COMANDOS.md`](docs/COMANDOS.md) |
-> | **Entender las decisiones** | [`docs/adr/`](docs/adr/README.md) (49 ADRs) y [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md) |
+> | **Entender las decisiones** | [`docs/adr/`](docs/adr/README.md) (50 ADRs) y [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md) |
 > | **Ver qué se probó y con qué evidencia** | [`infra/fedora/INSTALL.md` §20](infra/fedora/INSTALL.md) y [`docs/REVISION_SEGURIDAD_FASE_10.md`](docs/REVISION_SEGURIDAD_FASE_10.md) |
 
 ---
@@ -41,18 +41,27 @@ más adelante, fuera de ella por VPN.
 
 > **¿Es el servidor de la clínica y no una máquina de desarrollo?** Entonces esto no es lo
 > que buscas: en una PC nueva, **un solo comando** hace todo (máquina, bases, usuarios,
-> despliegue, TLS, firewall, SELinux, respaldos y el nombre para los equipos):
+> despliegue, TLS, firewall, respaldos y el nombre para los equipos). Hay **dos destinos
+> soportados** ([ADR 0050](docs/adr/0050-windows-segundo-destino-de-produccion.md)):
 >
 > ```bash
+> # Fedora:
 > sudo bash infra/fedora/instalar/instalar.sh
+> ```
+>
+> ```powershell
+> # Windows (consola de Administrador):
+> powershell -ExecutionPolicy Bypass -File infra\windows\instalar\instalar.ps1
 > ```
 >
 > Son cuatro piezas que se pueden ejecutar y comprobar por separado (preparar · aprovisionar ·
 > desplegar · verificar) encadenadas por ese comando, y **una sola fuente de verdad para las
-> credenciales** (`/etc/odontocrm`): el código desplegado no contiene ninguna. Detalle paso a
-> paso en [`infra/fedora/INSTALL.md`](infra/fedora/INSTALL.md) §3-bis; para una
-> instalación que ya existe, `sudo odontocrm actualizar`. Lo de aquí abajo levanta una **pila
-> de desarrollo** con recarga automática.
+> credenciales** (`/etc/odontocrm` en Fedora, `C:\ProgramData\OdontoCRM\env` en Windows): el
+> código desplegado no contiene ninguna. Detalle paso a paso en
+> [`infra/fedora/INSTALL.md`](infra/fedora/INSTALL.md) §3-bis y
+> [`infra/windows/INSTALL.md`](infra/windows/INSTALL.md); para una instalación que ya existe,
+> `sudo odontocrm actualizar` (Fedora) o `odontocrm actualizar` (Windows). Lo de aquí abajo
+> levanta una **pila de desarrollo** con recarga automática.
 
 ## Puesta en marcha (desarrollo)
 
@@ -151,8 +160,8 @@ packages/kernel       Config validada, logger censurado, errores RFC 7807, /heal
 packages/testing      Generador determinista y fábricas para el modo test
 services/<nombre>     Un servicio por contexto delimitado, con su propia base de datos
 infra/db              Bootstrap de bases, roles y credenciales
-infra/windows         Arranque y operación en Windows (desarrollo)
-infra/fedora          Guía y scripts de producción en Fedora
+infra/windows         Instalación del servidor y operación en Windows
+infra/fedora          Instalación del servidor y operación en Fedora
 tools                 Scripts de apoyo (verificación de secretos, migraciones)
 docs                  Plan maestro, formato de historia clínica y ADRs
 ```
@@ -632,4 +641,5 @@ nuevo en negrita), el autor, la IP y la petición. `Descargar CSV` baja exactame
 - [Formato de historia clínica odontológica](docs/formato_historia.md)
 - [Plan del servicio de odontograma](docs/implementation_plan_odontogram_microservice.md)
 - [Decisiones de arquitectura (ADR)](docs/adr/README.md)
-- [Instalación en Windows](infra/windows/install.md) · [Producción en Fedora](infra/fedora/INSTALL.md)
+- **Instalación del servidor**: [en Windows](infra/windows/INSTALL.md) · [en Fedora](infra/fedora/INSTALL.md)
+- **Desarrollo**: [en Windows](infra/windows/DESARROLLO.md)

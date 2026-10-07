@@ -1,4 +1,4 @@
-# Arranca OdontoCRM en Windows (desarrollo) con PM2.
+﻿# Arranca OdontoCRM en Windows (desarrollo) con PM2.
 #
 #   powershell -ExecutionPolicy Bypass -File infra/windows/start-services.ps1
 #
@@ -10,7 +10,7 @@ Set-Location $root
 
 function Assert-Command([string] $name) {
   if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
-    throw "Falta el comando '$name'. Revisa infra/windows/install.md."
+    throw "Falta el comando '$name'. Revisa infra/windows/DESARROLLO.md."
   }
 }
 

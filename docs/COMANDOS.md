@@ -50,7 +50,7 @@
 ## 2. Puesta en marcha desde cero
 
 Requisitos: **Node.js 26**, **PostgreSQL 18** en `127.0.0.1:5432`, `npm` y (opcional,
-para tener los servicios siempre vivos) `pm2`. Ver [`infra/windows/install.md`](../infra/windows/install.md).
+para tener los servicios siempre vivos) `pm2`. Ver [`infra/windows/DESARROLLO.md`](../infra/windows/DESARROLLO.md).
 
 ```powershell
 # 1. Dependencias

@@ -2567,7 +2567,8 @@ sudo /opt/odontocrm/infra/fedora/backup/odontocrm-restore.sh --list
 - Plan maestro: [`docs/PLAN_MAESTRO_FASES.md`](../../docs/PLAN_MAESTRO_FASES.md) — §1 decisiones, §2 arquitectura, §3 estructura, §11 seguridad, §13 Fase 10, §15 qué hay que instalar, §16 riesgos.
 - Política de secretos: `docs/SEGURIDAD_SECRETOS.md` (Fase 0).
 - Bootstrap de bases y roles: `infra/db/bootstrap.mjs` + `npm run db:bootstrap` (Fase 0).
-- Instalación en Windows (desarrollo): `infra/windows/install.md` (Fase 0).
+- Instalación en Windows: **desarrollo** en `infra/windows/DESARROLLO.md` y **servidor** en
+  `infra/windows/INSTALL.md` (ADR 0050).
 
 ---
 
