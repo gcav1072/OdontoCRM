@@ -42,6 +42,10 @@ const CONSECUENCIA = {
   COOKIE_SECRET: 'al reiniciar, las sesiones abiertas dejan de valer',
   TELEGRAM_BOT_TOKEN: 'el bot queda en MODO SIMULADO: los mensajes NO salen a Telegram',
   TELEGRAM_BOT_USERNAME: 'no se pueden armar los enlaces t.me/<bot>?start=… ni el QR',
+  ADMIN_TELEGRAM_BOT_TOKEN:
+    'los fallos del sistema (eventos perdidos, respaldo) NO avisan al administrador',
+  ADMIN_TELEGRAM_CHAT_ID:
+    'el bot de administración no sabe a quién escribir: los avisos se quedan en el registro',
 };
 
 /**

@@ -488,6 +488,13 @@ const extrasDe = (nombre) => {
         WHATSAPP_PHONE_ID: enEntorno('WHATSAPP_PHONE_ID'),
         WHATSAPP_VERIFY_TOKEN: enEntorno('WHATSAPP_VERIFY_TOKEN'),
         WHATSAPP_APP_SECRET: enEntorno('WHATSAPP_APP_SECRET'),
+        // El bot de ADMINISTRACIÓN (mejora 1 del plan post-Fase 11): el que avisa al dueño
+        // del consultorio de los fallos de infraestructura. Es un bot aparte del de los
+        // pacientes a propósito —el de los pacientes lo ven las familias— y sus dos claves
+        // van con `null` por la misma razón que las del otro token: en el esquema del
+        // servicio son opcionales, y `CLAVE=` (vacío) no es «sin configurar».
+        ADMIN_TELEGRAM_BOT_TOKEN: enEntorno('ADMIN_TELEGRAM_BOT_TOKEN'),
+        ADMIN_TELEGRAM_CHAT_ID: enEntorno('ADMIN_TELEGRAM_CHAT_ID'),
       };
     default:
       return {};
@@ -506,6 +513,10 @@ const comentarioDe = (clave) =>
     PUBLIC_APP_URL: 'La usa el QR del récipe: tiene que ser la dirección por la que entra la clínica.',
     TELEGRAM_BOT_TOKEN: 'Token de BotFather. Sin él los avisos salen en modo simulado.',
     TELEGRAM_BOT_USERNAME: 'Usuario del bot, sin @ (para el enlace t.me/<usuario>).',
+    ADMIN_TELEGRAM_BOT_TOKEN:
+      'Token del BOT DE ADMINISTRACIÓN (BotFather). Recibe los avisos de fallos del sistema.',
+    ADMIN_TELEGRAM_CHAT_ID:
+      'Chat del administrador (o grupo) al que llegan esos avisos. Sin él no hay a quién avisar.',
     WHATSAPP_TOKEN: 'Token de la WhatsApp Cloud API. Sin él ese canal no se activa.',
     WHATSAPP_PHONE_ID: 'Identificador del número de WhatsApp Business.',
     WHATSAPP_VERIFY_TOKEN: 'Lo inventa la clínica: Meta lo repite al verificar el webhook.',

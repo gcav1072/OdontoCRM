@@ -47,17 +47,20 @@ import {
   rutaEnvDe,
   SERVICIOS,
 } from './lib/servicios.mjs';
+import { enviarAvisoAdmin, leerBotAdmin } from './lib/alerta-admin.mjs';
 
 const { Client } = pg;
 
 const args = process.argv.slice(2);
-const CONOCIDAS = ['--json', '--alertas', '--vigilar', '--sin-servicios', '--ayuda'];
+const CONOCIDAS = ['--json', '--alertas', '--vigilar', '--sin-servicios', '--sin-aviso', '--ayuda'];
 const desconocida = args.find((arg) => arg.startsWith('--') && !CONOCIDAS.includes(arg));
 if (desconocida !== undefined || args.includes('--ayuda')) {
   console.log(
     'Uso: npm run estado [-- --json | --alertas | --vigilar <segundos> | --sin-servicios]\n\n' +
       '  --json           la foto en JSON\n' +
       '  --alertas        solo los problemas; sale con 1 si hay alguno\n' +
+      '                   (y avisa por el bot de administración si está configurado)\n' +
+      '  --sin-aviso      no manda el aviso a Telegram, solo imprime\n' +
       '  --vigilar <seg>  refresca cada N segundos\n' +
       '  --sin-servicios  no pregunta por HTTP (pila parada: solo bases, cola y outbox)\n',
   );
@@ -67,6 +70,7 @@ if (desconocida !== undefined || args.includes('--ayuda')) {
 const comoJson = args.includes('--json');
 const soloAlertas = args.includes('--alertas');
 const sinServicios = args.includes('--sin-servicios');
+const sinAviso = args.includes('--sin-aviso');
 const vigilarIndex = args.indexOf('--vigilar');
 const vigilarSegundos =
   vigilarIndex === -1 ? 0 : Math.max(2, Number(args[vigilarIndex + 1] ?? '5') || 5);
@@ -386,6 +390,55 @@ const revisarReportes = async (entornoLegible) => {
   }
 };
 
+/**
+ * **Eventos perdidos**: los que agotaron sus reintentos y quedaron apuntados.
+ *
+ * Viven en dos sitios y conviene mirar los dos: la tabla `events.dead_letter_events` del
+ * registro duradero (lo que de verdad se dejó de hacer) y la cola de descarte de `pg-boss`
+ * (lo que todavía no ha pasado por el vigilante). Todo está en la misma base de eventos, así
+ * que una sola conexión sirve para las dos consultas.
+ */
+const revisarCartasMuertas = async (entornoLegible) => {
+  if (!entornoLegible) return { error: 'no comprobable sin sudo (no puedo leer los entornos)' };
+  const url = leerEnv(rutaEnvDe(SERVICIOS.find((s) => s.name === 'identity'))).EVENTS_DATABASE_URL;
+  if (url === undefined) return { error: 'falta EVENTS_DATABASE_URL' };
+
+  const client = conectar(url, 'odontocrm-estado');
+  try {
+    await client.connect();
+    const { rows } = await client.query(
+      `select count(1)::int as total,
+              count(1) filter (where recorded_at > now() - interval '24 hours')::int as ultimas_24h,
+              max(recorded_at) as mas_reciente
+         from events.dead_letter_events`,
+    );
+    const fila = rows[0] ?? {};
+
+    // El buzón de `pg-boss`: trabajos copiados que aún no ha recogido el vigilante.
+    const { rows: enCola } = await client.query(
+      `select count(1)::int as pendientes
+         from pgboss.job
+        where name = $1 and state in ('created', 'retry', 'active')`,
+      ['dead-letter.domain-events'],
+    );
+
+    return {
+      total: fila.total ?? 0,
+      ultimas24h: fila.ultimas_24h ?? 0,
+      masReciente: fila.mas_reciente === null ? null : new Date(fila.mas_reciente).toISOString(),
+      pendientesDeRecoger: enCola[0]?.pendientes ?? 0,
+    };
+  } catch (fallo) {
+    // La tabla puede no existir todavía (instalación que aún no ha fallado nunca): eso no es
+    // un problema, es que no hay nada que contar.
+    const mensaje = fallo instanceof Error ? fallo.message : String(fallo);
+    if (mensaje.includes('dead_letter_events')) return { total: 0, ausente: true };
+    return { error: mensaje };
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+};
+
 /** Ejecuta y devuelve la salida, o `null` si el comando no existe o sale con error. */
 const intentarComando = (comando, args) => {
   try {
@@ -564,12 +617,13 @@ export const tomarFoto = async () => {
   const permisos = revisarPermisos();
   const datos = permisos.envLegible ? await revisarDatos() : [];
   const systemd = revisarSupervisor();
-  const [bases, cola, envios, reportes, disco] = await Promise.all([
+  const [bases, cola, envios, reportes, disco, cartasMuertas] = await Promise.all([
     revisarBases(entorno, datos),
     revisarCola(permisos.envLegible),
     revisarEnvios(permisos.envLegible),
     revisarReportes(permisos.envLegible),
     revisarDisco(),
+    revisarCartasMuertas(permisos.envLegible),
   ]);
 
   return {
@@ -584,6 +638,7 @@ export const tomarFoto = async () => {
     envios,
     reportes,
     disco,
+    cartasMuertas,
   };
 };
 
@@ -729,6 +784,27 @@ const tablero = (foto) => {
   }
 
   lineas.push('');
+  lineas.push(color.titulo('── Eventos perdidos (cola de descarte) ───────────────────────────'));
+  if (sinPermisos) lineas.push(`  ${color.tenue('·')} ${notaSinSudo}`);
+  if (!sinPermisos && foto.cartasMuertas?.error !== undefined) {
+    lineas.push(`  ${color.error('✖')} ${String(foto.cartasMuertas.error)}`);
+  } else if (!sinPermisos && foto.cartasMuertas !== undefined) {
+    const cartas = foto.cartasMuertas;
+    const hay = (cartas.ultimas24h ?? 0) > 0 || (cartas.pendientesDeRecoger ?? 0) > 0;
+    lineas.push(
+      `  ${hay ? color.error('✖') : color.ok('✔')} ` +
+        `${String(cartas.total ?? 0)} en el registro` +
+        (cartas.ausente === true
+          ? ' (la tabla todavía no existe: no se ha perdido ningún evento)'
+          : ` · ${String(cartas.ultimas24h ?? 0)} en las últimas 24 h` +
+            (cartas.masReciente === null || cartas.masReciente === undefined
+              ? ''
+              : ` · el último ${hace(cartas.masReciente)}`)) +
+        ` · ${String(cartas.pendientesDeRecoger ?? 0)} sin recoger`,
+    );
+  }
+
+  lineas.push('');
   lineas.push(color.titulo('── Alertas ───────────────────────────────────────────────────────'));
   if (sinPermisos) {
     lineas.push(
@@ -779,6 +855,25 @@ const main = async () => {
 
   if (soloAlertas) {
     const total = imprimirAlertas(foto);
+    // El aviso por Telegram: es la razón de que este comando exista como temporizador —el
+    // administrador no está mirando la consola a las tres de la mañana—. Va **después** de
+    // imprimir, para que quede en el registro del servicio aunque Telegram no responda.
+    if (total > 0 && !sinAviso) {
+      const resultado = await enviarAvisoAdmin({
+        level: 'critical',
+        title: `${String(total)} problema(s) en el sistema del consultorio`,
+        detail: alertasDe(foto)
+          .slice(0, 8)
+          .map((problema) => `· ${problema}`)
+          .join('\n'),
+        source: 'estado',
+      });
+      if (!resultado.enviado) {
+        console.log(`${color.aviso('!')} el aviso no salió: ${String(resultado.motivo ?? '')}`);
+      }
+    } else if (total > 0 && sinAviso && leerBotAdmin() !== null) {
+      console.log(`${color.aviso('!')} --sin-aviso: no se manda nada a Telegram`);
+    }
     process.exitCode = total === 0 ? 0 : 1;
     return;
   }

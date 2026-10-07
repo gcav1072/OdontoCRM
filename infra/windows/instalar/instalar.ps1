@@ -51,6 +51,7 @@ DATOS
   --nombre-mdns=NOMBRE   --ip=IP   --admin-url=URL   --usuarios=a,b
   --clave-admin=CLAVE    --sin-preguntas            --reconfigurar
   --token-telegram=…   --usuario-telegram=…
+  --token-bot-admin=…  --chat-bot-admin=…   (avisos de fallos del sistema)
   --whatsapp-token=…   --whatsapp-phone-id=…   --whatsapp-verify-token=…   --whatsapp-app-secret=…
 '@
 
@@ -66,6 +67,8 @@ $Usuarios = Get-Argumento $args 'usuarios'
 $ClaveAdmin = Get-Argumento $args 'clave-admin'
 $TokenTelegram = Get-Argumento $args 'token-telegram'
 $UsuarioTelegram = Get-Argumento $args 'usuario-telegram'
+$TokenBotAdmin = Get-Argumento $args 'token-bot-admin'
+$ChatBotAdmin = Get-Argumento $args 'chat-bot-admin'
 $WaToken = Get-Argumento $args 'whatsapp-token'
 $WaPhone = Get-Argumento $args 'whatsapp-phone-id'
 $WaVerify = Get-Argumento $args 'whatsapp-verify-token'
@@ -120,6 +123,14 @@ if (-not $DryRun -and -not $SinPreguntas -and $hayTerminal -and $Solo -notin @('
     $r = Read-Host '      Token del bot de Telegram (Enter para omitir; queda en modo simulado)'
     if ($r) { $TokenTelegram = $r }
   }
+  if (-not $TokenBotAdmin) {
+    $r = Read-Host '      Token del bot de ADMINISTRACIÓN —avisos de fallos del sistema— (Enter para omitir)'
+    if ($r) { $TokenBotAdmin = $r }
+  }
+  if ($TokenBotAdmin -and -not $ChatBotAdmin) {
+    $r = Read-Host '      Chat del administrador (Enter para abrir Telegram, escribirle /start al bot y pulsar Enter)'
+    if ($r) { $ChatBotAdmin = $r }
+  }
   if (-not $WaToken) {
     $r = Read-Host '      Token de la WhatsApp Cloud API (Enter para omitir)'
     if ($r) { $WaToken = $r }
@@ -133,6 +144,8 @@ elseif ($SinPreguntas) { Escribir-Detalle '--sin-preguntas: clave del admin al a
 $env:USUARIOS_SEED = $Usuarios
 if ($ClaveAdmin) { $env:SEED_PASSWORD_ADMIN = $ClaveAdmin }
 if ($TokenTelegram) { $env:TELEGRAM_BOT_TOKEN = $TokenTelegram }
+if ($TokenBotAdmin) { $env:ADMIN_TELEGRAM_BOT_TOKEN = $TokenBotAdmin }
+if ($ChatBotAdmin) { $env:ADMIN_TELEGRAM_CHAT_ID = $ChatBotAdmin }
 if ($UsuarioTelegram) { $env:TELEGRAM_BOT_USERNAME = $UsuarioTelegram }
 if ($WaToken) { $env:WHATSAPP_TOKEN = $WaToken }
 if ($WaPhone) { $env:WHATSAPP_PHONE_ID = $WaPhone }

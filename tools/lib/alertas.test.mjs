@@ -40,6 +40,70 @@ describe('alertas del sistema', () => {
     expect(alertasDe(foto({ servicios: [servicio()] }), AHORA)).toEqual([]);
   });
 
+  /**
+   * Los **eventos perdidos** (cola de descarte): un evento que agotó sus reintentos es lo
+   * más grave del tablero, porque significa que algo que el sistema prometió hacer no se
+   * hizo. El registro es histórico, así que lo que dispara la alerta es la **ventana** (las
+   * últimas 24 h), no el total: si no, alertaría para siempre por algo ya arreglado.
+   */
+  describe('eventos perdidos', () => {
+    it('uno reciente es un problema, con su antigüedad y dónde mirar', () => {
+      const conPerdido = foto({
+        servicios: [servicio()],
+        cartasMuertas: {
+          total: 12,
+          ultimas24h: 1,
+          masReciente: haceMinutos(3),
+          pendientesDeRecoger: 0,
+        },
+      });
+
+      const problemas = alertasDe(conPerdido, AHORA);
+      expect(problemas).toHaveLength(1);
+      expect(problemas[0]).toContain('eventos perdidos');
+      expect(problemas[0]).toContain('hace 3 min');
+      expect(problemas[0]).toContain('dead_letter_events');
+    });
+
+    it('los de hace días no alertan (el total histórico no dice nada)', () => {
+      const viejo = foto({
+        servicios: [servicio()],
+        cartasMuertas: {
+          total: 40,
+          ultimas24h: 0,
+          masReciente: haceMinutos(60 * 48),
+          pendientesDeRecoger: 0,
+        },
+      });
+
+      expect(alertasDe(viejo, AHORA)).toEqual([]);
+    });
+
+    it('sin tabla todavía (nunca se ha perdido nada) no es un problema', () => {
+      const sinTabla = foto({
+        servicios: [servicio()],
+        cartasMuertas: { total: 0, ausente: true },
+      });
+      expect(alertasDe(sinTabla, AHORA)).toEqual([]);
+    });
+
+    it('trabajos copiados al buzón sin recoger avisan de que nadie los está apuntando', () => {
+      const sinVigilante = foto({
+        servicios: [servicio()],
+        cartasMuertas: { total: 0, ultimas24h: 0, masReciente: null, pendientesDeRecoger: 4 },
+      });
+
+      const problemas = alertasDe(sinVigilante, AHORA);
+      expect(problemas).toHaveLength(1);
+      expect(problemas[0]).toContain('4 trabajo(s) sin recoger');
+    });
+
+    it('si no se pudo leer el registro, se dice en vez de callarse', () => {
+      const sinLeer = foto({ servicios: [servicio()], cartasMuertas: { error: 'sin permisos' } });
+      expect(alertasDe(sinLeer, AHORA)[0]).toContain('sin permisos');
+    });
+  });
+
   it('el modo test por sí solo no es una alerta (se enseña aparte)', () => {
     const conModoTest = foto({
       modoTest: { enabled: true, state: 'enabled', message: '' },

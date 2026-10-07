@@ -74,6 +74,8 @@ USUARIOS_SEED="${USUARIOS_SEED:-admin}"
 CLAVE_ADMIN="${SEED_PASSWORD_ADMIN:-}"
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 TELEGRAM_BOT_USERNAME="${TELEGRAM_BOT_USERNAME:-}"
+ADMIN_TELEGRAM_BOT_TOKEN="${ADMIN_TELEGRAM_BOT_TOKEN:-}"
+ADMIN_TELEGRAM_CHAT_ID="${ADMIN_TELEGRAM_CHAT_ID:-}"
 WHATSAPP_TOKEN="${WHATSAPP_TOKEN:-}"
 WHATSAPP_PHONE_ID="${WHATSAPP_PHONE_ID:-}"
 WHATSAPP_VERIFY_TOKEN="${WHATSAPP_VERIFY_TOKEN:-}"
@@ -96,6 +98,8 @@ for arg in "$@"; do
     --clave-admin=*) CLAVE_ADMIN="${arg#*=}" ;;
     --token-telegram=*) TELEGRAM_BOT_TOKEN="${arg#*=}" ;;
     --usuario-telegram=*) TELEGRAM_BOT_USERNAME="${arg#*=}" ;;
+    --token-bot-admin=*) ADMIN_TELEGRAM_BOT_TOKEN="${arg#*=}" ;;
+    --chat-bot-admin=*) ADMIN_TELEGRAM_CHAT_ID="${arg#*=}" ;;
     --whatsapp-token=*) WHATSAPP_TOKEN="${arg#*=}" ;;
     --whatsapp-phone-id=*) WHATSAPP_PHONE_ID="${arg#*=}" ;;
     --whatsapp-verify-token=*) WHATSAPP_VERIFY_TOKEN="${arg#*=}" ;;
@@ -282,7 +286,47 @@ else
     fi
   fi
 
-  # 3) WhatsApp (Cloud API): cuatro datos, y los tres últimos solo se tienen al crear la
+  # 3) El bot de ADMINISTRACIÓN: el que avisa al dueño del consultorio cuando algo se rompe
+  #    (un evento que agota sus reintentos, el respaldo que no restaura). Es un bot aparte
+  #    del de los pacientes a propósito: el de los pacientes lo ven las familias.
+  if [[ -z "$ADMIN_TELEGRAM_BOT_TOKEN" ]] && ! ya_configurado "$ETC_DIR/notifications.env" 'ADMIN_TELEGRAM_BOT_TOKEN'; then
+    if preguntar_si '¿Avisar de los fallos del sistema por Telegram (bot de administración)?'; then
+      if valor="$(preguntar_secreto 'Token del bot de ADMINISTRACIÓN (BotFather)' 'Es OTRO bot: sus avisos son de infraestructura, no para pacientes.')"; then
+        if (( ${#valor} < 20 )); then
+          av 'un token de BotFather tiene más de 20 caracteres: no lo guardo'
+        else
+          ADMIN_TELEGRAM_BOT_TOKEN="$valor"
+        fi
+      fi
+    fi
+  fi
+  # El chat de destino se descubre solo: se le pide al administrador que le escriba al bot y
+  # se lee su `chat.id` de las actualizaciones. Es lo que evita pedir un número que nadie
+  # sabe de memoria (y equivocarse).
+  if [[ -n "$ADMIN_TELEGRAM_BOT_TOKEN" && -z "$ADMIN_TELEGRAM_CHAT_ID" ]] && command -v curl >/dev/null; then
+    if respuesta="$(timeout 10 curl -fsS "https://api.telegram.org/bot${ADMIN_TELEGRAM_BOT_TOKEN}/getMe" 2>/dev/null)" &&
+      [[ "$respuesta" == *'"ok":true'* ]]; then
+      ok "el bot de administración existe (@$(printf '%s' "$respuesta" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p'))"
+      for intento in 1 2 3; do
+        avisos="$(timeout 10 curl -fsS "https://api.telegram.org/bot${ADMIN_TELEGRAM_BOT_TOKEN}/getUpdates" 2>/dev/null || true)"
+        chat="$(printf '%s' "$avisos" | sed -n 's/.*"chat":{"id":\(-*[0-9][0-9]*\).*/\1/p' | head -n 1)"
+        if [[ -n "$chat" ]]; then
+          ADMIN_TELEGRAM_CHAT_ID="$chat"
+          ok "chat del administrador detectado: ${chat}"
+          break
+        fi
+        printf '  Abre Telegram, escríbele «/start» a ese bot y pulsa Enter (intento %s de 3)… ' "$intento" >&2
+        read -r _ || true
+      done
+      if [[ -z "$ADMIN_TELEGRAM_CHAT_ID" ]]; then
+        av 'no pude detectar el chat: se puede poner luego en notifications.env (ADMIN_TELEGRAM_CHAT_ID)'
+      fi
+    else
+      av 'Telegram no confirmó ese token de administración: se guarda igual (se corrige en notifications.env)'
+    fi
+  fi
+
+  # 4) WhatsApp (Cloud API): cuatro datos, y los tres últimos solo se tienen al crear la
   #    app en Meta. Se pueden dejar para después; el canal simplemente no se activa.
   if [[ -z "$WHATSAPP_TOKEN" ]] && ! ya_configurado "$ETC_DIR/notifications.env" 'WHATSAPP_TOKEN'; then
     if preguntar_si '¿Configurar WhatsApp ahora (Cloud API de Meta)?'; then
@@ -322,6 +366,12 @@ else
   elif ya_configurado "$ETC_DIR/notifications.env" 'TELEGRAM_BOT_TOKEN'; then
     resumen_tg='ya configurado en el servidor (se conserva)'
   fi
+  resumen_admin_bot='sin configurar: los fallos quedan en el registro'
+  if [[ -n "$ADMIN_TELEGRAM_BOT_TOKEN" ]]; then
+    resumen_admin_bot="con bot (chat ${ADMIN_TELEGRAM_CHAT_ID:-sin detectar})"
+  elif ya_configurado "$ETC_DIR/notifications.env" 'ADMIN_TELEGRAM_BOT_TOKEN'; then
+    resumen_admin_bot='ya configurado en el servidor (se conserva)'
+  fi
   resumen_wa='no configurado'
   if [[ -n "$WHATSAPP_TOKEN" ]]; then
     resumen_wa='configurado ahora'
@@ -332,6 +382,7 @@ else
   detalle "cuentas a crear : ${USUARIOS_SEED:-admin, recepcion y los odontólogos de clinic.ts}"
   detalle "admin           : $resumen_admin"
   detalle "Telegram        : $resumen_tg"
+  detalle "bot del sistema : $resumen_admin_bot"
   detalle "WhatsApp        : $resumen_wa"
 fi
 
@@ -350,6 +401,8 @@ export USUARIOS_SEED
 [[ -n "$CLAVE_ADMIN" ]] && export SEED_PASSWORD_ADMIN="$CLAVE_ADMIN"
 [[ -n "$TELEGRAM_BOT_TOKEN" ]] && export TELEGRAM_BOT_TOKEN
 [[ -n "$TELEGRAM_BOT_USERNAME" ]] && export TELEGRAM_BOT_USERNAME
+[[ -n "$ADMIN_TELEGRAM_BOT_TOKEN" ]] && export ADMIN_TELEGRAM_BOT_TOKEN
+[[ -n "$ADMIN_TELEGRAM_CHAT_ID" ]] && export ADMIN_TELEGRAM_CHAT_ID
 [[ -n "$WHATSAPP_TOKEN" ]] && export WHATSAPP_TOKEN
 [[ -n "$WHATSAPP_PHONE_ID" ]] && export WHATSAPP_PHONE_ID
 [[ -n "$WHATSAPP_VERIFY_TOKEN" ]] && export WHATSAPP_VERIFY_TOKEN

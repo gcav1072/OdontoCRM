@@ -152,6 +152,40 @@ export const alertasDe = (foto, ahora = new Date(), limites = LIMITES) => {
     );
   }
 
+  /**
+   * **Eventos perdidos**: los que agotaron sus reintentos (mejora 1 del plan post-Fase 11).
+   *
+   * Es lo más grave del tablero y por eso va el primero de su bloque: un evento perdido
+   * significa que algo que el sistema prometió hacer **no se hizo** —una auditoría, un
+   * reporte, un aviso—, y sin esta comprobación solo se notaba echando de menos el dato
+   * semanas después.
+   *
+   * Se cuentan por **ventana** y no por total: el registro es histórico, así que el número
+   * de siempre no dice nada; lo que importa es si ha vuelto a pasar hace poco.
+   */
+  const cartas = foto.cartasMuertas;
+  if (cartas?.error !== undefined) {
+    problemas.push(`eventos perdidos: ${String(cartas.error)}`);
+  } else if (cartas !== undefined) {
+    if (cartas.ultimas24h > 0) {
+      problemas.push(
+        `eventos perdidos: ${String(cartas.ultimas24h)} en las últimas 24 h` +
+          (cartas.masReciente === null || cartas.masReciente === undefined
+            ? ''
+            : ` (el último ${hace(cartas.masReciente, ahora)})`) +
+          ' — revisa los avisos del bot de administración y la tabla events.dead_letter_events',
+      );
+    }
+    // Trabajos copiados al buzón que el vigilante no ha recogido: o no hay ningún servicio
+    // que consuma eventos levantado, o el vigilante no arrancó.
+    if ((cartas.pendientesDeRecoger ?? 0) > 0) {
+      problemas.push(
+        `la cola de descarte tiene ${String(cartas.pendientesDeRecoger)} trabajo(s) sin recoger: ` +
+          'ningún servicio consumidor está apuntándolos',
+      );
+    }
+  }
+
   if (foto.disco?.porcentaje !== undefined && foto.disco.porcentaje < limites.discoLibre) {
     problemas.push(
       `queda ${String(foto.disco.porcentaje)} % de disco (${bytes(foto.disco.libre)} libres)`,
