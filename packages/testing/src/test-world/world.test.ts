@@ -371,8 +371,8 @@ describe('eventos', () => {
     const ids = worldEventIds(mundo());
     expect(new Set(ids).size).toBe(ids.length);
 
-    const porProductor = ['patients', 'scheduling', 'clinical', 'odontogram'].flatMap((producer) =>
-      worldEventsFor(mundo(), producer as never),
+    const porProductor = ['patients', 'scheduling', 'clinical', 'odontogram', 'billing'].flatMap(
+      (producer) => worldEventsFor(mundo(), producer as never),
     );
     expect(porProductor).toHaveLength(events.length);
   });

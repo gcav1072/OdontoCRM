@@ -31,6 +31,14 @@ export const deterministicUuid = (scope: string, key: string): string => {
   ].join('-');
 };
 
+/**
+ * Rango reservado de consecutivos ficticios (tickets, récipes, facturas, recibos y
+ * notas de crédito). Los reales usan de 1 a 899.999; a partir de 900.000 es «dato de
+ * prueba», igual que las cédulas de 90.000.000+. El seed deja cada secuencia
+ * apuntando al último consecutivo real.
+ */
+export const FICTITIOUS_SEQUENCE_MIN = 900_000;
+
 /** JSON con las claves ordenadas: la base de una huella estable. */
 export const canonicalJson = (value: unknown): string => {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';

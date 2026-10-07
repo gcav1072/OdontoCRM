@@ -32,7 +32,8 @@ import {
   buildSessionContent,
   type TestClinicalProfile,
 } from './clinical-content.js';
-import { deterministicUuid } from './ids.js';
+import { buildBillingWorld, type TestWorldBilling } from './billing.js';
+import { deterministicUuid, FICTITIOUS_SEQUENCE_MIN } from './ids.js';
 
 /**
  * El **mundo de prueba** del modo test (ADR 0020): un conjunto de datos
@@ -219,6 +220,8 @@ export interface TestWorld {
   sessions: TestWorldSession[];
   prescriptions: TestWorldPrescription[];
   findings: TestWorldFinding[];
+  /** Tasas, aranceles, facturas, cobros y nota de crédito (Fase 11). */
+  billing: TestWorldBilling;
   totals: {
     patients: number;
     requests: number;
@@ -230,6 +233,12 @@ export interface TestWorld {
     sessions: number;
     prescriptions: number;
     findings: number;
+    rates: number;
+    aranceles: number;
+    invoices: number;
+    drafts: number;
+    payments: number;
+    creditNotes: number;
   };
 }
 
@@ -241,11 +250,11 @@ export interface TestWorldOptions {
 }
 
 /**
- * Rango reservado de consecutivos ficticios (tickets y récipes). Los reales usan
- * de 1 a 899.999; a partir de 900.000 es «dato de prueba», igual que las cédulas
- * de 90.000.000+. El seed deja la secuencia apuntando al último consecutivo real.
+ * Rango reservado de consecutivos ficticios (tickets, récipes y documentos de
+ * facturación). Vive en `ids.js` —lo comparten los tres— y se reexporta aquí, que es
+ * donde el mundo lo usa.
  */
-export const FICTITIOUS_SEQUENCE_MIN = 900_000;
+export { FICTITIOUS_SEQUENCE_MIN };
 
 const NAMES_FEMENINE = [
   'María Fernanda Pérez',
@@ -1103,6 +1112,11 @@ export const buildTestWorld = (options: TestWorldOptions = {}): TestWorld => {
     }
   }
 
+  // --- 5. Facturación: tasas, aranceles, facturas, cobros y la nota de crédito ---
+  //     Va al final a propósito: factura las sesiones que acaban de construirse, con
+  //     su propio generador derivado de la semilla.
+  const billing = buildBillingWorld({ anchor, patients, sessions });
+
   return {
     seed: TEST_MODE_SEED,
     anchor,
@@ -1115,6 +1129,7 @@ export const buildTestWorld = (options: TestWorldOptions = {}): TestWorld => {
     sessions,
     prescriptions,
     findings,
+    billing,
     totals: {
       patients: patients.length,
       requests: requests.length,
@@ -1126,6 +1141,12 @@ export const buildTestWorld = (options: TestWorldOptions = {}): TestWorld => {
       sessions: sessions.length,
       prescriptions: prescriptions.length,
       findings: findings.length,
+      rates: billing.rates.length,
+      aranceles: billing.aranceles.length,
+      invoices: billing.invoices.length,
+      drafts: billing.invoices.filter((invoice) => invoice.status === 'borrador').length,
+      payments: billing.invoices.reduce((suma, invoice) => suma + invoice.payments.length, 0),
+      creditNotes: billing.invoices.filter((invoice) => invoice.creditNote !== null).length,
     },
   };
 };

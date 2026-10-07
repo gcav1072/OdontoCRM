@@ -3,6 +3,10 @@ import {
   APPOINTMENT_CONFIRMATION_TEMPLATE_KEY,
   clinicFullAddress,
   dentitionOfTooth,
+  formatCreditNoteNumber,
+  formatInvoiceNumber,
+  formatRateMicros,
+  formatReceiptNumber,
   formatTicket,
   formatTime12h,
   renderTemplate,
@@ -11,6 +15,7 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS, type EventTopic, type ServiceName } from '@odontocrm/events';
 
+import { SEED_ACTOR_USERNAME } from './billing.js';
 import { deterministicUuid, fingerprint } from './ids.js';
 import type { TestWorld, TestWorldAppointment, TestWorldPatient } from './world.js';
 
@@ -47,7 +52,7 @@ export interface TestWorldEvent {
 /** Actor de los eventos sembrados: nadie del consultorio, y se nota. */
 const SEED_ACTOR = {
   actorId: null,
-  actorUsername: 'seed-test',
+  actorUsername: SEED_ACTOR_USERNAME,
   ip: null,
   userAgent: 'tools/seed-test',
   requestId: null,
@@ -130,6 +135,15 @@ const bloqueCita = (appointment: TestWorldAppointment): Record<string, unknown> 
 
 /** Identificador estable del cupo de un día (el servicio usa un UUID derivado). */
 export const dayCapacityId = (date: string): string => deterministicUuid('day_capacity', date);
+
+/**
+ * Identificador del `clinical.session.closed` de una sesión: la misma clave con la
+ * que se construye su evento. El seed lo **reclama** en `billing.processed_events`
+ * cuando escribe la factura del mundo, así la cola puede entregarlo sin que nadie
+ * facture dos veces la misma sesión.
+ */
+export const sessionClosedEventId = (sessionId: string): string =>
+  deterministicUuid('event', `${EVENT_TOPICS.sessionClosed}:${sessionId}`);
 
 const evento = (input: {
   key: string;
@@ -668,6 +682,224 @@ const eventosDeOdontograma = (world: TestWorld): TestWorldEvent[] => {
   return events;
 };
 
+/**
+ * Eventos de **facturación**: la tasa de cada día, la emisión de cada factura, cada
+ * cobro (y su anulación) y la nota de crédito de la que se anuló.
+ *
+ * El borrador **no publica**: es un acto interno que se puede descartar, así que el
+ * mundo tampoco lo publica —el mismo criterio que el servicio—. Con esto, la
+ * auditoría no solo cuenta lo clínico: también el recorrido del dinero, con el mismo
+ * `actorUsername: 'seed-test'` que el resto del mundo para poder distinguirlo.
+ */
+const eventosDeFacturacion = (world: TestWorld): TestWorldEvent[] => {
+  const events: TestWorldEvent[] = [];
+
+  for (const rate of world.billing.rates) {
+    events.push(
+      evento({
+        key: `${EVENT_TOPICS.rateSet}:${rate.rateDate}`,
+        topic: EVENT_TOPICS.rateSet,
+        aggregateId: rate.id,
+        producer: 'billing',
+        // El BCV publica por la mañana: la tasa del día rige desde temprano.
+        occurredAt: `${rate.rateDate}T08:00:00-04:00`,
+        payload: {
+          ...auditar({
+            entityType: 'exchange_rate',
+            entityId: rate.id,
+            action: 'exchange_rate_set',
+            summary: `Tasa del ${rate.rateDate}: ${formatRateMicros(rate.rateMicros)} Bs./USD`,
+            changedFields: [],
+            after: { rateMicros: rate.rateMicros },
+            reason: rate.source === 'manual' ? rate.note : null,
+          }),
+          rate: { rateDate: rate.rateDate, rateMicros: rate.rateMicros, source: rate.source },
+        },
+      }),
+    );
+  }
+
+  for (const invoice of world.billing.invoices) {
+    if (invoice.invoiceNumber === null || invoice.issuedAt === null) continue;
+    const numero = formatInvoiceNumber(invoice.series, invoice.invoiceNumber);
+
+    events.push(
+      evento({
+        key: `${EVENT_TOPICS.invoiceIssued}:${invoice.id}`,
+        topic: EVENT_TOPICS.invoiceIssued,
+        aggregateId: invoice.id,
+        producer: 'billing',
+        occurredAt: invoice.issuedAt,
+        payload: {
+          ...auditar({
+            entityType: 'invoice',
+            entityId: invoice.id,
+            action: 'invoice_issued',
+            summary: `Factura ${numero} emitida por ${invoice.patientName}: US$ ${(invoice.totalCentsUsd / 100).toFixed(2)}`,
+            changedFields: ['status', 'invoice_number'],
+            before: { status: 'borrador' },
+            after: {
+              status: 'emitida',
+              invoiceNumber: invoice.invoiceNumber,
+              rateMicros: invoice.exchangeRateMicros,
+              totalCentsUsd: invoice.totalCentsUsd,
+              totalVesCentimos: invoice.venBs?.totalVesCentimos ?? 0,
+            },
+          }),
+          invoice: {
+            invoiceId: invoice.id,
+            number: numero,
+            patientId: invoice.patientId,
+            totalCentsUsd: invoice.totalCentsUsd,
+            totalVes: invoice.venBs?.totalVesCentimos ?? 0,
+            rateMicros: invoice.exchangeRateMicros,
+            status: 'emitida',
+          },
+        },
+      }),
+    );
+
+    // El saldo sale de los cobros **vigentes**, como en el servicio: la cuenta se
+    // rehace en cada acto en vez de arrastrarse.
+    let cobrado = 0;
+    for (const payment of invoice.payments) {
+      const saldoAlCobrar = invoice.totalCentsUsd - cobrado - payment.amountCentsUsd;
+      cobrado += payment.amountCentsUsd;
+      const recibo = formatReceiptNumber(payment.receiptNumber);
+
+      events.push(
+        evento({
+          key: `${EVENT_TOPICS.paymentReceived}:${payment.id}`,
+          topic: EVENT_TOPICS.paymentReceived,
+          aggregateId: payment.id,
+          producer: 'billing',
+          occurredAt: payment.createdAt,
+          payload: {
+            ...auditar({
+              entityType: 'payment',
+              entityId: payment.id,
+              action: 'payment_received',
+              summary: `Recibo ${recibo}: ${payment.tenderedCurrency === 'USD' ? 'US$' : 'Bs.'} ${(payment.tenderedAmount / 100).toFixed(2)} a ${invoice.patientName}`,
+              changedFields: ['balance_cents_usd', 'status'],
+              before: { balanceCentsUsd: invoice.totalCentsUsd - cobrado + payment.amountCentsUsd },
+              after: { balanceCentsUsd: saldoAlCobrar },
+              reason: payment.reference,
+            }),
+            payment: {
+              paymentId: payment.id,
+              receiptNumber: recibo,
+              invoiceId: invoice.id,
+              amountCentsUsd: payment.amountCentsUsd,
+              tenderedAmount: payment.tenderedAmount,
+              tenderedCurrency: payment.tenderedCurrency,
+              rateMicros: payment.exchangeRateMicros,
+              igtf: payment.appliesIgtf ? payment.igtfBasisPoints : 0,
+              balanceCentsUsd: saldoAlCobrar,
+            },
+          },
+        }),
+      );
+
+      if (payment.voidedAt !== null) {
+        const saldoTrasAnular = invoice.totalCentsUsd - (cobrado - payment.amountCentsUsd);
+        events.push(
+          evento({
+            key: `${EVENT_TOPICS.paymentVoided}:${payment.id}`,
+            topic: EVENT_TOPICS.paymentVoided,
+            aggregateId: payment.id,
+            producer: 'billing',
+            occurredAt: payment.voidedAt,
+            payload: {
+              ...auditar({
+                entityType: 'payment',
+                entityId: payment.id,
+                action: 'payment_voided',
+                summary: `Cobro ${recibo} anulado`,
+                changedFields: ['voided_at'],
+                before: { voidedAt: null, amountCentsUsd: payment.amountCentsUsd },
+                after: { voidedAt: payment.voidedAt, balanceCentsUsd: saldoTrasAnular },
+                reason: payment.voidReason,
+              }),
+              payment: {
+                paymentId: payment.id,
+                invoiceId: invoice.id,
+                amountCentsUsd: payment.amountCentsUsd,
+                balanceCentsUsd: saldoTrasAnular,
+              },
+            },
+          }),
+        );
+      }
+    }
+
+    if (invoice.voidedAt !== null) {
+      events.push(
+        evento({
+          key: `${EVENT_TOPICS.invoiceVoided}:${invoice.id}`,
+          topic: EVENT_TOPICS.invoiceVoided,
+          aggregateId: invoice.id,
+          producer: 'billing',
+          occurredAt: invoice.voidedAt,
+          payload: {
+            ...auditar({
+              entityType: 'invoice',
+              entityId: invoice.id,
+              action: 'invoice_voided',
+              summary: `Factura ${numero} anulada con nota de crédito`,
+              changedFields: ['status'],
+              before: { status: 'emitida' },
+              after: { status: 'anulada' },
+              reason: invoice.voidReason,
+            }),
+            invoice: {
+              invoiceId: invoice.id,
+              status: 'anulada',
+              patientId: invoice.patientId,
+              totalCentsUsd: invoice.totalCentsUsd,
+            },
+          },
+        }),
+      );
+    }
+
+    const nota = invoice.creditNote;
+    if (nota !== null) {
+      events.push(
+        evento({
+          key: `${EVENT_TOPICS.creditNoteIssued}:${nota.id}`,
+          topic: EVENT_TOPICS.creditNoteIssued,
+          aggregateId: nota.id,
+          producer: 'billing',
+          occurredAt: nota.issuedAt,
+          payload: {
+            ...auditar({
+              entityType: 'credit_note',
+              entityId: nota.id,
+              action: 'credit_note_issued',
+              summary: `Nota de crédito ${formatCreditNoteNumber(nota.creditNoteNumber)} sobre la factura ${numero}`,
+              changedFields: ['status'],
+              before: { status: 'emitida' },
+              after: { status: 'anulada' },
+              reason: nota.reason,
+            }),
+            creditNote: {
+              creditNoteId: nota.id,
+              number: formatCreditNoteNumber(nota.creditNoteNumber),
+              invoiceId: invoice.id,
+              invoiceNumber: numero,
+              totalCentsUsd: nota.totalCentsUsd,
+              totalVesCentimos: nota.totalVesCentimos,
+            },
+            invoice: { invoiceId: invoice.id, status: 'anulada' },
+          },
+        }),
+      );
+    }
+  }
+
+  return events;
+};
+
 /** Todos los eventos del mundo, ordenados por cuándo ocurrieron. */
 export const buildTestWorldEvents = (world: TestWorld): TestWorldEvent[] =>
   [
@@ -675,6 +907,7 @@ export const buildTestWorldEvents = (world: TestWorld): TestWorldEvent[] =>
     ...eventosDeAgenda(world),
     ...eventosDeClinica(world),
     ...eventosDeOdontograma(world),
+    ...eventosDeFacturacion(world),
   ].sort((left, right) =>
     left.occurredAt === right.occurredAt
       ? left.id < right.id
@@ -711,6 +944,11 @@ export const worldFingerprints = (
   sessions: string;
   prescriptions: string;
   findings: string;
+  rates: string;
+  aranceles: string;
+  invoices: string;
+  payments: string;
+  creditNotes: string;
   events: string;
 } => ({
   seed: world.seed,
@@ -723,6 +961,17 @@ export const worldFingerprints = (
   sessions: fingerprint(world.sessions),
   prescriptions: fingerprint(world.prescriptions),
   findings: fingerprint(world.findings),
+  rates: fingerprint(world.billing.rates),
+  aranceles: fingerprint(world.billing.aranceles),
+  // Las partidas y los cobros van dentro de la factura: una huella por factura dice
+  // exactamente cuál se desvió.
+  invoices: fingerprint(world.billing.invoices),
+  payments: fingerprint(world.billing.invoices.flatMap((invoice) => invoice.payments)),
+  creditNotes: fingerprint(
+    world.billing.invoices.flatMap((invoice) =>
+      invoice.creditNote === null ? [] : [invoice.creditNote],
+    ),
+  ),
   events: fingerprint(
     buildTestWorldEvents(world).map((event) => [event.id, event.topic, event.occurredAt]),
   ),

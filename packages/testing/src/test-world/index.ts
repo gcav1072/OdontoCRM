@@ -7,6 +7,7 @@
  * - `clinical-content` — el contenido clínico (secciones, sesiones y récipes) que
  *   usan los servicios de historia clínica.
  */
+export * from './billing.js';
 export * from './clinic-time.js';
 export * from './clinical-content.js';
 export * from './events.js';
