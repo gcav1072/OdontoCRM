@@ -128,7 +128,9 @@ export const PatientDetailPage = () => {
       </div>
 
       <Card>
-        <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
+        {/* La identidad y las acciones van en **dos filas**: con los cinco botones a la
+            derecha, el nombre del paciente se partía en dos líneas. Aquí manda el nombre. */}
+        <CardHeader className="gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <span className="grid size-11 shrink-0 place-items-center rounded-control bg-primary/10 text-primary">
               <UserRound className="size-5" aria-hidden="true" />
@@ -159,7 +161,9 @@ export const PatientDetailPage = () => {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
+          {/* Las acciones, en su propia fila debajo de la identidad: envuelven solas y
+              no le roban el ancho al nombre. */}
+          <div className="flex flex-wrap items-center gap-2">
             {/* La historia clínica se abre desde la ficha: es el camino natural
                 del odontólogo, y la secretaría entra en solo lectura. */}
             {hasPermission('clinical:read') && (
