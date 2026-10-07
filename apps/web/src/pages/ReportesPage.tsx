@@ -14,6 +14,7 @@ import { ChartColumn, RefreshCw } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { NoticeBanner } from '../components/NoticeBanner';
+import { MargenDeImpresion } from '../components/print/MargenDeImpresion';
 import { ReportChart } from '../components/reports/ReportChart';
 import { ReportExportBar } from '../components/reports/ReportExportBar';
 import { ReportFilters } from '../components/reports/ReportFilters';
@@ -24,6 +25,7 @@ import { useNotice } from '../hooks/useNotice';
 import { apiErrorMessage } from '../lib/api';
 import { reportsApi } from '../lib/endpoints';
 import { formatDateTime } from '../lib/format';
+import { useMargenDeImpresion } from '../lib/impresion';
 import { t } from '../lib/i18n';
 import {
   blockedReportKeys,
@@ -58,6 +60,8 @@ export const ReportesPage = () => {
 
   const [activo, setActivo] = useState<ReportKey>('funnel');
   const [filtros, setFiltros] = useState<ReportFiltersState>(() => defaultReportFilters());
+  // El papel del reporte impreso: tamaño carta con margen elegido (por defecto, 15 mm).
+  const [margen, setMargen] = useMargenDeImpresion();
 
   const visibles = useMemo(() => visibleReportKeys(hasPermission), [hasPermission]);
   const bloqueados = useMemo(() => blockedReportKeys(hasPermission), [hasPermission]);
@@ -246,14 +250,17 @@ export const ReportesPage = () => {
                     </p>
                   </div>
 
-                  <ReportExportBar
-                    reportKey={documento.key}
-                    range={documento.range}
-                    filters={parametros}
-                    onSuccess={exito}
-                    onError={avisarError}
-                    className="print:hidden"
-                  />
+                  <div className="flex flex-wrap items-center justify-end gap-3 print:hidden">
+                    {/* Cuánto blanco deja el borde de la hoja (carta) al imprimir. */}
+                    <MargenDeImpresion margenMm={margen} onChange={setMargen} />
+                    <ReportExportBar
+                      reportKey={documento.key}
+                      range={documento.range}
+                      filters={parametros}
+                      onSuccess={exito}
+                      onError={avisarError}
+                    />
+                  </div>
                 </div>
 
                 {documento.notes.length > 0 && (
