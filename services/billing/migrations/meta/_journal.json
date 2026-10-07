@@ -22,6 +22,13 @@
       "when": 1791329446574,
       "tag": "0002_descartar_borrador",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791331932539,
+      "tag": "0003_sudden_captain_stacy",
+      "breakpoints": true
     }
   ]
 }
