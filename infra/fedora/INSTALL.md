@@ -855,6 +855,7 @@ Nombres exactos de los puertos (los del código y los de §2.2):
 | `MAX_FILE_BYTES` | `patients`, `clinical` | Tamaño máximo de un archivo (por defecto 20 MB ≈ `20971520`). |
 | `PLAYWRIGHT_BROWSERS_PATH` | `clinical`, `reporting` | `/var/lib/odontocrm/ms-playwright` (el récipe A5 **y** el PDF de reportes). |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_MODE=auto` | `notifications` | Token de BotFather, entregado por archivo (nunca por chat ni en el repo). El modo es **`auto` \| `real` \| `simulado`** (el modo test fuerza `simulado`); el *long polling* es el transporte, no un modo: `polling` **no** es un valor válido y el servicio no arranca con él. |
+| `ADMIN_TELEGRAM_BOT_TOKEN`, `ADMIN_TELEGRAM_CHAT_ID` | `notifications` | **Bot de administración**: OTRO bot de BotFather por el que llegan los avisos de infraestructura (eventos perdidos, respaldo que no restaura). Opcionales: sin ellos los avisos quedan en el registro. El instalador pide el token y **detecta el chat solo** (hay que escribirle `/start` al bot); el chat también vale un grupo, con su id negativo. |
 
 **Regla de precedencia:** si una variable aparece en los dos archivos, gana la del
 archivo **propio** (es el segundo `--env-file-if-exists` / el segundo

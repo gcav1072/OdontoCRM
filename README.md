@@ -130,7 +130,7 @@ está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)
 | `npm run e2e:flujo` | **El día completo en un navegador de verdad**: `/flujo` con Chromium (Fase 8) |
 | `npm run e2e:reportes` | `/reportes` y `/auditoria` con Chromium: gráficas, seis pestañas, filtros y diff (Fase 9) |
 | `npm run estado` | **Tablero de estado**: los 9 servicios (`/health` y `/ready`), las 9 bases, la cola, el outbox, los envíos y el disco |
-| `npm run estado -- --alertas` | Solo los problemas; sale con 1 si hay alguno (es lo que corre el temporizador del servidor) |
+| `npm run estado -- --alertas` | Solo los problemas; sale con 1 si hay alguno (es lo que corre el temporizador del servidor). Con problemas **y** bot de administración configurado, avisa por Telegram (`--sin-aviso` para solo imprimir) |
 | `npm run seed:test` | **Mundo de prueba determinista**: 40 pacientes, 46 solicitudes, 42 citas, 22 historias, 27 sesiones, 22 récipes, 156 hallazgos y los 593 eventos que el sistema habría publicado |
 | `npm run seed:verify` | Comprueba por huellas que lo sembrado es el mundo (12 comprobaciones) |
 | `npm run seed:reset` | Quita solo lo ficticio (los datos reales y los documentos clínicos no se tocan) |
@@ -211,6 +211,27 @@ odontólogo, `npm run seed:users`. El logo se deja en [`assets/clinic/`](assets/
 Además, la Fase 10 dejó el **modo test** (`TEST_MODE`, banner y envíos bloqueados), el **seed
 determinista** (`npm run seed:test`, `seed:reset`, `seed:verify`) y el **tablero de estado**
 (`npm run estado`, con `--alertas` para el temporizador del servidor).
+
+---
+
+## Estado del sistema (panel del administrador)
+
+`GET /api/v1/system/health/detailed` — **solo `admin`**. La puerta pregunta a los nueve servicios
+**a la vez** y junta sus informes en una sola respuesta; es lo que pinta el panel de `/inicio`
+(servicio, latencia, versión, conexiones del pool y eventos sin publicar del outbox).
+
+- Los chequeos publican **cifras**, no solo «ok»: un servicio con la base al límite o con el
+  outbox atascado responde igual, y sin los números no se ve.
+- **Un servicio caído no rompe el informe**: sale como inalcanzable con su motivo
+  (`ECONNREFUSED`, timeout). Lo que se quiere saber es *cuál* falla.
+- Un servicio que responde con el outbox atrasado no es «error», pero cuenta aparte
+  (`outbox: 12 sin publicar`).
+
+Y un evento que agota sus reintentos **no se pierde**: `pg-boss` lo copia a la cola de descarte,
+el vigilante lo apunta en `events.dead_letter_events` (con su motivo y sus reintentos) y avisa por
+el **bot de administración** —un bot de Telegram aparte del de los pacientes, porque estos avisos
+son de infraestructura—. El tablero (`npm run estado`) cuenta los de las últimas 24 h y los que
+estén en el buzón sin recoger, y avisa por el mismo bot cuando encuentra problemas.
 
 ---
 
@@ -318,6 +339,7 @@ de 7 pasos, la cola de envíos, las plantillas y el `.ics` son los mismos para t
 | `GET /api/v1/notifications/ics/:appointmentId` | Descarga el `.ics` archivado | `scheduling:read` |
 | `GET/POST /api/v1/notifications/webhook/:canal` | **Webhook público** de los canales que empujan (WhatsApp Cloud API) | **público** (lo valida la firma) |
 | `POST /internal/v1/notifications/process` | Fuerza un ciclo de la cola (operación y pruebas) | secreto interno |
+| `POST /internal/v1/notifications/admin-alert` · `GET …/admin-alert/status` | **Aviso al administrador** por el bot de administración: por aquí cuenta cualquier servicio que algo se rompió (un evento perdido, el respaldo que no restaura). Sin bot configurado responde `enviado: false` con el motivo | secreto interno |
 
 - **El núcleo habla de intenciones, no de comandos**: Telegram traduce `/nueva` y WhatsApp
   «cita» o «quiero una cita» a la misma intención; añadir un canal es escribir un adaptador.

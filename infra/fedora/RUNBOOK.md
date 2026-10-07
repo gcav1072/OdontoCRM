@@ -282,6 +282,19 @@ Señales de que algo va mal con el bot: en `/notificaciones` la tarjeta dice «M
 simulado» (no hay token o el servicio no lo ve) o «Sin conexión» (Telegram no
 contesta); los avisos quedan en cola y se reintentan solos.
 
+**Bot de administración** (los avisos de fallos del sistema: eventos perdidos, el respaldo
+que no restaura). Es **otro** bot de BotFather, en el mismo archivo:
+
+```bash
+sudo nano /etc/odontocrm/notifications.env     # ADMIN_TELEGRAM_BOT_TOKEN=…  y ADMIN_TELEGRAM_CHAT_ID=…
+sudo systemctl restart odontocrm@notifications.service
+```
+
+El `CHAT_ID` se detecta solo si le escribes `/start` al bot y corres la instalación otra
+vez; a mano, se saca de `https://api.telegram.org/bot<TOKEN>/getUpdates` (el campo
+`chat.id`; un grupo lo lleva negativo). Sin estas dos claves, los avisos se quedan en el
+registro (`journalctl -u odontocrm@notifications`) y el resto del sistema sigue igual.
+
 **WhatsApp** va en el mismo archivo (`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`,
 `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`); la instalación también los pregunta.
 Sin los cuatro, ese canal no se activa y el resto sigue igual.

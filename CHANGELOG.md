@@ -4,6 +4,46 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Observabilidad] — Un evento perdido ya no se pierde en silencio · 2026-10-07
+
+Tres huecos del mismo tipo: cosas que el sistema sabía y nadie podía ver. El `/ready` de cada
+servicio decía «ok» sin decir cuánto se estaba apretando la base; un evento que agotaba sus
+reintentos se quedaba en el buzón de `pg-boss` y solo se notaba echando de menos un dato; y el
+aviso de un fallo vivía en un registro que nadie lee a las tres de la mañana.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `HealthCheckResult.details` | Los chequeos publican **cifras**: conexiones del pool (libres, en uso, en espera), eventos sin publicar del outbox y su antigüedad |
+| `createPoolCheck` · `createOutboxCheck` | Las dos comprobaciones, en `packages/db`, para los nueve servicios |
+| `GET /api/v1/system/health/detailed` | El gateway pregunta a los nueve servicios **a la vez** y junta sus informes con su latencia. Solo el administrador |
+| Panel en `/inicio` | Servicio a servicio: si responde, cuánto tarda, la versión, las cifras del pool y el outbox |
+| Cola de descarte | Un evento que agota sus reintentos se copia a `dead-letter.domain-events` (nombre que **no** empieza por `domain-events.`: el publicador manda una copia a toda cola con ese prefijo) |
+| `events.dead_letter_events` | El registro duradero: sobre completo, motivo del fallo, cola de origen y reintentos. Idempotente por id de trabajo |
+| El vigilante | Corre en los seis consumidores; `pg-boss` da cada trabajo a **uno**, así que se apunta y se avisa **una vez** |
+| `POST /internal/v1/notifications/admin-alert` | Por donde avisa cualquier servicio: solo notificaciones tiene el token del bot |
+| Bot de administración | Bot de Telegram **aparte** del de los pacientes: los avisos de infraestructura no son para las familias |
+| `--alertas` avisa | El tablero manda el aviso por Telegram cuando hay problemas (el temporizador no se queda en el registro) |
+
+**Un servicio caído no tumba el informe consolidado**: se marca como inalcanzable con su motivo
+(`ECONNREFUSED`, timeout), porque lo que se quiere saber es cuál falla. Y un servicio con el
+outbox atrasado no es «error», pero sí cuenta aparte: responde y aun así no está haciendo su
+trabajo.
+
+En el tablero entran los **eventos perdidos** con su ventana (cuántos en 24 h y cuándo fue el
+último) y los trabajos que están en el buzón **sin recoger** —eso último delata que ningún
+consumidor los está apuntando—. La regla alerta por ventana y no por total: el registro es
+histórico y alertar por él sería alertar para siempre por algo ya arreglado.
+
+Los instaladores piden el bot de administración y **detectan el chat solos** (se le pide al
+administrador que le escriba `/start` y se lee su `chat.id` de las actualizaciones), que es lo
+que evita pedir un número que nadie sabe de memoria. Sus dos claves son opcionales: sin ellas
+los avisos se quedan en el registro y todo lo demás funciona igual.
+
+Comprobado contra PostgreSQL y pg-boss reales: un evento con `retryLimit: 0` cuyo consumidor
+revienta acaba apuntado con su motivo y dispara el aviso, y apuntarlo dos veces no duplica la
+fila. El `/ready` de screens trae las cifras de verdad, y el panel del gateway responde 403 a
+la secretaría.
+
 ## [Tiempo real] — Recepción y caja se enteran solas de lo que pasa · 2026-10-07
 
 Las pantallas de sala ya se actualizaban por SSE, pero el **personal** no: cuando el odontólogo
