@@ -1,0 +1,111 @@
+# =============================================================================
+# OdontoCRM · reverse proxy con TLS interno (Windows · ADR 0050)
+#
+# Es la copia versionada del Caddyfile. `infra\windows\caddy\instalar.ps1` lo copia a
+# C:\ProgramData\OdontoCRM\Caddyfile sustituyendo los marcadores (__CA__, __TLS__,
+# __CODE__) y arranca/recarga Caddy. NO lo copies a mano: quedaría con los marcadores.
+#
+# Es el equivalente del `infra/fedora/nginx/odontocrm.conf`. Mismas reglas:
+#   · La SPA compilada se sirve desde apps\web\dist (una sola página → try_files).
+#   · /api/** va al gateway (127.0.0.1:8090), que ya rechaza lo que no corresponda.
+#   · El SSE de las pantallas va SIN búfer, o la pantalla de la sala se queda congelada.
+#   · La CA se sirve también por HTTP (un equipo que aún no confía no puede bajarla por HTTPS).
+#   · Quien entre por HTTP va al HTTPS.
+# =============================================================================
+
+# Sin certificados automáticos: el TLS es interno y lo emite mkcert (no hace falta ACME).
+{
+	auto_https off
+}
+
+# ── Puerto 80: la CA y el redirect a HTTPS ───────────────────────────────────
+:80 {
+	# La CA en los formatos que pide cada aparato, ANTES del redirect (si no, caen en el 301).
+	# Android y Linux leen el PEM; Windows prefiere el DER (doble clic).
+	handle /ca.crt {
+		root * __CA__
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition 'attachment; filename="odontocrm-ca.crt"'
+		file_server
+	}
+	handle /ca.der {
+		root * __CA__
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition 'attachment; filename="odontocrm-ca.der"'
+		file_server
+	}
+	handle /ca-windows.ps1 {
+		root * __CA__
+		header Content-Type text/plain
+		file_server
+	}
+	handle /ca-linux.sh {
+		root * __CA__
+		header Content-Type text/plain
+		file_server
+	}
+
+	# Todo lo demás, a HTTPS.
+	handle {
+		redir https://{host}{uri} permanent
+	}
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Puerto 443: la aplicación
+# ══════════════════════════════════════════════════════════════════════════════
+:443 {
+	tls __TLS__/odontocrm.crt __TLS__/odontocrm.key
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy same-origin
+	}
+
+	# Los archivos con hash en el nombre se pueden cachear para siempre.
+	@assets path /assets/*
+	header @assets Cache-Control "public, immutable"
+
+	# La CA también por HTTPS (por si alguien la abre ya con confianza).
+	handle /ca.crt {
+		root * __CA__
+		header Content-Type application/x-x509-ca-cert
+		file_server
+	}
+	handle /ca.der {
+		root * __CA__
+		header Content-Type application/x-x509-ca-cert
+		file_server
+	}
+	handle /ca-windows.ps1 {
+		root * __CA__
+		header Content-Type text/plain
+		file_server
+	}
+	handle /ca-linux.sh {
+		root * __CA__
+		header Content-Type text/plain
+		file_server
+	}
+
+	# El SSE de las pantallas (sala de espera y consultorio): SIN búfer, o se congela.
+	# Va antes que /api/* porque Caddy evalúa los `handle` en orden.
+	handle /api/v1/screens/* {
+		reverse_proxy 127.0.0.1:8090 {
+			flush_interval -1
+		}
+	}
+
+	# La API, a través del gateway (que ya rechaza lo que no corresponda).
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8090
+	}
+
+	# La SPA compilada: cualquier ruta que no sea un archivo va a index.html (React Router).
+	handle {
+		root * __CODE__/apps/web/dist
+		try_files {path} /index.html
+		file_server
+	}
+}
