@@ -90,6 +90,7 @@
     "e2e:reportes": "node tools/e2e-reportes.mjs",
     "e2e:clinica": "node tools/e2e-clinica.mjs",
     "check-secrets": "node tools/check-secrets.mjs",
+    "marca:css": "node tools/generar-marca.mjs",
     "db:bootstrap": "node infra/db/bootstrap.mjs",
     "db:migrate": "node tools/migrate-all.mjs",
     "db:reset": "node tools/db-reset.mjs",

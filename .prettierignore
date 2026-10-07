@@ -14,6 +14,10 @@ package-lock.json
 # Migraciones generadas por drizzle-kit (SQL y metadatos): no se reformatean
 **/migrations/**
 
+# Generado por `npm run marca:css` desde packages/contracts/src/brand.ts:
+# reformatearlo rompería la prueba de paridad entre el CSS y el código.
+packages/ui/src/styles/marca.css
+
 # Datos locales y secretos
 storage/
 tmp/

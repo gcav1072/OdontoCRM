@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./tokens.css": "./src/styles/tokens.css"
+    "./tokens.css": "./src/styles/tokens.css",
+    "./marca.css": "./src/styles/marca.css"
   },
   "dependencies": {
     "clsx": "^2.1.1",

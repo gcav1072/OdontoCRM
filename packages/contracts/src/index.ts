@@ -1,3 +1,4 @@
+export * from './brand.js';
 export * from './clinic.js';
 export * from './common/csv.js';
 export * from './common/ids.js';

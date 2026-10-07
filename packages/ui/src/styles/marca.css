@@ -1,0 +1,32 @@
+/**
+ * Variables CSS de marca (`--brand-*`): paleta, tipografías y medidas del
+ * membrete de la interfaz y de los documentos impresos.
+ *
+ * ARCHIVO GENERADO — no lo edites a mano. La fuente única es
+ * `packages/contracts/src/brand.ts`; se regenera con `npm run marca:css`.
+ */
+
+:root {
+  --brand-primary: #14504d;
+  --brand-primary-ink: #ffffff;
+  --brand-accent: #1f6f6b;
+  --brand-ink: #17202a;
+  --brand-ink-strong: #46535f;
+  --brand-ink-muted: #4a5560;
+  --brand-ink-subtle: #6b7680;
+  --brand-line: #cfdedd;
+  --brand-line-soft: #e3e9ea;
+  --brand-table-head-bg: #eef5f4;
+  --brand-good: #14663f;
+  --brand-warn: #8a5a00;
+  --brand-bad: #97231f;
+  --brand-font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+  --brand-font-ui-mono: ui-monospace, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+  --brand-font-doc: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --brand-doc-title-pt: 13pt;
+  --brand-doc-body-pt: 9pt;
+  --brand-doc-small-pt: 7.5pt;
+  --brand-logo-height-mm: 18mm;
+  --brand-watermark-width-mm: 90mm;
+  --brand-watermark-opacity: 0.06;
+}
