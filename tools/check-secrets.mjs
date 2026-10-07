@@ -24,7 +24,7 @@ const SECRET_PATTERNS = [
   {
     name: 'cadena de conexión con contraseña real',
     regex:
-      /postgres(?:ql)?:\/\/[^\s:'"@/]+:(?!CAMBIAR|TU_PASSWORD|password|clave|CLAVE|usuario|EJEMPLO|ejemplo|\$\{|<)[^\s@'"]{6,}@/i,
+      /postgres(?:ql)?:\/\/[^\s:'"@/]+:(?!CAMBIAR|TU_PASSWORD|TU_CLAVE|password|clave|CLAVE|usuario|EJEMPLO|ejemplo|\$\{|<)[^\s@'"]{6,}@/i,
   },
   {
     name: 'clave de acceso de AWS',
