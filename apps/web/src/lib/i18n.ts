@@ -941,6 +941,7 @@ const DICCIONARIO = {
   'auditoria.prescription_issued': 'Recipe emitido',
   'auditoria.prescription_reprinted': 'Recipe reimpreso',
   'auditoria.prescription_annulled': 'Recipe anulado',
+  'auditoria.dossier_exported': 'Dossier del expediente exportado',
   // Odontograma (llegan por el outbox desde el servicio de odontograma)
   'auditoria.tooth_finding_recorded': 'Hallazgo registrado en una pieza',
   'auditoria.tooth_finding_updated': 'Hallazgo actualizado en una pieza',
@@ -2651,6 +2652,7 @@ const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   prescription_issued: t('auditoria.prescription_issued'),
   prescription_reprinted: t('auditoria.prescription_reprinted'),
   prescription_annulled: t('auditoria.prescription_annulled'),
+  dossier_exported: t('auditoria.dossier_exported'),
   tooth_finding_recorded: t('auditoria.tooth_finding_recorded'),
   tooth_finding_updated: t('auditoria.tooth_finding_updated'),
   tooth_finding_removed: t('auditoria.tooth_finding_removed'),

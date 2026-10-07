@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
-import { getInternalSummary } from '../odontogram/chart-service.js';
+import { getInternalChart, getInternalSummary } from '../odontogram/chart-service.js';
 import type { OdontogramServices } from '../services.js';
 
 const patientParamsSchema = z.object({ patientId: z.uuid() });
@@ -46,5 +46,15 @@ export const registerInternalRoutes = (
   app.get('/internal/v1/odontogram/patients/:patientId/summary', async (request, reply) => {
     const { patientId } = parseOrThrow(patientParamsSchema, request.params);
     return reply.status(200).send(await getInternalSummary(db, patientId));
+  });
+
+  /**
+   * La boca entera —dentición y hallazgos vigentes— para quien tenga que **dibujarla**:
+   * el dossier del expediente arma con esto el odontograma del PDF. El resumen de
+   * arriba sirve de comprobación barata; esto es lo que hace falta para pintar.
+   */
+  app.get('/internal/v1/odontogram/patients/:patientId/chart', async (request, reply) => {
+    const { patientId } = parseOrThrow(patientParamsSchema, request.params);
+    return reply.status(200).send(await getInternalChart(db, patientId));
   });
 };

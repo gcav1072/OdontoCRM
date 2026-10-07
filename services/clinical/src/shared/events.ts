@@ -42,7 +42,7 @@ export interface AuditInput {
   action: DomainAuditPayload['action'];
   summary: string;
   /** Tipo de entidad auditada; por defecto, la historia clínica. */
-  entityType?: 'medical_record' | 'clinical_session' | 'prescription';
+  entityType?: 'medical_record' | 'clinical_session' | 'prescription' | 'dossier';
   changedFields?: string[];
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;

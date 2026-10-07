@@ -304,6 +304,40 @@ export const getInternalSummary = async (
   };
 };
 
+/**
+ * La boca **entera** para otro servicio: dentición y hallazgos vigentes.
+ *
+ * El resumen de arriba se queda en los contadores, que es lo que necesitan la agenda y
+ * los reportes; el **dossier** del expediente, en cambio, tiene que *dibujar* el
+ * odontograma, y para eso hacen falta los hallazgos uno a uno. Sale por la red interna
+ * (nunca por el gateway) y degrada en el consumidor: sin odontograma responde
+ * `hasOdontogram: false` en vez de 404.
+ */
+export interface OdontogramInternalChart {
+  patientId: string;
+  hasOdontogram: boolean;
+  dentition: Dentition | null;
+  findings: Record<string, ToothFindingRecord[]>;
+}
+
+export const getInternalChart = async (
+  db: OdontogramDb,
+  patientId: string,
+): Promise<OdontogramInternalChart> => {
+  const odontogram = await findOdontogramByPatient(db, patientId);
+  if (odontogram === null) {
+    return { patientId, hasOdontogram: false, dentition: null, findings: {} };
+  }
+
+  const { findings } = groupFindings(await loadActiveFindings(db, odontogram.id));
+  return {
+    patientId,
+    hasOdontogram: true,
+    dentition: odontogram.dentition as Dentition,
+    findings,
+  };
+};
+
 /* ── Piezas internas de escritura ──────────────────────────────────────────── */
 
 interface FindingEventContext {

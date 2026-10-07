@@ -47,6 +47,12 @@ export const EVENT_TOPICS = {
   prescriptionIssued: 'clinical.prescription.issued',
   prescriptionReprinted: 'clinical.prescription.reprinted',
   prescriptionAnnulled: 'clinical.prescription.annulled',
+  /**
+   * Dossier del expediente exportado a PDF: no es un acto clínico, pero sí uno de
+   * **consulta y custodia** —sale del sistema el historial completo de un paciente—,
+   * así que queda auditado con quién lo emitió y con qué huella.
+   */
+  dossierExported: 'clinical.dossier.exported',
 
   toothFindingRecorded: 'odontogram.finding.recorded',
   toothFindingRemoved: 'odontogram.finding.removed',

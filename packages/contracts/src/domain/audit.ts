@@ -61,6 +61,8 @@ export const AUDIT_ACTIONS = [
   'prescription_issued',
   'prescription_reprinted',
   'prescription_annulled',
+  /** Exportación del dossier del expediente (el PDF que reúne todo el historial). */
+  'dossier_exported',
   // Odontograma (llegan por el outbox desde el servicio de odontograma)
   'tooth_finding_recorded',
   'tooth_finding_updated',

@@ -11,6 +11,7 @@ export * from './domain/billing.js';
 export * from './domain/channel.js';
 export * from './domain/clinical.js';
 export * from './domain/clinical-session.js';
+export * from './domain/dossier.js';
 export * from './domain/enums.js';
 export * from './domain/health.js';
 export * from './domain/ics.js';
