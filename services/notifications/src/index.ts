@@ -2,14 +2,17 @@ import {
   consumerQueueName,
   createBoss,
   createOutboxRunner,
+  deadLetterAlert,
   ensureDomainEventsQueue,
   registerDomainEventHandler,
   startBoss,
+  startDeadLetterWatcher,
   stopBoss,
 } from '@odontocrm/db';
 import { EVENT_TOPICS } from '@odontocrm/events';
 import { startServer } from '@odontocrm/kernel';
 
+import { createAdminAlerter } from './alertas.js';
 import { createChannelAdapters } from './canales/index.js';
 import { loadNotificationsConfig } from './config.js';
 import { handleDomainEvent, publishMessageEvent } from './consumer.js';
@@ -37,12 +40,26 @@ const main = async (): Promise<void> => {
     },
   });
 
+  /**
+   * Emisor de los avisos de **infraestructura** (bot de administración). Se crea antes que
+   * el logger por la misma razón que los canales: el logger todavía no existe, así que el
+   * fallo se guarda y se registra en cuanto el servidor está en pie.
+   */
+  const adminAlerter = createAdminAlerter({
+    config,
+    onError: (error, contexto) => {
+      logAviso(error, contexto);
+    },
+  });
+
   const services = {
     config,
     db: database.db,
     pool: database.pool,
     canales,
     clients,
+    // El emisor de avisos de infraestructura: este servicio es el único que tiene el bot.
+    adminAlerter,
     lastError: null as string | null,
   };
 
@@ -111,6 +128,31 @@ const main = async (): Promise<void> => {
     },
   });
   outbox.start();
+
+  /**
+   * Vigilante de la **cola de descarte**: apunta los eventos que agotan sus reintentos y
+   * avisa al administrador por el bot. Este servicio es el único que puede avisar, así que
+   * aquí el vigilante llama al emisor directamente (sin pasar por HTTP).
+   */
+  const deadLetters = await startDeadLetterWatcher({
+    boss,
+    connectionString: config.EVENTS_DATABASE_URL ?? config.DATABASE_URL,
+    applicationName: 'odontocrm-notifications-dlq',
+    onDeadLetter: async (record, esNuevo) => {
+      app.log.error(
+        { cola: record.sourceQueue, evento: record.eventType, error: record.error },
+        'Evento perdido: agotó sus reintentos',
+      );
+      if (!esNuevo) return;
+      // Este servicio es el que tiene el bot: llama al emisor directamente en vez de pedirse
+      // el aviso a sí mismo por HTTP.
+      await adminAlerter.enviar({ ...deadLetterAlert(record), source: 'notifications' });
+    },
+    onError: (error) => {
+      services.lastError = error instanceof Error ? error.message : String(error);
+      app.log.error({ err: error }, 'Falló el vigilante de la cola de descarte');
+    },
+  });
 
   /** Cycle de la cola de envíos: manda lo que toca y programa los reintentos. */
   const runQueue = async (): Promise<void> => {
@@ -210,6 +252,7 @@ const main = async (): Promise<void> => {
 
   app.addHook('onClose', async () => {
     clearInterval(queueTimer);
+    await deadLetters.stop();
     await canales.registry.stop();
     await outbox.stop();
     await stopBoss(boss);

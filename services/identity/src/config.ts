@@ -54,6 +54,16 @@ export const identityEnvSchema = baseEnvSchema.extend({
    * los servicios, pero no tiene ningún efecto en este.
    */
   WEB_ORIGIN: z.string().min(1).default('http://127.0.0.1:5173'),
+
+  /**
+   * Servicio de **notificaciones**: por ahí se manda el aviso al administrador cuando un
+   * evento de dominio se pierde (el bot de administración vive allí y este servicio no tiene
+   * su token). La cola de descarte es lo que hace que un evento no se pierda en silencio.
+   */
+  NOTIFICATIONS_URL: z.string().min(1).default('http://127.0.0.1:4004'),
+
+  /** Secreto compartido con los demás servicios para las rutas internas. */
+  INTERNAL_SERVICE_SECRET: z.string().min(16).optional(),
 });
 
 export type IdentityConfig = z.infer<typeof identityEnvSchema>;

@@ -4,6 +4,7 @@ import {
   createOutboxRunner,
   ensureDomainEventsQueue,
   registerDomainEventHandler,
+  startAlertingDeadLetterWatcher,
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
@@ -50,6 +51,31 @@ const main = async (): Promise<void> => {
   });
   outbox.start();
 
+  /**
+   * Vigilante de la **cola de descarte**: apunta los eventos que agotan sus reintentos y
+   * avisa al administrador (el aviso lo manda notificaciones, que es quien tiene el bot).
+   * Sin esto, un evento perdido se quedaba en el buzón de la cola y nadie lo sabía.
+   */
+  const deadLetters = await startAlertingDeadLetterWatcher({
+    boss,
+    connectionString: config.EVENTS_DATABASE_URL ?? config.DATABASE_URL,
+    applicationName: 'odontocrm-patients-dlq',
+    onError: (error) => {
+      app.log.error({ err: error }, 'Falló el vigilante de la cola de descarte');
+    },
+    onRecorded: (record) => {
+      app.log.error(
+        { cola: record.sourceQueue, evento: record.eventType, error: record.error },
+        'Evento perdido: agotó sus reintentos',
+      );
+    },
+    alert: {
+      notificationsUrl: config.NOTIFICATIONS_URL,
+      internalSecret: config.INTERNAL_SERVICE_SECRET,
+      source: 'patients',
+    },
+  });
+
   // Consumidor propio: la agenda avisa de que al paciente se le asignó una cita y
   // aquí se le quita el «en espera de cita». No es urgente (nadie mira la ficha en
   // el segundo en que se agenda), así que con el sondeo por defecto basta.
@@ -69,6 +95,7 @@ const main = async (): Promise<void> => {
   );
 
   app.addHook('onClose', async () => {
+    await deadLetters.stop();
     await outbox.stop();
     await stopBoss(boss);
     await database.close();

@@ -83,6 +83,32 @@ export const notificationsEnvSchema = baseEnvSchema.extend({
   PATIENTS_URL: z.string().min(1).default('http://127.0.0.1:4002'),
   SCHEDULING_URL: z.string().min(1).default('http://127.0.0.1:4003'),
   INTERNAL_SERVICE_SECRET: z.string().min(16).optional(),
+
+  /**
+   * **Bot de administración** (mejora 1 del plan post-Fase 11): el que avisa al dueño del
+   * consultorio de los fallos de infraestructura —eventos que agotan sus reintentos, la
+   * verificación del respaldo, el tablero de estado—.
+   *
+   * Es un bot **aparte** del de los pacientes a propósito: el de los pacientes lo ven las
+   * familias, y «el outbox de clinical lleva 40 minutos sin publicar» no es un mensaje para
+   * un paciente. Token y chat son opcionales: sin ellos los avisos quedan en el registro y
+   * el resto del sistema funciona igual.
+   */
+  ADMIN_TELEGRAM_BOT_TOKEN: z
+    .string()
+    .min(20)
+    .optional()
+    // Misma trampa que el bot de pacientes: el marcador de la plantilla cumple la longitud
+    // y el servicio diría «configurado» para luego no conectar.
+    .transform((valor) => (valor === undefined || /^CAMBIAR/i.test(valor) ? undefined : valor)),
+  /** Chat (o grupo) del administrador. Sin él el bot no sabe a quién escribir. */
+  ADMIN_TELEGRAM_CHAT_ID: z
+    // Una línea vacía en el `.env` es «sin configurar», no una configuración inválida (el
+    // aprovisionador deja las claves opcionales comentadas, pero alguien puede dejarla vacía).
+    .preprocess(
+      (valor) => (typeof valor === 'string' && valor.trim() === '' ? undefined : valor),
+      z.string().min(1).optional(),
+    ),
 });
 
 export type NotificationsConfig = z.infer<typeof notificationsEnvSchema>;
@@ -108,3 +134,11 @@ export const retryDelays = (config: NotificationsConfig): number[] =>
   config.RETRY_DELAYS_SECONDS.split(',')
     .map((value) => Number(value.trim()))
     .filter((value) => Number.isFinite(value) && value > 0);
+
+/**
+ * El bot de administración queda **listo** cuando tiene token **y** chat: con uno solo no
+ * puede mandar nada, y las dos cosas juntas no tienen valor por defecto (el token lo da
+ * BotFather y el chat es de quien va a leer los avisos).
+ */
+export const adminBotReady = (config: NotificationsConfig): boolean =>
+  config.ADMIN_TELEGRAM_BOT_TOKEN !== undefined && config.ADMIN_TELEGRAM_CHAT_ID !== undefined;

@@ -4,6 +4,7 @@ import {
   createOutboxRunner,
   ensureDomainEventsQueue,
   registerDomainEventHandler,
+  startAlertingDeadLetterWatcher,
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
@@ -91,9 +92,35 @@ const main = async (): Promise<void> => {
     },
   });
   outbox.start();
+
+  /**
+   * Vigilante de la **cola de descarte**: apunta los eventos que agotan sus reintentos y
+   * avisa al administrador (el aviso lo manda notificaciones, que es quien tiene el bot).
+   * Sin esto, un evento perdido se quedaba en el buzón de la cola y nadie lo sabía.
+   */
+  const deadLetters = await startAlertingDeadLetterWatcher({
+    boss,
+    connectionString: config.EVENTS_DATABASE_URL ?? config.DATABASE_URL,
+    applicationName: 'odontocrm-billing-dlq',
+    onError: (error) => {
+      app.log.error({ err: error }, 'Falló el vigilante de la cola de descarte');
+    },
+    onRecorded: (record) => {
+      app.log.error(
+        { cola: record.sourceQueue, evento: record.eventType, error: record.error },
+        'Evento perdido: agotó sus reintentos',
+      );
+    },
+    alert: {
+      notificationsUrl: config.NOTIFICATIONS_URL,
+      internalSecret: config.INTERNAL_SERVICE_SECRET,
+      source: 'billing',
+    },
+  });
   kick = () => outbox.kick();
 
   app.addHook('onClose', async () => {
+    await deadLetters.stop();
     await outbox.stop();
     await pdf.close();
     await stopBoss(boss);

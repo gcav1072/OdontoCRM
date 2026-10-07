@@ -1,5 +1,6 @@
 import {
   CHANNEL_IDS,
+  adminAlertSchema,
   markContactedSchema,
   messageTemplateInputSchema,
   notificationFiltersSchema,
@@ -330,4 +331,25 @@ export const registerNotificationRoutes = (
     });
     return reply.status(200).send(result);
   });
+
+  /**
+   * **Aviso al administrador** (mejora 1 del plan post-Fase 11).
+   *
+   * Es por donde los demás servicios cuentan que algo se rompió —un evento que agotó sus
+   * reintentos, una comprobación que falla— sin tener el token del bot: solo el servicio de
+   * notificaciones lo tiene, y aquí se convierte en un mensaje.
+   *
+   * Responde 200 con `enviado: false` cuando el bot no está configurado: quien avisa está
+   * atendiendo otra cosa y un 500 le haría creer que el aviso se perdió. Lo que sí se pierde
+   * —el evento, el fallo— ya está apuntado en su sitio.
+   */
+  app.post('/internal/v1/notifications/admin-alert', async (request, reply) => {
+    const alerta = parseOrThrow(adminAlertSchema, request.body ?? {});
+    return reply.status(200).send(await services.adminAlerter.enviar(alerta));
+  });
+
+  /** Estado del bot de administración: si hay token, si hay chat y cuántos avisos salieron. */
+  app.get('/internal/v1/notifications/admin-alert/status', async (_request, reply) =>
+    reply.status(200).send(services.adminAlerter.estado()),
+  );
 };

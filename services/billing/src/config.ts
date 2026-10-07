@@ -35,6 +35,12 @@ export const billingEnvSchema = baseEnvSchema.extend({
   /** Cuánto se espera a que el PDF salga antes de darlo por fallido. */
   PDF_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(120_000).default(30_000),
 
+  /**
+   * Servicio de **notificaciones**: por ahí se manda el aviso al administrador cuando un
+   * evento se pierde (el bot de administración vive allí y este servicio no tiene su token).
+   */
+  NOTIFICATIONS_URL: z.string().min(1).default('http://127.0.0.1:4004'),
+
   /** Secreto compartido con los demás servicios para las rutas internas. */
   INTERNAL_SERVICE_SECRET: z.string().min(16).optional(),
 });

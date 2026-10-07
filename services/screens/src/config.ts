@@ -30,6 +30,12 @@ export const screensEnvSchema = baseEnvSchema.extend({
    */
   CLINICAL_URL: z.string().min(1).default('http://127.0.0.1:4005'),
 
+  /**
+   * Servicio de **notificaciones**: por ahí se manda el aviso al administrador cuando un
+   * evento se pierde (el bot de administración vive allí y este servicio no tiene su token).
+   */
+  NOTIFICATIONS_URL: z.string().min(1).default('http://127.0.0.1:4004'),
+
   /** Secreto compartido con los demás servicios para las rutas internas. */
   INTERNAL_SERVICE_SECRET: z.string().min(16).optional(),
 });
