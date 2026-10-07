@@ -121,7 +121,8 @@ export const BRAND: Brand = {
   letterhead: {
     logoHeightMm: 18,
     watermarkWidthMm: 90,
-    watermarkOpacity: 0.06,
+    /** Opacidad de la marca de agua (0.1 es un velo suave que deja leer el texto encima). */
+    watermarkOpacity: 0.1,
   },
   logoPath: 'assets/clinic/logo.svg',
   watermarkPath: 'assets/clinic/logo.svg',
