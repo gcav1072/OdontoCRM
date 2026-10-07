@@ -935,33 +935,11 @@ const exigir = (condicion, bien, mal) => {
   //  b) **Las variables muertas no vuelven**: la plantilla llegó a definir claves que
   //     ningún servicio lee (`COOKIE_SECRET`, `LOGIN_MAX_ATTEMPTS`…), y eso hace creer que
   //     se pueden ajustar: uno pone `ACCESS_TOKEN_TTL=4h` y no pasa nada.
-  const serviciosEnDisco = execFileSync('git', ['ls-files', 'services/*/src/config.ts'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-  })
-    .split('\n')
-    .filter(Boolean)
-    .map((ruta) => ruta.split('/')[1])
-    .sort();
-
-  const listaDe = (texto, etiqueta) => {
-    const m =
-      new RegExp(`${etiqueta}=\\(([^)]*)\\)`).exec(texto) ??
-      new RegExp(`${etiqueta} = \\[([^\\]]*)\\]`).exec(texto);
-    if (m === null) return [];
-    return m[1]
-      .replace(/['"\n]/g, '')
-      .split(/[,\s]+/)
-      .filter(Boolean)
-      .sort();
-  };
-
   // (Antes aquí se comprobaba que cada servicio de `services/` apareciera en las listas
   //  escritas a mano de `odontocrm` y del ensayo. Ya no hay listas: los guiones DESCUBREN los
   //  servicios con `lib/servicios.sh`, así que ese fallo —añadir un servicio y olvidarlo en
-  //  alguna lista— es estructuralmente imposible. Lo que se vigila ahora es que nadie
-  //  vuelva a escribir una lista: lo hace la comprobación (9) de este mismo archivo.)
-  void serviciosEnDisco;
+  //  alguna lista— es estructuralmente imposible. Lo que se vigila ahora es que nadie vuelva a
+  //  escribir una lista, y de eso se ocupa la comprobación (9) de este mismo archivo.)
 
   const muertas = [
     'COOKIE_SECRET',

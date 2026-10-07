@@ -41,6 +41,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import pg from 'pg';
 
+import { SERVICIOS } from './lib/servicios.mjs';
 import { PUERTOS, retratoDeLaPila } from './lib/stack.mjs';
 import {
   bloqueoVigente,
