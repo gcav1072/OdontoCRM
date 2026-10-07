@@ -1295,6 +1295,25 @@ no está arreglado.
   como contribuyente ordinario nunca se percibe; la percepción y el enteramiento se implementan el
   día que la clínica sea Sujeto Pasivo Especial.
 
+#### La siembra de prueba tiene que dejar la caja **utilizable**
+
+Hoy, después de `seed:test`, **emitir falla**: no hay ninguna forma libre de la que sacar el número de
+control, ni tasa publicada para el día. Para poder probar el recorrido completo sembrando datos, la
+parte de facturación del seed (que hoy no existe: `PARTES` son `patients`, `scheduling`, `clinical`,
+`odontogram` y `reporting`) tiene que dejar:
+
+- una **tasa publicada** con su histórico corto, para que el hueco no dispare el aviso de confirmación;
+- un **lote de formas** con su rango, imprenta y providencia, y **una forma dañada**, que es el caso
+  que nadie prueba;
+- los **borradores** que salen de las sesiones clínicas sembradas (viajan por eventos,
+  [ADR 0042](adr/0042-el-seed-escribe-filas-y-eventos.md));
+- un par de facturas **emitidas con sus cobros**, para que el libro de ventas y el historial tengan
+  filas. Llevan un **PDF de juguete**: el archivo real se genera al emitir desde la caja, y el seed lo
+  dice para que nadie espere poder descargarlo.
+
+Se comprueba con `npm run seed:test -- --solo billing` y con las **huellas** de `seed:verify`, y el
+recorrido completo —sembrar, entrar en la caja, emitir, cobrar y descargar el PDF— con la pila
+levantada.
 ### Decisiones de la Fase 11 que quedan confirmadas
 
 Se dejan escritas aquí para que no dependan de una conversación (el §5.2 y el §3.1 de
@@ -1307,6 +1326,13 @@ Se dejan escritas aquí para que no dependan de una conversación (el §5.2 y el
 3. **El IGTF se registra y no engorda la deuda** (ver arriba).
 4. **Los controles de las formas se exigen numéricos**: si algún día la imprenta los entrega
    alfanuméricos, el alta lo dice en vez de consumirlos a ciegas.
+5. **Cada instalación sirve a una sola persona jurídica.** Sus datos —razón social, RIF, domicilio,
+   logo y con ello el membrete de todo lo que se imprime, más la serie y el lote de formas— viven en el
+   **entorno** de esa instalación (`.env`), no en una tabla: las otras personas jurídicas serán **ramas
+   del repositorio**. Consecuencias escritas: la **Tarea 0** (`CLINIC_*` por entorno) es el diseño
+   correcto, y **no** hace falta tabla de entidades ni selector; la siembra de prueba es de **una**
+   entidad; y ramificar el repositorio tiene un coste que conviene asumir a conciencia —lo que se toque
+   en una rama no llega a las otras, así que el mantenimiento y el despliegue se repiten—.
 > Este documento es la referencia viva del proyecto: cualquier cambio de alcance se refleja aquí
 > **antes** de escribir código, y cada decisión relevante se registra como ADR en
 > [`docs/adr/`](adr/README.md).
