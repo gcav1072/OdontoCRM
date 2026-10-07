@@ -4,13 +4,14 @@
 #   .\registrar-tareas.ps1 [--dry-run] [--quitar]
 #
 # Windows no tiene «timers» de systemd; el equivalente es el **Programador de tareas**.
-# Se registran tres, las mismas que en Fedora:
+# Se registran cuatro, las mismas que en Fedora:
 #
 #   1. OdontoCRM · respaldo diario    03:30 (hora local)  → odontocrm-backup.ps1 --include-config
 #   2. OdontoCRM · alertas            cada 5 minutos      → node tools/estado.mjs --alertas
 #   3. OdontoCRM · red                cada 5 minutos      → odontocrm red --arreglar --si-cambio
+#   4. OdontoCRM · verificar respaldo domingos 04:30      → node tools/verify-backup.mjs
 #
-# Las tres corren como **SYSTEM** (es lo que Windows usa por defecto para una tarea que
+# Las cuatro corren como **SYSTEM** (es lo que Windows usa por defecto para una tarea que
 # tiene que funcionar aunque nadie haya iniciado sesión). Por eso la preparación concede a
 # SYSTEM permisos sobre las carpetas: sin eso, el respaldo de madrugada no podría escribir.
 #
@@ -34,8 +35,8 @@ $cli = Join-Path $OdontoRepo 'infra\windows\odontocrm.ps1'
 Write-Host ''
 Write-Host 'OdontoCRM · tareas programadas (Windows)' -ForegroundColor White
 
-# ── --quitar: retirar las tres y salir ───────────────────────────────────────
-$nombres = @('OdontoCRM · respaldo diario', 'OdontoCRM · alertas', 'OdontoCRM · red')
+# ── --quitar: retirar las cuatro y salir ─────────────────────────────────────
+$nombres = @('OdontoCRM · respaldo diario', 'OdontoCRM · alertas', 'OdontoCRM · red', 'OdontoCRM · verificar respaldo')
 if ($Quitar) {
   foreach ($n in $nombres) {
     $t = Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue
@@ -79,7 +80,7 @@ function Registrar-Tarea {
   Escribir-Ok "tarea registrada: $Nombre"
 }
 
-# ── Las tres tareas ──────────────────────────────────────────────────────────
+# ── Las cuatro tareas ────────────────────────────────────────────────────────
 # 1. Respaldo diario a las 03:30 (la clínica está cerrada y hay margen si tarda).
 $disparadorRespaldo = New-ScheduledTaskTrigger -Daily -At '03:30'
 Registrar-Tarea -Nombre 'OdontoCRM · respaldo diario' `
@@ -124,8 +125,24 @@ Registrar-Tarea -Nombre 'OdontoCRM · red' `
   -Argumentos "-NoProfile -ExecutionPolicy Bypass -File `"$cli`" red --arreglar --si-cambio" `
   -Disparador $disparadorRed
 
+# 4. El **simulacro de restauración**, los domingos a las 04:30: el respaldo corre de
+#    madrugada y esto comprueba que el último se puede restaurar de verdad (en bases
+#    temporales, que se borran al terminar). Semanal y no diario: lo que comprueba cambia
+#    poco de un día para otro, y restaurar las bases no es un trabajo de todos los días. Si
+#    falla, avisa al administrador por el bot de administración.
+if ($node) {
+  $verificar = Join-Path $OdontoRepo 'tools\verify-backup.mjs'
+  $disparadorVerificar = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At '04:30'
+  Registrar-Tarea -Nombre 'OdontoCRM · verificar respaldo' `
+    -Descripcion 'Restaura el último respaldo en bases temporales y avisa si no sirve.' `
+    -Programa $node `
+    -Argumentos "`"$verificar`"" `
+    -Disparador $disparadorVerificar
+}
+else { Escribir-Aviso 'no encuentro node: no registro la tarea del simulacro' }
+
 Write-Host ''
 if ($DryRun) { Escribir-Ok 'dry-run terminado: nada se ha registrado'; exit 0 }
 Get-ScheduledTask -TaskName 'OdontoCRM*' -ErrorAction SilentlyContinue |
   Format-Table TaskName, State -AutoSize
-Escribir-Ok 'las tres tareas quedan registradas (míralas en taskschd.msc)'
+Escribir-Ok 'las cuatro tareas quedan registradas (míralas en taskschd.msc)'

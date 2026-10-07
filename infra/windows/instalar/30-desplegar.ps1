@@ -464,7 +464,7 @@ if (-not $DryRun) {
 Escribir-Paso '10/10 · Respaldos y tareas programadas'
 
 if ($DryRun) {
-  Escribir-Detalle '[dry-run] crearía el rol odonto_backup, backup.env y las tres tareas'
+  Escribir-Detalle '[dry-run] crearía el rol odonto_backup, backup.env y las cuatro tareas'
 }
 else {
   # El rol de respaldo se conecta por TCP con .pgpass: el respaldo no depende de que el
@@ -479,7 +479,8 @@ else {
     Escribir-Detalle '    .\infra\windows\backup\crear-rol-respaldo.ps1 --admin-url="postgres://…"'
   }
 
-  # Las tres tareas: respaldo diario, alertas cada 5 min y adaptación de la red cada 5 min.
+  # Las cuatro tareas: respaldo diario, alertas cada 5 min, adaptación de la red cada 5 min
+  # y el simulacro de restauración los domingos.
   $tareas = Join-Path $OdontoRepo 'infra\windows\tareas\registrar-tareas.ps1'
   if (Test-Path $tareas) {
     & powershell -NoProfile -ExecutionPolicy Bypass -File $tareas

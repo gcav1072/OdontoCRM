@@ -1,0 +1,77 @@
+# =============================================================================
+# OdontoCRM · verificar que el respaldo se puede RESTAURAR (simulacro semanal)
+# Archivo : infra/fedora/systemd/odontocrm-verificar-respaldo.service
+# Destino : /etc/systemd/system/odontocrm-verificar-respaldo.service
+# Pareja  : odontocrm-verificar-respaldo.timer (lo lanza cada semana)
+#
+# Respaldo diario hay uno; lo que no había era **comprobar que sirve**. Un `.dump` que
+# nunca se ha restaurado es una carpeta con archivos: la única prueba de que el respaldo
+# vale es restaurarlo. Esto ejecuta `node tools/verify-backup.mjs`, que:
+#
+#   · verifica las sumas SHA-256 del respaldo,
+#   · restaura cada base en una base TEMPORAL (`odonto_verify_*`),
+#   · cuenta la tabla de control de cada dominio (pacientes, facturas, sesiones…),
+#   · borra las temporales y sale con 1 si algo falló.
+#
+# Si falla, avisa al administrador por el bot de administración (además de quedar en el
+# journal y en `systemctl --failed`).
+#
+# Las bases temporales se crean y se borran en el mismo proceso: aunque el simulacro se
+# corte a mitad, el script limpia lo que dejó (y las que queden se ven con `\l` en psql).
+#
+# Instalación:
+#   sudo install -m 0644 -o root -g root \
+#     infra/fedora/systemd/odontocrm-verificar-respaldo.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now odontocrm-verificar-respaldo.timer
+#
+# Ver el resultado:
+#   systemctl list-timers odontocrm-verificar-respaldo.timer
+#   journalctl -u odontocrm-verificar-respaldo -n 50 --no-pager
+# =============================================================================
+
+[Unit]
+Description=OdontoCRM · restaurar el último respaldo en bases temporales (simulacro)
+Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Corre como root por dos razones: leer /etc/odontocrm/*.env (0600 root:root) para sacar
+# `PG_ADMIN_URL` y los entornos de cada servicio, y poder crear y borrar las bases
+# temporales del simulacro. Solo **crea y borra** bases que empiezan por `odonto_verify_`:
+# nunca toca una base de producción.
+User=root
+WorkingDirectory=/opt/odontocrm
+EnvironmentFile=/etc/odontocrm/odontocrm.env
+Environment=ODONTOCRM_ENV_DIR=/etc/odontocrm
+Environment=NODE_ENV=production
+
+ExecStart=/usr/bin/node tools/verify-backup.mjs
+
+# Es un simulacro: restaura varios cientos de MB y no debe competir con la clínica. Se le da
+# margen (una clínica con muchos datos tarda) pero sin dejar de ser un trabajo de fondo.
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=1800
+
+# --- Endurecimiento ----------------------------------------------------------
+# `ProtectSystem=strict` deja todo el sistema de archivos de solo lectura salvo lo que se
+# declare. Aquí hace falta escribir: `/tmp` (private) para los archivos temporales de
+# `pg_restore` y la caché de Node. **No** necesita el almacén ni los respaldos.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadOnlyPaths=/opt/odontocrm /etc/odontocrm /var/backups/odontocrm
+
+StandardOutput=journal
+StandardError=journal

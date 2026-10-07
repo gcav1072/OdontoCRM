@@ -851,7 +851,8 @@ Nombres exactos de los puertos (los del código y los de §2.2):
 | `INTERNAL_SERVICE_SECRET` | los 9 | Secreto HS256 de los JWT de servicio. **El mismo valor en los 9.** |
 | `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH` | `identity` | Claves EdDSA (§8.4). |
 | `COOKIE_SECURE=true` | `identity` | Exige HTTPS: es la razón del TLS interno (§13). |
-| `STORAGE_DIR` | `patients`, `clinical` | `/var/lib/odontocrm/storage`. **Obligatoria**: su valor por defecto es relativo (`./storage/…`) y en `/opt` el servicio no puede escribir. |
+| `STORAGE_DIR` | `patients`, `clinical`, `billing` | `/var/lib/odontocrm/storage`. **Obligatoria**: su valor por defecto es relativo (`./storage/…`) y en `/opt` el servicio no puede escribir (corre bajo `ProtectSystem=strict` con solo `/var/lib/odontocrm` escribible). |
+| `STORAGE_ENCRYPTION_KEY` | `patients`, `clinical`, `billing` | Cifra en reposo los archivos del consultorio (radiografías, PDF de récipes y facturas). **La misma en los tres**: el almacén es una sola carpeta compartida. La genera el aprovisionador y **no** la rota `--rotate` (rotarla exige re-cifrar el almacén; ver §8.6). |
 | `MAX_FILE_BYTES` | `patients`, `clinical` | Tamaño máximo de un archivo (por defecto 20 MB ≈ `20971520`). |
 | `PLAYWRIGHT_BROWSERS_PATH` | `clinical`, `reporting` | `/var/lib/odontocrm/ms-playwright` (el récipe A5 **y** el PDF de reportes). |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_MODE=auto` | `notifications` | Token de BotFather, entregado por archivo (nunca por chat ni en el repo). El modo es **`auto` \| `real` \| `simulado`** (el modo test fuerza `simulado`); el *long polling* es el transporte, no un modo: `polling` **no** es un valor válido y el servicio no arranca con él. |

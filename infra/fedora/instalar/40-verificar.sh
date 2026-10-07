@@ -43,7 +43,7 @@ printf '%sOdontoCRM · 4/4 · Verificar%s\n' "$C_TI" "$C_RE"
 IP_LAN="$(ip_lan)"
 
 # ── 1. Las credenciales CONECTAN (la prueba que faltaba antes) ──────────────
-paso '1/6 · Credenciales y usuarios: cada credencial tiene que conectar'
+paso '1/7 · Credenciales y usuarios: cada credencial tiene que conectar'
 if [[ ! -f "$ETC_DIR/odontocrm.env" ]]; then
   fallo "no hay entorno en $ETC_DIR — falta ejecutar 20-aprovisionar.sh"
 else
@@ -83,7 +83,7 @@ else
 fi
 
 # ── 2. Los 9 servicios: unidad activa, puerto suyo y /health ────────────────
-paso "2/6 · Los ${#SERVICIOS[@]} servicios"
+paso "2/7 · Los ${#SERVICIOS[@]} servicios"
 if (( RAPIDO )); then
   detalle 'omitido (--rapido)'
 elif [[ -x /usr/local/bin/odontocrm ]]; then
@@ -104,7 +104,7 @@ else
 fi
 
 # ── 3. El proxy sirve la aplicación por HTTPS ───────────────────────────────
-paso '3/6 · La aplicación por HTTPS'
+paso '3/7 · La aplicación por HTTPS'
 if (( RAPIDO )); then
   detalle 'omitido (--rapido)'
 else
@@ -175,7 +175,7 @@ else
 fi
 
 # ── 4. El certificado ───────────────────────────────────────────────────────
-paso '4/6 · Certificado'
+paso '4/7 · Certificado'
 CERT=/etc/pki/tls/certs/odontocrm.crt
 if [[ ! -f "$CERT" ]]; then
   fallo "no hay certificado en $CERT — ejecuta 30-desplegar.sh"
@@ -203,7 +203,7 @@ else
 fi
 
 # ── 5. Firewall: abierto lo que debe, cerrado lo que no ─────────────────────
-paso '5/6 · Firewall'
+paso '5/7 · Firewall'
 if ! systemctl is-active --quiet firewalld; then
   av 'firewalld no está activo en esta máquina'
 elif (( RAPIDO )); then
@@ -254,7 +254,7 @@ else
 fi
 
 # ── 6. Sin secretos en el código, y sin denegaciones de SELinux ─────────────
-paso '6/6 · Secretos y SELinux'
+paso '6/7 · Secretos y SELinux'
 filtrados="$(find "$CODE_DIR" -maxdepth 3 -name '.env' -not -path '*/node_modules/*' 2>/dev/null | head -5 || true)"
 if [[ -z "$filtrados" ]]; then
   ok "el código de $CODE_DIR no contiene secretos"
@@ -289,6 +289,74 @@ if command -v getenforce >/dev/null 2>&1 && [[ "$(getenforce 2>/dev/null)" == "E
     fallo 'falta httpd_can_network_connect: el proxy no llegará al gateway'
 else
   detalle 'SELinux no está en Enforcing'
+fi
+
+# ── 7. Cifrado del almacén y simulacro de restauración ──────────────────────
+# Dos comprobaciones que **no** cambian nada: informan de en qué estado está lo que protege
+# los datos. Se hacen aquí (y no en el despliegue) porque son para mirarlas: el cifrado del
+# almacén se activa solo, y la migración de los archivos viejos la decide el operador.
+paso '7/7 · Cifrado del almacén y respaldos restaurables'
+
+# ¿Tienen los servicios que guardan archivos su clave de cifrado? Se descubren por su
+# `.env`: el que declara `STORAGE_DIR` es el que escribe en el almacén.
+sin_clave=()
+con_almacen=()
+for servicio in "${SERVICIOS[@]}"; do
+  grep -qE '^STORAGE_DIR=' "$ETC_DIR/$servicio.env" 2>/dev/null || continue
+  con_almacen+=("$servicio")
+  grep -qE '^STORAGE_ENCRYPTION_KEY=.{20,}' "$ETC_DIR/$servicio.env" 2>/dev/null ||
+    sin_clave+=("$servicio")
+done
+if (( ${#con_almacen[@]} == 0 )); then
+  av 'ningún servicio declara STORAGE_DIR: el almacén se está escribiendo donde el código diga'
+elif (( ${#sin_clave[@]} == 0 )); then
+  ok "cifrado en reposo configurado (${con_almacen[*]})"
+else
+  fallo "sin STORAGE_ENCRYPTION_KEY: ${sin_clave[*]} — los archivos se guardan SIN cifrar"
+  detalle 'el aprovisionador la escribe; si falta, córrelo otra vez (20-aprovisionar.sh)'
+fi
+
+# ¿Cuántos archivos del almacén quedan en claro? Migrar es decisión del operador, así que
+# esto **informa**: no es un fallo tener archivos viejos sin cifrar, es un pendiente.
+if [[ -d "$DATA_DIR/storage" ]]; then
+  en_claro=0
+  total=0
+  while IFS= read -r -d '' archivo; do
+    total=$((total + 1))
+    # Los archivos cifrados empiezan por `ODBLOB`; cualquier otro está en claro.
+    if [[ "$(head -c 6 "$archivo" 2>/dev/null)" != "ODBLOB" ]]; then
+      en_claro=$((en_claro + 1))
+    fi
+  done < <(find "$DATA_DIR/storage" -type f -print0 2>/dev/null)
+  if (( total == 0 )); then
+    detalle 'el almacén está vacío (todavía no hay radiografías ni PDFs)'
+  elif (( en_claro == 0 )); then
+    ok "el almacén está cifrado entero ($total archivo(s))"
+  else
+    av "$en_claro de $total archivo(s) del almacén siguen en claro"
+    detalle 'para pasarlos:  sudo odontocrm con-entorno clinical -- node tools/recifrar-almacen.mjs'
+    detalle 'primero mira qué hay:  ... -- node tools/recifrar-almacen.mjs --estado'
+  fi
+else
+  detalle "no hay almacén todavía en $DATA_DIR/storage"
+fi
+
+# ¿Se puede restaurar el último respaldo? Se prueba con **una** base (la de pacientes), no
+# con las nueve: el simulacro completo es el trabajo del temporizador semanal, y lo que aquí
+# se quiere saber es si el camino funciona (binarios, permisos, credenciales).
+if (( ! ${SIN_RESPALDO:-0} )); then
+  ultimo="$(find "$BACKUP_DIR" -maxdepth 1 -type d -regextype posix-extended \
+    -regex '.*/[0-9]{4}-[0-9]{2}-[0-9]{2}' 2>/dev/null | sort | tail -1 || true)"
+  if [[ -z "$ultimo" ]]; then
+    av 'no hay ningún respaldo que probar todavía (el primero corre de madrugada)'
+    detalle 'para probarlo a mano:  sudo odontocrm con-entorno clinical -- node tools/verify-backup.mjs'
+  elif odontocrm con-entorno clinical -- node tools/verify-backup.mjs \
+    --from "$ultimo" --db odonto_patients --sin-aviso >/dev/null 2>&1; then
+    ok "el último respaldo ($(basename "$ultimo")) se restaura y los datos están"
+  else
+    fallo "el último respaldo ($(basename "$ultimo")) NO se pudo restaurar"
+    detalle "míralo:  sudo odontocrm con-entorno clinical -- node tools/verify-backup.mjs --from $ultimo"
+  fi
 fi
 
 # ── Resumen ─────────────────────────────────────────────────────────────────

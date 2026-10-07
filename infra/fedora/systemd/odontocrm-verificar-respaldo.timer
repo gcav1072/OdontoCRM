@@ -1,0 +1,36 @@
+# =============================================================================
+# OdontoCRM · temporizador del simulacro de restauración (semanal)
+# Archivo : infra/fedora/systemd/odontocrm-verificar-respaldo.timer
+# Destino : /etc/systemd/system/odontocrm-verificar-respaldo.timer
+#
+# Lanza `odontocrm-verificar-respaldo.service` una vez por semana. **Semanal y no diario**
+# a propósito: el respaldo diario comprueba que el `.dump` se escribe; esto comprueba que se
+# puede restaurar, y eso cambia poco de un día para otro. Una vez por semana es suficiente
+# para enterarse a tiempo y no castiga la máquina de la clínica todos los días.
+#
+# El domingo de madrugada, que es cuando no hay nadie trabajando (y va después del respaldo
+# del día, para probar el más reciente).
+#
+# Instalación:
+#   sudo install -m 0644 -o root -g root \
+#     infra/fedora/systemd/odontocrm-verificar-respaldo.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now odontocrm-verificar-respaldo.timer
+# =============================================================================
+
+[Unit]
+Description=OdontoCRM · simulacro de restauración del respaldo (semanal)
+Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
+
+[Timer]
+# Domingo a las 04:30, hora local del consultorio: después del respaldo (que corre de
+# madrugada) y con la clínica cerrada. `Persistent` recupera la ejecución si la máquina
+# estaba apagada ese día —y en una clínica que cierra el fin de semana, eso pasa—.
+OnCalendar=Sun 04:30
+AccuracySec=5min
+Persistent=true
+RandomizedDelaySec=10min
+Unit=odontocrm-verificar-respaldo.service
+
+[Install]
+WantedBy=timers.target

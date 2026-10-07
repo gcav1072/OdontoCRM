@@ -46,7 +46,7 @@ function Get-Codigo { param([string]$Url)
 }
 
 # ── 1/6 · Credenciales y usuarios ───────────────────────────────────────────
-Escribir-Paso '1/6 · Credenciales y usuarios: cada credencial tiene que conectar'
+Escribir-Paso '1/7 · Credenciales y usuarios: cada credencial tiene que conectar'
 if (-not (Test-Path (Join-Path $OdontoEnv 'odontocrm.env'))) {
   Fallo "no hay entorno en $OdontoEnv — falta ejecutar .\20-aprovisionar.ps1"
 }
@@ -87,7 +87,7 @@ else {
 }
 
 # ── 2/6 · Los procesos ──────────────────────────────────────────────────────
-Escribir-Paso "2/6 · Los $($info.procesos.Count) procesos (PM2)"
+Escribir-Paso "2/7 · Los $($info.procesos.Count) procesos (PM2)"
 if ($Rapido) { Escribir-Detalle 'omitido (--rapido)' }
 else {
   $crudo = $null
@@ -115,7 +115,7 @@ else {
 }
 
 # ── 3/6 · La aplicación por HTTPS ───────────────────────────────────────────
-Escribir-Paso '3/6 · La aplicación por HTTPS'
+Escribir-Paso '3/7 · La aplicación por HTTPS'
 if ($Rapido) { Escribir-Detalle 'omitido (--rapido)' }
 else {
   $servicio = Get-Service -Name 'caddy' -ErrorAction SilentlyContinue
@@ -145,7 +145,7 @@ else {
 }
 
 # ── 4/6 · El certificado ────────────────────────────────────────────────────
-Escribir-Paso '4/6 · Certificado'
+Escribir-Paso '4/7 · Certificado'
 $cert = Join-Path $OdontoTls 'odontocrm.crt'
 if (-not (Test-Path $cert)) {
   Fallo "no hay certificado en $cert — ejecuta .\30-desplegar.ps1"
@@ -167,7 +167,7 @@ else {
 }
 
 # ── 5/6 · Firewall: abierto lo que debe, cerrado lo que no ──────────────────
-Escribir-Paso '5/6 · Firewall'
+Escribir-Paso '5/7 · Firewall'
 if ($Rapido) { Escribir-Detalle 'omitido (--rapido)' }
 else {
   foreach ($regla in @('OdontoCRM Web (HTTP)', 'OdontoCRM Web (HTTPS)')) {
@@ -191,7 +191,7 @@ else {
 }
 
 # ── 6/6 · Sin secretos en el código ─────────────────────────────────────────
-Escribir-Paso '6/6 · Secretos'
+Escribir-Paso '6/7 · Secretos'
 if (-not (Test-Path $OdontoCode)) { Escribir-Aviso "todavía no hay código desplegado en $OdontoCode" }
 else {
   $filtrados = Get-ChildItem -Path $OdontoCode -Recurse -Depth 3 -Filter '.env' -File -ErrorAction SilentlyContinue |
@@ -202,6 +202,88 @@ else {
   }
   else { Escribir-Ok "el código de $OdontoCode no contiene secretos (ni un .env)" }
 }
+
+# ── 7/7 · Cifrado del almacén y respaldos restaurables ───────────────────────
+# Dos comprobaciones que **no** cambian nada: informan de en qué estado está lo que protege
+# los datos. El cifrado del almacén se activa solo; migrar los archivos viejos lo decide el
+# operador (por eso aquí se informa y no se falla).
+Escribir-Paso '7/7 · Cifrado del almacén y respaldos restaurables'
+
+# ¿Tienen los servicios que guardan archivos su clave de cifrado?
+$sinClave = @()
+$conAlmacen = @()
+foreach ($servicio in $info.servicios.name) {
+  $archivo = Join-Path $OdontoEnv "$servicio.env"
+  if (-not (Test-Path $archivo)) { continue }
+  $contenido = Get-Content $archivo -Raw -ErrorAction SilentlyContinue
+  if ($contenido -notmatch '(?m)^STORAGE_DIR=') { continue }
+  $conAlmacen += $servicio
+  if ($contenido -notmatch '(?m)^STORAGE_ENCRYPTION_KEY=.{20,}') { $sinClave += $servicio }
+}
+if ($conAlmacen.Count -eq 0) {
+  Escribir-Aviso 'ningún servicio declara STORAGE_DIR: el almacén se escribe donde diga el código'
+}
+elseif ($sinClave.Count -eq 0) {
+  Escribir-Ok "cifrado en reposo configurado ($($conAlmacen -join ', '))"
+}
+else {
+  Fallo "sin STORAGE_ENCRYPTION_KEY: $($sinClave -join ', ') — los archivos se guardan SIN cifrar"
+  Escribir-Detalle 'el aprovisionador la escribe; si falta, corre .\20-aprovisionar.ps1 otra vez'
+}
+
+# ¿Cuántos archivos del almacén quedan en claro? Migrar es decisión del operador.
+$almacen = Join-Path $OdontoDatos 'storage'
+if (Test-Path $almacen) {
+  $archivos = Get-ChildItem -Path $almacen -Recurse -File -ErrorAction SilentlyContinue
+  $total = @($archivos).Count
+  # Los archivos cifrados empiezan por `ODBLOB`; cualquier otro está en claro. Se leen los
+  # primeros seis bytes de cada uno.
+  $enClaro = 0
+  foreach ($archivo in $archivos) {
+    try {
+      $fs = [IO.File]::OpenRead($archivo.FullName)
+      $buffer = New-Object byte[] 6
+      $leidos = $fs.Read($buffer, 0, 6)
+      $fs.Close()
+      if ($leidos -lt 6 -or [Text.Encoding]::ASCII.GetString($buffer) -ne 'ODBLOB') { $enClaro++ }
+    }
+    catch { $enClaro++ }
+  }
+  if ($total -eq 0) { Escribir-Detalle 'el almacén está vacío (todavía no hay radiografías ni PDFs)' }
+  elseif ($enClaro -eq 0) { Escribir-Ok "el almacén está cifrado entero ($total archivo(s))" }
+  else {
+    Escribir-Aviso "$enClaro de $total archivo(s) del almacén siguen en claro"
+    Escribir-Detalle 'para pasarlos:  node tools\recifrar-almacen.mjs'
+    Escribir-Detalle 'primero mira qué hay:  node tools\recifrar-almacen.mjs --estado'
+  }
+}
+else { Escribir-Detalle "no hay almacén todavía en $almacen" }
+
+# ¿Se puede restaurar el último respaldo? Con **una** base (la de pacientes): el simulacro
+# completo es el trabajo del temporizador semanal; aquí se comprueba que el camino funciona.
+$nodeVerificar = (Get-Command node -ErrorAction SilentlyContinue).Source
+if ($nodeVerificar) {
+  $respaldos = Get-ChildItem -Path $OdontoBackups -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^\d{4}-\d{2}-\d{2}$' } | Sort-Object Name -Descending
+  if (-not $respaldos) {
+    Escribir-Aviso 'no hay ningún respaldo que probar todavía (el primero corre de madrugada)'
+    Escribir-Detalle 'para probarlo a mano:  node tools\verify-backup.mjs'
+  }
+  else {
+    $ultimo = $respaldos[0]
+    $salida = & $nodeVerificar (Join-Path $OdontoRepo 'tools\verify-backup.mjs') `
+      --from $ultimo.FullName --db odonto_patients --sin-aviso 2>&1
+    if ($LASTEXITCODE -eq 0) {
+      Escribir-Ok "el último respaldo ($($ultimo.Name)) se restaura y los datos están"
+    }
+    else {
+      Fallo "el último respaldo ($($ultimo.Name)) NO se pudo restaurar"
+      Escribir-Detalle "míralo:  node tools\verify-backup.mjs --from \"$($ultimo.FullName)\""
+    }
+    $salida | Select-Object -Last 3 | ForEach-Object { Escribir-Detalle "  $_" }
+  }
+}
+else { Escribir-Aviso 'no encuentro node: no puedo probar el respaldo' }
 
 # ── Resumen ─────────────────────────────────────────────────────────────────
 Write-Host ''

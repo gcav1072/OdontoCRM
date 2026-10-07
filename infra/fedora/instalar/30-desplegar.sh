@@ -432,6 +432,8 @@ UNIDADES=(odontocrm@.service odontocrm-gateway.service)
 TIMERS=(odontocrm-alertas.service odontocrm-alertas.timer)
 TIMERS+=(odontocrm-red.service odontocrm-red.timer)
 (( ! SIN_RESPALDO )) && TIMERS+=(odontocrm-backup.service odontocrm-backup.timer)
+# El simulacro de restauración solo tiene sentido si hay respaldos que probar.
+(( ! SIN_RESPALDO )) && TIMERS+=(odontocrm-verificar-respaldo.service odontocrm-verificar-respaldo.timer)
 
 for unidad in "${UNIDADES[@]}" "${TIMERS[@]}"; do
   origen="$CODE_DIR/infra/fedora/systemd/$unidad"
@@ -478,6 +480,7 @@ else
     av 'alguna unidad no arrancó: se detalla al verificar (pieza 4)'
   if (( ! SIN_RESPALDO )); then
     systemctl enable --now odontocrm-backup.timer >/dev/null 2>&1 || true
+    systemctl enable --now odontocrm-verificar-respaldo.timer >/dev/null 2>&1 || true
   fi
   systemctl enable --now odontocrm-alertas.timer >/dev/null 2>&1 || true
   systemctl enable --now odontocrm-red.timer >/dev/null 2>&1 || true

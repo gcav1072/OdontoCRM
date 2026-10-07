@@ -363,11 +363,31 @@ const secretoInterno = opciones.rotate
   : envIdentity.INTERNAL_SERVICE_SECRET || undefined;
 const secretoCookie = opciones.rotate ? undefined : envIdentity.COOKIE_SECRET || undefined;
 
+/**
+ * Clave de **cifrado en reposo** del almacén de archivos (mejora 4.B del plan post-Fase 11).
+ *
+ * Se **genera** aquí —como los demás secretos— y se escribe en los tres servicios que
+ * guardan binarios. Es la misma en los tres a propósito: el almacén del consultorio es una
+ * sola carpeta compartida, así que una clave distinta por servicio dejaría los archivos de
+ * un servicio ilegibles desde los otros.
+ *
+ * Se conserva lo que ya hubiera: rotarla dejaría ilegible todo lo guardado hasta ahora
+ * (`--rotate` **no** la rota, y eso es deliberado: rotar el cifrado exige re-cifrar el
+ * almacén entero con el que ya estaba, y eso es una operación de mantenimiento, no un
+ * instalador).
+ */
+const claveAlmacen =
+  leerEnv(join(ETC, 'patients.env')).STORAGE_ENCRYPTION_KEY ||
+  leerEnv(join(ETC, 'clinical.env')).STORAGE_ENCRYPTION_KEY ||
+  leerEnv(join(ETC, 'billing.env')).STORAGE_ENCRYPTION_KEY ||
+  undefined;
+
 const claves = {
   servicios: {},
   cola: opciones.rotate ? undefined : claveCola,
   interno: secretoInterno,
   cookie: secretoCookie,
+  almacen: claveAlmacen,
 };
 
 let generadas = 0;
@@ -391,6 +411,12 @@ if (!claves.interno) {
 if (!claves.cookie) {
   claves.cookie = nuevaClave();
   generadas += 1;
+}
+if (!claves.almacen) {
+  claves.almacen = nuevaClave();
+  generadas += 1;
+} else {
+  reutilizadas.push('cifrado del almacén');
 }
 
 for (const servicio of SERVICIOS) {
@@ -456,20 +482,36 @@ const extrasDe = (nombre) => {
         JWT_PUBLIC_KEY_PATH: join(CLAVES, 'jwt-public.pem'),
       };
     case 'patients':
-      return { STORAGE_DIR: `${opciones.dataDir}/storage`, MAX_FILE_BYTES: '20971520' };
+      return {
+        STORAGE_DIR: `${opciones.dataDir}/storage`,
+        MAX_FILE_BYTES: '20971520',
+        STORAGE_ENCRYPTION_KEY: claves.almacen,
+      };
     case 'clinical':
       return {
         STORAGE_DIR: `${opciones.dataDir}/storage`,
         MAX_FILE_BYTES: '20971520',
         PLAYWRIGHT_BROWSERS_PATH: `${opciones.dataDir}/ms-playwright`,
         PUBLIC_APP_URL: `https://${opciones.host}`,
+        STORAGE_ENCRYPTION_KEY: claves.almacen,
       };
     case 'reporting':
       return { PLAYWRIGHT_BROWSERS_PATH: `${opciones.dataDir}/ms-playwright` };
     case 'billing':
       // La factura y el recibo se componen con Chromium: la misma ruta que clinical
       // y reporting. El plan lo avisa (§7.5, punto 16).
-      return { PLAYWRIGHT_BROWSERS_PATH: `${opciones.dataDir}/ms-playwright` };
+      //
+      // `STORAGE_DIR` es **obligatoria** aquí por la misma razón que en los otros dos: su
+      // valor por defecto es relativo (`./storage/billing`) y el servicio corre con
+      // `WorkingDirectory=/opt/odontocrm` bajo `ProtectSystem=strict` con solo
+      // `/var/lib/odontocrm` escribible, así que sin esta línea el archivo de la factura
+      // fallaría con «permiso denegado» al emitir. Faltaba desde que entró `billing` (la
+      // tabla de INSTALL.md §8.2 tampoco lo listaba).
+      return {
+        STORAGE_DIR: `${opciones.dataDir}/storage`,
+        PLAYWRIGHT_BROWSERS_PATH: `${opciones.dataDir}/ms-playwright`,
+        STORAGE_ENCRYPTION_KEY: claves.almacen,
+      };
     case 'notifications':
       // Sin token, `TELEGRAM_MODE=auto` usa el bot simulado: la clínica arranca y los
       // avisos quedan como pendientes manuales hasta que haya BotFather. Las otras dos
@@ -507,6 +549,8 @@ const comentarioDe = (clave) =>
     EVENTS_DATABASE_URL: 'Cola compartida (pg-boss): la MISMA en los 9 servicios.',
     INTERNAL_SERVICE_SECRET: 'Secreto de las rutas internas: el MISMO en los 9 servicios.',
     COOKIE_SECRET: 'Firma la cookie de refresco de la sesión.',
+    STORAGE_ENCRYPTION_KEY:
+      'Cifra en reposo los archivos del consultorio (radiografías, PDF). La MISMA en patients, clinical y billing.',
     JWT_PRIVATE_KEY_PATH: 'Clave EdDSA que firma los JWT (clave privada, 0640 root:odontocrm).',
     JWT_PUBLIC_KEY_PATH: 'Clave pública con la que el gateway valida los JWT.',
     WEB_ORIGIN: 'Orígenes que el navegador puede usar (CORS). El nombre y la IP de la LAN.',
