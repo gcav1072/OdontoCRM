@@ -68,6 +68,12 @@ const DICCIONARIO = {
   'comun.canal.registro': 'Registro',
   'comun.canal.telefono': 'Teléfono',
   'comun.canal.presencial': 'Presencial',
+
+  // --- Impresión de documentos (márgenes del papel) ------------------------
+  'impresion.margen': 'Márgenes',
+  'impresion.margenUnidad': 'mm',
+  'impresion.margenAyuda':
+    'Margen del borde de la hoja (carta), en milímetros. Se aplica al imprimir.',
   'comun.cerrarSesion': 'Cerrar sesión',
   'comun.cerrando': 'Cerrando…',
 

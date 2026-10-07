@@ -5,8 +5,9 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { OdontogramDocument } from '../components/odontogram/OdontogramDocument';
+import { MargenDeImpresion } from '../components/print/MargenDeImpresion';
 import { apiErrorMessage } from '../lib/api';
-import { useTemaClaroParaImprimir } from '../lib/impresion';
+import { useMargenDeImpresion, useTemaClaroParaImprimir } from '../lib/impresion';
 import { t } from '../lib/i18n';
 import { odontogramApi } from '../lib/odontogram-api';
 
@@ -29,6 +30,8 @@ export const OdontogramPrintPage = () => {
   // El informe se imprime con la paleta clara aunque la pantalla esté en modo
   // oscuro: el papel es blanco (ver lib/impresion.ts).
   useTemaClaroParaImprimir();
+  // Tamaño carta con margen elegido en la barra (por defecto, 15 mm).
+  const [margen, setMargen] = useMargenDeImpresion();
   const [aviso, setAviso] = useState<string | null>(null);
   const [conHistorial, setConHistorial] = useState(false);
 
@@ -97,13 +100,15 @@ export const OdontogramPrintPage = () => {
   }
 
   return (
-    <div className="min-h-dvh bg-canvas pb-10">
+    <div className="min-h-dvh bg-canvas pb-10 print:pb-0">
       <div className="mx-auto flex max-w-[21cm] flex-wrap items-center justify-between gap-3 px-6 py-4 print:hidden">
         <div className="flex items-center gap-2 text-ink-muted">
           <Printer className="size-4" aria-hidden />
           <span className="text-sm">{t('odonto.imprimir.titulo')}</span>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {/* Cuánto blanco deja el borde de la hoja (carta) antes del documento. */}
+          <MargenDeImpresion margenMm={margen} onChange={setMargen} />
           {/* La casilla decide si el papel lleva detrás la evolución con sus fechas. */}
           <Checkbox
             checked={conHistorial}
