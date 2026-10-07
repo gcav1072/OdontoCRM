@@ -254,6 +254,32 @@ describe('alertas del sistema', () => {
     expect(problemas[0]).toContain('journalctl -u odontocrm@screens');
   });
 
+  it('en Windows (PM2) el comando para mirar es `pm2 logs`, no `journalctl`', () => {
+    const problemas = alertasDe(
+      foto({
+        systemd: {
+          disponible: true,
+          gestor: 'pm2',
+          unidades: [
+            {
+              name: 'clinical',
+              unidad: 'odontocrm-clinical',
+              activa: 'failed',
+              existe: true,
+              pidUnidad: null,
+              pidPuerto: null,
+              sirveLaUnidad: false,
+            },
+          ],
+        },
+      }),
+      AHORA,
+    );
+
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toContain('pm2 logs odontocrm-clinical');
+  });
+
   it('con la unidad sirviendo su puerto no hay nada que reportar', () => {
     const problemas = alertasDe(
       foto({

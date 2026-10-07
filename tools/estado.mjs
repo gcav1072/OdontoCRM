@@ -386,8 +386,46 @@ const revisarReportes = async (entornoLegible) => {
   }
 };
 
+/** Ejecuta y devuelve la salida, o `null` si el comando no existe o sale con error. */
+const intentarComando = (comando, args) => {
+  try {
+    return execFileSync(comando, args, {
+      encoding: 'utf8',
+      // En Windows `pm2` es un `pm2.cmd`: sin shell, Node no lo resuelve (EINVAL/ENOENT).
+      shell: process.platform === 'win32',
+    });
+  } catch {
+    return null;
+  }
+};
+
+/** `pm2 jlist` devuelve un JSON, pero alguna versión imprime avisos antes: se recorta. */
+const parsearJlist = (texto) => {
+  const desde = texto.indexOf('[');
+  const hasta = texto.lastIndexOf(']');
+  if (desde === -1 || hasta <= desde) return null;
+  try {
+    const lista = JSON.parse(texto.slice(desde, hasta + 1));
+    return Array.isArray(lista) ? lista : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Mapa puerto→PID de los procesos que ESCUCHAN, en Windows (`netstat -ano`). */
+const mapaDePuertosWindows = () => {
+  const mapa = new Map();
+  const salida = intentarComando('netstat', ['-ano', '-p', 'tcp']);
+  if (salida === null) return mapa;
+  for (const linea of salida.split(/\r?\n/)) {
+    const encontrado = /^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)/i.exec(linea);
+    if (encontrado !== null) mapa.set(Number(encontrado[1]), encontrado[2]);
+  }
+  return mapa;
+};
+
 /**
- * Quién sirve cada puerto y qué dice `systemd` de su unidad.
+ * Quién sirve cada puerto y qué dice su supervisor.
  *
  * Existe por un fallo real del banco de pruebas (Fase 10): con una pila de
  * desarrollo ocupando los puertos, los servicios de `systemd` quedaron en `failed`
@@ -395,9 +433,12 @@ const revisarReportes = async (entornoLegible) => {
  * pila— y el tablero daba todo por bueno. Aquí se compara el proceso que escucha
  * con el `MainPID` de la unidad; si no coinciden, es una alerta.
  *
- * Solo aplica donde hay `systemd` (Fedora); en desarrollo se omite sin ruido.
+ * En Linux producción lo lleva `systemd`; en Windows, **PM2** (un servicio de Windows con
+ * las once aplicaciones `odontocrm-*`) y el PID del puerto se mira con `netstat`. El campo
+ * de la foto se sigue llamando `systemd` por compatibilidad con `alertasDe`; `gestor` dice
+ * cuál es. En desarrollo sin ninguno de los dos se omite sin ruido.
  */
-const revisarSystemd = () => {
+const revisarSupervisor = () => {
   const haySystemd = (() => {
     try {
       execFileSync('systemctl', ['--version'], { stdio: 'ignore' });
@@ -406,56 +447,93 @@ const revisarSystemd = () => {
       return false;
     }
   })();
-  if (!haySystemd) return { disponible: false, unidades: [] };
 
-  const pidDelPuerto = (puerto) => {
-    try {
-      const salida = execFileSync('ss', ['-lntpH', `sport = :${String(puerto)}`], {
-        encoding: 'utf8',
-      });
-      return /pid=(\d+)/.exec(salida)?.[1] ?? null;
-    } catch {
-      return null;
-    }
-  };
-
-  const unidades = PROCESOS.map((proceso) => {
-    const unidad = proceso.unidad ?? `odontocrm@${proceso.name}`;
-    let activa;
-    let pidUnidad = null;
-    let existe = true;
-    try {
-      activa = execFileSync('systemctl', ['is-active', `${unidad}.service`], {
-        encoding: 'utf8',
-      }).trim();
-    } catch (fallo) {
-      const salida = (fallo.stdout ?? '').toString().trim();
-      // `is-active` sale con código ≠ 0 cuando la unidad no está activa: el estado
-      // viene en la salida, no es un fallo de la consulta.
-      activa = salida === '' ? 'no-existe' : salida;
-    }
-    try {
-      pidUnidad =
-        execFileSync('systemctl', ['show', '-p', 'MainPID', '--value', `${unidad}.service`], {
+  if (haySystemd) {
+    const pidDelPuerto = (puerto) => {
+      try {
+        const salida = execFileSync('ss', ['-lntpH', `sport = :${String(puerto)}`], {
           encoding: 'utf8',
-        }).trim() || null;
-    } catch {
-      existe = false;
-    }
+        });
+        return /pid=(\d+)/.exec(salida)?.[1] ?? null;
+      } catch {
+        return null;
+      }
+    };
 
-    const pidPuerto = pidDelPuerto(proceso.port);
+    const unidades = PROCESOS.map((proceso) => {
+      const unidad = proceso.unidad ?? `odontocrm@${proceso.name}`;
+      let activa;
+      let pidUnidad = null;
+      let existe = true;
+      try {
+        activa = execFileSync('systemctl', ['is-active', `${unidad}.service`], {
+          encoding: 'utf8',
+        }).trim();
+      } catch (fallo) {
+        const salida = (fallo.stdout ?? '').toString().trim();
+        // `is-active` sale con código ≠ 0 cuando la unidad no está activa: el estado
+        // viene en la salida, no es un fallo de la consulta.
+        activa = salida === '' ? 'no-existe' : salida;
+      }
+      try {
+        pidUnidad =
+          execFileSync('systemctl', ['show', '-p', 'MainPID', '--value', `${unidad}.service`], {
+            encoding: 'utf8',
+          }).trim() || null;
+      } catch {
+        existe = false;
+      }
+
+      const pidPuerto = pidDelPuerto(proceso.port);
+      return {
+        name: proceso.name,
+        unidad,
+        activa,
+        existe,
+        pidUnidad,
+        pidPuerto,
+        sirveLaUnidad: pidPuerto !== null && pidUnidad !== null && pidPuerto === pidUnidad,
+      };
+    });
+
+    return { disponible: true, gestor: 'systemd', unidades };
+  }
+
+  // Windows: PM2. Solo aquí: en Linux sin systemd estamos en desarrollo y no hay nada
+  // que comparar (el propio `stack:fijo` es una herramienta de desarrollo, no producción).
+  if (process.platform !== 'win32') return { disponible: false, gestor: 'ninguno', unidades: [] };
+
+  const crudo = intentarComando('pm2', ['jlist']);
+  const lista = crudo === null ? null : parsearJlist(crudo);
+  if (lista === null) return { disponible: false, gestor: 'ninguno', unidades: [] };
+
+  const puertos = mapaDePuertosWindows();
+  const unidades = PROCESOS.map((proceso) => {
+    const nombre = `odontocrm-${proceso.name}`;
+    const app = lista.find((entrada) => entrada.name === nombre);
+    const estado = app?.pm2_env?.status;
+    const pidUnidad = app?.pid === undefined || app?.pid === null ? null : String(app.pid);
+    const pidPuerto = puertos.get(proceso.port) ?? null;
+    const activa =
+      estado === 'online' || estado === 'launching'
+        ? 'active'
+        : estado === 'errored'
+          ? 'failed'
+          : app === undefined
+            ? 'no-existe'
+            : 'inactive';
     return {
       name: proceso.name,
-      unidad,
+      unidad: nombre,
       activa,
-      existe,
+      existe: app !== undefined,
       pidUnidad,
       pidPuerto,
       sirveLaUnidad: pidPuerto !== null && pidUnidad !== null && pidPuerto === pidUnidad,
     };
   });
 
-  return { disponible: true, unidades };
+  return { disponible: true, gestor: 'pm2', unidades };
 };
 
 const revisarDisco = async () => {
@@ -485,7 +563,7 @@ export const tomarFoto = async () => {
 
   const permisos = revisarPermisos();
   const datos = permisos.envLegible ? await revisarDatos() : [];
-  const systemd = revisarSystemd();
+  const systemd = revisarSupervisor();
   const [bases, cola, envios, reportes, disco] = await Promise.all([
     revisarBases(entorno, datos),
     revisarCola(permisos.envLegible),
@@ -555,7 +633,13 @@ const tablero = (foto) => {
 
   if (foto.systemd?.disponible === true) {
     lineas.push('');
-    lineas.push(color.titulo('── Unidades systemd ──────────────────────────────────────────────'));
+    lineas.push(
+      color.titulo(
+        foto.systemd.gestor === 'pm2'
+          ? '── Procesos PM2 ──────────────────────────────────────────────────'
+          : '── Unidades systemd ──────────────────────────────────────────────',
+      ),
+    );
     for (const unidad of foto.systemd.unidades) {
       const bien =
         unidad.activa === 'active' && (unidad.pidPuerto === null || unidad.sirveLaUnidad);

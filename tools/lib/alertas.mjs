@@ -84,7 +84,13 @@ export const alertasDe = (foto, ahora = new Date(), limites = LIMITES) => {
           `el puerto de ${unidad.name} lo sirve el PID ${String(unidad.pidPuerto)}, no ${unidad.unidad} (PID ${String(unidad.pidUnidad ?? '—')})`,
         );
       } else if (unidad.activa === 'failed') {
-        problemas.push(`${unidad.unidad} está en failed: journalctl -u ${unidad.unidad} -n 50`);
+        // El comando para mirar depende del supervisor: `systemd` en Fedora, PM2 en Windows.
+        // `gestor` lo dice; sin él (pruebas antiguas), se asume systemd.
+        const mirar =
+          foto.systemd.gestor === 'pm2'
+            ? `pm2 logs ${unidad.unidad} --lines 50`
+            : `journalctl -u ${unidad.unidad} -n 50`;
+        problemas.push(`${unidad.unidad} está en failed: ${mirar}`);
       }
     }
   }
