@@ -2432,6 +2432,7 @@ const DICCIONARIO = {
   'odonto.ultimaImpresion': 'Última impresión: {fecha}',
   'odonto.denticion.permanente': 'Dentición permanente',
   'odonto.denticion.temporal': 'Dentición temporal',
+  'odonto.denticion.mixta': 'Dentición mixta',
 
   // La boca sin odontograma no es un error: el patrón por excepción la lee sana.
   'odonto.sana.titulo': 'Boca sana por defecto',
@@ -2455,6 +2456,10 @@ const DICCIONARIO = {
     'Las caras se leen de fuera hacia dentro: vestibular arriba (abajo en la mandíbula), lingual o palatino enfrente, y proximales a los lados (mesial hacia la línea media). En incisivos y caninos la cara de masticación es el borde incisal. La corona cubre lo que había debajo —el dato queda en la historia— y el conducto, el implante y la extracción indicada conviven con las caras; «ausente» las deja sin efecto, salvo con un implante, que puede sostener la pieza.',
   'odonto.arcada.superior': 'Arcada superior (18–28)',
   'odonto.arcada.inferior': 'Arcada inferior (48–38)',
+  // Las arcadas de leche del paciente que está mudando (ADR 0051): van debajo de su
+  // arcada permanente, cada pieza en la ranura de la que la va a sustituir.
+  'odonto.arcada.superior.temporal': 'Arcada superior · temporal (55–65)',
+  'odonto.arcada.inferior.temporal': 'Arcada inferior · temporal (85–75)',
   /**
    * Orientación de las caras, que es la duda clásica al leer un odontograma: en el
    * maxilar la cara externa (vestibular) mira hacia arriba y la interna es el

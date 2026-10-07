@@ -1,6 +1,7 @@
 import type {
   ClearSurfaceInput,
   DeleteFindingInput,
+  Dentition,
   OdontogramDetail,
   OdontogramHistoryResult,
   OdontogramLookup,
@@ -14,6 +15,7 @@ import type {
 import { CLINICAL_STATE_COLORS } from '@odontocrm/contracts';
 
 import { api } from './api';
+import { t } from './i18n';
 
 /**
  * Odontograma (Fase 6, sesión B). Leer e imprimir exigen `odontogram:read` —la
@@ -22,6 +24,16 @@ import { api } from './api';
  *
  * El contrato vive en `@odontocrm/contracts`; aquí solo están las llamadas.
  */
+
+/**
+ * Nombre de la dentición en la interfaz: permanente, temporal o **mixta** (el paciente
+ * que está mudando; ver [ADR 0051](../../../../docs/adr/0051-denticion-mixta-en-el-odontograma.md)).
+ */
+export const dentitionLabel = (dentition: Dentition): string => {
+  if (dentition === 'temporal') return t('odonto.denticion.temporal');
+  if (dentition === 'mixta') return t('odonto.denticion.mixta');
+  return t('odonto.denticion.permanente');
+};
 
 /* ── Ayudas puras sobre el detalle (las usan el gráfico y las páginas) ──────── */
 

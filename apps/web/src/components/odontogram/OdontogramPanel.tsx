@@ -33,7 +33,7 @@ import { useNotice } from '../../hooks/useNotice';
 import { apiErrorMessage } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { t } from '../../lib/i18n';
-import { findingsForTooth, odontogramApi } from '../../lib/odontogram-api';
+import { dentitionLabel, findingsForTooth, odontogramApi } from '../../lib/odontogram-api';
 import { NoticeBanner } from '../NoticeBanner';
 import { OdontogramChart } from './OdontogramChart';
 import { QuickEntryBar, describeAction } from './QuickEntryBar';
@@ -396,13 +396,7 @@ export const OdontogramPanel = ({
           <Badge variant="info" dot>
             {t('odonto.completadas', { total: resumen.completedCount })}
           </Badge>
-          <Badge variant="primary">
-            {t(
-              (detail?.dentition ?? 'permanente') === 'temporal'
-                ? 'odonto.denticion.temporal'
-                : 'odonto.denticion.permanente',
-            )}
-          </Badge>
+          <Badge variant="primary">{dentitionLabel(detail?.dentition ?? 'permanente')}</Badge>
         </div>
 
         {canWrite ? (

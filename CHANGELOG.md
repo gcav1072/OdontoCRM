@@ -4,6 +4,32 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Odontograma] — El paciente que está mudando: dentición mixta · 2026-10-07
+
+El odontograma tenía **una sola dentición por paciente**, fijada con el primer hallazgo (el
+servidor la deducía del número FDI y no volvía a tocarla) y dibujaba **una sola arcada** —32 piezas
+en permanente, 20 en temporal—. Eso cubría una boca de una dentición, pero **no la dentición mixta**,
+que es la normal de un niño de unos 6 a 12 años: los permanentes ya erupcionaron y quedan molares de
+leche. Con los datos como estaban, un hallazgo en la dentición «contraria» **se guardaba y salía en la
+tabla, pero no se dibujaba** —el diagrama y el informe decían cosas distintas—, y no había ningún
+valor que dijera «esta boca tiene las dos». Entra por [ADR 0051](docs/adr/0051-denticion-mixta-en-el-odontograma.md).
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `DENTITIONS` | Gana **`'mixta'`**: el odontograma puede declarar que tiene las dos denticiones |
+| La dentición | Deja de ser un sello del primer hallazgo y pasa a **derivarse de los hallazgos vigentes**, recalculada en cada escritura: solo permanentes → `permanente`, solo temporales → `temporal`, de las dos → **`mixta`**. El día que erupciona un molar permanente (o que se corrige una captura) la boca cambia de dentición, y el gráfico sigue |
+| `primarySuccessor` | La relación de recambio, en el contrato: `51 → 11`, `55 → 15`, `85 → 45` (la pieza permanente que sustituye a la temporal) |
+| `archLayout('mixta')` | Dibuja la huella **permanente** y, aparte, las arcadas **primarias** (`upperPrimary`/`lowerPrimary`), cada pieza de leche **en la ranura de su sucesor**. Sin geometría nueva: la banda primaria reutiliza el mismo componente de arcada |
+| Los dos renderizadores | Dibujan las bandas primarias cuando las hay (vacías en las denticiones simples), con su pie de arcada, en pantalla y en papel |
+| `odontogramSummary` | `teeth` cuenta lo que se dibuja: **52** en mixta (32 + 20), no «una u otra» |
+| El seed | Deriva la dentición de los hallazgos que escribe, en vez de por edad: así un mundo sembrado no dice «temporal» con una permanente dentro |
+
+Migración `0001` de `odontogram`: el `CHECK` de `dentitions` admite `'mixta'` (no toca ninguna fila).
+Comprobado con la base de verdad (**14/14** de la suite del odontograma, incluido el recálculo
+`temporal → mixta → temporal` al borrar la pieza permanente) y a ojo en la vista de impresión: las
+cuatro bandas —permanente y temporal de cada arcada— con la etiqueta «Dentición mixta» y cada pieza
+de leche bajo su sucesor.
+
 ## [Corrección] — El rol del respaldo se quedaba sin permisos (lo cazó el examen) · 2026-10-06
 
 Al reescribir las listas para que se derivaran del repositorio metí la pata en un consumo:

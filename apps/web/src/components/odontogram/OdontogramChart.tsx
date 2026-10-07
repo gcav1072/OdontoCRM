@@ -245,6 +245,41 @@ export const OdontogramChart = ({
         onSurfaceClick={onSurfaceClick}
         onToothClick={onToothClick}
       />
+      {/*
+        Dentición mixta (ADR 0051): las piezas de leche van en su propia banda, cada
+        una en la ranura de la que la va a sustituir. Las bandas solo existen cuando
+        hay piezas temporales, que es lo que dice `archLayout`.
+      */}
+      {layout.upperPrimary.length > 0 && (
+        <Arch
+          title={t('odonto.arcada.superior.temporal')}
+          orientacion={t('odonto.arcada.superior.orientacion')}
+          teeth={layout.upperPrimary}
+          detail={detail}
+          width={layout.width}
+          activeTooth={activeTooth}
+          activeSurfaces={activeSurfaces}
+          readOnly={readOnly}
+          tapTargets={tapTargets}
+          onSurfaceClick={onSurfaceClick}
+          onToothClick={onToothClick}
+        />
+      )}
+      {layout.lowerPrimary.length > 0 && (
+        <Arch
+          title={t('odonto.arcada.inferior.temporal')}
+          orientacion={t('odonto.arcada.inferior.orientacion')}
+          teeth={layout.lowerPrimary}
+          detail={detail}
+          width={layout.width}
+          activeTooth={activeTooth}
+          activeSurfaces={activeSurfaces}
+          readOnly={readOnly}
+          tapTargets={tapTargets}
+          onSurfaceClick={onSurfaceClick}
+          onToothClick={onToothClick}
+        />
+      )}
       <Legend />
     </div>
   );

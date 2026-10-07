@@ -14,6 +14,7 @@ import type {
 import { formatDate, formatDateTime } from '../../lib/format';
 import { historyEventLabel } from './OdontogramHistory';
 import { t } from '../../lib/i18n';
+import { dentitionLabel } from '../../lib/odontogram-api';
 import { OdontogramStaticChart } from '../odontogram/OdontogramStaticChart';
 
 /**
@@ -189,7 +190,7 @@ export const OdontogramDocument = ({
           </div>
           <div>
             <dt className="text-xs uppercase tracking-wide text-ink-subtle">
-              {detail.dentition === 'temporal' ? 'Dentición temporal' : 'Dentición permanente'}
+              {dentitionLabel(detail.dentition)}
             </dt>
             <dd>{formatDate(detail.updatedAt)}</dd>
           </div>

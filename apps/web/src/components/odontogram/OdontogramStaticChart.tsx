@@ -4,7 +4,6 @@ import {
   CONDITION_LABELS,
   SURFACE_POLYGONS,
   TOOTH_OUTLINE_POINTS,
-  TOOTH_STRIDE,
 } from '@odontocrm/contracts';
 import type {
   ClinicalState,
@@ -128,22 +127,26 @@ const Arch = ({
   teeth,
   detail,
   size,
+  width,
   caption,
 }: {
   teeth: readonly ToothPlacement[];
   detail: Pick<OdontogramDetail, 'findings'>;
   size: number;
+  /**
+   * Ancho del lienzo de la arcada **completa** (el de la huella permanente). Todas las
+   * bandas de la boca usan el mismo, para que escalen igual y cada pieza caiga en su
+   * columna: sin esto, la banda temporal —más corta— se estiraba a lo ancho, sus
+   * dientes salían más grandes y se desalineaban con la de arriba.
+   */
+  width: number;
   /** Qué arcada es y hacia dónde mira cada cara: sin esto el papel se malinterpreta. */
   caption: string;
 }) => {
-  // El lienzo llega hasta el final de la última pieza (incluido el hueco de la
-  // línea media), no a `n × paso`: si no, el dibujo se estira y descuadra.
-  const ancho = (teeth[teeth.length - 1]?.x ?? 0) + TOOTH_STRIDE;
-
   return (
     <figure className="m-0">
       <figcaption className="mb-0.5 text-[11px] text-ink-subtle">{caption}</figcaption>
-      <svg viewBox={`0 0 ${String(ancho)} ${String(ARCH_HEIGHT)}`} className="w-full" role="img">
+      <svg viewBox={`0 0 ${String(width)} ${String(ARCH_HEIGHT)}`} className="w-full" role="img">
         {teeth.map((tooth) => (
           <g key={tooth.toothNumber} transform={`translate(${String(tooth.x)},0)`}>
             <StaticTooth
@@ -236,19 +239,41 @@ export const OdontogramStaticChart = ({
   const layout = archLayout(dentition ?? boca.dentition);
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-[20cm] space-y-4">
       <Arch
         teeth={layout.upper}
         detail={boca}
         size={toothSize}
+        width={layout.width}
         caption={t('odonto.arcada.superior.orientacion')}
       />
       <Arch
         teeth={layout.lower}
         detail={boca}
         size={toothSize}
+        width={layout.width}
         caption={t('odonto.arcada.inferior.orientacion')}
       />
+      {/* Dentición mixta (ADR 0051): las piezas de leche, en su banda y en la ranura
+          de la que las va a sustituir. Solo existen si `archLayout` las trae. */}
+      {layout.upperPrimary.length > 0 && (
+        <Arch
+          teeth={layout.upperPrimary}
+          detail={boca}
+          size={toothSize}
+          width={layout.width}
+          caption={`${t('odonto.arcada.superior.temporal')} · ${t('odonto.arcada.superior.orientacion')}`}
+        />
+      )}
+      {layout.lowerPrimary.length > 0 && (
+        <Arch
+          teeth={layout.lowerPrimary}
+          detail={boca}
+          size={toothSize}
+          width={layout.width}
+          caption={`${t('odonto.arcada.inferior.temporal')} · ${t('odonto.arcada.inferior.orientacion')}`}
+        />
+      )}
       <OdontogramLegend />
     </div>
   );
