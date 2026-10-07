@@ -6,7 +6,8 @@ Las decisiones 0001–0021 provienen de la sesión de planificación del **2026-
 tomaron durante la Fase 0, la 0029 en la Fase 4.1, la 0030 en la Fase 5, las 0031–0033
 en la Fase 6, las 0034–0036 en la Fase 7, la 0038 en la Fase 8, las 0039–0041 en la
 Fase 9, la 0042 en la Fase 10, la 0043 en la sesión de despliegue y las **0044–0048** al
-abrir la Fase 11 (facturación y pagos), y quedan documentadas por la misma razón.
+abrir la Fase 11 (facturación y pagos); la **0049** se toma dentro de esa misma fase, al decidir el modo
+de facturación por defecto y la regla de tasa, y quedan documentadas por la misma razón.
 
 > **Numeración de la Fase 11:** el plan de facturación
 > ([`../feat_billing.md`](../feat_billing.md)) numeraba sus cinco ADRs **0043–0047** porque daba por hecho
@@ -64,3 +65,4 @@ abrir la Fase 11 (facturación y pagos), y quedan documentadas por la misma raz�
 | [0046](0046-tasa-bcv-historica-y-regla-de-imputacion.md) | La tasa BCV es histórica, se congela por documento y tiene una regla de imputación explícita | aceptada (fase 11) |
 | [0047](0047-quien-asigna-el-numero-de-la-factura.md) | Quién asigna el número de la factura: formas libres, máquina fiscal o régimen digital | aceptada (fase 11) |
 | [0048](0048-el-documento-de-cobro-se-archiva.md) | El documento de cobro se archiva: emitir es congelar, y anular no es borrar | aceptada (fase 11) |
+| [0049](0049-facturar-en-modo-software-y-una-sola-tasa.md) | Facturar en modo `software` por defecto, y una sola regla de tasa | aceptada |

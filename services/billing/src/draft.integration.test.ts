@@ -122,7 +122,8 @@ describeWithDatabase('la caja: del cierre de la sesión al borrador', () => {
     });
 
     const series = await handle.db.select().from(invoiceSeries);
-    expect(series.find((fila) => fila.series === 'A')?.numberingMode).toBe('formas_libres');
+    // ADR 0049: la serie sembrada numera en modo `software` (sin número de control).
+    expect(series.find((fila) => fila.series === 'A')?.numberingMode).toBe('software');
 
     const catalogo = await listCatalog(handle.db);
     const exentos = catalogo.filter((item) => item.taxCategory === 'exento');
