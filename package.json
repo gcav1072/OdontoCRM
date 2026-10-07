@@ -91,6 +91,8 @@
     "e2e:clinica": "node tools/e2e-clinica.mjs",
     "check-secrets": "node tools/check-secrets.mjs",
     "marca:css": "node tools/generar-marca.mjs",
+    "recifrar:almacen": "node tools/recifrar-almacen.mjs",
+    "verify:backup": "node tools/verify-backup.mjs",
     "db:bootstrap": "node infra/db/bootstrap.mjs",
     "db:migrate": "node tools/migrate-all.mjs",
     "db:reset": "node tools/db-reset.mjs",
