@@ -47,6 +47,7 @@ import { PrescriptionCard } from './PrescriptionCard';
 import { PrescriptionDialog } from './PrescriptionDialog';
 import { SessionAttachments } from './SessionAttachments';
 import { SessionForm } from './SessionForm';
+import { SessionReadDialog } from './SessionDetailView';
 
 /**
  * Pestaña **Sesión** del consultorio: la evolución del paciente (Fase 7, sesión A).
@@ -106,10 +107,12 @@ const citaQueRespalda = (citas: readonly AppointmentSummary[]): AppointmentSumma
 const ClosedSessionCard = ({
   session,
   canWrite,
+  onView,
   onAmend,
 }: {
   session: ClinicalSessionSummary;
   canWrite: boolean;
+  onView: (session: ClinicalSessionSummary) => void;
   onAmend: (session: ClinicalSessionSummary) => void;
 }) => (
   <li className="rounded-control border border-border p-3">
@@ -128,6 +131,11 @@ const ClosedSessionCard = ({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="success">{t('clinica.sesion.estado.cerrada')}</Badge>
+        {/* Una sesión cerrada es un documento: se lee, y solo después se decide
+            corregirla (que abre una enmendada con su motivo). */}
+        <Button variant="secondary" size="sm" onClick={() => onView(session)}>
+          {t('clinica.lectura.ver')}
+        </Button>
         {canWrite && (
           <Button variant="ghost" size="sm" onClick={() => onAmend(session)}>
             {t('clinica.sesion.corregir')}
@@ -159,6 +167,8 @@ export const SessionPanel = ({
   const [horaGuardado, setHoraGuardado] = useState<string | null>(null);
   const [dialogo, setDialogo] = useState<'cerrar' | 'corregir' | 'recipe' | null>(null);
   const [aCorregir, setACorregir] = useState<ClinicalSessionSummary | null>(null);
+  /** Sesión cerrada que se está **leyendo** (no se edita: se corrige con una enmendada). */
+  const [viendo, setViendo] = useState<ClinicalSessionSummary | null>(null);
   /** ¿Hay que abrir el récipe al terminar de cerrar la sesión? */
   const [recipeAlCerrar, setRecipeAlCerrar] = useState(false);
 
@@ -170,6 +180,17 @@ export const SessionPanel = ({
     queryKey: ['clinica', 'sesion', sessionId],
     queryFn: ({ signal }) => clinicalApi.getSession(sessionId ?? '', signal),
     enabled: sessionId !== null,
+  });
+
+  /**
+   * El detalle de la sesión cerrada que se está leyendo. Es una consulta aparte de
+   * `sesionQuery` porque esa sigue a la sesión **abierta** (la que se edita); esta
+   * trae la que se quiere ver, que es un documento y no se toca.
+   */
+  const lecturaQuery = useQuery({
+    queryKey: ['clinica', 'sesion-lectura', viendo?.id ?? 'ninguna'],
+    queryFn: ({ signal }) => clinicalApi.getSession(viendo?.id ?? '', signal),
+    enabled: viendo !== null,
   });
 
   /**
@@ -517,6 +538,7 @@ export const SessionPanel = ({
                     key={session.id}
                     session={session}
                     canWrite={canWrite}
+                    onView={setViendo}
                     onAmend={(elegida) => {
                       setACorregir(elegida);
                       setDialogo('corregir');
@@ -536,6 +558,17 @@ export const SessionPanel = ({
           loading={enmendar.isPending}
           onClose={() => setDialogo(null)}
           onConfirm={(values) => enmendar.mutate(values)}
+        />
+
+        {/* La sesión cerrada, en modo lectura: el documento tal como quedó aquel día. */}
+        <SessionReadDialog
+          open={viendo !== null}
+          sesion={lecturaQuery.data ?? null}
+          cargando={lecturaQuery.isPending}
+          error={lecturaQuery.isError ? t('clinica.lectura.errorDetalle') : null}
+          mostrarNotasInternas={canWrite}
+          patientName={patientName}
+          onClose={() => setViendo(null)}
         />
 
         {sesionVisibleId !== null && (
@@ -664,6 +697,7 @@ export const SessionPanel = ({
                   key={session.id}
                   session={session}
                   canWrite={canWrite}
+                  onView={setViendo}
                   onAmend={(elegida) => {
                     setACorregir(elegida);
                     setDialogo('corregir');
@@ -711,6 +745,17 @@ export const SessionPanel = ({
           }}
         />
       )}
+
+      {/* La sesión cerrada, en modo lectura: el documento tal como quedó aquel día. */}
+      <SessionReadDialog
+        open={viendo !== null}
+        sesion={lecturaQuery.data ?? null}
+        cargando={lecturaQuery.isPending}
+        error={lecturaQuery.isError ? t('clinica.lectura.errorDetalle') : null}
+        mostrarNotasInternas={canWrite}
+        patientName={patientName}
+        onClose={() => setViendo(null)}
+      />
     </div>
   );
 };
