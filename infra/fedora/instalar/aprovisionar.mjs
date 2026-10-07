@@ -17,14 +17,20 @@
  * Lo que NO hace, a propósito: no escribe nada dentro del código desplegado
  * (`/opt/odontocrm`), que puede borrarse y volver a clonarse sin perder nada.
  *
- * Uso:
+ * Uso (Fedora):
  *   node infra/fedora/instalar/aprovisionar.mjs --host=odontocrm.local --ip=192.168.1.50
  *   node infra/fedora/instalar/aprovisionar.mjs --env-dir=/tmp/prueba --dry-run
  *   node infra/fedora/instalar/aprovisionar.mjs --rotate     # contraseñas nuevas
  *
- * Administrador de PostgreSQL: `--admin-url=…` o `PG_ADMIN_URL`; si no, se usa el
- * socket como usuario del sistema `postgres` (runuser), que es lo que funciona en
- * Fedora recién instalado sin escribir ninguna contraseña de administrador.
+ * Uso (Windows):
+ *   node aprovisionar.mjs --env-dir="C:\ProgramData\OdontoCRM\env" \
+ *        --data-dir="C:\OdontoCRM\data" --keys-dir="C:\ProgramData\OdontoCRM\tls" \
+ *        --admin-url="postgres://postgres:CLAVE@127.0.0.1:5432/postgres"
+ *
+ * Administrador de PostgreSQL: `--admin-url=…` o `PG_ADMIN_URL`. En Fedora, sin él se
+ * usa el socket como usuario del sistema `postgres` (runuser), que funciona en una
+ * instalación recién hecha sin escribir ninguna contraseña. **En Windows es
+ * obligatorio**: no existe el socket «peer» de Linux.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -39,6 +45,7 @@ import {
 } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /* ── Los servicios con base propia: se DESCUBREN, no se listan ────────────────
  * Un servicio es una carpeta `services/<x>/` con `migraciones/`, y su puerto lo declara él
@@ -48,7 +55,14 @@ import { dirname, join, resolve } from 'node:path';
  * `billing` tres se quedaron atrás, una de ellas la del respaldo, que decía «sin errores»
  * con las facturas fuera.
  */
-const RAIZ_DEL_CODIGO = resolve(dirname(new URL(import.meta.url).pathname), '../../..');
+// `fileURLToPath` y no `new URL(...).pathname`: en Windows el pathname llega como
+// `/C:/Users/…` y `resolve` producía `C:\C:\Users\…`, así que el aprovisionador **no
+// arrancaba en Windows** (ENOENT al leer `services/`).
+const RAIZ_DEL_CODIGO = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+
+/** Windows cambia dos cosas de fondo: el administrador de PostgreSQL (no hay socket
+ *  «peer») y dónde viven los secretos (ProgramData, no /etc). Se decide una vez. */
+const ES_WINDOWS = process.platform === 'win32';
 
 const puertoDeclarado = (servicio) => {
   const envExample = readFileSync(join(RAIZ_DEL_CODIGO, '.env.example'), 'utf8');
@@ -79,11 +93,18 @@ const SERVICIOS_TODOS = [...SERVICIOS.map((s) => s.nombre), 'gateway'];
 
 /* ── Opciones ──────────────────────────────────────────────────────────────── */
 const opciones = {
-  envDir: '/etc/odontocrm',
+  // Los valores por defecto siguen a producción en cada sistema. El instalador los pasa
+  // siempre explícitos (--env-dir/--data-dir/--keys-dir); esto es para poder ejecutar la
+  // herramienta a mano.
+  envDir: ES_WINDOWS
+    ? join(process.env.ProgramData ?? 'C:\\ProgramData', 'OdontoCRM', 'env')
+    : '/etc/odontocrm',
   host: 'odontocrm.local',
   ip: '',
   tz: 'America/Caracas',
-  dataDir: '/var/lib/odontocrm',
+  dataDir: ES_WINDOWS ? 'C:\\OdontoCRM\\data' : '/var/lib/odontocrm',
+  keysDir: '', // vacío = <envDir>/keys (Fedora) o …\OdontoCRM\tls (Windows)
+  pgbin: process.env.ODONTOCRM_PGBIN ?? '',
   adminUrl: process.env.PG_ADMIN_URL ?? '',
   rotate: false,
   dryRun: false,
@@ -102,6 +123,8 @@ for (const arg of process.argv.slice(2)) {
     case '--ip': opciones.ip = valor; break;
     case '--tz': opciones.tz = valor; break;
     case '--data-dir': opciones.dataDir = valor; break;
+    case '--keys-dir': opciones.keysDir = valor; break;
+    case '--pgbin': opciones.pgbin = valor; break;
     case '--admin-url': opciones.adminUrl = valor; break;
     case '--rotate': opciones.rotate = true; break;
     case '--dry-run': opciones.dryRun = true; break;
@@ -120,6 +143,49 @@ for (const arg of process.argv.slice(2)) {
 }
 
 const ETC = resolve(opciones.envDir);
+
+/**
+ * Dónde van las claves de firma de los JWT. En Fedora, con el resto de los secretos
+ * (`/etc/odontocrm/keys`); en Windows, en su propia carpeta (`…\OdontoCRM\tls`), que es la
+ * que el instalador crea con las ACL correctas y donde el proxy espera el certificado.
+ */
+const CLAVES =
+  opciones.keysDir !== ''
+    ? resolve(opciones.keysDir)
+    : ES_WINDOWS
+      ? resolve(ETC, '..', 'tls')
+      : join(ETC, 'keys');
+
+/**
+ * `psql` para hablar con PostgreSQL. En Fedora está en el PATH; en Windows el instalador
+ * oficial (EDB) **no** lo añade, así que se busca en sus rutas habituales si no se indicó
+ * `--pgbin` (o `ODONTOCRM_PGBIN`).
+ */
+const resolverPsql = () => {
+  if (opciones.pgbin !== '') {
+    const candidato = join(opciones.pgbin, ES_WINDOWS ? 'psql.exe' : 'psql');
+    if (existsSync(candidato)) return candidato;
+  }
+  if (ES_WINDOWS) {
+    for (const version of ['18', '17', '16', '15']) {
+      const candidato = join('C:\\Program Files\\PostgreSQL', version, 'bin', 'psql.exe');
+      if (existsSync(candidato)) return candidato;
+    }
+  }
+  return 'psql';
+};
+const psqlBin = resolverPsql();
+
+/**
+ * Ejecuta `psql`. Con la ruta por defecto se llama literalmente a `'psql'` (que se resuelve
+ * por PATH); solo se usa la ruta completa cuando `--pgbin` la fijó o cuando en Windows
+ * apareció en su sitio.
+ */
+const ejecutarPsql = (argumentos, opcionesDeSpawn = {}) =>
+  psqlBin === 'psql'
+    ? spawnSync('psql', argumentos, opcionesDeSpawn)
+    : spawnSync(psqlBin, argumentos, opcionesDeSpawn);
+
 const SQLITE = /^[A-Za-z0-9_-]+$/; // las contraseñas que generamos son base64url
 
 // `--solo-verificar` no crea nada: se limita a comprobar lo que hay. Si falta un
@@ -223,10 +289,10 @@ const escribirEnv = (ruta, gestionadas, comentarios = {}) => {
 
   const lineas = [
     '# ─────────────────────────────────────────────────────────────────────────────',
-    '# OdontoCRM · lo escribe `infra/fedora/instalar/20-aprovisionar.sh`.',
+    '# OdontoCRM · lo escribe el aprovisionador del instalador (20-aprovisionar).',
     '# No lo edite a mano salvo para añadir claves: el instalador las conserva,',
     '# pero las de abajo las vuelve a calcular cada vez que se ejecuta.',
-    '# Permisos 0600 root:root — systemd los lee como root (EnvironmentFile=).',
+    '# Permisos 0600 root:root — o ACL de Administradores y LocalService en Windows.',
     '# Este archivo NUNCA se copia al repositorio ni se comparte por chat.',
     '# ─────────────────────────────────────────────────────────────────────────────',
     '',
@@ -386,8 +452,8 @@ const extrasDe = (nombre) => {
       return {
         COOKIE_SECRET: claves.cookie,
         COOKIE_SECURE: 'true',
-        JWT_PRIVATE_KEY_PATH: `${ETC}/keys/jwt-private.pem`,
-        JWT_PUBLIC_KEY_PATH: `${ETC}/keys/jwt-public.pem`,
+        JWT_PRIVATE_KEY_PATH: join(CLAVES, 'jwt-private.pem'),
+        JWT_PUBLIC_KEY_PATH: join(CLAVES, 'jwt-public.pem'),
       };
     case 'patients':
       return { STORAGE_DIR: `${opciones.dataDir}/storage`, MAX_FILE_BYTES: '20971520' };
@@ -479,7 +545,7 @@ const escribirArchivos = () => {
     join(ETC, 'gateway.env'),
     {
       INTERNAL_SERVICE_SECRET: claves.interno,
-      JWT_PUBLIC_KEY_PATH: `${ETC}/keys/jwt-public.pem`,
+      JWT_PUBLIC_KEY_PATH: join(CLAVES, 'jwt-public.pem'),
     },
     {
       INTERNAL_SERVICE_SECRET: comentarioDe('INTERNAL_SERVICE_SECRET'),
@@ -577,13 +643,21 @@ const construirSql = () => {
 const aplicarSql = (sql) => {
   if (opciones.adminUrl) {
     detalle(`aplicando como administrador por URL (${opciones.adminUrl.replace(/:[^:@]*@/, ':***@')})`);
-    return spawnSync('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1', opciones.adminUrl], {
+    return ejecutarPsql(['-X', '-q', '-v', 'ON_ERROR_STOP=1', opciones.adminUrl], {
       input: sql,
       encoding: 'utf8',
     });
   }
+  if (ES_WINDOWS) {
+    // En Windows no existe el socket «peer»: sin credencial de administrador no hay forma
+    // de crear roles ni bases. Se dice con el comando exacto en vez de fallar por conexión.
+    morir(
+      'en Windows hace falta el administrador de PostgreSQL: pasa --admin-url (o PG_ADMIN_URL).\n' +
+        '    Ejemplo:  --admin-url="postgres://postgres:TU_CLAVE@127.0.0.1:5432/postgres"',
+    );
+  }
   detalle('aplicando por el socket como usuario del sistema «postgres» (peer)');
-  return spawnSync('runuser', ['-u', 'postgres', '--', 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1'], {
+  return spawnSync('runuser', ['-u', 'postgres', '--', psqlBin, '-X', '-q', '-v', 'ON_ERROR_STOP=1'], {
     input: sql,
     encoding: 'utf8',
   });
@@ -605,6 +679,12 @@ const aprovisionarBases = () => {
     return;
   }
 
+  if (!opciones.adminUrl && ES_WINDOWS) {
+    morir(
+      'en Windows no hay socket «peer»: para crear las bases hace falta --admin-url (o PG_ADMIN_URL).\n' +
+        '        --admin-url="postgres://postgres:TU_CLAVE@127.0.0.1:5432/postgres"',
+    );
+  }
   if (!opciones.adminUrl && process.getuid?.() !== 0) {
     morir(
       'para crear las bases hace falta ser root (o pasar --admin-url).\n' +
@@ -633,14 +713,16 @@ const aprovisionarBases = () => {
 /* ── Comprobación POR EFECTO: la credencial vale si CONECTA ────────────────── */
 
 const conectar = (rol, clave, base) => {
-  const resultado = spawnSync(
-    'psql',
+  // En Linux se apunta `PGPASSFILE` a `/dev/null` para que un `.pgpass` del operador no
+  // cambie el resultado de la prueba; en Windows ese archivo no existe y lo que sobra es
+  // la variable (dejarla apuntando a una ruta inexistente confunde a `psql`).
+  const entorno = { ...process.env, PGPASSWORD: clave, PGCONNECT_TIMEOUT: '5' };
+  if (ES_WINDOWS) delete entorno.PGPASSFILE;
+  else entorno.PGPASSFILE = '/dev/null';
+
+  const resultado = ejecutarPsql(
     ['-X', '-w', '-tAc', 'select 1', '-h', '127.0.0.1', '-p', '5432', '-U', rol, '-d', base],
-    {
-      encoding: 'utf8',
-      env: { ...process.env, PGPASSWORD: clave, PGPASSFILE: '/dev/null', PGCONNECT_TIMEOUT: '5' },
-      timeout: 15000,
-    },
+    { encoding: 'utf8', env: entorno, timeout: 15000 },
   );
   return resultado.status === 0 && (resultado.stdout ?? '').trim() === '1';
 };
