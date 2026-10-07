@@ -4,6 +4,37 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Marca] — La identidad del consultorio, en un solo sitio · 2026-10-07
+
+La paleta y las tipografías de los documentos vivían **incrustadas** en cada plantilla: el récipe
+tenía sus `#14504d` y `#4a5560`, y el reporte los suyos, casi iguales pero no del todo. Con la marca
+en un solo archivo deja de haber dos verdades, que era el problema de fondo del plan de mejoras
+(mientras el récipe y el reporte se editaran por separado, acabarían con colores distintos).
+
+`packages/contracts/src/brand.ts` reúne la paleta, las tipografías (interfaz, reportes y récipes),
+las medidas del membrete y las rutas del logo. Los **dos** consumidores no cargan el estilo igual
+—la SPA importa un `.css` y las plantillas del servidor incrustan `brandStyles()` en el PDF—, así
+que los valores viven en TypeScript y de ahí salen las dos formas:
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `BRAND` | Paleta, tipografías y medidas; **sección editable**, como la del consultorio |
+| `brandCssVariables()` · `brandRootBlock()` | Las variables `--brand-*`; las usa el generador y los documentos |
+| `brandStyles()` | Bloque base de los documentos del servidor (`body` con la fuente y la tinta de la marca) |
+| `logoMimeType()` | Tipo MIME del logo por su extensión, **SVG incluido** (antes solo PNG/JPG) |
+| `npm run marca:css` | Genera `packages/ui/src/styles/marca.css` desde `brand.ts` (`--check` para comprobar) |
+| `packages/ui/src/styles/marca.css` | ARCHIVO GENERADO; lo importa `apps/web/src/index.css` |
+| La prueba de paridad | `packages/contracts/src/brand.test.ts` denuncia si el CSS se quedó atrás del código |
+
+El récipe A5, el reporte A4, el papel del navegador (odontograma e historia clínica) y lo que venga
+—el dossier de la Fase 5— imprimen con las **mismas** variables. El logo del consultorio pasa a
+`assets/clinic/logo.svg` (vectorial, monocromo y con el relleno incrustado: el servidor lo mete en el
+PDF como `data:` URI y ahí no hereda color de nadie) y el alto lo fija `--brand-logo-height-mm`.
+
+**Cambiar un color** es editar `brand.ts` y ejecutar `npm run marca:css`: se mueve en pantalla y en
+papel a la vez. Comprobado con la suite completa (833 pruebas) y a ojo sobre el récipe de verdad
+—membrete con el logo, títulos en el verde de marca y el QR de verificación—.
+
 ## [Odontograma] — El paciente que está mudando: dentición mixta · 2026-10-07
 
 El odontograma tenía **una sola dentición por paciente**, fijada con el primer hallazgo (el
