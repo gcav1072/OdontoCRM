@@ -1264,6 +1264,12 @@ nuevo» **se queda corto** (dice que las listas de respaldo son dos y no mencion
     auditoría y **`PERMISSION_LABELS: Record<Permission, string>`: sin la etiqueta nueva el `typecheck`
     no compila**); `lib/endpoints.ts` (el objeto `billingApi`) y `lib/api.ts`; `pages/CajaPage.tsx` con
     sus pruebas puras. El auditor exige que toda llamada de la web cuelgue de un prefijo del gateway.
+    **Hecho (2026-10-06)**: la caja quedó completa —la cola de borradores, el **historial** con filtros
+    (estado, día del documento, paciente) y paginación, el detalle del documento con **reimpresión**
+    (factura, cada recibo y la nota de crédito, contadas y auditadas), **cobro**, **anulación de cobro**,
+    **anulación con nota de crédito**, **descartar borrador**, **emitir** y el **widget de la tasa del
+    día**—. Los diálogos viven en `apps/web/src/components/caja/` y las reglas puras (qué se puede
+    hacer con cada documento, cómo se navega el historial) en `lib/caja.ts`, con sus pruebas.
 
 ### 7.5 Despliegue (Fedora y Windows)
 

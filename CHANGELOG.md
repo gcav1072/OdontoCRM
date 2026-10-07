@@ -4,6 +4,32 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Facturación] — La caja completa: historial, reimpresión contada y anulación · 2026-10-06
+
+La biblioteca de la caja sabía emitir y cobrar desde la entrega anterior, pero **la pantalla no**: seguía
+siendo la cola de borradores de la sesión A. Ahora el mostrador está entero, y con él las dos piezas que
+faltaban en el servicio: el **historial** y la **constancia de impresión**.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `GET /billing/invoices` | El **historial** paginado: filtra por estado, por **día del documento** (el de emisión y, mientras es borrador, el de su creación, en el calendario de Caracas) y por nombre o documento del paciente. Cada fila trae el número impreso, el saldo, cuántos cobros tiene, la nota de crédito que la anula y las veces que se ha reimpreso |
+| `POST /billing/invoices/:id/printed` · `POST /billing/payments/:id/printed` | La **constancia de impresión** (ADR 0048 y ADR 0036): cuenta la reimpresión y la descarga, guarda `last_printed_at` y lo publica a la auditoría. Emitir **no** cuenta: `printCount = 3` son tres reimpresiones |
+| `apps/web/src/pages/CajaPage.tsx` | La pantalla, con **dos vistas**: *Pendientes* (los borradores del cierre de cada sesión: revisar, guardar, **emitir**, **descartar**) e *Historial* (buscar, abrir, **cobrar**, **reimprimir**, **anular con nota de crédito** y **anular un cobro**, que devuelve el saldo). El detalle muestra los totales, la tasa congelada, los cobros con su estado y la nota de crédito |
+| `apps/web/src/components/caja/` | Los diálogos del mostrador (`CobroDialog`, `AnularDialog`, `TasaDelDia`) y el detalle del documento, con el **widget de la tasa del día**: sin tasa publicada no se emite ni se cobra, y corregirla exige motivo |
+| `lib/caja.ts` | Las reglas puras de la pantalla —qué se puede hacer con cada documento (`puedeCobrarse`, `puedeAnularse`, `puedeDescartarse`, `puedeReimprimirse`), cómo se dicen las reimpresiones y cómo se arma la consulta del historial— con sus pruebas. La aritmética del dinero sigue siendo la del contrato, no una segunda cuenta en la web |
+
+Dos cosas que se arreglaron de paso: el cliente tenía un `invoicePdfUrl` que no podía funcionar —la ruta
+del PDF está detrás de la puerta y una URL abierta a pelo va sin token—, así que ahora el documento se
+pide **con la sesión** (`apiBinary`) y se abre como objeto local, igual que el récipe; y la caja ya no
+dice que emitir y cobrar «llegan en la próxima entrega».
+
+Comprobado con la base de verdad: `npm run verify` en verde (816 pruebas), `npm run test:integration` en
+verde (**99 suites, 991 pruebas**, con el historial y la reimpresión probados por dentro y por HTTP),
+`npm run audit` en verde y `seed:verify` con el mundo sembrado (la caja abre con tres borradores y su
+tasa del día). **Hallazgo, sin tocar**: la suite de reportes falló en una de las corridas por una
+carrera de su propia prueba —comprueba un recuento justo después de una espera que puede cumplirse
+antes de aplicar el último evento—; la corrida siguiente dio 991/991.
+
 ## [Facturación] — El mundo de prueba factura: tasas, aranceles, facturas y cobros · 2026-10-06
 
 El seed del modo test ([ADR 0020](docs/adr/0020-modo-test.md)) ya no se queda en lo clínico: el mundo
