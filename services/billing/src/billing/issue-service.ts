@@ -17,6 +17,7 @@ import type { ActorContext } from '../shared/context.js';
 import { auditPayload, publish } from '../shared/events.js';
 import { activeLot, consumeControl } from './fiscal-forms-service.js';
 import { getInvoice } from './invoice-service.js';
+import { renderBillingPdf } from './render-pdf.js';
 
 /**
  * Emitir la factura (ADR 0048): **congelar** y archivar.
@@ -156,7 +157,7 @@ export const issueInvoice = async (
           },
     igtfNote: IGTF_NO_PERCIBIDO,
   });
-  const bytes = await deps.pdf.render(html);
+  const bytes = await renderBillingPdf(deps.pdf, html, 'la factura');
   const archivo = await deps.blobStore.save({
     key: buildStorageKey('billing', invoiceId, `factura-${numberLabel}`, 'pdf'),
     data: bytes,

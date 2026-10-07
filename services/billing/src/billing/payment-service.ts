@@ -26,6 +26,7 @@ import { rateStatus } from '../rates/rate-service.js';
 import type { ActorContext } from '../shared/context.js';
 import { auditPayload, publish } from '../shared/events.js';
 import { getInvoice } from './invoice-service.js';
+import { renderBillingPdf } from './render-pdf.js';
 
 /**
  * Los **cobros** (ADR 0046 y 0048).
@@ -262,7 +263,7 @@ export const collectPayment = async (
     balanceCentsUsd: nuevoSaldo,
     receivedByUsername: actor.actorUsername ?? 'sistema',
   });
-  const bytes = await deps.pdf.render(html);
+  const bytes = await renderBillingPdf(deps.pdf, html, 'el recibo');
   const archivo = await deps.blobStore.save({
     key: buildStorageKey('billing', invoiceId, `recibo-${receiptLabel}`, 'pdf'),
     data: bytes,

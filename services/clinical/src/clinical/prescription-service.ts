@@ -320,6 +320,27 @@ const nextPrescriptionNumber = async (db: ClinicalDb): Promise<number> => {
 };
 
 /**
+ * Compone el PDF del récipe con Chromium (Playwright).
+ *
+ * El navegador **no vive en el código**: se busca en `PLAYWRIGHT_BROWSERS_PATH` (o en la caché
+ * del usuario del servicio). Si falta —una instalación a la que no se le bajó el navegador—, le
+ * faltan sus bibliotecas, o el proceso no puede arrancarlo por el endurecimiento de systemd,
+ * `playwright` lanza un error de bajo nivel que, sin esto, llegaría al mostrador como un **500
+ * opaco** («error interno del servidor»). Aquí se convierte en un **503 explicado** —el mismo
+ * trato que le da el PDF de los reportes— para que quien lo vea sepa que es del servidor.
+ */
+const renderPrescriptionPdf = async (pdfRenderer: PdfRenderer, html: string): Promise<Buffer> => {
+  try {
+    return await pdfRenderer.render(html);
+  } catch (error) {
+    throw new ServiceUnavailableError(
+      'No se pudo generar el PDF del récipe: revisa el navegador (Chromium) del servidor. ' +
+        (error instanceof Error ? error.message : String(error)),
+    );
+  }
+};
+
+/**
  * Emite el récipe: número, PDF A5 archivado y código de verificación.
  *
  * El PDF se genera **antes** de tocar la base (Chromium tarda, y no se tiene una
@@ -379,7 +400,7 @@ export const issuePrescription = async (
     logoPath: options.logoPath,
   } satisfies PrescriptionDocumentInput);
 
-  const pdf = await pdfRenderer.render(html);
+  const pdf = await renderPrescriptionPdf(pdfRenderer, html);
   const key = buildStorageKey('clinical', row.patientId, id, 'pdf');
   const stored = await blobStore.save({ key, data: pdf });
 

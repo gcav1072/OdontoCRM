@@ -48,6 +48,13 @@ DATA_DIR="${ODONTOCRM_DATA_DIR:-/var/lib/odontocrm}"
 LOG_DIR="${ODONTOCRM_LOG_DIR:-/var/log/odontocrm}"
 BACKUP_DIR="${ODONTOCRM_BACKUP_DIR:-/var/backups/odontocrm}"
 
+# Caché del navegador de Playwright (Chromium) que necesitan los PDF: récipe A5
+# (clinical), factura y recibo (billing) y reportes (reporting). Es la MISMA ruta que
+# esos servicios llevan en PLAYWRIGHT_BROWSERS_PATH (aprovisionar.mjs e install.sh), y
+# el único sitio donde una pieza la consulta. Sin el navegador bajado, la generación del
+# PDF lanza y el endpoint responde 503.
+PLAYWRIGHT_DIR="${ODONTOCRM_PLAYWRIGHT_DIR:-$DATA_DIR/ms-playwright}"
+
 SERVICE_USER="${ODONTOCRM_USER:-odontocrm}"
 SERVICE_GROUP="${ODONTOCRM_GROUP:-odontocrm}"
 
@@ -115,6 +122,16 @@ ip_lan() {
 
 interfaz_lan() {
   ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1 || true
+}
+
+# ¿Playwright ya tiene su Chromium en la caché del servicio? Los PDF lo necesitan
+# (récipes, facturas, reportes): sin el archivo ejecutable, Playwright no arranca el
+# navegador y esos endpoints fallan. Se busca el binario, no solo el directorio, porque
+# una descarga a medias deja la carpeta creada y vacía.
+navegador_presente() {
+  [[ -d "$PLAYWRIGHT_DIR" ]] || return 1
+  find "$PLAYWRIGHT_DIR" -maxdepth 3 -type f \( -name chrome -o -name headless_shell \) \
+    -print -quit 2>/dev/null | grep -q .
 }
 
 # Lee `CLAVE=VALOR` de un archivo de entorno, sin interpretarlo (nada de `source`).

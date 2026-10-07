@@ -206,6 +206,32 @@ else
   ok 'compilado: servicios, paquetes y la interfaz web'
 fi
 
+# --- Chromium para los PDF (récipe A5, factura y reportes) -------------------
+# El navegador NO viene con el código: Playwright lo descarga aparte, y los servicios lo
+# buscan en $PLAYWRIGHT_DIR (la ruta de PLAYWRIGHT_BROWSERS_PATH). Antes lo bajaba solo una
+# persona, a mano; una instalación nueva —o una actualización que nunca lo tuvo— se quedaba
+# sin récipes, sin facturas en PDF y sin reportes, y el endpoint respondía con un error del
+# servidor. Se baja aquí, idempotente: si ya está, ni se toca ni se gasta red.
+if (( DRY_RUN )); then
+  detalle "[dry-run] verificaría/bajaría el Chromium de Playwright en $PLAYWRIGHT_DIR"
+elif navegador_presente; then
+  ok "navegador de Chromium ya presente en $PLAYWRIGHT_DIR"
+else
+  detalle 'bajando Chromium para los PDF (una sola vez; necesita conexión)'
+  registro=/tmp/odontocrm-playwright.log
+  if (cd "$CODE_DIR" && PLAYWRIGHT_BROWSERS_PATH="$PLAYWRIGHT_DIR" \
+    node_modules/.bin/playwright install chromium) >"$registro" 2>&1 &&
+    navegador_presente; then
+    chown -R "$SERVICE_USER:$SERVICE_GROUP" "$PLAYWRIGHT_DIR" 2>/dev/null || true
+    ok "Chromium instalado en $PLAYWRIGHT_DIR"
+  else
+    av 'no pude dejar el navegador de Chromium: los PDF (récipe, factura, reportes) fallarán'
+    tail -10 "$registro" 2>/dev/null | sed 's/^/      /'
+    detalle "repítelo a mano:  sudo -u $SERVICE_USER env PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_DIR \\"
+    detalle "  $CODE_DIR/node_modules/.bin/playwright install chromium"
+  fi
+fi
+
 # ════════════════════════════════════════════════════════════════════════════
 # 3. Claves EdDSA de los JWT
 # ════════════════════════════════════════════════════════════════════════════

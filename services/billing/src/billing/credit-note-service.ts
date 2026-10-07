@@ -14,6 +14,7 @@ import { creditNotes, invoices } from '../db/schema.js';
 import { renderCreditNoteHtml } from '../documents/credit-note-pdf.js';
 import type { ActorContext } from '../shared/context.js';
 import { auditPayload, publish } from '../shared/events.js';
+import { renderBillingPdf } from './render-pdf.js';
 
 /**
  * Anular una factura (Art. 22 y 23; ADR 0048).
@@ -213,7 +214,7 @@ export const voidInvoice = async (
     rateMicros,
     issuedByUsername: actor.actorUsername ?? 'sistema',
   });
-  const bytes = await deps.pdf.render(html);
+  const bytes = await renderBillingPdf(deps.pdf, html, 'la nota de crédito');
   const archivo = await deps.blobStore.save({
     key: buildStorageKey('billing', invoiceId, `nota-credito-${creditNoteLabel}`, 'pdf'),
     data: bytes,
