@@ -4,6 +4,37 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Expediente] — El dossier del paciente, en un solo PDF verificable · 2026-10-07
+
+Hasta ahora, entregar el historial de un paciente era imprimir cada pieza por separado: la
+ficha, el odontograma, cada sesión y cada récipe. `GET /api/v1/clinical/patients/:id/dossier`
+compone un **PDF A4 foliado** con todo dentro, lo archiva con su huella y lo devuelve.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `dossier-service.ts` | Reúne filiación, alertas, sesiones cerradas, récipes y odontograma; compone, archiva y registra |
+| `dossier-document.ts` | La plantilla A4 con el **mismo membrete y la misma marca** que el récipe y el reporte |
+| `dossier-odontogram.ts` | El odontograma como **SVG plano**: la geometría sale del contrato, no se duplica |
+| `dossier_exports` (migración 0003) | La exportación archivada: correlativo global, código, SHA-256 y hojas |
+| `/verify-expediente/:code` | La página **pública** que abre el QR, sin datos clínicos (ADR 0015) |
+| `/internal/v1/odontogram/patients/:id/chart` | La boca entera —dentición y hallazgos— para poder dibujarla |
+
+El correlativo es **global** (`EXP-000001`), de la secuencia `dossier_exports_number_seq`: es un
+libro de expedientes del consultorio, no una numeración por paciente ni por odontólogo. Exportar
+un expediente no es un acto clínico, pero sí de **custodia** —sale del sistema el historial
+completo de una persona—, así que cada exportación queda en la auditoría (`dossier_exported`) y se
+puede volver a abrir tal cual salió: es el mismo archivo el que se verifica.
+
+El odontograma del papel se dibuja con la geometría compartida (polígonos de caras, reparto de
+cuadrantes, volteo y espejo) y las caras van teñidas por estado. Los símbolos de las condiciones de
+pieza completa no se dibujan —viven en un componente de la interfaz—: en su lugar la pieza se tiñe y
+la tabla de hallazgos que acompaña al dibujo nombra la condición, la cara y el estado pieza a pieza.
+Así el papel dice lo mismo que la pantalla aunque lo diga de otra forma.
+
+El renderizador de PDF del servicio acepta ahora A4, márgenes y pie de página, que es lo único que
+numera el papel (Chromium no soporta `counter(page)` en los márgenes de `@page`); sin opciones sigue
+componiendo el A5 del récipe exactamente como antes.
+
 ## [Marca] — La identidad del consultorio, en un solo sitio · 2026-10-07
 
 La paleta y las tipografías de los documentos vivían **incrustadas** en cada plantilla: el récipe
