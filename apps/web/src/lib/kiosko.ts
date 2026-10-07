@@ -7,6 +7,7 @@ import type {
 
 import { API_BASE } from './api';
 import { authApi } from './endpoints';
+import { leerTramas } from './sse';
 
 /**
  * Cliente de las **pantallas kiosko** (Fase 5).
@@ -112,52 +113,27 @@ export interface StreamHandlers {
   onError?: (error: unknown) => void;
 }
 
-/** Lee un `text/event-stream` y entrega cada `data` ya parseado. */
+/** Lee el `text/event-stream` de la pantalla y aplica cada estado. */
 const consumirFlujo = async (
   respuesta: Response,
   kind: KioskKind,
   handlers: StreamHandlers,
   ultimoId: { valor: string | null },
 ): Promise<void> => {
-  const lector = respuesta.body?.getReader();
-  if (lector === undefined) throw new Error('La respuesta no trae cuerpo');
+  // El reparto de tramas lo hace `lib/sse.ts`, el mismo módulo que lee el canal del
+  // personal: el protocolo se interpreta en un solo sitio.
+  await leerTramas(respuesta, (trama) => {
+    if (trama.id !== null) ultimoId.valor = trama.id;
+    // La pantalla solo pinta su propio tipo: la trama de otro canal se ignora.
+    if (trama.evento !== kind) return;
 
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  for (;;) {
-    const { value, done } = await lector.read();
-    if (done === true) return;
-    buffer += decoder.decode(value, { stream: true });
-
-    // Las tramas se separan con una línea vacía.
-    let corte = buffer.indexOf('\n\n');
-    while (corte !== -1) {
-      const trama = buffer.slice(0, corte);
-      buffer = buffer.slice(corte + 2);
-      corte = buffer.indexOf('\n\n');
-
-      let evento: string | null = null;
-      let id: string | null = null;
-      const datos: string[] = [];
-      for (const linea of trama.split('\n')) {
-        if (linea.startsWith(':')) continue; // keepalive
-        if (linea.startsWith('event:')) evento = linea.slice(6).trim();
-        else if (linea.startsWith('id:')) id = linea.slice(3).trim();
-        else if (linea.startsWith('data:')) datos.push(linea.slice(5).trimStart());
-      }
-
-      if (id !== null && id !== '') ultimoId.valor = id;
-      if (evento !== kind || datos.length === 0) continue;
-
-      try {
-        handlers.onEstado(JSON.parse(datos.join('\n')) as KioskState);
-        handlers.onConexion?.(true);
-      } catch (error) {
-        handlers.onError?.(error);
-      }
+    try {
+      handlers.onEstado(JSON.parse(trama.datos) as KioskState);
+      handlers.onConexion?.(true);
+    } catch (error) {
+      handlers.onError?.(error);
     }
-  }
+  });
 };
 
 export interface AbrirFlujoOptions extends StreamHandlers {
