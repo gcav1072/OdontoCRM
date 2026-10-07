@@ -69,9 +69,11 @@ export const AUDIT_ACTIONS = [
   'odontogram_printed',
   // Facturación y pagos (Fase 11; llegan por el outbox desde el servicio de facturación)
   'invoice_issued',
+  'invoice_printed',
   'invoice_voided',
   'credit_note_issued',
   'payment_received',
+  'payment_printed',
   'payment_voided',
   'exchange_rate_set',
   'catalog_item_changed',

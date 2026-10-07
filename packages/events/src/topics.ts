@@ -57,8 +57,11 @@ export const EVENT_TOPICS = {
    */
   invoiceIssued: 'billing.invoice.issued',
   invoiceVoided: 'billing.invoice.voided',
+  /** Reimprimir o descargar el papel archivado: se cuenta y queda en la auditoría (ADR 0048). */
+  invoicePrinted: 'billing.invoice.printed',
   invoicePaid: 'billing.invoice.paid',
   paymentReceived: 'billing.payment.received',
+  paymentPrinted: 'billing.payment.printed',
   paymentVoided: 'billing.payment.voided',
   creditNoteIssued: 'billing.credit_note.issued',
   rateSet: 'billing.rate.set',

@@ -1,4 +1,5 @@
 import {
+  billingInvoiceListQuerySchema,
   collectPaymentSchema,
   issueInvoiceSchema,
   replaceDraftItemsSchema,
@@ -17,8 +18,10 @@ import {
   getInvoice,
   listCatalog,
   listDrafts,
+  listInvoices,
   replaceDraftItems,
 } from '../billing/invoice-service.js';
+import { registerInvoicePrint, registerPaymentPrint } from '../billing/print-service.js';
 import type { BillingServices } from '../services.js';
 import { actorFrom } from '../shared/context.js';
 
@@ -41,6 +44,15 @@ export const registerBillingRoutes = (app: FastifyInstance, services: BillingSer
   app.get('/api/v1/billing/drafts', { preHandler: read }, async () => ({
     items: await listDrafts(db),
   }));
+
+  /**
+   * El **historial**: los documentos del período, con filtros de estado, fecha y paciente. Es lo que se
+   * mira cuando alguien vuelve con el papel en la mano.
+   */
+  app.get('/api/v1/billing/invoices', { preHandler: read }, async (request) => {
+    const filtros = parseOrThrow(billingInvoiceListQuerySchema, request.query);
+    return listInvoices(db, filtros);
+  });
 
   app.get('/api/v1/billing/drafts/:id', { preHandler: read }, async (request) => {
     const { id } = parseOrThrow(invoiceParamsSchema, request.params);
@@ -101,6 +113,25 @@ export const registerBillingRoutes = (app: FastifyInstance, services: BillingSer
   app.get('/api/v1/billing/invoices/:id', { preHandler: read }, async (request) => {
     const { id } = parseOrThrow(invoiceParamsSchema, request.params);
     return { ...(await getInvoice(db, id)), payments: await listInvoicePayments(db, id) };
+  });
+
+  /**
+   * **Reimprimir** la factura: deja constancia de que el papel volvió a salir (cuántas veces y cuándo).
+   * El PDF lo sirve `GET …/pdf`, que es leer; esto es el acto que se cuenta.
+   */
+  app.post('/api/v1/billing/invoices/:id/printed', { preHandler: read }, async (request) => {
+    const { id } = parseOrThrow(invoiceParamsSchema, request.params);
+    const constancia = await registerInvoicePrint(db, id, actorFrom(request));
+    kickOutbox?.();
+    return constancia;
+  });
+
+  /** La constancia de impresión del recibo de un cobro. */
+  app.post('/api/v1/billing/payments/:id/printed', { preHandler: read }, async (request) => {
+    const { id } = parseOrThrow(invoiceParamsSchema, request.params);
+    const constancia = await registerPaymentPrint(db, id, actorFrom(request));
+    kickOutbox?.();
+    return constancia;
   });
 
   /**

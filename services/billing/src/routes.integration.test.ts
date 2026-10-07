@@ -184,7 +184,7 @@ describeWithDatabase('las rutas de facturación por HTTP', () => {
     expect(cobroMalo.statusCode).toBe(400);
   });
 
-  it('la secretaría lee los borradores, la tasa del día y el catálogo', async () => {
+  it('la secretaría lee los borradores, el historial, la tasa del día y el catálogo', async () => {
     const borradores = await app.inject({
       method: 'GET',
       url: '/api/v1/billing/drafts',
@@ -192,6 +192,31 @@ describeWithDatabase('las rutas de facturación por HTTP', () => {
     });
     expect(borradores.statusCode).toBe(200);
     expect(Array.isArray(borradores.json<{ items: unknown[] }>().items)).toBe(true);
+
+    // El historial: paginado y con filtros, con la forma del contrato.
+    const historialFacturas = await app.inject({
+      method: 'GET',
+      url: '/api/v1/billing/invoices?page=1&pageSize=5&status=anulada',
+      headers: identidad('secretario'),
+    });
+    expect(historialFacturas.statusCode).toBe(200);
+    const pagina = historialFacturas.json<{
+      items: unknown[];
+      total: number;
+      pageSize: number;
+      totalPages: number;
+    }>();
+    expect(Array.isArray(pagina.items)).toBe(true);
+    expect(pagina.pageSize).toBe(5);
+    expect(pagina.totalPages).toBeGreaterThanOrEqual(1);
+
+    // Un filtro que no existe en el contrato corta con 400 (no llega a la base).
+    const filtroMalo = await app.inject({
+      method: 'GET',
+      url: '/api/v1/billing/invoices?status=inventado',
+      headers: identidad('secretario'),
+    });
+    expect(filtroMalo.statusCode).toBe(400);
 
     const tasaDeHoy = await app.inject({
       method: 'GET',
@@ -217,6 +242,36 @@ describeWithDatabase('las rutas de facturación por HTTP', () => {
       headers: identidad('secretario'),
     });
     expect(historial.statusCode).toBe(200);
+  });
+
+  it('reimprimir exige sesión y una factura que exista (y el odontólogo puede leer)', async () => {
+    const sinSesion = await app.inject({
+      method: 'POST',
+      url: `/api/v1/billing/invoices/${globalThis.crypto.randomUUID()}/printed`,
+    });
+    expect(sinSesion.statusCode).toBe(401);
+
+    // Imprimir es leer: el odontólogo (`billing:read`) puede reimprimir el papel.
+    const inexistente = await app.inject({
+      method: 'POST',
+      url: `/api/v1/billing/invoices/${globalThis.crypto.randomUUID()}/printed`,
+      headers: identidad('odontologo'),
+    });
+    expect(inexistente.statusCode).toBe(404);
+
+    const idInvalido = await app.inject({
+      method: 'POST',
+      url: '/api/v1/billing/invoices/no-es-un-uuid/printed',
+      headers: identidad('secretario'),
+    });
+    expect(idInvalido.statusCode).toBe(400);
+
+    const reciboInexistente = await app.inject({
+      method: 'POST',
+      url: `/api/v1/billing/payments/${globalThis.crypto.randomUUID()}/printed`,
+      headers: identidad('secretario'),
+    });
+    expect(reciboInexistente.statusCode).toBe(404);
   });
 
   it('una ruta que no existe responde 404 (y el servicio sigue vivo)', async () => {

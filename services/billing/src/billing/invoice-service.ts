@@ -1,4 +1,8 @@
 import {
+  formatCreditNoteNumber,
+  formatInvoiceNumber,
+  paginate,
+  toOffset,
   IVA_GENERAL_BASIS_POINTS,
   invoiceTotalsFromItems,
   ivaCentsForItem,
@@ -6,16 +10,20 @@ import {
   type BillingDraftDetail,
   type BillingDraftItem,
   type BillingDraftSummary,
+  type BillingInvoiceListItem,
+  type BillingInvoiceListQuery,
   type DraftItemInput,
   type InvoiceStatus,
   type InvoiceTotals,
+  type Paginated,
   type TaxCategory,
 } from '@odontocrm/contracts';
 import { ConflictError, NotFoundError } from '@odontocrm/kernel';
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, or, sql } from 'drizzle-orm';
 
 import type { BillingDb } from '../db/client.js';
 import {
+  creditNotes,
   invoiceItems,
   invoiceSessions,
   invoices,
@@ -448,4 +456,106 @@ export const getDraft = async (db: BillingDb, invoiceId: string): Promise<DraftD
   const detalle = await getInvoice(db, invoiceId);
   if (detalle.status !== 'borrador') throw new NotFoundError('Ese borrador no existe');
   return detalle;
+};
+
+/* ── El historial de la caja ───────────────────────────────────────────────── */
+
+/** El «día del documento»: el de emisión y, mientras es borrador, el de su creación. */
+const diaDelDocumento = sql`(coalesce(${invoices.issuedAt}, ${invoices.createdAt}) at time zone 'America/Caracas')::date`;
+
+/** Una fila del historial con lo que no vive en `invoices`: el recuento y la nota. */
+const columnasDelHistorial = {
+  ...columnasResumen,
+  pdfSha256: invoices.pdfSha256,
+  printCount: invoices.printCount,
+  lastPrintedAt: invoices.lastPrintedAt,
+  issuedAt: invoices.issuedAt,
+  voidedAt: invoices.voidedAt,
+  voidReason: invoices.voidReason,
+  itemCount:
+    sql<number>`(select count(*)::int from invoice_items i where i.invoice_id = ${invoices.id})`.as(
+      'item_count',
+    ),
+  needsPricing:
+    sql<boolean>`coalesce((select bool_or(i.needs_pricing) from invoice_items i where i.invoice_id = ${invoices.id}), false)`.as(
+      'needs_pricing',
+    ),
+  paymentCount:
+    sql<number>`(select count(*)::int from payments p where p.invoice_id = ${invoices.id})`.as(
+      'payment_count',
+    ),
+  creditNoteId: creditNotes.id,
+  creditNoteNumber: creditNotes.creditNoteNumber,
+  creditNoteIssuedAt: creditNotes.issuedAt,
+  creditNoteTotalCentsUsd: creditNotes.totalCentsUsd,
+  creditNoteTotalVesCentimos: creditNotes.totalVesCentimos,
+  creditNotePdfSha256: creditNotes.pdfSha256,
+};
+
+/**
+ * El **historial de la caja**: los documentos de un período, del más reciente al más viejo, con lo que
+ * el mostrador necesita para decidir sin abrir nada —el estado, el saldo, si tiene nota de crédito y
+ * cuántas veces se ha reimpreso—.
+ *
+ * Filtra por el **día del documento** (emisión, o creación si todavía es borrador) en el calendario de
+ * Caracas, y busca por nombre o documento del paciente. La paginación la pone el contrato.
+ */
+export const listInvoices = async (
+  db: BillingDb,
+  filtros: BillingInvoiceListQuery,
+): Promise<Paginated<BillingInvoiceListItem>> => {
+  const condiciones = [
+    filtros.status === undefined ? undefined : eq(invoices.status, filtros.status),
+    filtros.from === undefined ? undefined : sql`${diaDelDocumento} >= ${filtros.from}::date`,
+    filtros.to === undefined ? undefined : sql`${diaDelDocumento} <= ${filtros.to}::date`,
+    filtros.search === undefined
+      ? undefined
+      : or(
+          sql`${invoices.patientName} ilike ${`%${filtros.search}%`}`,
+          sql`${invoices.patientDocNumber} ilike ${`%${filtros.search}%`}`,
+        ),
+  ].filter((condicion) => condicion !== undefined);
+  const donde = condiciones.length === 0 ? undefined : and(...condiciones);
+
+  const [total] = await db.select({ total: count() }).from(invoices).where(donde);
+  const filas = await db
+    .select(columnasDelHistorial)
+    .from(invoices)
+    .leftJoin(creditNotes, eq(creditNotes.invoiceId, invoices.id))
+    .where(donde)
+    .orderBy(
+      desc(sql`coalesce(${invoices.issuedAt}, ${invoices.createdAt})`),
+      desc(invoices.createdAt),
+    )
+    .limit(filtros.pageSize)
+    .offset(toOffset(filtros));
+
+  const items: BillingInvoiceListItem[] = filas.map((fila) => ({
+    ...resumen(fila),
+    itemCount: fila.itemCount,
+    needsPricing: fila.needsPricing,
+    numberLabel:
+      fila.invoiceNumber === null ? null : formatInvoiceNumber(fila.series, fila.invoiceNumber),
+    issuedAt: fila.issuedAt?.toISOString() ?? null,
+    voidedAt: fila.voidedAt?.toISOString() ?? null,
+    voidReason: fila.voidReason,
+    pdfSha256: fila.pdfSha256,
+    printCount: fila.printCount,
+    lastPrintedAt: fila.lastPrintedAt?.toISOString() ?? null,
+    paymentCount: fila.paymentCount,
+    creditNote:
+      fila.creditNoteId === null
+        ? null
+        : {
+            id: fila.creditNoteId,
+            // Las tres columnas son `not null` en la tabla; el tipo las ve opcionales por el `leftJoin`.
+            creditNoteLabel: formatCreditNoteNumber(fila.creditNoteNumber ?? 0),
+            issuedAt: (fila.creditNoteIssuedAt ?? fila.createdAt).toISOString(),
+            totalCentsUsd: fila.creditNoteTotalCentsUsd ?? 0,
+            totalVesCentimos: fila.creditNoteTotalVesCentimos ?? 0,
+            pdfSha256: fila.creditNotePdfSha256,
+          },
+  }));
+
+  return paginate(items, Number(total?.total ?? 0), filtros);
 };

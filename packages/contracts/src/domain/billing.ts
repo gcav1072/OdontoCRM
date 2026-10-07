@@ -2,6 +2,7 @@ import { buildCsv, type CsvColumn, type CsvValue } from '../common/csv.js';
 import { z } from 'zod';
 
 import { optionalText } from '../common/optional.js';
+import { paginationQuerySchema } from '../common/pagination.js';
 import { INVOICE_STATUSES, type InvoiceStatus, type Role } from './enums.js';
 import { toothNumberSchema, toothSurfaceSchema } from './odontogram.js';
 
@@ -1080,3 +1081,82 @@ export const bookFileName = (tipo: 'ventas' | 'igtf', query: BookQuery): string 
   };
   return `libro-de-${tipo}-${parte(query.from, 'inicio')}_${parte(query.to, 'fin')}.csv`;
 };
+
+/* ── 16. El historial de la caja (Fase 11) ─────────────────────────────────── */
+
+/**
+ * Los filtros del historial. La secretaría busca la factura que el paciente trae en la mano —por
+ * nombre, por cédula, por fecha o por estado—, así que el rango va en **días de Caracas**, que es como
+ * el mostrador habla de las fechas.
+ *
+ * El «día del documento» es el de **emisión** y, mientras sigue en borrador, el de su creación: un
+ * borrador no tiene fecha de emisión, pero tiene que aparecer en el día en que nació. Es la misma
+ * decisión que el libro de ventas, que también filtra por el día de Caracas y no por UTC.
+ */
+export const billingInvoiceListQuerySchema = paginationQuerySchema
+  .extend({
+    status: z.enum(INVOICE_STATUSES).optional(),
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
+    /** Nombre o documento del paciente. */
+    search: optionalText(60),
+  })
+  .strict();
+
+export type BillingInvoiceListQuery = z.infer<typeof billingInvoiceListQuerySchema>;
+
+/** La nota de crédito, con lo justo para reimprimirla desde el historial. */
+export const billingCreditNoteSummarySchema = z.object({
+  id: z.uuid(),
+  /** `NC-000001`. */
+  creditNoteLabel: z.string(),
+  issuedAt: z.string(),
+  totalCentsUsd: z.number().int(),
+  totalVesCentimos: z.number().int(),
+  pdfSha256: z.string().nullable(),
+});
+
+export type BillingCreditNoteSummary = z.infer<typeof billingCreditNoteSummarySchema>;
+
+/** Una fila del historial: el documento y lo que se puede hacer con él en el mostrador. */
+export const billingInvoiceListItemSchema = billingDraftSummarySchema.extend({
+  /** `A-000123`; `null` mientras es borrador. */
+  numberLabel: z.string().nullable(),
+  issuedAt: z.string().nullable(),
+  voidedAt: z.string().nullable(),
+  voidReason: z.string().nullable(),
+  /** El papel archivado del que se reimprime; `null` mientras es borrador (ADR 0048). */
+  pdfSha256: z.string().nullable(),
+  /** Veces que se ha impreso o descargado **desde que se emitió** (emitir no cuenta). */
+  printCount: z.number().int(),
+  lastPrintedAt: z.string().nullable(),
+  /** Los cobros que tiene, anulados incluidos: se conservan (B8). */
+  paymentCount: z.number().int(),
+  /** La nota de crédito que la dejó sin efecto, si la tiene. */
+  creditNote: billingCreditNoteSummarySchema.nullable(),
+});
+
+export type BillingInvoiceListItem = z.infer<typeof billingInvoiceListItemSchema>;
+
+export const billingInvoiceListSchema = z.object({
+  items: z.array(billingInvoiceListItemSchema),
+  total: z.number().int(),
+  page: z.number().int(),
+  pageSize: z.number().int(),
+  totalPages: z.number().int(),
+});
+
+export type BillingInvoiceList = z.infer<typeof billingInvoiceListSchema>;
+
+/**
+ * La constancia de una impresión o descarga: lo que el mostrador dice cuando reimprime. El PDF
+ * archivado se sirve por su ruta (ADR 0048); este paso es el que deja rastro —y el que cuenta— porque
+ * una factura reimpresa tres veces es un dato, no un detalle.
+ */
+export const billingPrintResultSchema = z.object({
+  id: z.uuid(),
+  printCount: z.number().int(),
+  lastPrintedAt: z.string(),
+});
+
+export type BillingPrintResult = z.infer<typeof billingPrintResultSchema>;
