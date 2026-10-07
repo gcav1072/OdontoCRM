@@ -431,6 +431,18 @@ Los adjuntos de la sesión y los PDF de los récipes se guardan en disco: `STORA
 (por defecto `./storage/clinical` en el servicio clínico, `./storage/patients` en el de pacientes).
 Están en `.gitignore` y **entran en el respaldo** junto con la base de datos (Fase 10).
 
+Con `STORAGE_ENCRYPTION_KEY` puesta, todo lo que se guarda va **cifrado en reposo**
+(AES-256-GCM). Los ficheros anteriores a la clave se siguen leyendo sin tocarla.
+
+| Comando | Qué hace | Flags |
+| :--- | :--- | :--- |
+| `npm run recifrar:almacen` | Pasa a cifrado lo que quedó en claro. Idempotente: lo que ya está cifrado no se vuelve a tocar. Escribe a un temporal, renombra y comprueba el `sha256` después | `-- --estado` (solo mira y cuenta) · `-- --todos` (re-cifra **todo**, al cambiar la clave: guarda la vieja antes) |
+| `npm run verify:backup` | **Simulacro de restauración**: coge el último respaldo, lo restaura en bases temporales (`odonto_verify_*`), cuenta la tabla de control de cada una y las borra. Detecta un `.dump` truncado o con un bit cambiado | `-- --from <carpeta>` (por defecto, el más reciente) · `-- --dest <carpeta>` · `-- --db patients` (solo esa base, repetible; vale el nombre corto o el completo) · `-- --conservar` (no borra las temporales) · `-- --estado` (no restaura, solo lista) · `-- --sin-aviso` |
+
+> El simulacro **no toca las bases de verdad**: las temporales se crean desde `template0` y se
+> borran siempre, también cuando algo falla. Si sale mal, el aviso de emergencia va al bot de
+> administración (`ADMIN_TELEGRAM_BOT_TOKEN` / `ADMIN_TELEGRAM_CHAT_ID`).
+
 ---
 
 ## 7. Pruebas de humo
@@ -514,6 +526,7 @@ ejecuta `dist/`, no el fuente.
 | `infra/fedora/systemd/odontocrm@.service` | Unidad por servicio (o `ecosystem.config.cjs` para PM2) |
 | `sudo infra/fedora/backup/odontocrm-backup.sh` | Respaldo diario de las 8 bases |
 | `sudo infra/fedora/backup/odontocrm-restore.sh` | Restauración (se prueba en la Fase 10) |
+| `infra/fedora/systemd/odontocrm-verificar-respaldo.timer` | **Simulacro semanal** (domingos 04:30): `tools/verify-backup.mjs` restaura el último respaldo en bases temporales y avisa si falla |
 
 La guía completa está en [`infra/fedora/INSTALL.md`](../infra/fedora/INSTALL.md).
 
@@ -562,6 +575,11 @@ workspace y las rutas siguen siendo correctas.
 | Saber si puedo commitear | `npm run verify` |
 | Probar solo lo que toqué | `npx vitest run <ruta>` y luego `npm run test:integration -- <ruta>` |
 | Verificar que las migraciones siguen aplicándose desde cero | `npm run db:verify-migrations` |
+| Comprobar que el respaldo se puede restaurar | `npm run verify:backup` (no toca las bases de verdad: usa temporales) |
+| Saber cuántos ficheros del almacén están sin cifrar | `npm run recifrar:almacen -- --estado` |
+| Cifrar el historial que quedó en claro | `npm run recifrar:almacen` (idempotente; se puede cortar y repetir) |
+| Cambiar la clave de cifrado del almacén | guardar la vieja → nueva `STORAGE_ENCRYPTION_KEY` en los tres servicios → `npm run recifrar:almacen -- --todos` |
+| Reemplazar el logo de la clínica | `assets/clinic/logo.svg` → `npm run marca:css` |
 | Añadir una columna a un servicio | editar `src/db/schema.ts` → `npx drizzle-kit generate --config services/<svc>/drizzle.config.ts --name <cambio>` → revisar el SQL → `npm run db:migrate -- --only <svc>` |
 | Vaciar y rehacer los datos de prueba | `npm run seed:demo -- --reset` y `npm run seed:agenda -- --reset` |
 | Recuperar el acceso del administrador | `npm run seed:users -- --reset` |
@@ -588,9 +606,12 @@ workspace y las rutas siguen siendo correctas.
 | `dev:*`, `start:*` | raíz + el del servicio (y `apps/gateway/.env` para el gateway) |
 | `test:integration` | los `.env` de los servicios (los lee `tools/test-integration.mjs` y los expone como `TEST_*_DATABASE_URL`) |
 | `smoke:*` | ninguno: hablan por HTTP con el gateway |
+| `recifrar:almacen` | el `.env` de **cada** servicio (`STORAGE_DIR` y `STORAGE_ENCRYPTION_KEY`) |
+| `verify:backup` | raíz (`PG_ADMIN_URL`) y, para el aviso, las claves del bot de administración |
 
 Secretos que van **solo** en los `.env` (nunca al repositorio): `PG_ADMIN_URL`,
-`INTERNAL_SERVICE_SECRET`, `COOKIE_SECRET`, `TELEGRAM_BOT_TOKEN`, `WHATSAPP_*` y las
+`INTERNAL_SERVICE_SECRET`, `COOKIE_SECRET`, `TELEGRAM_BOT_TOKEN`, `WHATSAPP_*`,
+`STORAGE_ENCRYPTION_KEY`, `ADMIN_TELEGRAM_BOT_TOKEN` y las
 claves de `services/identity/.keys/`. Detalle en
 [`SEGURIDAD_SECRETOS.md`](SEGURIDAD_SECRETOS.md).
 
@@ -610,6 +631,8 @@ claves de `services/identity/.keys/`. Detalle en
 | 423 «cuenta bloqueada» | 5 intentos fallidos: 15 minutos, o `npm run seed:users -- --reset` (que además limpia el bloqueo) |
 | «¿Cuál era la clave del admin?» | `npm run seed:users -- --print` |
 | Las pruebas de integración se saltan | Falta `TEST_*_DATABASE_URL`: ejecútalas con `npm run test:integration`, no con `npm test` |
+| `verify:backup` dice que un archivo no es un `.dump` | El respaldo se cortó o se corrompió: míralo con `npm run verify:backup -- --estado` y revisa el `SHA256SUMS` de esa carpeta. Los respaldos anteriores siguen ahí |
+| Un adjunto se abre como basura | El fichero está **cifrado** y el servicio no tiene `STORAGE_ENCRYPTION_KEY` (una clave distinta da lo mismo). Restaura la clave: sin ella esos ficheros no se leen. Los que estén en claro se ven igual |
 | Un servicio no arranca y menciona una variable | La configuración se valida con Zod al arrancar: falta esa variable en su `.env` (míralo en `.env.example`) |
 | El bot no responde en Telegram | `409 Conflict` por dos `getUpdates`: el poller es **único**, para el otro proceso |
 | Al paciente no le sale el menú `/` en Telegram | Comprueba el registro con `npm run telegram:menu` (y `npm run telegram:menu -- --set` si no coincide). Si ahí aparece y en el móvil no, cierra y abre la aplicación de Telegram: cachea la lista |
