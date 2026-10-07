@@ -427,9 +427,12 @@ Todos los servicios escuchan en `127.0.0.1`: se entra **solo** por el gateway.
 | :--- | :--- | :--- |
 | Chromium de Playwright | Para el **PDF A5 del récipe** (Fase 7B) y para las capturas de revisión | `npx playwright install chromium` |
 
-Los adjuntos de la sesión y los PDF de los récipes se guardan en disco: `STORAGE_DIR`
-(por defecto `./storage/clinical` en el servicio clínico, `./storage/patients` en el de pacientes).
-Están en `.gitignore` y **entran en el respaldo** junto con la base de datos (Fase 10).
+Los adjuntos de la sesión y los PDF de los récipes y las facturas se guardan en disco:
+`STORAGE_DIR` es una **raíz compartida** (`./storage/patients` de serie;
+`/var/lib/odontocrm/storage` en el servidor) y cada servicio escribe en su subcarpeta, así que los
+archivos de `patients`, `clinical` y `billing` viven bajo el mismo árbol
+(`<raíz>/billing/<paciente>/factura-….pdf`). Está en `.gitignore` y **entra en el respaldo** junto
+con la base de datos (Fase 10).
 
 Con `STORAGE_ENCRYPTION_KEY` puesta, todo lo que se guarda va **cifrado en reposo**
 (AES-256-GCM). Los ficheros anteriores a la clave se siguen leyendo sin tocarla.

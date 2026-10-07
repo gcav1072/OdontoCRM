@@ -27,6 +27,10 @@ import { connect } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { decryptBlob, looksEncrypted, parseEncryptionKey } from '@odontocrm/storage';
+
+import { entornoRaiz, leerEnv, rutaEnvDe, SERVICIOS } from './lib/servicios.mjs';
+
 /* ── Configuración ─────────────────────────────────────────────────────────── */
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,6 +46,20 @@ const DOC = { type: 'V', number: `98${String(Date.now()).slice(-6)}` };
 /** Dónde archiva `billing` los documentos (ADR 0036/0048): `STORAGE_DIR` es una raíz **compartida**
  * (`./storage/patients` por defecto), así que la búsqueda del PDF va sobre `storage/`. */
 const ALMACEN = process.env.SMOKE_BILLING_STORAGE_DIR ?? resolve(RAIZ, 'storage');
+/**
+ * La clave del almacén, si la hay. Los PDF pueden estar **cifrados en reposo** y la huella que guarda
+ * la base es la del texto en claro, así que sin descifrar el archivo no se reconocería (y la prueba
+ * diría que no está archivado cuando sí lo está). Se lee el entorno como lo leen los servicios:
+ * primero el común y después el suyo, que manda.
+ */
+const CLAVE_ALMACEN = parseEncryptionKey(
+  process.env.STORAGE_ENCRYPTION_KEY ??
+    (() => {
+      const billing = SERVICIOS.find((servicio) => servicio.name === 'billing');
+      const env = { ...entornoRaiz(), ...(billing ? leerEnv(rutaEnvDe(billing)) : {}) };
+      return env.STORAGE_ENCRYPTION_KEY;
+    })(),
+);
 /** Hasta cuánto se espera a que el consumidor deje el borrador de la sesión cerrada. */
 const ESPERA_BORRADOR_MS = Number(process.env.SMOKE_BILLING_WAIT_MS ?? 20_000);
 /** Hasta cuánto se espera a que la auditoría proyecte los eventos (el outbox no es instantáneo). */
@@ -170,6 +188,18 @@ const archivosBajo = (dir, tope = 5_000) => {
  * Se recorre el almacén **en cada llamada**: los documentos aparecen a lo largo de la prueba (la
  * factura al emitir, los recibos al cobrar) y un índice cacheado se quedaría corto.
  */
+/**
+ * Los bytes **en claro** de un archivo del almacén. Los PDF pueden estar cifrados en reposo: la
+ * huella que guarda la base es la del texto en claro, y en disco el archivo empieza por la cabecera
+ * del cifrado, no por `%PDF`, así que sin descifrar no se reconocería nada. `null` si está cifrado y
+ * no hay clave: entonces no se puede comprobar, pero tampoco se da por perdido.
+ */
+const claroDe = (ruta) => {
+  const bytes = readFileSync(ruta);
+  if (!looksEncrypted(bytes)) return bytes;
+  return CLAVE_ALMACEN === undefined ? null : decryptBlob(bytes, CLAVE_ALMACEN);
+};
+
 const buscarPdf = (sha256) => {
   try {
     const rutas = archivosBajo(ALMACEN);
@@ -177,7 +207,9 @@ const buscarPdf = (sha256) => {
     const deBilling = rutas.filter((ruta) => ruta.includes('billing'));
     for (const ruta of deBilling.length > 0 ? deBilling : rutas) {
       if (statSync(ruta).size === 0) continue;
-      if (createHash('sha256').update(readFileSync(ruta)).digest('hex') === sha256) return ruta;
+      const contenido = claroDe(ruta);
+      if (contenido === null) continue;
+      if (createHash('sha256').update(contenido).digest('hex') === sha256) return ruta;
     }
   } catch {
     return null;
@@ -507,7 +539,7 @@ check(
 const pdf = buscarPdf(emitida.body?.pdfSha256 ?? '');
 check(
   'el PDF está en el almacén y es un PDF',
-  pdf !== null && readFileSync(pdf).subarray(0, 4).toString('latin1') === '%PDF',
+  pdf !== null && claroDe(pdf)?.subarray(0, 4).toString('latin1') === '%PDF',
   pdf ?? `no se encontró en ${ALMACEN}`,
 );
 
