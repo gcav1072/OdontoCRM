@@ -100,7 +100,7 @@ else
     fallo 'odontocrm-gateway.service no está activo'
     inactivas=$((inactivas + 1))
   fi
-  (( inactivas == 0 )) && ok 'las 9 unidades están activas'
+  (( inactivas == 0 )) && ok "las $(( ${#SERVICIOS[@]} + 1 )) unidades están activas"
 fi
 
 # ── 3. El proxy sirve la aplicación por HTTPS ───────────────────────────────

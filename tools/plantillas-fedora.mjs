@@ -603,6 +603,35 @@ const exigir = (condicion, bien, mal) => {
     `estos guiones vuelven a llevar una lista de puertos a mano: ${listasAMano.join(', ')}`,
   );
 
+  // (9-quinquies) Los mensajes que cuentan servicios, bases o unidades **calculan** el
+  //     número (`${#SERVICIOS[@]}`, `${#bases[@]}`), no lo escriben. Con `billing` se
+  //     quedaron viejos tres: «las 8 bases» del rol de respaldo (que ya verificaba 10),
+  //     «las 9 unidades» del verificador (que ya eran 10 con el gateway) y otros tantos
+  //     comentarios. Nadie los mira porque el número *parece* correcto.
+  const contadoresViejos = [
+    'infra/fedora/odontocrm',
+    'infra/fedora/instalar/30-desplegar.sh',
+    'infra/fedora/instalar/40-verificar.sh',
+    'infra/fedora/instalar/instalar.sh',
+    'infra/fedora/backup/crear-rol-respaldo.sh',
+    'infra/fedora/backup/odontocrm-backup.sh',
+    'infra/fedora/backup/odontocrm-restore.sh',
+  ].filter((ruta) =>
+    leer(ruta)
+      .split('\n')
+      .some(
+        (linea) =>
+          !/^\s*#/.test(linea) &&
+          /(las|los) [0-9]+ (bases|servicios|unidades)/.test(linea) &&
+          !/odonto_/.test(linea),
+      ),
+  );
+  exigir(
+    contadoresViejos.length === 0,
+    'los mensajes que cuentan servicios/bases/unidades calculan el número',
+    `estos guiones llevan el número escrito a mano (se queda viejo al añadir un servicio): ${contadoresViejos.join(', ')}`,
+  );
+
   // (10) El agente `odontocrm` avisa de los marcadores sin sustituir.
   exigir(
     /CAMBIAR/.test(odontocrm) && /marcador/.test(odontocrm),

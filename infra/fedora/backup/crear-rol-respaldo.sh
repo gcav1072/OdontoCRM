@@ -8,7 +8,7 @@
 #
 # Deja el respaldo funcionando de una pasada, que es lo que la guía pedía a mano
 # (INSTALL.md §15.2): rol dedicado `odonto_backup` —sin superusuario— con permiso de
-# lectura sobre las 8 bases, `/etc/odontocrm/.pgpass` (0600) y `backup.env` apuntando
+# lectura sobre TODAS las bases, `/etc/odontocrm/.pgpass` (0600) y `backup.env` apuntando
 # a esa conexión.
 #
 # **No imprime la contraseña**: se genera aquí, se escribe en los archivos que
@@ -268,7 +268,7 @@ for base in "${bases[@]}"; do
     av "sin USAGE en $base: $sin_usage"; fallos=$((fallos+1))
   fi
 done
-if (( fallos == 0 )); then ok 'el rol lee las 8 bases (incluido el esquema de migraciones)'
+if (( fallos == 0 )); then ok "el rol lee las ${#bases[@]} bases (incluido el esquema de migraciones)"
 else err "$fallos base(s) con problemas: revisa los GRANT"; fi
 
 printf '\n  Siguiente paso:  sudo bash infra/fedora/backup/odontocrm-backup.sh --include-config\n'
