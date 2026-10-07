@@ -8,6 +8,7 @@ import {
   hayFiltros,
   lineTotalCents,
   linesReady,
+  liveInvoiceTotals,
   parseUsdToCents,
   puedeAnularse,
   puedeCobrarse,
@@ -15,6 +16,7 @@ import {
   puedeReimprimirse,
   rangoInvalido,
   reimpresionesEnTexto,
+  taxRateForCategory,
   toDraftItems,
   toEditableLine,
   type EditableLine,
@@ -76,11 +78,48 @@ describe('el dinero en la caja', () => {
       surfaces: [],
       quantity: 3,
       priceText: '12,34',
+      taxCategory: 'exento',
+      taxRateBasisPoints: 0,
       needsPricing: false,
     };
     expect(lineTotalCents(base)).toBe(3702);
     // Media entrada: se cuenta como 0 mientras no sea un importe legible.
     expect(lineTotalCents({ ...base, priceText: '' })).toBe(0);
+  });
+
+  it('el total en vivo suma el IVA de un bien gravado, igual que el servicio', () => {
+    const servicio: EditableLine = {
+      code: 'profilaxis',
+      description: 'Profilaxis (limpieza)',
+      toothNumber: null,
+      surfaces: [],
+      quantity: 1,
+      priceText: '20,00',
+      taxCategory: 'exento',
+      taxRateBasisPoints: 0,
+      needsPricing: false,
+    };
+    const bien: EditableLine = {
+      code: 'cepillo_dental',
+      description: 'Cepillo dental',
+      toothNumber: null,
+      surfaces: [],
+      quantity: 1,
+      priceText: '3,00',
+      taxCategory: 'general',
+      taxRateBasisPoints: taxRateForCategory('general'),
+      needsPricing: false,
+    };
+
+    expect(taxRateForCategory('general')).toBe(1600);
+    expect(taxRateForCategory('exento')).toBe(0);
+    // El servicio odontológico va exento; el bien suma 16 % de IVA sobre 3,00 (0,48).
+    expect(liveInvoiceTotals([servicio, bien])).toEqual({
+      exemptAmountCentsUsd: 2000,
+      taxableAmountCentsUsd: 300,
+      ivaAmountCentsUsd: 48,
+      totalCentsUsd: 2348,
+    });
   });
 
   it('la lista que se manda lleva la pieza y las caras de cada partida', () => {
@@ -92,6 +131,8 @@ describe('el dinero en la caja', () => {
         surfaces: ['occlusal', 'mesial'],
         quantity: 1,
         priceText: '50,00',
+        taxCategory: 'exento',
+        taxRateBasisPoints: 0,
         needsPricing: false,
       },
       {
@@ -101,6 +142,8 @@ describe('el dinero en la caja', () => {
         surfaces: [],
         quantity: 2,
         priceText: '10',
+        taxCategory: 'exento',
+        taxRateBasisPoints: 0,
         needsPricing: false,
       },
     ]);

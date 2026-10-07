@@ -1,11 +1,16 @@
 import {
   findPaymentMethod,
   formatRateMicros,
+  invoiceTotalsFromItems,
+  ivaCentsForItem,
+  IVA_GENERAL_BASIS_POINTS,
   usdCentsFromVes,
   vesCentimosFromUsd,
   type BillingDraftItem,
   type DraftItemInput,
   type ImputationPolicy,
+  type InvoiceTotals,
+  type TaxCategory,
   type ToothSurface,
 } from '@odontocrm/contracts';
 
@@ -42,6 +47,14 @@ export interface EditableLine {
   surfaces: ToothSurface[];
   quantity: number;
   priceText: string;
+  /**
+   * La categoría fiscal **copiada** de la partida: decide si el IVA se suma (un bien
+   * gravado) o no (un servicio odontológico exento). Sin ella, la pantalla no puede
+   * mostrar el total en vivo sin equivocarse en el IVA.
+   */
+  taxCategory: TaxCategory;
+  /** La alícuota vigente copiada en la partida (puntos básicos; 1600 = 16 %). */
+  taxRateBasisPoints: number;
   /** El precio no venía del arancel (o venía en 0): la caja lo tiene que escribir. */
   needsPricing: boolean;
 }
@@ -54,6 +67,8 @@ export const toEditableLine = (item: BillingDraftItem): EditableLine => ({
   surfaces: (item.surfaces ?? []) as ToothSurface[],
   quantity: item.quantity,
   priceText: item.unitPriceCentsUsd === 0 ? '' : formatUsd(item.unitPriceCentsUsd),
+  taxCategory: item.taxCategory,
+  taxRateBasisPoints: item.taxRateBasisPoints,
   needsPricing: item.needsPricing,
 });
 
@@ -77,6 +92,36 @@ export const toDraftItems = (lineas: readonly EditableLine[]): DraftItemInput[] 
     toothNumber: linea.toothNumber,
     surfaces: linea.surfaces,
   }));
+
+/* ── Los totales de lo que hay en pantalla ─────────────────────────────────── */
+
+/** La alícuota que el servicio copiará en una partida nueva, según su categoría. */
+export const taxRateForCategory = (category: TaxCategory): number =>
+  category === 'general' ? IVA_GENERAL_BASIS_POINTS : 0;
+
+/**
+ * Los totales **de lo que se ve en pantalla**, sumando las partidas con los mismos ayudantes
+ * del contrato que usa el servicio (`invoiceTotalsFromItems` e `ivaCentsForItem`). No es una
+ * segunda aritmética: es la misma cuenta, hecha antes de guardar.
+ *
+ * Sin esto el total solo se movía al pulsar «Guardar cambios», y añadir un bien al arancel
+ * parecía no cambiar nada (y el IVA de un bien gravado no aparecía hasta después).
+ */
+export const liveInvoiceTotals = (lineas: readonly EditableLine[]): InvoiceTotals =>
+  invoiceTotalsFromItems(
+    lineas.map((linea) => {
+      const base = lineTotalCents(linea);
+      return {
+        totalPriceCentsUsd: base,
+        taxCategory: linea.taxCategory,
+        ivaAmountCentsUsd: ivaCentsForItem({
+          baseCentsUsd: base,
+          taxCategory: linea.taxCategory,
+          taxRateBasisPoints: linea.taxRateBasisPoints,
+        }),
+      };
+    }),
+  );
 
 /* ── El historial: qué se puede hacer con cada documento ───────────────────── */
 

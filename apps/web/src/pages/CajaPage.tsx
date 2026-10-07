@@ -32,11 +32,13 @@ import {
   hayFiltros,
   lineTotalCents,
   linesReady,
+  liveInvoiceTotals,
   puedeAnularse,
   puedeCobrarse,
   puedeDescartarse,
   rangoInvalido,
   reimpresionesEnTexto,
+  taxRateForCategory,
   toDraftItems,
   toEditableLine,
   type EditableLine,
@@ -155,7 +157,12 @@ export const CajaPage = () => {
   });
 
   const emitir = useMutation({
-    mutationFn: (id: string) => billingApi.issue(id),
+    // Emitir congela lo que el **servicio** tiene guardado: se guardan primero los cambios de
+    // la pantalla para que lo añadido en el mostrador no se quede fuera de la factura.
+    mutationFn: async (id: string) => {
+      await billingApi.saveDraft(id, { items: toDraftItems(lineas) });
+      return billingApi.issue(id);
+    },
     onSuccess: async (emitida) => {
       exito(t('caja.emitir.exito', { numero: emitida.numberLabel }));
       setDialogo(null);
@@ -187,6 +194,10 @@ export const CajaPage = () => {
         surfaces: [],
         quantity: 1,
         priceText: item.priceCentsUsd === 0 ? '' : formatUsd(item.priceCentsUsd),
+        // La categoría y su alícuota se copian igual que las copiará el servicio: sin
+        // esto, un bien al 16 % no sumaba su IVA en el total de la pantalla.
+        taxCategory: item.taxCategory,
+        taxRateBasisPoints: taxRateForCategory(item.taxCategory),
         needsPricing: item.priceCentsUsd === 0,
       },
     ]);
@@ -201,7 +212,13 @@ export const CajaPage = () => {
   const seleccionado = listaHistorial.find((item) => item.id === abierto) ?? null;
   /** El historial también lista borradores: al abrir uno se avisa y se lleva a Pendientes. */
   const esBorradorSeleccionado = seleccionado?.status === 'borrador';
-  const totalDetalle = detalleBorrador.data?.totalCentsUsd ?? 0;
+  /** Los totales con lo que hay en pantalla: se mueven al añadir o editar una partida. */
+  const totalesVivos = liveInvoiceTotals(lineas);
+  /** La pantalla y el servicio no cuadran: hay partidas sin guardar todavía. */
+  const hayCambiosSinGuardar =
+    detalleBorrador.data !== undefined &&
+    (detalleBorrador.data.itemCount !== lineas.length ||
+      detalleBorrador.data.totalCentsUsd !== totalesVivos.totalCentsUsd);
 
   const abrirDocumento = (id: string): void => {
     setAbierto(id);
@@ -605,16 +622,18 @@ export const CajaPage = () => {
 
                 <div className="flex items-center justify-between border-t border-line pt-3">
                   <div className="text-xs text-ink-muted">
-                    {t('caja.total.exento')}: {formatUsd(detalleBorrador.data.exemptAmountCentsUsd)}{' '}
-                    · {t('caja.total.gravado')}:{' '}
-                    {formatUsd(detalleBorrador.data.taxableAmountCentsUsd)} · {t('caja.total.iva')}:{' '}
-                    {formatUsd(detalleBorrador.data.ivaAmountCentsUsd)}
+                    {t('caja.total.exento')}: {formatUsd(totalesVivos.exemptAmountCentsUsd)} ·{' '}
+                    {t('caja.total.gravado')}: {formatUsd(totalesVivos.taxableAmountCentsUsd)} ·{' '}
+                    {t('caja.total.iva')}: {formatUsd(totalesVivos.ivaAmountCentsUsd)}
                   </div>
                   <p className="text-lg font-semibold text-ink">
                     {t('caja.total.general')}:{' '}
-                    <span className="tabular-nums">
-                      {formatUsd(detalleBorrador.data.totalCentsUsd ?? totalDetalle)}
-                    </span>
+                    <span className="tabular-nums">{formatUsd(totalesVivos.totalCentsUsd)}</span>
+                    {hayCambiosSinGuardar && (
+                      <span className="pl-2 align-middle text-xs font-normal text-ink-muted">
+                        {t('caja.total.sinGuardar')}
+                      </span>
+                    )}
                   </p>
                 </div>
 
@@ -739,7 +758,7 @@ export const CajaPage = () => {
           <p className="text-sm text-ink">
             {t('caja.total.general')}:{' '}
             <span className="font-semibold tabular-nums">
-              {formatUsd(detalleBorrador.data?.totalCentsUsd ?? 0)}
+              {formatUsd(totalesVivos.totalCentsUsd)}
             </span>
           </p>
         </Dialog>

@@ -739,6 +739,7 @@ const DICCIONARIO = {
   'caja.total.gravado': 'Gravado (16 %)',
   'caja.total.iva': 'IVA',
   'caja.total.general': 'Total',
+  'caja.total.sinGuardar': 'sin guardar',
 
   // La tasa del día (el widget de la jornada)
   'caja.tasa.titulo': 'Tasa del día',

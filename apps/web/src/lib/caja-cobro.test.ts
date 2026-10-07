@@ -24,6 +24,8 @@ const linea = (priceText: string, quantity = 1): EditableLine => ({
   surfaces: [],
   quantity,
   priceText,
+  taxCategory: 'exento',
+  taxRateBasisPoints: 0,
   needsPricing: priceText === '',
 });
 
