@@ -86,6 +86,39 @@ export interface ScreenDeviceList {
 export const ROOM_STATES = ['en_sala_espera', 'llamado', 'en_consulta'] as const;
 export type RoomState = (typeof ROOM_STATES)[number];
 
+/**
+ * Canal en vivo del **personal** del consultorio: recepción, caja y consultorio.
+ *
+ * Las pantallas kiosko tienen su propio canal (`lobby`, `consultorio`) y reciben el
+ * **estado completo** de la sala porque lo único que hacen es pintarlo. El personal,
+ * en cambio, ya tiene los datos: lo que necesita saber es **qué cambió** para volver a
+ * pedirlo. Por eso este canal manda avisos (`StaffSignal`) en vez de estado —es más
+ * liviano y no pone datos de pacientes en el cable— y la interfaz traduce cada aviso en
+ * invalidar la caché que le corresponde.
+ */
+export const STAFF_CHANNEL = 'staff';
+
+/**
+ * Aviso de que algo pasó: **qué** y **cuándo**, sin datos clínicos.
+ *
+ * `topic` es el evento de dominio tal cual (`clinical.session.closed`,
+ * `billing.invoice.issued`…), que es lo que la interfaz mira para decidir qué caché
+ * invalidar. `aggregateId` permite invalidar solo lo de ese paciente o esa factura
+ * cuando la interfaz quiere afinar; nunca lleva el contenido del evento.
+ */
+export interface StaffSignal {
+  topic: string;
+  at: string;
+  aggregateId: string | null;
+}
+
+/**
+ * Primer aviso que manda el canal al abrirse: no anuncia nada, confirma que el flujo
+ * está vivo. Sin él, una interfaz recién conectada no sabría distinguir «todo tranquilo»
+ * de «la conexión no llegó a abrirse».
+ */
+export const STAFF_READY_TOPIC = 'stream.ready';
+
 /** Alerta clínica que la pantalla del consultorio resalta (alergias, crónicos…). */
 export const criticalFlagSchema = z.object({
   tipo: z.enum(['alergia', 'cronico', 'medicamento', 'anticoagulante', 'otro']),
@@ -163,8 +196,15 @@ export interface ConsultationState {
   updatedAt: string;
 }
 
-/** Tipos de evento del flujo SSE: el cliente solo tiene que reemplazar el estado. */
-export const SCREEN_STREAM_EVENTS = ['lobby', 'consultorio', 'latido'] as const;
+/**
+ * Tipos de evento del flujo SSE: el cliente solo tiene que reemplazar el estado
+ * (`lobby`, `consultorio`) o aplicar el aviso (`staff`).
+ *
+ * El nombre del evento coincide con el **canal**, y eso es deliberado: un suscriptor se
+ * da de alta por canal y descarta las tramas que no son del suyo, así que el nombre del
+ * evento es lo que separa un flujo de otro.
+ */
+export const SCREEN_STREAM_EVENTS = ['lobby', 'consultorio', STAFF_CHANNEL, 'latido'] as const;
 export type ScreenStreamEvent = (typeof SCREEN_STREAM_EVENTS)[number];
 
 /** Trama SSE ya formateada (un evento por trama, con `id` para `Last-Event-ID`). */
