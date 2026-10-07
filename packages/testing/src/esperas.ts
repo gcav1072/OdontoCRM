@@ -33,4 +33,4 @@ export const TEST_WAIT_MS = delEntorno();
  * como hallazgo (P-28) para el endurecimiento: la suite se corre en verde con
  * `--solo` o con la máquina libre, y el tope se puede subir por entorno.
  */
-export const ESPERA_NOTA = 'ver docs/PLAN_MAESTRO_FASES.md, hallazgo P-28';
+export const ESPERA_NOTA = 'ver docs/PLAN_MAESTRO_FASES.md, «Deuda abierta» → P-28';

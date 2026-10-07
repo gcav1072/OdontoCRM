@@ -1242,6 +1242,71 @@ nueva):
   conviene probarla con la agenda de una jornada de verdad (y decidir si el atajo `F8` —que cierra la
   sesión clínica, no la del sistema— es el que quiere).
 
+### Deuda abierta, para la sesión de auditoría y eficiencia
+
+Ordenada por lo que duele, y con **lo que está medido**, no con sospechas. Cualquier hallazgo nuevo
+entra aquí con su identificador para poder citarlo desde el código.
+
+#### P-28 · La cola de eventos se atasca cuando varias suites la usan a la vez
+
+**Qué pasa.** Las suites que comprueban el camino *outbox → cola (pg-boss) → consumidor* —la
+auditoría de identity, por ejemplo— esperan a que el efecto aparezca, porque no hay forma de saber
+cuándo terminó: solo de mirar. Con varias de esas suites en paralelo sobre una máquina cargada, **de
+vez en cuando el efecto no aparece** y falla una prueba distinta en cada corrida.
+
+**Lo que está medido** (2026-10-04, PC Fedora de pruebas, con la pila de desarrollo levantada):
+
+- **Subir el tope de espera no lo arregla**: no es lentitud, es un **atasco** del camino de la cola.
+  Con el tope en 30 s (`TEST_WAIT_MS`, [`esperas.ts`](../packages/testing/src/esperas.ts)) el fallo
+  sigue apareciendo, y el caso que falla tarda ~2,4 s: **falla una aserción, no la espera**.
+- **Es anterior a la Fase 10**: con el cambio de `packages/db` revertido en un árbol aparte, las
+  mismas pruebas fallan igual (2 de 3 corridas).
+- **Con la máquina libre, o con la suite sola (`--solo`), sale en verde.** Reproducido otra vez el
+  2026-10-06 en la suite de sesiones clínicas: falló una corrida y pasó al reintento.
+
+**La pista para atacarlo.** Las suites que ejercitan ese camino comparten la **cola de eventos de
+dominio**: `ensureDomainEventsQueue` y `registerDomainEventHandler` frente a la cola propia de cada
+suite (`colaDePrueba` en la suite clínica) y el bucle de `flushOutbox`. Si dos suites consumen o
+borran de la misma cola, una puede **llevarse el evento de la otra** y el efecto no aparece nunca;
+encaja con que falle una aserción y no la espera.
+
+**Por dónde empezar.** (a) una **cola por suite** (nombre único por corrida) y un consumidor
+aislado, que es lo que ya se hizo con las bases temporales; (b) revisar si `flushOutbox` puede dar
+por publicado un evento que la cola todavía no entregó; (c) si nada de eso lo cierra, medir el
+atasco con la cola instrumentada antes de tocar nada más.
+
+**Cómo se comprueba que está arreglado.** `npm run test:integration` **cinco veces seguidas** con la
+máquina cargada (y la pila levantada), sin un solo fallo en ese camino. Un arreglo que no aguante eso
+no está arreglado.
+
+#### Lo demás que queda abierto
+
+- **La familia de refrescos de dos pestañas** (hallazgo de la Fase 8, sin tocar): sigue pendiente de
+  decisión para el endurecimiento.
+- **`tax_rates` e `igtf_rules` con vigencia**: el §3.3 de [`feat_billing.md`](feat_billing.md) las
+  describe y el §4 —el contrato de datos— no las define. Hoy la alícuota sale del valor de siembra y
+  **se copia en cada partida** (que es lo que exige B13), así que es deuda de comodidad, no de
+  corrección: cambiar el 16 % exige tocar la siembra. **Decidido en la Fase 11: se queda así por
+  ahora**, y se revisa si cambia la ley.
+- **La captura automática de la tasa del BCV**: hoy es manual (`POST /billing/rates`) con aviso y
+  confirmación si el hueco pasa de días. **Decidido en la Fase 11: manual por ahora**, para no atarse
+  a una página que cambia de formato; el día que se automatice, el histórico ya está listo.
+- **El IGTF**: se registra aparte y **no engorda la deuda** (es dinero de terceros). Con la clínica
+  como contribuyente ordinario nunca se percibe; la percepción y el enteramiento se implementan el
+  día que la clínica sea Sujeto Pasivo Especial.
+
+### Decisiones de la Fase 11 que quedan confirmadas
+
+Se dejan escritas aquí para que no dependan de una conversación (el §5.2 y el §3.1 de
+[`feat_billing.md`](feat_billing.md) decían otra cosa en dos de los cuatro casos):
+
+1. **Anular una factura pagada exige devolver antes sus cobros** (el §3.1 permitía `pagada →
+   anulada`): si no, quedaría dinero cobrado sin contrapartida en el sistema.
+2. **Un fallo al componer el PDF no estropea ninguna forma** (el §5.2 daba la forma por dañada): el
+   control se consume dentro de la transacción y el papel se imprime **después** de emitir.
+3. **El IGTF se registra y no engorda la deuda** (ver arriba).
+4. **Los controles de las formas se exigen numéricos**: si algún día la imprenta los entrega
+   alfanuméricos, el alta lo dice en vez de consumirlos a ciegas.
 > Este documento es la referencia viva del proyecto: cualquier cambio de alcance se refleja aquí
 > **antes** de escribir código, y cada decisión relevante se registra como ADR en
 > [`docs/adr/`](adr/README.md).
