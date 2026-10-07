@@ -24,6 +24,12 @@ export const patientsEnvSchema = baseEnvSchema.extend({
 
   /** Carpeta raíz del almacén de archivos (relativa a la raíz del repositorio). */
   STORAGE_DIR: z.string().min(1).default('./storage/patients'),
+  /**
+   * Clave de **cifrado en reposo** del almacén (32 bytes en base64url; la genera el
+   * aprovisionador). Sin ella el almacén escribe en claro, como siempre; con ella, lo que ya
+   * estaba en claro se sigue leyendo (ver `packages/storage/src/crypto.ts`).
+   */
+  STORAGE_ENCRYPTION_KEY: z.string().min(1).optional(),
   MAX_FILE_BYTES: z.coerce
     .number()
     .int()

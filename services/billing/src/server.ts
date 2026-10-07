@@ -1,6 +1,6 @@
 import { createOutboxCheck, createPoolCheck } from '@odontocrm/db';
 import { buildServer, isProduction } from '@odontocrm/kernel';
-import { createDiskBlobStore } from '@odontocrm/storage';
+import { createDiskBlobStore, parseEncryptionKey } from '@odontocrm/storage';
 import type { FastifyInstance } from 'fastify';
 
 import type { BillingConfig } from './config.js';
@@ -52,7 +52,12 @@ export const createBillingServer = async (
     db: database.db,
     pool: database.pool,
     patientLookup: options.services?.patientLookup ?? createBillingPatientLookup(config),
-    blobStore: options.services?.blobStore ?? createDiskBlobStore({ rootDir: config.STORAGE_DIR }),
+    blobStore:
+      options.services?.blobStore ??
+      createDiskBlobStore({
+        rootDir: config.STORAGE_DIR,
+        encryptionKey: parseEncryptionKey(config.STORAGE_ENCRYPTION_KEY),
+      }),
     pdf:
       options.services?.pdf ??
       createPdfRenderer({

@@ -175,7 +175,7 @@ export const listAttachmentsByPatient = async (
 
 export interface AttachmentFile {
   attachment: ClinicalAttachment;
-  absolutePath: string;
+  content: Buffer;
 }
 
 const loadAttachmentOrFail = async (
@@ -183,7 +183,7 @@ const loadAttachmentOrFail = async (
   blobStore: BlobStore,
   sessionId: string,
   attachmentId: string,
-): Promise<{ row: ClinicalSessionFileRow; absolutePath: string }> => {
+): Promise<{ row: ClinicalSessionFileRow; content: Buffer }> => {
   const rows = await db
     .select()
     .from(clinicalSessionFiles)
@@ -193,20 +193,20 @@ const loadAttachmentOrFail = async (
   if (row === undefined || row.sessionId !== sessionId) {
     throw new NotFoundError('El adjunto no existe en esta sesión');
   }
-  // La ruta sale de la base, así que se comprueba igualmente que el almacén la
-  // acepta (defensa en profundidad contra una fila manipulada).
-  return { row, absolutePath: blobStore.absolutePath(row.storagePath) };
+  // Se lee por el **almacén** (que descifra si hace falta) y no por la ruta: con el cifrado
+  // en reposo activo, el archivo en disco no es el contenido.
+  return { row, content: await blobStore.read(row.storagePath) };
 };
 
-/** Adjunto con su ruta en disco, para servirlo por una ruta autorizada. */
+/** Adjunto con su contenido, para servirlo por una ruta autorizada. */
 export const getAttachmentFile = async (
   db: ClinicalDb,
   blobStore: BlobStore,
   sessionId: string,
   attachmentId: string,
 ): Promise<AttachmentFile> => {
-  const { row, absolutePath } = await loadAttachmentOrFail(db, blobStore, sessionId, attachmentId);
-  return { attachment: toAttachment(row), absolutePath };
+  const { row, content } = await loadAttachmentOrFail(db, blobStore, sessionId, attachmentId);
+  return { attachment: toAttachment(row), content };
 };
 
 /**

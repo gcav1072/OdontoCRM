@@ -9,7 +9,7 @@ import {
   stopBoss,
 } from '@odontocrm/db';
 import { startServer } from '@odontocrm/kernel';
-import { createDiskBlobStore } from '@odontocrm/storage';
+import { createDiskBlobStore, parseEncryptionKey } from '@odontocrm/storage';
 import { mkdir } from 'node:fs/promises';
 
 import { loadPatientsConfig, storageRoot } from './config.js';
@@ -23,7 +23,11 @@ const main = async (): Promise<void> => {
 
   const root = storageRoot(config);
   await mkdir(root, { recursive: true });
-  const blobStore = createDiskBlobStore({ rootDir: root });
+  const blobStore = createDiskBlobStore({
+    rootDir: root,
+    // Cifrado en reposo de radiografías, fotos y documentos del paciente.
+    encryptionKey: parseEncryptionKey(config.STORAGE_ENCRYPTION_KEY),
+  });
 
   // Cola y publicador del outbox: los cambios de paciente viajan a identity para
   // quedar en la auditoría (y más adelante a los reportes). La cola es compartida

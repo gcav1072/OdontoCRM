@@ -26,6 +26,12 @@ export const billingEnvSchema = baseEnvSchema.extend({
    * relativa a la raíz del repositorio, ignorada por Git (ADR 0036/0048).
    */
   STORAGE_DIR: z.string().min(1).default('./storage/billing'),
+  /**
+   * Clave de **cifrado en reposo** del almacén (32 bytes en base64url; la genera el
+   * aprovisionador): los PDF de facturas, recibos y notas de crédito. Sin ella se escribe en
+   * claro; con ella, lo que ya estaba en claro se sigue leyendo.
+   */
+  STORAGE_ENCRYPTION_KEY: z.string().min(1).optional(),
 
   /**
    * Chromium para el PDF de la factura. Vacío = el navegador que administra Playwright

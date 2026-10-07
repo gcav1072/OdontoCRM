@@ -480,13 +480,10 @@ describeWithDatabases('récipes y adjuntos: número, PDF A5, QR y auditoría', (
     const listado = await listAttachments(handle.db, sesionBorrador);
     expect(listado.total).toBe(1);
 
-    const { absolutePath } = await getAttachmentFile(
-      handle.db,
-      blobStore,
-      sesionBorrador,
-      subida.id,
-    );
-    expect(absolutePath).toContain(storageDir);
+    const { content } = await getAttachmentFile(handle.db, blobStore, sesionBorrador, subida.id);
+    // El contenido sale del **almacén** (que descifra si hace falta): es lo que se le manda
+    // al navegador, y con el cifrado activo no coincide con los bytes de disco.
+    expect(content.equals(PNG_1X1)).toBe(true);
 
     // Un adjunto de otra sesión no se sirve por esta ruta.
     const ajeno = await getAttachmentFile(handle.db, blobStore, sessionId, subida.id).catch(

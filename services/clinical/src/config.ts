@@ -32,6 +32,12 @@ export const clinicalEnvSchema = baseEnvSchema.extend({
    * separada de la de pacientes.
    */
   STORAGE_DIR: z.string().min(1).default('./storage/clinical'),
+  /**
+   * Clave de **cifrado en reposo** del almacén (32 bytes en base64url; la genera el
+   * aprovisionador): radiografías, adjuntos y PDF de los récipes. Sin ella se escribe en
+   * claro; con ella, lo que ya estaba en claro se sigue leyendo.
+   */
+  STORAGE_ENCRYPTION_KEY: z.string().min(1).optional(),
   /** Tope de un adjunto: el mismo que la ficha del paciente (20 MB). */
   MAX_FILE_BYTES: z.coerce
     .number()

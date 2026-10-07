@@ -9,7 +9,6 @@ import { CLINIC } from '@odontocrm/contracts';
 import { AppError, multipartFieldValue, parseOrThrow, requirePermission } from '@odontocrm/kernel';
 import type { MultipartFile } from '@fastify/multipart';
 import type { FastifyInstance } from 'fastify';
-import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 
 import {
@@ -145,7 +144,7 @@ export const registerPrescriptionRoutes = (
     { preHandler: read },
     async (request, reply) => {
       const { id, attachmentId } = parseOrThrow(attachmentParamsSchema, request.params);
-      const { attachment, absolutePath } = await getAttachmentFile(db, blobStore, id, attachmentId);
+      const { attachment, content } = await getAttachmentFile(db, blobStore, id, attachmentId);
       return reply
         .status(200)
         .header('content-type', attachment.mime)
@@ -153,7 +152,7 @@ export const registerPrescriptionRoutes = (
           'content-disposition',
           `inline; filename="${encodeURIComponent(attachment.originalName)}"`,
         )
-        .send(await readFile(absolutePath));
+        .send(content);
     },
   );
 

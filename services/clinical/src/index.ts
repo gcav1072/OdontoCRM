@@ -6,7 +6,7 @@ import {
   stopBoss,
 } from '@odontocrm/db';
 import { startServer } from '@odontocrm/kernel';
-import { createDiskBlobStore } from '@odontocrm/storage';
+import { createDiskBlobStore, parseEncryptionKey } from '@odontocrm/storage';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -24,7 +24,11 @@ const main = async (): Promise<void> => {
   /** Adjuntos de la sesión y PDF de los récipes: binarios en disco. */
   const storageRoot = resolve(config.STORAGE_DIR);
   await mkdir(storageRoot, { recursive: true });
-  const blobStore = createDiskBlobStore({ rootDir: storageRoot });
+  const blobStore = createDiskBlobStore({
+    rootDir: storageRoot,
+    // Cifrado en reposo de radiografías, adjuntos de sesión y PDF de récipes.
+    encryptionKey: parseEncryptionKey(config.STORAGE_ENCRYPTION_KEY),
+  });
 
   /** Un Chromium por proceso para el PDF A5 (arrancarlo cuesta más que el PDF). */
   const pdfRenderer = createPdfRenderer({

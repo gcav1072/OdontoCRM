@@ -9,7 +9,7 @@ import {
   stopBoss,
 } from '@odontocrm/db';
 import { startServer } from '@odontocrm/kernel';
-import { createDiskBlobStore } from '@odontocrm/storage';
+import { createDiskBlobStore, parseEncryptionKey } from '@odontocrm/storage';
 
 import { loadBillingConfig } from './config.js';
 import { handleDomainEvents } from './consumer.js';
@@ -36,7 +36,11 @@ const main = async (): Promise<void> => {
 
   // El publicador se crea después del servidor, así que el gancho se resuelve por referencia.
   let kick: () => void = () => undefined;
-  const blobStore = createDiskBlobStore({ rootDir: config.STORAGE_DIR });
+  const blobStore = createDiskBlobStore({
+    rootDir: config.STORAGE_DIR,
+    // Cifrado en reposo de los PDF de facturas, recibos y notas (si la instalación tiene clave).
+    encryptionKey: parseEncryptionKey(config.STORAGE_ENCRYPTION_KEY),
+  });
   const pdf = createPdfRenderer({
     executablePath: config.PDF_CHROMIUM_PATH,
     timeoutMs: config.PDF_TIMEOUT_MS,

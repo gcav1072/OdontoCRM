@@ -2,7 +2,6 @@ import { ALLOWED_FILE_MIME_TYPES, PATIENT_FILE_KINDS } from '@odontocrm/contract
 import { AppError, multipartFieldValue, parseOrThrow, requirePermission } from '@odontocrm/kernel';
 import type { MultipartFile } from '@fastify/multipart';
 import type { FastifyInstance } from 'fastify';
-import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 
 import {
@@ -82,7 +81,7 @@ export const registerFileRoutes = (app: FastifyInstance, services: PatientsServi
   /** Descarga del archivo: el servicio comprueba que pertenece a ese paciente. */
   app.get('/api/v1/patients/:id/files/:fileId', { preHandler: read }, async (request, reply) => {
     const { id, fileId } = parseOrThrow(fileParamsSchema, request.params);
-    const { file, absolutePath } = await getPatientFile(db, blobStore, id, fileId);
+    const { file, content } = await getPatientFile(db, blobStore, id, fileId);
 
     if (!(ALLOWED_FILE_MIME_TYPES as readonly string[]).includes(file.mime)) {
       throw new AppError({
@@ -96,7 +95,7 @@ export const registerFileRoutes = (app: FastifyInstance, services: PatientsServi
       .status(200)
       .header('content-type', file.mime)
       .header('content-disposition', `inline; filename="${encodeURIComponent(file.originalName)}"`)
-      .send(await readFile(absolutePath));
+      .send(content);
   });
 
   app.delete(

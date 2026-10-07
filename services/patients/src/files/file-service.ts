@@ -123,7 +123,7 @@ export const listPatientFiles = async (
 
 export interface FileWithContent {
   file: PatientFile;
-  absolutePath: string;
+  content: Buffer;
 }
 
 export const getPatientFile = async (
@@ -147,7 +147,9 @@ export const getPatientFile = async (
   const row = rows[0];
   if (row === undefined) throw new NotFoundError('El archivo no existe');
 
-  return { file: toPatientFile(row), absolutePath: blobStore.absolutePath(row.storagePath) };
+  // Se lee por el **almacén** y no por la ruta: con el cifrado en reposo activo el archivo
+  // en disco no es el contenido, y servir la ruta devolvería basura al navegador.
+  return { file: toPatientFile(row), content: await blobStore.read(row.storagePath) };
 };
 
 /**
