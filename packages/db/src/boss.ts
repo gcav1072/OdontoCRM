@@ -44,6 +44,12 @@ export const ensureDomainEventsQueue = async (
   boss: PgBoss,
   queue: string = DOMAIN_EVENTS_QUEUE,
 ): Promise<void> => {
+  // ⚠️ **La cola de descarte va PRIMERO.** `pg-boss` exige que la cola destino exista antes
+  // de declarar una que apunte a ella (`createQueue` hace `getQueueCache(deadLetter)` y
+  // revienta con «Queue … does not exist»). Crear la de descarte después pasaba en las
+  // pruebas unitarias —que usan un doble— y fallaba de verdad al arrancar un servicio.
+  if (queue !== DEAD_LETTER_QUEUE) await ensureDeadLetterQueue(boss);
+
   await boss.createQueue(queue, {
     deleteAfterSeconds: 7 * 24 * 60 * 60,
     expireInSeconds: 5 * 60,
@@ -55,10 +61,6 @@ export const ensureDomainEventsQueue = async (
     // propia cola de descarte no tiene otra (sería una cadena sin fin).
     ...(queue === DEAD_LETTER_QUEUE ? {} : { deadLetter: DEAD_LETTER_QUEUE }),
   });
-
-  // Y la de descarte tiene que existir **antes** de que algo falle en la de arriba: si no,
-  // `pg-boss` no puede copiar el trabajo y el evento se quedaría por el camino.
-  if (queue !== DEAD_LETTER_QUEUE) await ensureDeadLetterQueue(boss);
 };
 
 /**

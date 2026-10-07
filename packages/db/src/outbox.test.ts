@@ -207,6 +207,9 @@ describe('colas de los consumidores', () => {
 
     await ensureConsumerQueues(boss as never, ['domain-events.prueba']);
 
-    expect(creadas).toEqual([consumerQueueName('prueba'), DEAD_LETTER_QUEUE]);
+    // **La de descarte va primero** y el orden importa: `pg-boss` exige que la cola destino
+    // exista antes de declarar una que apunte a ella (si no, `createQueue` revienta con
+    // «Queue … does not exist»). Esta aserción es la que vigila ese orden.
+    expect(creadas).toEqual([DEAD_LETTER_QUEUE, consumerQueueName('prueba')]);
   });
 });
