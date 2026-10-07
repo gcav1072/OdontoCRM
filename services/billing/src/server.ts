@@ -8,6 +8,7 @@ import type { BillingDatabaseHandle } from './db/client.js';
 import { createPdfRenderer } from './pdf-renderer.js';
 import { registerBillingRoutes } from './routes/billing-routes.js';
 import { registerBookRoutes } from './routes/book-routes.js';
+import { registerDocumentRoutes } from './routes/document-routes.js';
 import { registerFormRoutes } from './routes/form-routes.js';
 import { registerRateRoutes } from './routes/rate-routes.js';
 import type { BillingServices } from './services.js';
@@ -64,6 +65,7 @@ export const createBillingServer = async (
   registerBillingRoutes(app, services);
   registerRateRoutes(app, services);
   registerBookRoutes(app, services);
+  registerDocumentRoutes(app, services);
   registerFormRoutes(app, services);
 
   return app;
