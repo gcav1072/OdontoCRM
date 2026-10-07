@@ -289,10 +289,14 @@ export const invoices = pgTable(
     index('idx_invoices_status_created').on(table.status, table.createdAt),
     index('idx_invoices_patient').on(table.patientId, table.createdAt),
     check('chk_invoices_status', sql`${table.status} in (${sqlLiteralList(INVOICE_STATUSES)})`),
-    /** Emitida = número, tasa, totales y PDF: sin eso no es un documento. */
+    /**
+     * Emitida = número, tasa, totales y PDF: sin eso no es un documento. Solo los estados que lo son
+     * lo exigen; `borrador` y `anulada` quedan fuera porque **descartar un borrador** lo deja
+     * `anulada` sin haber consumido número fiscal ni archivado PDF (§4, B8).
+     */
     check(
       'chk_invoices_issued',
-      sql`${table.status} = 'borrador' or (
+      sql`${table.status} in (${sqlLiteralList(['borrador', 'anulada'])}) or (
         ${table.invoiceNumber} is not null and ${table.exchangeRateMicros} is not null
         and ${table.issuedAt} is not null and ${table.pdfPath} is not null)`,
     ),
