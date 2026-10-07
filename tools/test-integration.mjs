@@ -74,25 +74,26 @@ const extraEnv = {
 };
 
 /**
- * Base **propia** para la suite de reportes.
+ * Base **propia** para las suites que afirman cifras o estados **absolutos** sobre datos compartidos.
  *
- * Es la única suite que afirma cifras **absolutas** sobre su read model («el embudo
- * cuenta 4 solicitudes»), y con la pila en marcha el servicio de reportes proyecta en
- * esa misma base los eventos que publican las demás suites y el humo: los totales
- * cambiaban según lo que estuviera corriendo. Se le prepara una base temporal (como
- * hace `db:verify-migrations`) con las extensiones y las migraciones del servicio, y
- * se borra al terminar. Si falta `PG_ADMIN_URL` o `packages/db/dist`, se usa la base
- * del servicio y la suite se aísla por su cuenta (vacía el read model y acota el
- * rango de fechas).
+ * La de reportes lo es: con la pila en marcha, el servicio de reportes proyecta en esa misma base los
+ * eventos que publican las demás suites y el humo, y los totales cambiaban según lo que estuviera
+ * corriendo. La de **facturación** también: da por hecho que no hay tasa publicada para hoy ni lotes
+ * de formas en la serie real, y eso es exactamente lo que dejan el uso de verdad y el humo de
+ * facturación.
+ *
+ * A cada una se le prepara una base temporal (como hace `db:verify-migrations`) con las extensiones y
+ * las migraciones del servicio, y se borra al terminar. Si falta `PG_ADMIN_URL` o el build, se usa la
+ * base del servicio y la suite se aísla por su cuenta.
  */
-const prepararBaseDeReportes = async () => {
-  const compartida = extraEnv.TEST_REPORTING_DATABASE_URL;
+const prepararBaseTemporal = async ({ variable, servicio, etiqueta, temporal, aislamiento }) => {
+  const compartida = extraEnv[variable];
   const adminUrl = process.env.PG_ADMIN_URL ?? readEnvValue('.env', 'PG_ADMIN_URL');
-  const migrador = resolve(ROOT, 'services/reporting/dist/db/migrate.js');
+  const migrador = resolve(ROOT, `services/${servicio}/dist/db/migrate.js`);
   if (compartida === undefined || adminUrl === undefined || !existsSync(migrador)) {
     console.warn(
-      '· Suite de reportes sobre la base del servicio (falta PG_ADMIN_URL o el build): ' +
-        'se aísla vaciando el read model.',
+      `· Suite de ${etiqueta.toLowerCase()} sobre la base del servicio (falta PG_ADMIN_URL o el ` +
+        `build): ${aislamiento}.`,
     );
     return { url: compartida, temporal: undefined };
   }
@@ -100,7 +101,6 @@ const prepararBaseDeReportes = async () => {
   const { default: pg } = await import('pg');
   const { runMigrations } = await import('../packages/db/dist/index.js');
   const owner = decodeURIComponent(new URL(compartida).username);
-  const temporal = 'odonto_reporting_prueba';
   if (!/^[a-z_][a-z0-9_]*$/.test(owner) || !/^[a-z_][a-z0-9_]*$/.test(temporal)) {
     return { url: compartida, temporal: undefined };
   }
@@ -134,15 +134,30 @@ const prepararBaseDeReportes = async () => {
 
   await runMigrations({
     connectionString: url,
-    applicationName: 'odontocrm-test-reporting',
-    migrationsFolder: resolve(ROOT, 'services/reporting/migrations'),
+    applicationName: `odontocrm-test-${servicio}`,
+    migrationsFolder: resolve(ROOT, `services/${servicio}/migrations`),
   });
-  console.log(`· Reportes: base temporal "${temporal}" preparada y migrada.`);
+  console.log(`· ${etiqueta}: base temporal "${temporal}" preparada y migrada.`);
   return { url, temporal };
 };
 
-const reportes = await prepararBaseDeReportes();
+const reportes = await prepararBaseTemporal({
+  variable: 'TEST_REPORTING_DATABASE_URL',
+  servicio: 'reporting',
+  etiqueta: 'Reportes',
+  temporal: 'odonto_reporting_prueba',
+  aislamiento: 'se aísla vaciando el read model y acotando el rango de fechas',
+});
 if (reportes.url !== undefined) extraEnv.TEST_REPORTING_DATABASE_URL = reportes.url;
+
+const facturacion = await prepararBaseTemporal({
+  variable: 'TEST_BILLING_DATABASE_URL',
+  servicio: 'billing',
+  etiqueta: 'Facturación',
+  temporal: 'odonto_billing_prueba',
+  aislamiento: 'la suite se aísla marcando su propia tasa y su propia serie de formas',
+});
+if (facturacion.url !== undefined) extraEnv.TEST_BILLING_DATABASE_URL = facturacion.url;
 
 const url = new URL(databaseUrl);
 console.log(
@@ -171,8 +186,9 @@ const result = spawnSync(
   },
 );
 
-// La base temporal de reportes no se queda por ahí: se borra siempre.
-if (reportes.temporal !== undefined) {
+// Las bases temporales no se quedan por ahí: se borran siempre.
+for (const base of [reportes, facturacion]) {
+  if (base.temporal === undefined) continue;
   const { default: pg } = await import('pg');
   const adminUrl = process.env.PG_ADMIN_URL ?? readEnvValue('.env', 'PG_ADMIN_URL');
   const admin = new pg.Client({
@@ -181,11 +197,11 @@ if (reportes.temporal !== undefined) {
   });
   try {
     await admin.connect();
-    await admin.query(`drop database if exists "${reportes.temporal}" with (force)`);
-    console.log(`· Reportes: base temporal "${reportes.temporal}" borrada.`);
+    await admin.query(`drop database if exists "${base.temporal}" with (force)`);
+    console.log(`· Base temporal "${base.temporal}" borrada.`);
   } catch {
     console.warn(
-      `· No se pudo borrar la base temporal "${reportes.temporal}" (se borrará en la próxima corrida).`,
+      `· No se pudo borrar la base temporal "${base.temporal}" (se borrará en la próxima corrida).`,
     );
   } finally {
     await admin.end().catch(() => undefined);

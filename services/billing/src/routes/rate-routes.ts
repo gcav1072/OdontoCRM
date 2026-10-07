@@ -45,7 +45,8 @@ export const registerRateRoutes = (app: FastifyInstance, services: BillingServic
     const rate = await setRate(db, input, actorFrom(request));
     // El publicador avanza ya: la tasa queda en la auditoría sin esperar el ciclo.
     kickOutbox?.();
-    await reply.code(201);
+    // Sin `await`: `reply` es *thenable* y esperarlo antes de devolverlo sería un interbloqueo.
+    reply.code(201);
     return rate;
   });
 };

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { outboxEvents } from '@odontocrm/db';
 import { createDiskBlobStore } from '@odontocrm/storage';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { rateDateInCaracas, vesCentimosFromUsd } from '@odontocrm/contracts';
@@ -54,6 +55,21 @@ const actor = {
   requestId: `req-${MARKER}`,
 };
 
+/**
+ * Cerrojo compartido con la suite de **emisión**.
+ *
+ * Las dos comparten la base temporal y **se contradicen** en una sola cosa: la tasa de hoy. La de
+ * emisión exige que no haya ninguna publicada antes de emitir; esta publica la suya para cobrar.
+ * Vitest arranca los archivos en paralelo, así que en vez de dejarlo a la suerte del planificador se
+ * serializan con un cerrojo de asesoramiento, que se suelta al cerrar la conexión.
+ */
+const tomarCerrojoDeLaTasaDeHoy = async (url: string | undefined): Promise<Client> => {
+  const cerrojo = new Client({ connectionString: url });
+  await cerrojo.connect();
+  await cerrojo.query(`select pg_advisory_lock(hashtext('billing: la tasa de hoy'))`);
+  return cerrojo;
+};
+
 const paciente = {
   patientId: globalThis.crypto.randomUUID(),
   patientName: 'Carmen Rojas',
@@ -70,6 +86,7 @@ describeWithDatabase('cobrar', () => {
   const idsFacturas: string[] = [];
   const idsTasas: string[] = [];
   const idsPagos: string[] = [];
+  let cerrojo: Client | undefined;
 
   /** Una factura emitida, lista para cobrar. */
   const facturaEmitida = async (numero: number): Promise<string> => {
@@ -105,6 +122,8 @@ describeWithDatabase('cobrar', () => {
     handle = createBillingDatabase(
       loadBillingConfig({ DATABASE_URL: billingUrl, LOG_LEVEL: 'silent', STORAGE_DIR: dirAlmacen }),
     );
+    // Antes de tocar la tasa: que la suite de emisión no esté usándola.
+    cerrojo = await tomarCerrojoDeLaTasaDeHoy(billingUrl);
     await handle.db
       .insert(invoiceSeries)
       .values({ series: SERIE, numberingMode: 'formas_libres' })
@@ -132,6 +151,8 @@ describeWithDatabase('cobrar', () => {
       .where(eq(billingSettings.id, 1));
     await handle.db.delete(invoiceSeries).where(eq(invoiceSeries.series, SERIE));
     await handle.close();
+    // Se suelta el último: la otra suite de dinero puede entrar.
+    await cerrojo?.end().catch(() => undefined);
     rmSync(dirAlmacen, { recursive: true, force: true });
   });
 

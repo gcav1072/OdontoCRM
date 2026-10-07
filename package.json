@@ -83,6 +83,7 @@
     "smoke:clinical": "node tools/smoke-clinical-session.mjs",
     "smoke:prescription": "node tools/smoke-prescription.mjs",
     "smoke:reporting": "node tools/smoke-reporting.mjs",
+    "smoke:billing": "node tools/smoke-billing.mjs",
     "reports:latencia": "node tools/reportes-latencia.mjs",
     "e2e:flujo": "node tools/e2e-flujo.mjs",
     "e2e:reportes": "node tools/e2e-reportes.mjs",

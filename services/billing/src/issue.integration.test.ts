@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { outboxEvents } from '@odontocrm/db';
 import { createDiskBlobStore } from '@odontocrm/storage';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createDraftFromSession } from './billing/invoice-service.js';
@@ -56,6 +57,21 @@ const actor = {
   requestId: `req-${MARKER}`,
 };
 
+/**
+ * Cerrojo compartido con la suite de **cobros**.
+ *
+ * Las dos comparten la base temporal y **se contradicen** en una sola cosa: la tasa de hoy. Esta
+ * suite exige que no haya ninguna publicada antes de emitir; la de cobros publica la suya. Vitest
+ * arranca los archivos en paralelo, así que en vez de dejarlo a la suerte del planificador se
+ * serializan con un cerrojo de asesoramiento, que se suelta al cerrar la conexión.
+ */
+const tomarCerrojoDeLaTasaDeHoy = async (url: string | undefined): Promise<Client> => {
+  const cerrojo = new Client({ connectionString: url });
+  await cerrojo.connect();
+  await cerrojo.query(`select pg_advisory_lock(hashtext('billing: la tasa de hoy'))`);
+  return cerrojo;
+};
+
 const paciente = {
   patientId: globalThis.crypto.randomUUID(),
   fullName: 'Luis Márquez',
@@ -99,6 +115,7 @@ describeWithDatabase('emitir la factura', () => {
   let draftId = '';
   let idLote = '';
   const idsTasas: string[] = [];
+  let cerrojo: Client | undefined;
 
   beforeAll(async () => {
     if (!ready) throw new Error('falta TEST_BILLING_DATABASE_URL');
@@ -109,6 +126,8 @@ describeWithDatabase('emitir la factura', () => {
         STORAGE_DIR: dirAlmacen,
       }),
     );
+    // Antes de tocar la tasa: que la suite de cobros no esté usándola.
+    cerrojo = await tomarCerrojoDeLaTasaDeHoy(billingUrl);
     await handle.db
       .insert(invoiceSeries)
       .values({ series: SERIE, numberingMode: 'formas_libres' })
@@ -134,6 +153,8 @@ describeWithDatabase('emitir la factura', () => {
     }
     await handle.db.delete(invoiceSeries).where(eq(invoiceSeries.series, SERIE));
     await handle.close();
+    // Se suelta el último: la otra suite de dinero puede entrar.
+    await cerrojo?.end().catch(() => undefined);
     rmSync(dirAlmacen, { recursive: true, force: true });
   });
 

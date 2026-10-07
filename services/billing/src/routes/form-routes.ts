@@ -32,7 +32,8 @@ export const registerFormRoutes = (app: FastifyInstance, services: BillingServic
     const input = parseOrThrow(createFiscalFormLotSchema, request.body);
     const lote = await createLot(db, input, actorFrom(request));
     kickOutbox?.();
-    await reply.code(201);
+    // Sin `await`: `reply` es *thenable* y esperarlo antes de devolverlo sería un interbloqueo.
+    reply.code(201);
     return lote;
   });
 
