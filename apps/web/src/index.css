@@ -16,6 +16,24 @@
    viven fuera, así que se declaran como fuente adicional. */
 @source '../../../packages/ui/src';
 
+/*
+ * El papel de los documentos que imprime el navegador (odontograma, historia clínica,
+ * reportes).
+ *
+ * `@page` es la ÚNICA forma de fijar el tamaño y el margen del papel: sin esta regla
+ * los decide el navegador, y no coinciden entre equipos ni con el tema. Los síntomas
+ * eran justo esos: en modo oscuro algunos navegadores imprimían **sin margen**, y el
+ * documento salía pegado al borde y mal encajado en carta. Los documentos no llevan
+ * relleno propio al imprimir (`print:px-0 print:py-0`): el margen del papel es este.
+ *
+ * Carta es el formato que se usa en la clínica. Los PDF del servidor (récipe A5,
+ * factura y reportes A4) llevan su propio `@page` y no pasan por aquí.
+ */
+@page {
+  size: letter;
+  margin: 15mm;
+}
+
 @layer base {
   html {
     color-scheme: light;
@@ -42,6 +60,15 @@
    * Los tokens siguen siendo los del tema; para eso está el hook.
    */
   @media print {
+    /*
+     * `color-scheme: light` y no solo el fondo: con el tema oscuro activo el navegador
+     * pinta el papel con la paleta oscura —y en algunos casos lo saca sin margen—. El
+     * papel es blanco aunque la pantalla esté oscura.
+     */
+    html {
+      color-scheme: light !important;
+    }
+
     html,
     body {
       background: #fff !important;
