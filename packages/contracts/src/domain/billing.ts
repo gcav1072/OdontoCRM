@@ -1,3 +1,4 @@
+import { buildCsv, type CsvColumn, type CsvValue } from '../common/csv.js';
 import { z } from 'zod';
 
 import { optionalText } from '../common/optional.js';
@@ -988,3 +989,94 @@ export const billingInvoiceVoidedSchema = z.object({
 });
 
 export type BillingInvoiceVoided = z.infer<typeof billingInvoiceVoidedSchema>;
+
+/* ── 15. El libro de ventas y el de IGTF (Art. 75; §5.5 del plan) ─────────── */
+
+/** El rango del libro: días de **Caracas** (`aaaa-mm-dd`). Sin rango, el mes en curso. */
+export const bookQuerySchema = z
+  .object({ from: z.iso.date().optional(), to: z.iso.date().optional() })
+  .strict();
+
+export type BookQuery = z.infer<typeof bookQuerySchema>;
+
+/**
+ * Una operación del libro de ventas. La **nota de crédito** entra como una fila más, con el monto en
+ * **negativo** y el documento de la factura que deja sin efecto: el libro cuenta lo que pasó, no lo
+ * que sobrevivió, y así el total del período cuadra con la realidad.
+ */
+export interface SalesBookRow extends Record<string, CsvValue> {
+  fecha: string;
+  documento: string;
+  control: string;
+  cliente: string;
+  rif: string;
+  exento: number;
+  base16: number;
+  iva: number;
+  total: number;
+  /** La tasa congelada del documento, en Bs./US$. */
+  tasa: number;
+  totalBs: number;
+  estado: string;
+}
+
+export const SALES_BOOK_COLUMNS: readonly CsvColumn[] = [
+  { key: 'fecha', label: 'Fecha' },
+  { key: 'documento', label: 'Documento' },
+  { key: 'control', label: 'N.º de control' },
+  { key: 'cliente', label: 'Cliente' },
+  { key: 'rif', label: 'RIF/Cédula' },
+  { key: 'exento', label: 'Exento US$' },
+  { key: 'base16', label: 'Base 16 % US$' },
+  { key: 'iva', label: 'IVA US$' },
+  { key: 'total', label: 'Total US$' },
+  { key: 'tasa', label: 'Tasa Bs./US$' },
+  { key: 'totalBs', label: 'Total Bs.' },
+  { key: 'estado', label: 'Estado' },
+];
+
+export const salesBookToCsv = (rows: readonly SalesBookRow[]): string =>
+  buildCsv(SALES_BOOK_COLUMNS, rows);
+
+/** Una fila del libro de IGTF: **solo** los cobros en los que el tributo se causó. */
+export interface IgtfBookRow extends Record<string, CsvValue> {
+  fecha: string;
+  recibo: string;
+  factura: string;
+  medio: string;
+  /** Lo entregado por el paciente, en la moneda del medio. */
+  monto: number;
+  alicuota: number;
+  percibidoPor: string;
+  igtf: number;
+  igtfBs: number;
+}
+
+export const IGTF_BOOK_COLUMNS: readonly CsvColumn[] = [
+  { key: 'fecha', label: 'Fecha' },
+  { key: 'recibo', label: 'Recibo' },
+  { key: 'factura', label: 'Factura' },
+  { key: 'medio', label: 'Medio de pago' },
+  { key: 'monto', label: 'Monto' },
+  { key: 'alicuota', label: 'Alícuota %' },
+  { key: 'percibidoPor', label: 'Percibido por' },
+  { key: 'igtf', label: 'IGTF US$' },
+  { key: 'igtfBs', label: 'IGTF Bs.' },
+];
+
+export const igtfBookToCsv = (rows: readonly IgtfBookRow[]): string =>
+  buildCsv(IGTF_BOOK_COLUMNS, rows);
+
+/**
+ * El nombre del archivo: `libro-de-ventas-<desde>_<hasta>.csv`. Se limpia todo lo que no sea
+ * `[0-9A-Za-z._-]` porque el valor viaja a una cabecera HTTP (`content-disposition`): comillas o
+ * saltos de línea ahí son una inyección de cabeceras.
+ */
+export const bookFileName = (tipo: 'ventas' | 'igtf', query: BookQuery): string => {
+  const parte = (valor: string | undefined, porDefecto: string): string => {
+    if (valor === undefined || valor === '') return porDefecto;
+    const limpio = valor.replace(/[^0-9A-Za-z._-]/g, '-');
+    return limpio.length > 0 ? limpio : porDefecto;
+  };
+  return `libro-de-${tipo}-${parte(query.from, 'inicio')}_${parte(query.to, 'fin')}.csv`;
+};
