@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CircleCheck, CircleX, Clock, RefreshCw, ShieldCheck } from 'lucide-react';
 
 import { LinkButton } from '../components/LinkButton';
+import { SystemHealthPanel } from '../components/sistema/SystemHealthPanel';
 import { apiErrorMessage } from '../lib/api';
 import { authApi } from '../lib/endpoints';
 import { formatDate, formatDuration, formatRelative, formatTime } from '../lib/format';
@@ -238,6 +239,13 @@ export const HomePage = () => {
           </Button>
         </CardContent>
       </Card>
+
+      {/*
+        Panel de estado de los servicios internos: solo el administrador. La consulta se
+        hace al pintar el panel (el gateway responde 403 a los demás roles), así que no se
+        monta siquiera para quien no lo necesita.
+      */}
+      {roles.includes('admin') && <SystemHealthPanel />}
     </div>
   );
 };

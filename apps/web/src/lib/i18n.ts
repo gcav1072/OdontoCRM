@@ -2353,6 +2353,25 @@ const DICCIONARIO = {
   'verificarExpediente.noConsta': 'Este expediente no consta',
   'verificarExpediente.noConstaTexto':
     'El código no corresponde a ningún expediente emitido por este consultorio. Si te lo entregaron en papel, avisa al consultorio.',
+
+  // --- Estado del sistema (panel del administrador, mejoras post-Fase 11) ---
+  // Solo lo ve el rol `admin`. Cuenta lo que un diagnóstico necesita: quién responde,
+  // cuánto tarda y qué se está atascando.
+  'sistema.titulo': 'Estado del sistema',
+  'sistema.texto':
+    'Salud de los servicios internos: respuesta, latencia, conexiones a la base y eventos sin publicar.',
+  'sistema.cargando': 'Consultando el estado de los servicios…',
+  'sistema.refrescar': 'Refrescar',
+  'sistema.sinRespuesta': 'sin respuesta',
+  'sistema.checkFallido': 'comprobación fallida',
+  'sistema.estado.ok': 'Todo en orden',
+  'sistema.estado.degraded': 'Funcionando a medias',
+  'sistema.estado.error': 'Con fallos',
+  'sistema.total.ok': 'Servicios bien',
+  'sistema.total.error': 'Con fallos',
+  'sistema.total.sinRespuesta': 'Sin responder',
+  'sistema.total.outbox': 'Con outbox atrasado',
+  'sistema.total.latencia': 'Latencia media',
   // ── Fase 6B · odontograma: pestaña, impresión A4 y accesos (Lead) ──────────
   'odonto.pestana.historia': 'Historia clínica',
   'odonto.pestana.odontograma': 'Odontograma',

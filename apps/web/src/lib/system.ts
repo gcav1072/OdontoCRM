@@ -1,4 +1,4 @@
-import type { SystemMeta } from '@odontocrm/contracts';
+import type { SystemHealthReport, SystemMeta } from '@odontocrm/contracts';
 
 import { api } from './api';
 
@@ -18,3 +18,22 @@ export const fetchSystemMeta = (signal?: AbortSignal): Promise<SystemMeta> =>
 
 /** Clave de TanStack Query del estado del sistema (una sola vez por pestaña). */
 export const SYSTEM_META_QUERY_KEY = ['sistema', 'meta'] as const;
+
+/**
+ * `GET /api/v1/system/health/detailed` — estado **consolidado** de los servicios.
+ *
+ * Solo el administrador la puede pedir (el gateway responde 403 a los demás), así que se
+ * consulta únicamente cuando el panel va a pintarse. Se refresca cada medio minuto: es un
+ * panel de diagnóstico que se deja abierto, y cada consulta hace que la puerta pregunte a
+ * los nueve servicios.
+ */
+export const fetchSystemHealth = (signal?: AbortSignal): Promise<SystemHealthReport> =>
+  api.get<SystemHealthReport>('/system/health/detailed', {
+    ...(signal === undefined ? {} : { signal }),
+  });
+
+/** Clave de TanStack Query del panel de estado (solo la usa el administrador). */
+export const SYSTEM_HEALTH_QUERY_KEY = ['sistema', 'health'] as const;
+
+/** Cada cuánto se refresca el panel mientras está abierto. */
+export const SYSTEM_HEALTH_REFRESH_MS = 30_000;
