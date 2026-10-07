@@ -28,22 +28,46 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { chmodSync, chownSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  chownSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 
-/* ── Los 8 servicios con base propia, en orden ─────────────────────────────── */
-const SERVICIOS = [
-  { nombre: 'identity', puerto: 4001, base: 'odonto_identity' },
-  { nombre: 'patients', puerto: 4002, base: 'odonto_patients' },
-  { nombre: 'scheduling', puerto: 4003, base: 'odonto_scheduling' },
-  { nombre: 'notifications', puerto: 4004, base: 'odonto_notifications' },
-  { nombre: 'clinical', puerto: 4005, base: 'odonto_clinical' },
-  { nombre: 'odontogram', puerto: 4006, base: 'odonto_odontogram' },
-  { nombre: 'screens', puerto: 4007, base: 'odonto_screens' },
-  { nombre: 'reporting', puerto: 4008, base: 'odonto_reporting' },
-  { nombre: 'billing', puerto: 4009, base: 'odonto_billing' },
-];
+/* ── Los servicios con base propia: se DESCUBREN, no se listan ────────────────
+ * Un servicio es una carpeta `services/<x>/` con `migraciones/`, y su puerto lo declara él
+ * mismo en `.env.example` (`<X>_PORT`). Así, añadir un servicio el día de mañana es crear su
+ * carpeta y darle puerto: este aprovisionador le hace rol y base (`odonto_<x>`) solo.
+ * Antes había aquí una lista copiada a mano (y otras cinco por el instalador): al entrar
+ * `billing` tres se quedaron atrás, una de ellas la del respaldo, que decía «sin errores»
+ * con las facturas fuera.
+ */
+const RAIZ_DEL_CODIGO = resolve(dirname(new URL(import.meta.url).pathname), '../../..');
+
+const puertoDeclarado = (servicio) => {
+  const envExample = readFileSync(join(RAIZ_DEL_CODIGO, '.env.example'), 'utf8');
+  const m = new RegExp(`^${servicio.toUpperCase()}_PORT=(\\d+)$`, 'm').exec(envExample);
+  return m === null ? 0 : Number(m[1]);
+};
+
+const SERVICIOS = readdirSync(join(RAIZ_DEL_CODIGO, 'services'), { withFileTypes: true })
+  .filter((d) => d.isDirectory() && existsSync(join(RAIZ_DEL_CODIGO, 'services', d.name, 'migrations')))
+  .map((d) => ({
+    nombre: d.name,
+    puerto: puertoDeclarado(d.name),
+    base: `odonto_${d.name}`,
+  }))
+  .sort((a, b) => a.puerto - b.puerto);
+if (SERVICIOS.length === 0 || SERVICIOS.some((s) => !s.puerto)) {
+  console.error('  ✖ no pude descubrir los servicios en services/ (¿falta .env.example?)');
+  process.exit(1);
+}
 
 /** La cola de eventos (pg-boss) es UNA base compartida: todos los servicios la leen igual. */
 const COLA = { base: 'odonto_events', rol: 'odonto_events' };

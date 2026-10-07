@@ -90,9 +90,20 @@ BACKUP_DIR="/var/backups/odontocrm"
 LOG_FILE="/var/log/odontocrm/restore.log"
 PG_HOST="/var/run/postgresql"
 PG_PORT="5432"
+# La lista de bases se DERIVADA del repositorio (infra/fedora/lib/servicios.sh): una por
+# servicio + la cola. Estaba escrita a mano aquí y con `billing` la copia diaria se quedó sin
+# las facturas **diciendo «respaldo completado sin errores»**.
+LIB_SERVICIOS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/servicios.sh"
+if [[ -f "$LIB_SERVICIOS" ]]; then
+  # shellcheck source=../lib/servicios.sh
+  source "$LIB_SERVICIOS"
+  BASES_DERIVADAS="$(bases_del_respaldo)"
+else
+  BASES_DERIVADAS=""
+fi
 PG_ADMIN_USER="postgres"          # usuario con permiso para DROP/CREATE DATABASE
 PGPASSFILE="/etc/odontocrm/.pgpass"
-DATABASES="odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_billing odonto_events"
+DATABASES="${BASES_DERIVADAS}"
 CONFIG_FILE="/etc/odontocrm/backup.env"
 PGBIN_DIR=""
 VERIFY_SUFFIX="__verif"

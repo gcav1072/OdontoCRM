@@ -37,7 +37,33 @@ trap 'codigo=$?; if (( codigo != 0 )) && [[ "$BASH_COMMAND" != exit* ]]; then pr
 CODE_DIR="${CODE_DIR:-/opt/odontocrm}"
 ETC_DIR="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}"
 DATA_DIR="${ODONTOCRM_DATA_DIR:-/var/lib/odontocrm}"
-SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting billing)
+# La lista de servicios y sus puertos salen de `infra/fedora/lib/servicios.sh`, que los
+# DESCUBRE del repositorio (una carpeta `services/<x>/` con migraciones, y su puerto declarado
+# en `.env.example`). Aquí había una lista copiada a mano: el día que se añada un servicio, este
+# comando lo ve solo. El gateway va aparte (unidad propia, sin base).
+SERVICIOS=()
+LIB_SERVICIOS=""
+for candidato in "$CODE_DIR/infra/fedora/lib/servicios.sh" \
+  "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/lib/servicios.sh"; do
+  if [[ -f "$candidato" ]]; then
+    LIB_SERVICIOS="$candidato"
+    break
+  fi
+done
+if [[ -n "$LIB_SERVICIOS" ]]; then
+  # shellcheck source=lib/servicios.sh
+  source "$LIB_SERVICIOS"
+  mapfile -t SERVICIOS < <(servicios_del_repo)
+fi
+if (( ${#SERVICIOS[@]} == 0 )); then
+  # Sin librería no hay lista de servicios (y sin lista no hay nada que hacer). El mensaje va
+  # sin colores a propósito: las variables de color se definen más abajo y con `set -u` el
+  # propio aviso reventaría.
+  printf '\n  ✖ no encuentro la lista de servicios: falta infra/fedora/lib/servicios.sh\n' >&2
+  printf '    busqué en %s y junto a este comando\n' "$CODE_DIR" >&2
+  printf '    el código desplegado está incompleto:  sudo odontocrm actualizar\n' >&2
+  exit 1
+fi
 
 C_OK=$'\e[32m'; C_AV=$'\e[33m'; C_ER=$'\e[31m'; C_TI=$'\e[1m'; C_RE=$'\e[0m'
 ok()   { printf '  %s✔%s %s\n' "$C_OK" "$C_RE" "$1"; }
@@ -53,7 +79,7 @@ necesita_root() {
 
 # ── La red, que en un portátil de pruebas cambia sola ─────────────────────────
 # Se apunta con qué IP quedó todo adaptado (`odontocrm red --arreglar`): el temporizador
-# `odontocrm-red.timer` compara con esto y, mientras la red no cambie, no toca nada (ni
+# \`odontocrm-red.timer\` compara con esto y, mientras la red no cambie, no toca nada (ni
 # reemite el certificado ni reinicia servicios cada cinco minutos). Es estado, no
 # configuración: por eso vive en /var/lib y no en /etc.
 ULTIMA_IP_ARCHIVO="$DATA_DIR/red-ultima-ip"
@@ -104,12 +130,12 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    Actualización de rutina: trae el código, pone al día
                                    unidades y plantillas, compila, migra, reinicia y
                                    verifica. Sigue la rama del despliegue (con
-                                   `--rama=main` cambia a esa y se queda en ella).
+                                   \`--rama=main\` cambia a esa y se queda en ella).
                                    Para el despliegue COMPLETO con evidencia (TLS,
                                    firewall, SELinux, respaldo y restauración probada)
-                                   está `infra/fedora/ensayo-despliegue.sh`.
+                                   está \`infra/fedora/ensayo-despliegue.sh\`.
   sudo odontocrm parar             Detener los ${#SERVICIOS[@]} servicios (el gateway primero: es la
-                                   puerta). nginx y PostgreSQL se quedan; con `--todo`
+                                   puerta). nginx y PostgreSQL se quedan; con \`--todo\`
                                    se paran también ellos (sistema completamente parado).
   sudo odontocrm arrancar          Arrancarlos en orden y comprobar que los 9 responden.
                                    Sirve igual si el sistema estaba parado del todo.
@@ -136,7 +162,7 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    no a un rango fijo), certificado reemitido con la IP
                                    de ahora (misma CA: los equipos no tocan nada),
                                    WEB_ORIGIN y el DNS del nombre actualizados.
-                                   El temporizador `odontocrm-red.timer` lo ejecuta cada
+                                   El temporizador \`odontocrm-red.timer\` lo ejecuta cada
                                    5 minutos con --si-cambio: si la IP no cambió, no
                                    toca nada (útil en un portátil que cambia de red).
   sudo odontocrm selinux           Denegaciones de SELinux de hoy, con la causa más
@@ -188,8 +214,10 @@ case "$ORDEN" in
   verificar)
     necesita_root
     command -v curl >/dev/null || morir 'falta curl'
-    declare -A PUERTOS=([identity]=4001 [patients]=4002 [scheduling]=4003 [notifications]=4004
-                        [clinical]=4005 [odontogram]=4006 [screens]=4007 [reporting]=4008 [billing]=4009 [gateway]=8090)
+    # Los puertos salen de la misma fuente que la lista (nada escrito a mano).
+    declare -A PUERTOS=()
+    for s in "${SERVICIOS[@]}"; do PUERTOS[$s]="$(puerto_de_servicio "$s")"; done
+    PUERTOS[gateway]="${PUERTO_GATEWAY:-8090}"
 
     # Tras un reinicio (o un `actualizar`) los servicios no tardan todos lo mismo en
     # escuchar: notifications y clinical levantan plantillas y el navegador antes de
@@ -696,7 +724,7 @@ EOF
     RED_LAN="$(ip -o -f inet addr show dev "${IFACE_LAN:-$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)}" 2>/dev/null | awk 'NR==1 {print $4; exit}' || true)"
     NOMBRE="$(grep -m1 -oP 'server_name \K[^;]+' /etc/nginx/conf.d/odontocrm.conf 2>/dev/null | awk '{print $1}' || true)"
 
-    # `--si-cambio` lo usa el temporizador `odontocrm-red.timer`: si la IP es la misma con
+    # `--si-cambio` lo usa el temporizador \`odontocrm-red.timer\`: si la IP es la misma con
     # la que ya se adaptó todo —y el DNS propio está coherente— no hay nada que hacer, y
     # sale en silencio. Así puede correr cada cinco minutos sin reemitir el certificado ni
     # reiniciar servicios que no han cambiado.
@@ -838,7 +866,7 @@ EOF
     if (( problemas == 0 )); then
       ok 'todo apunta a la red actual: se puede entrar desde otro equipo'
       echo "    Recuerda instalar el certificado en cada equipo:  http://${IP_LAN}/ca.crt"
-      # Se apunta la IP: el temporizador `odontocrm-red.timer` no volverá a tocar nada
+      # Se apunta la IP: el temporizador \`odontocrm-red.timer\` no volverá a tocar nada
       # mientras la red no cambie.
       guardar_ip_red "$IP_LAN"
       exit 0

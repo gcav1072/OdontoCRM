@@ -659,6 +659,12 @@ if (( SIN_RESPALDO )); then
 elif (( DRY_RUN )); then
   detalle '[dry-run] crear rol odonto_backup, backup.env y el temporizador diario'
 else
+  # La lista de bases sale de `bases_del_respaldo` (lib/servicios.sh): un servicio con base
+  # propia entra solo. Estaba escrita a mano aquí y se quedó sin `odonto_billing`, así que la
+  # copia diaria decía «respaldo completado sin errores» **sin las facturas dentro** — el peor
+  # fallo posible en un respaldo: el que no se nota hasta que hace falta.
+  bases_respaldo="$(bases_del_respaldo)"
+
   # backup.env tiene que existir antes: el rol de respaldo se apoya en él.
   if [[ ! -f "$ETC_DIR/backup.env" ]]; then
     cat >"$ETC_DIR/backup.env" <<EOF
@@ -674,20 +680,21 @@ PG_HOST=127.0.0.1
 PG_PORT=5432
 PG_USER=odonto_backup
 PGPASSFILE=$ETC_DIR/.pgpass
-DATABASES="odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_events"
-ROLE_odonto_identity=odonto_identity
-ROLE_odonto_patients=odonto_patients
-ROLE_odonto_scheduling=odonto_scheduling
-ROLE_odonto_notifications=odonto_notifications
-ROLE_odonto_clinical=odonto_clinical
-ROLE_odonto_odontogram=odonto_odontogram
-ROLE_odonto_screens=odonto_screens
-ROLE_odonto_reporting=odonto_reporting
+DATABASES="$bases_respaldo"
+$(for s in "${SERVICIOS[@]}"; do printf 'ROLE_odonto_%s=odonto_%s\n' "$s" "$s"; done)
 EOF
     chown root:root "$ETC_DIR/backup.env"; chmod 0600 "$ETC_DIR/backup.env"
     ok 'backup.env creado'
   else
     ok 'backup.env ya existía: se conserva'
+    # …pero si le falta alguna base (le pasó a la instalación que ya existía cuando entró
+    # `billing`), se AÑADE con `asegurar_bases_en_backup_env` (lib/servicios.sh), que guarda
+    # una copia del archivo tal como estaba. No quita ninguna: en un respaldo, mejor que sobre.
+    anadidas="$(asegurar_bases_en_backup_env "$ETC_DIR/backup.env")"
+    if [[ -n "$anadidas" ]]; then
+      av "el respaldo no incluía: $anadidas(se añaden; queda copia en backup.env.antes-de-*)"
+      ok "backup.env al día: el respaldo incluye $(wc -w <<<"$bases_respaldo") bases"
+    fi
   fi
 
   if [[ -f "$CODE_DIR/infra/fedora/backup/crear-rol-respaldo.sh" ]]; then

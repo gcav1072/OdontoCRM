@@ -28,6 +28,7 @@ import { resolve } from 'node:path';
 import pg from 'pg';
 
 import { revisarEntornos } from './lib/entorno.mjs';
+import { SERVICIOS } from './lib/servicios.mjs';
 import {
   bloqueoVigente,
   limpiarBloqueo,
@@ -41,18 +42,8 @@ const ROOT = resolve(process.cwd());
 const soloInformar = process.argv.includes('--all');
 
 /** Las mismas bases que crea `db:bootstrap` (`infra/db/bootstrap.mjs`). */
-const BASES = [
-  'odonto_identity',
-  'odonto_patients',
-  'odonto_scheduling',
-  'odonto_notifications',
-  'odonto_clinical',
-  'odonto_odontogram',
-  'odonto_screens',
-  'odonto_reporting',
-  'odonto_billing',
-  'odonto_events',
-];
+/** Las mismas bases que crea `db:bootstrap` (derivadas de `services/` + la cola). */
+const BASES = [...SERVICIOS.map((s) => s.database), 'odonto_events'];
 
 /* ── 1. ¿Hay una operación de mantenimiento en curso? ──────────────────────── */
 

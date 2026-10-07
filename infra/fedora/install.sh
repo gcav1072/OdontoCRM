@@ -105,19 +105,22 @@ PM2_SAVE=0              # ejecutar `pm2 save` si ya hay procesos
 PROXY_PORT="${PROXY_PORT:-443}"
 LAN_CIDR="${LAN_CIDR:-}"
 
-# Servicios del sistema (los 8 servicios con base de datos + el gateway aparte).
-# Formato: "<nombre>:<puerto>:<base_de_datos>"; el gateway se trata por separado.
-readonly SERVICES=(
-  "identity:4001:odonto_identity"
-  "patients:4002:odonto_patients"
-  "scheduling:4003:odonto_scheduling"
-  "notifications:4004:odonto_notifications"
-  "clinical:4005:odonto_clinical"
-  "odontogram:4006:odonto_odontogram"
-  "screens:4007:odonto_screens"
-  "reporting:4008:odonto_reporting"
-  "billing:4009:odonto_billing"
-)
+# Servicios del sistema: se DESCUBREN del repositorio (infra/fedora/lib/servicios.sh), no se
+# listan aquí. Formato: "<nombre>:<puerto>:<base_de_datos>"; el gateway va aparte.
+# Un servicio es una carpeta `services/<x>/` con migraciones y su puerto en `.env.example`;
+# así, añadir uno no obliga a tocar este instalador.
+# shellcheck source=lib/servicios.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/servicios.sh"
+SERVICES=()
+while IFS= read -r _servicio; do
+  [[ -n "$_servicio" ]] || continue
+  SERVICES+=("$_servicio:$(puerto_de_servicio "$_servicio"):odonto_$_servicio")
+done < <(servicios_del_repo)
+if (( ${#SERVICES[@]} == 0 )); then
+  printf '✖ no pude descubrir los servicios en services/ (¿falta .env.example?)\n' >&2
+  exit 1
+fi
+readonly SERVICES
 readonly GATEWAY_PORT=8090
 readonly PLAYWRIGHT_DIR="/var/lib/odontocrm/ms-playwright"   # navegadores (Fase 7)
 readonly GATEWAY_DB=""
@@ -663,7 +666,7 @@ env_service_body() {
 # (INSTALL.md §8.6). No la escriba a mano salvo que sepa lo que hace.
 DATABASE_URL=postgres://CAMBIAR_USUARIO_DB:CAMBIAR_PASSWORD_DB@127.0.0.1:5432/${db}
 # EVENTS_DATABASE_URL (la cola compartida, odonto_events) NO se pone aquí: la escribe
-# `npm run db:bootstrap` en services/<servicio>/.env y se traslada a este archivo en
+# \`npm run db:bootstrap\` en services/<servicio>/.env y se traslada a este archivo en
 # INSTALL.md §8.6. Sin ella, cada servicio usaría su propia base para la cola y los
 # eventos no llegarían a los demás.
 DATABASE_POOL_MAX=10
@@ -920,21 +923,13 @@ PG_HOST=127.0.0.1
 PG_PORT=5432
 PG_USER=CAMBIAR_USUARIO_DE_RESPALDO
 PGPASSFILE=/etc/odontocrm/.pgpass
-# Lista de bases a respaldar (las 9 bases de servicio + la cola compartida).
-DATABASES=\"odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_billing odonto_events\"
+# Lista de bases a respaldar: una por servicio + la cola compartida (derivada).
+DATABASES=\"$(bases_del_respaldo)\"
 # Copias opcionales (activar con --include-config / --include-storage)
 STORAGE_DIR=/var/lib/odontocrm/storage
 # Nombre del rol propietario de cada base (para restaurar con --no-owner --role).
 # Si el rol se llama igual que la base, estas líneas no son necesarias.
-ROLE_odonto_identity=odonto_identity
-ROLE_odonto_patients=odonto_patients
-ROLE_odonto_scheduling=odonto_scheduling
-ROLE_odonto_notifications=odonto_notifications
-ROLE_odonto_clinical=odonto_clinical
-ROLE_odonto_odontogram=odonto_odontogram
-ROLE_odonto_screens=odonto_screens
-ROLE_odonto_reporting=odonto_reporting
-ROLE_odonto_billing=odonto_billing"
+$(for _s in $(servicios_del_repo); do printf 'ROLE_odonto_%s=odonto_%s\n' "$_s" "$_s"; done)"
 
   write_if_missing "$ETC_DIR/.pgpass" 0600 \
     "# Formato: host:puerto:base:usuario:contraseña   (usuario comodín: *)

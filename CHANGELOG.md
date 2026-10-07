@@ -4,6 +4,46 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — Una sola fuente de verdad para los servicios (y el respaldo que no llevaba las facturas) · 2026-10-06
+
+La prueba de desinstalar-y-volver-a-instalar con `billing` destapó **el peor fallo posible en un
+respaldo**: el registro decía `bases: 9` y `respaldo completado sin errores`… **sin
+`odonto_billing`**. Las facturas no entraban en la copia diaria, y nada lo decía. La causa era
+la de siempre: `30-desplegar.sh` escribía `backup.env` con **una cuarta lista de bases escrita a
+mano**. Y esa lista ya había fallado antes en otros sitios (el despliegue no esperaba el puerto
+de billing, una comprobación **de seguridad** no miraba si su puerto estaba publicado).
+
+Así que en vez de arreglar la cuarta lista, se quitaron todas:
+
+| Antes (a mano) | Ahora |
+| :--- | :--- |
+| `SERVICIOS=(…)` en `comun.sh`, en `odontocrm` y en el ensayo | `lib/servicios.sh` los **descubre** en el repositorio |
+| Mapa `PUERTO_SERVICIO` / `PUERTOS` / `PUERTO_DE` en tres guiones | El puerto lo declara **cada servicio** en `.env.example` (`<X>_PORT`) |
+| `DATABASES="odonto_…"` en la plantilla, el respaldo, la restauración y el rol | `bases_del_respaldo()`: una base por servicio + la cola |
+| `ROLE_odonto_*` copiados en dos heredocs | Se generan recorriendo los servicios |
+| Listas de servicios en `aprovisionar.mjs`, `infra/db/bootstrap.mjs`, `tools/db-reset.mjs`, `tools/dev-check.mjs`, `tools/lib/servicios.mjs` | Todas **derivan** de `services/` |
+| Listas de puertos y de bases en `30-desplegar.sh`, `40-verificar.sh`, el ensayo y `install.sh` | Se leen de la librería, calculadas |
+
+**Un servicio nuevo (el día que lo haya) es ahora: crear `services/<x>/` con sus migraciones y
+añadirle `<X>_PORT` a `.env.example`.** El instalador, el aprovisionador, las bases, los roles,
+las unidades de systemd, el respaldo, la restauración, la comprobación de puertos publicados y
+el tablero de estado lo ven solos.
+
+Además, dos cosas que salieron al revisar:
+
+- **`backup.env` se pone al día solo** (`asegurar_bases_en_backup_env`): si a una instalación que
+  ya existía le falta la base de un servicio nuevo, la **añade** (con copia
+  `backup.env.antes-de-<fecha>`) y lo dice en voz alta. Probado con un arnés
+  (`tmp/harness-backup-env.sh`, 10 comprobaciones): añade lo que falta, respeta claves y
+  comentarios, no duplica y no revienta si el archivo no está.
+- **La ayuda de `odontocrm` ejecutaba su propio texto**: tenía comillas invertidas dentro de un
+  heredoc que expande, así que pedir la ayuda imprimía tres «orden no encontrada». Escapadas, y
+  `fedora:check` ahora vigila esa clase en todos los heredocs.
+
+`fedora:check` va por **146 comprobaciones** con cuatro candados nuevos, los cuatro probados en
+negativo: un servicio sin puerto, una lista de servicios a mano, una lista de bases a mano y un
+puerto repetido.
+
 ## [Instalador] — Reblindado tras el merge de facturación: los puertos, en un solo sitio · 2026-10-06
 
 Con `billing` el despliegue pasó a **9 servicios** (y 10 unidades con el gateway). Revisar el

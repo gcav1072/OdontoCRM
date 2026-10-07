@@ -58,7 +58,15 @@ password=""
 rotar=0
 bypassrls=0
 admin_role="${SUDO_USER:-}"   # rol con permiso para DROP/CREATE (restauración)
-bases=(odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_billing odonto_events)
+# Las bases se derivan (lib/servicios.sh): una por servicio + la cola.
+LIB_SERVICIOS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/servicios.sh"
+# shellcheck source=../lib/servicios.sh
+[[ -f "$LIB_SERVICIOS" ]] && source "$LIB_SERVICIOS"
+mapfile -t bases < <(bases_del_respaldo)
+if (( ${#bases[@]} == 0 )); then
+  echo "  ✖ no pude descubrir las bases (¿falta $LIB_SERVICIOS?)" >&2
+  exit 1
+fi
 
 for arg in "$@"; do
   case "$arg" in

@@ -7,45 +7,47 @@
  * (`tools/estado.mjs`) necesitó las mismas tres cosas: son de todas las
  * herramientas, no del modo test.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /** Servicios con base de datos propia y su archivo de entorno. */
-export const SERVICIOS = [
-  { name: 'patients', database: 'odonto_patients', env: 'services/patients/.env' },
-  { name: 'scheduling', database: 'odonto_scheduling', env: 'services/scheduling/.env' },
-  { name: 'clinical', database: 'odonto_clinical', env: 'services/clinical/.env' },
-  { name: 'odontogram', database: 'odonto_odontogram', env: 'services/odontogram/.env' },
-  { name: 'notifications', database: 'odonto_notifications', env: 'services/notifications/.env' },
-  { name: 'screens', database: 'odonto_screens', env: 'services/screens/.env' },
-  { name: 'identity', database: 'odonto_identity', env: 'services/identity/.env' },
-  { name: 'reporting', database: 'odonto_reporting', env: 'services/reporting/.env' },
-  { name: 'billing', database: 'odonto_billing', env: 'services/billing/.env' },
-];
-
 /**
- * Los diez procesos de la pila con su puerto y la variable que lo configura. El
- * orden es el de arranque (la base, los servicios, la puerta al final).
+ * Los servicios se DESCUBREN del repositorio: una carpeta `services/<x>/` con `migraciones/`,
+ * y su puerto declarado en `.env.example` (`<X>_PORT`). Antes había aquí dos listas copiadas a
+ * mano (una con las bases, otra con los puertos y las unidades) que se quedaban viejas cada vez
+ * que entraba un servicio —con `billing` se quedaron atrás hasta en el respaldo—. El gateway
+ * va aparte: no tiene base propia y su unidad es otra.
  */
+const conMigraciones = readdirSync(join(ROOT, 'services'), { withFileTypes: true })
+  .filter((d) => d.isDirectory() && existsSync(join(ROOT, 'services', d.name, 'migrations')))
+  .map((d) => d.name);
+
+const puertoEnEnvExample = (nombre) => {
+  const envExample = readFileSync(join(ROOT, '.env.example'), 'utf8');
+  const m = new RegExp(`^${nombre.toUpperCase()}_PORT=(\\d+)$`, 'm').exec(envExample);
+  return m === null ? 0 : Number(m[1]);
+};
+
+export const SERVICIOS = conMigraciones
+  .map((name) => ({ name, database: `odonto_${name}`, env: `services/${name}/.env` }))
+  .sort((a, b) => puertoEnEnvExample(a.name) - puertoEnEnvExample(b.name));
+
 export const PROCESOS = [
-  { name: 'identity', variable: 'IDENTITY_PORT', port: 4001, unidad: 'odontocrm@identity' },
-  { name: 'patients', variable: 'PATIENTS_PORT', port: 4002, unidad: 'odontocrm@patients' },
-  { name: 'scheduling', variable: 'SCHEDULING_PORT', port: 4003, unidad: 'odontocrm@scheduling' },
+  ...SERVICIOS.map(({ name }) => ({
+    name,
+    variable: `${name.toUpperCase()}_PORT`,
+    port: puertoEnEnvExample(name),
+    unidad: `odontocrm@${name}`,
+  })),
   {
-    name: 'notifications',
-    variable: 'NOTIFICATIONS_PORT',
-    port: 4004,
-    unidad: 'odontocrm@notifications',
+    name: 'gateway',
+    variable: 'GATEWAY_PORT',
+    port: puertoEnEnvExample('gateway'),
+    unidad: 'odontocrm-gateway',
   },
-  { name: 'clinical', variable: 'CLINICAL_PORT', port: 4005, unidad: 'odontocrm@clinical' },
-  { name: 'odontogram', variable: 'ODONTOGRAM_PORT', port: 4006, unidad: 'odontocrm@odontogram' },
-  { name: 'screens', variable: 'SCREENS_PORT', port: 4007, unidad: 'odontocrm@screens' },
-  { name: 'reporting', variable: 'REPORTING_PORT', port: 4008, unidad: 'odontocrm@reporting' },
-  { name: 'billing', variable: 'BILLING_PORT', port: 4009, unidad: 'odontocrm@billing' },
-  { name: 'gateway', variable: 'GATEWAY_PORT', port: 8090, unidad: 'odontocrm-gateway' },
 ];
 
 /** Lee un archivo `.env` sin imprimir jamás sus valores en un mensaje de error. */

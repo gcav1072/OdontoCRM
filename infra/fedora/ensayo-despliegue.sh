@@ -42,7 +42,12 @@ DESTINO="${DESTINO:-/opt/odontocrm}"
 # la que estás mirando y la que esperas ver en el servidor. Si quieres otra (por
 # ejemplo, `main` mientras trabajas en una rama de función), pásala con `--rama=`.
 RAMA="${RAMA:-}"
-SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting billing)
+# La lista de servicios y sus puertos se DESCUBREN (infra/fedora/lib/servicios.sh): una carpeta
+# `services/<x>/` con migraciones y su puerto en `.env.example`. Este ensayo llevaba su propia
+# copia de la lista y del mapa de puertos: al añadir un servicio se quedaba vieja sin avisar.
+# shellcheck source=lib/servicios.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/servicios.sh"
+mapfile -t SERVICIOS < <(servicios_del_repo)
 HASTA="servicios"
 LAN_CIDR=""
 REINICIAR=0
@@ -359,7 +364,8 @@ sleep 8
 FALLOS=0
 # El puerto tiene que estar ocupado por el proceso **de la unidad**, no por otro
 # (una pila de desarrollo, un proceso suelto): si no, un /health 200 engaña.
-declare -A PUERTO_DE=([identity]=4001 [patients]=4002 [scheduling]=4003 [notifications]=4004 [clinical]=4005 [odontogram]=4006 [screens]=4007 [reporting]=4008 [billing]=4009)
+declare -A PUERTO_DE=()
+for s in "${SERVICIOS[@]}"; do PUERTO_DE[$s]="$(puerto_de_servicio "$s")"; done
 for s in "${SERVICIOS[@]}"; do
   puerto="${PUERTO_DE[$s]}"
   unidad="odontocrm@$s"
@@ -641,7 +647,7 @@ if [[ "$HASTA" == "respaldos" ]]; then
     echo "    Filas por base (real → restaurada):"
     URL_BASE() { printf 'postgres:///%s?host=/var/run/postgresql' "$1"; }
     total_real=0; total_verif=0
-    for base in odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_billing; do
+    for base in $(bases_del_respaldo); do
       psql -d "postgres:///postgres?host=/var/run/postgresql" -tAc "select 1 from pg_database where datname='${base}__verif'" | grep -q 1 || continue
       # Los contadores de pg_stat pueden estar desactualizados: se cuenta de verdad.
       contar() {

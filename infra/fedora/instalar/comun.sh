@@ -51,43 +51,22 @@ BACKUP_DIR="${ODONTOCRM_BACKUP_DIR:-/var/backups/odontocrm}"
 SERVICE_USER="${ODONTOCRM_USER:-odontocrm}"
 SERVICE_GROUP="${ODONTOCRM_GROUP:-odontocrm}"
 
-# Los servicios con base de datos propia, en orden. El gateway va aparte: no tiene base
-# de datos y su unidad es otra.
-SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting billing)
+# ── La lista de servicios: se DESCUBRE, no se escribe ────────────────────────
+# `infra/fedora/lib/servicios.sh` es el único sitio que sabe qué servicios hay: una carpeta
+# `services/<x>/` con migraciones, y su puerto declarado en `.env.example`. De ahí salen la
+# lista de servicios, sus puertos, las bases, las unidades y las comprobaciones. Antes había
+# listas a mano en seis guiones y al añadir `billing` tres se quedaron atrás (una de ellas,
+# la del respaldo, decía «sin errores» con las facturas fuera).
+# shellcheck source=../lib/servicios.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/servicios.sh"
+
+mapfile -t SERVICIOS < <(servicios_del_repo)
+if (( ${#SERVICIOS[@]} == 0 )); then
+  printf '\n  ✖ no pude leer la lista de servicios de %s\n' "$(fuente_de_servicios 2>/dev/null || echo '?')" >&2
+  printf '    hace falta el repositorio con «services/» y «.env.example»\n' >&2
+  exit 1
+fi
 PUERTO_GATEWAY=8090
-
-# Puerto interno de cada servicio, en UN SOLO SITIO. Estaba copiado a mano en cuatro
-# guiones (el despliegue, la verificación, el ensayo…), así que al añadir `billing` se
-# quedaron tres listas sin el 4009: el despliegue decía «los 9 puertos escuchan» sin
-# esperar al de billing y —peor— la comprobación de «nada publicado» no miraba su puerto,
-# con lo que un 4009 abierto a la red habría pasado como bueno. Ahora se declara aquí y
-# los guiones lo LEEN; `fedora:check` comprueba que no vuelva a haber listas a mano.
-declare -A PUERTO_SERVICIO=(
-  [identity]=4001
-  [patients]=4002
-  [scheduling]=4003
-  [notifications]=4004
-  [clinical]=4005
-  [odontogram]=4006
-  [screens]=4007
-  [reporting]=4008
-  [billing]=4009
-)
-
-# Los puertos que NO pueden estar publicados: la base, los servicios internos y el gateway.
-# Se calcula, no se escribe: un servicio nuevo entra solo.
-puertos_internos() {
-  printf '%s\n' 5432
-  local s
-  for s in "${SERVICIOS[@]}"; do
-    if [[ -n "${PUERTO_SERVICIO[$s]:-}" ]]; then
-      printf '%s\n' "${PUERTO_SERVICIO[$s]}"
-    else
-      printf '      (aviso: %s no tiene puerto en PUERTO_SERVICIO)\n' "$s" >&2
-    fi
-  done
-  printf '%s\n' "$PUERTO_GATEWAY"
-}
 
 NOMBRE_MDNS_POR_DEFECTO=odontocrm
 ZONA_HORARIA="${ODONTOCRM_TZ:-America/Caracas}"

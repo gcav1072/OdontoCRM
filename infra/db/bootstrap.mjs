@@ -26,62 +26,23 @@ const { Client } = pg;
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TIMEZONE = 'America/Caracas';
 
-const SERVICES = [
-  {
-    name: 'identity',
-    database: 'odonto_identity',
-    role: 'odonto_identity',
-    envFile: 'services/identity/.env',
-  },
-  {
-    name: 'patients',
-    database: 'odonto_patients',
-    role: 'odonto_patients',
-    envFile: 'services/patients/.env',
-  },
-  {
-    name: 'scheduling',
-    database: 'odonto_scheduling',
-    role: 'odonto_scheduling',
-    envFile: 'services/scheduling/.env',
-  },
-  {
-    name: 'notifications',
-    database: 'odonto_notifications',
-    role: 'odonto_notifications',
-    envFile: 'services/notifications/.env',
-  },
-  {
-    name: 'clinical',
-    database: 'odonto_clinical',
-    role: 'odonto_clinical',
-    envFile: 'services/clinical/.env',
-  },
-  {
-    name: 'odontogram',
-    database: 'odonto_odontogram',
-    role: 'odonto_odontogram',
-    envFile: 'services/odontogram/.env',
-  },
-  {
-    name: 'screens',
-    database: 'odonto_screens',
-    role: 'odonto_screens',
-    envFile: 'services/screens/.env',
-  },
-  {
-    name: 'reporting',
-    database: 'odonto_reporting',
-    role: 'odonto_reporting',
-    envFile: 'services/reporting/.env',
-  },
-  {
-    name: 'billing',
-    database: 'odonto_billing',
-    role: 'odonto_billing',
-    envFile: 'services/billing/.env',
-  },
-];
+// Los servicios se DESCUBREN del repositorio: una carpeta `services/<x>/` con migraciones.
+// Antes era una lista copiada a mano (igual que otras cinco por el instalador) y al entrar
+// `billing` se quedaba vieja: este es el bootstrap de DESARROLLO, el que crea las bases y los
+// roles de la máquina de trabajo, así que su lista tiene que ser la misma que la del servidor.
+const SERVICES = readdirSync(join(ROOT, 'services'), { withFileTypes: true })
+  .filter((d) => d.isDirectory() && existsSync(join(ROOT, 'services', d.name, 'migrations')))
+  .map((d) => ({
+    name: d.name,
+    database: `odonto_${d.name}`,
+    role: `odonto_${d.name}`,
+    envFile: `services/${d.name}/.env`,
+  }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+if (SERVICES.length === 0) {
+  console.error('  ✖ no encuentro servicios en services/ (¿estás en la raíz del repositorio?)');
+  process.exit(1);
+}
 
 const EVENTS_BROKER = { database: 'odonto_events', role: 'odonto_events' };
 

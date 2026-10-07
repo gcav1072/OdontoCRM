@@ -935,7 +935,7 @@ cd /opt/odontocrm
 #    .env del repositorio. El resto de la plantilla (URLs, claves, rutas) ya está puesto.
 #    OJO: EVENTS_DATABASE_URL va incluida —es la cola compartida y sin ella los
 #    servicios no se ven entre sí—.
-for s in identity patients scheduling notifications clinical odontogram screens reporting; do
+for s in $(source infra/fedora/lib/servicios.sh; servicios_del_repo); do
   src="services/$s/.env"; dst="/etc/odontocrm/$s.env"
   [ -f "$src" ] || { echo "AVISO: todavía no existe $src (¿ejecutaste db:bootstrap?)"; continue; }
   sudo bash -c "
@@ -1090,7 +1090,7 @@ terminar** (§8.6):
 cd /opt/odontocrm
 # El .env de la raíz son las variables COMUNES (§8.1); el de cada servicio, las suyas.
 sudo ln -sfn /etc/odontocrm/odontocrm.env /opt/odontocrm/.env
-for s in identity patients scheduling notifications clinical odontogram screens reporting; do
+for s in $(source infra/fedora/lib/servicios.sh; servicios_del_repo); do
   sudo ln -sfn "/etc/odontocrm/$s.env" "/opt/odontocrm/services/$s/.env"
 done
 
@@ -2194,7 +2194,7 @@ declare -A PORTS=(
   [gateway]=8090
 )
 fallos=0
-for svc in identity patients scheduling notifications clinical odontogram screens reporting gateway; do
+for svc in $(source infra/fedora/lib/servicios.sh; servicios_del_repo) gateway; do
   p="${PORTS[$svc]}"
   # Un /health 200 no basta: hay que comprobar que quien escucha es la UNIDAD de
   # systemd y no otro proceso (una pila de desarrollo en los mismos puertos contesta

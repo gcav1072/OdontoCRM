@@ -518,76 +518,102 @@ const exigir = (condicion, bien, mal) => {
     'INSTALL.md no menciona packages/contracts/src/clinic.ts: otra clínica imprimiría récipes con estos datos',
   );
 
-  // (9) La lista de bases coincide en todos los sitios (incluida la cola `odonto_events`).
-  const basesDe = (texto, etiqueta) => {
-    // Se busca la línea y se limpia lo que la envuelve: en la plantilla el valor va
-    // escapado en el heredoc (`DATABASES=\"…\"`), así que sobran barras y comillas.
-    const linea = texto
-      .split('\n')
-      .find((l) => l.includes(`${etiqueta}=`) && l.includes('odonto_identity'));
-    if (linea === undefined) return '';
-    return linea
-      .slice(linea.indexOf(`${etiqueta}=`) + etiqueta.length + 1)
-      .replace(/[\\"]/g, '')
-      .trim()
-      .split(/\s+/)
-      .sort()
-      .join(' ');
+  // ── (9) Los servicios y sus bases salen del REPOSITORIO ─────────────────────
+  //     Un servicio es una carpeta `services/<x>/` con `migraciones/`, y su puerto lo declara
+  //     él mismo en `.env.example` (`<X>_PORT`). De ahí se derivan las bases (`odonto_<x>`),
+  //     los roles, las unidades, el respaldo y los puertos internos.
+  //
+  //     Esto está aquí porque las listas a mano ya fallaron con `billing` en tres sitios
+  //     (el despliegue no esperaba su puerto, una comprobación de seguridad no lo miraba y la
+  //     copia diaria no lo incluía… diciendo «respaldo completado sin errores»). El objetivo:
+  //     **añadir un servicio = crear su carpeta y darle puerto**, sin tocar el instalador.
+  const serviciosRepo = readdirSync(join(ROOT, 'services'), { withFileTypes: true })
+    .filter((d) => d.isDirectory() && existsSync(join(ROOT, 'services', d.name, 'migrations')))
+    .map((d) => d.name)
+    .sort();
+  const declaradoEnEnvExample = (svc) => {
+    const variable = `${svc.toUpperCase()}_PORT`;
+    const m = new RegExp(`^${variable}=(\\d+)$`, 'm').exec(leer('.env.example'));
+    return m === null ? '' : m[1];
   };
-  const enPlantilla = basesDe(installSh, 'DATABASES');
-  const enRespaldo = basesDe(leer('infra/fedora/backup/odontocrm-backup.sh'), 'DATABASES');
+  const serviciosSinPuerto = serviciosRepo.filter((s) => declaradoEnEnvExample(s) === '');
   exigir(
-    enPlantilla !== '' && enPlantilla === enRespaldo && enPlantilla.includes('odonto_events'),
-    'la lista de bases es la misma en la plantilla y en el guion, e incluye la cola',
-    `las listas de bases no coinciden o falta la cola:\n      plantilla: ${enPlantilla}\n      guion:     ${enRespaldo}`,
+    serviciosRepo.length > 0 && serviciosSinPuerto.length === 0,
+    'cada servicio de services/ declara su puerto en .env.example',
+    `estos servicios no declaran «<SERVICIO>_PORT» en .env.example: ${serviciosSinPuerto.join(', ') || '—'}`,
+  );
+  const puertosRepo = serviciosRepo.map((s) => declaradoEnEnvExample(s));
+  exigir(
+    new Set(puertosRepo).size === puertosRepo.length,
+    'ningún servicio repite puerto',
+    `hay puertos repetidos en .env.example: ${puertosRepo.join(', ')}`,
   );
 
-  // (9-bis) Los servicios y sus puertos viven en UN solo sitio (`comun.sh`) y aparecen en
-  //     todos los guiones que tienen que saberlo. Un servicio añadido a medias es un fallo
-  //     silencioso, y pasó con `billing`: cuatro listas de puertos escritas a mano se
-  //     quedaron sin el 4009, así que el despliegue no esperaba su puerto y la comprobación
-  //     de «nada publicado» —que es de seguridad— decía «todo bien» sin haberlo mirado.
-  const comun = leer('infra/fedora/instalar/comun.sh');
-  const serviciosComun = /^SERVICIOS=\(([^)]*)\)/m.exec(comun)?.[1].trim().split(/\s+/) ?? [];
-  const puertosComun = Object.fromEntries(
-    [...comun.matchAll(/\[([a-z]+)\]=(\d{4,5})/g)].map((m) => [m[1], m[2]]),
-  );
-  const sinPuerto = serviciosComun.filter((s) => puertosComun[s] === undefined);
-  const puertosHuerfanos = Object.keys(puertosComun).filter((s) => !serviciosComun.includes(s));
+  // Y los guiones los DESCUBREN: la librería es el único sitio que sabe leerlos.
+  const libreria = leer('infra/fedora/lib/servicios.sh');
   exigir(
-    serviciosComun.length > 0 && sinPuerto.length === 0 && puertosHuerfanos.length === 0,
-    'cada servicio tiene su puerto en PUERTO_SERVICIO, y no hay puertos de más',
-    `sin puerto: ${sinPuerto.join(', ') || '—'} · puertos que no son de ningún servicio: ${puertosHuerfanos.join(', ') || '—'}`,
+    /servicios_del_repo\(\)/.test(libreria) &&
+      /services\/\*/.test(libreria) &&
+      /\.env\.example/.test(libreria) &&
+      /bases_del_respaldo\(\)/.test(libreria),
+    'la lista de servicios se descubre en lib/servicios.sh (services/ + .env.example)',
+    'lib/servicios.sh no descubre los servicios: alguien volvió a escribir la lista a mano',
   );
 
-  // (9-ter) Y las tres listas de servicios tienen que coincidir: la del instalador, la del
-  //     aprovisionador y la de las herramientas de desarrollo (esta última incluye el
-  //     `gateway`, que no está en SERVICIOS porque tiene su unidad propia y no lleva base).
-  const nombresDe = (ruta, patron) =>
-    [...new Set([...leer(ruta).matchAll(patron)].map((m) => m[1]))].sort();
-  const esperados = [...serviciosComun].sort();
-  const enAprovisionar = nombresDe('infra/fedora/instalar/aprovisionar.mjs', /nombre: '([a-z]+)'/g);
-  const enHerramientas = nombresDe('tools/lib/servicios.mjs', /name: '([a-z]+)'/g);
-  const faltanEnAprovisionar = esperados.filter((s) => !enAprovisionar.includes(s));
-  const faltanEnHerramientas = esperados.filter((s) => !enHerramientas.includes(s));
-  const nombresRaros = [
-    ...new Set(
-      enAprovisionar
-        .concat(enHerramientas)
-        .filter((s) => !esperados.includes(s) && s !== 'gateway'),
-    ),
-  ];
+  // Y nadie la escribe a mano: ni en el comando del servidor, ni en el ensayo, ni en el
+  // aprovisionador, ni en comun.sh.
+  const listasDeServiciosAMano = [
+    'infra/fedora/odontocrm',
+    'infra/fedora/ensayo-despliegue.sh',
+    'infra/fedora/instalar/comun.sh',
+    'infra/fedora/instalar/aprovisionar.mjs',
+    'infra/fedora/instalar/30-desplegar.sh',
+    'infra/fedora/instalar/40-verificar.sh',
+  ].filter(
+    (ruta) =>
+      /SERVICIOS=\([^)]{20,}/.test(leer(ruta)) ||
+      /(nombre|name): '(identity|patients|scheduling)'/.test(leer(ruta)) ||
+      /nombre: '(identity|patients|scheduling)'/.test(leer(ruta)),
+  );
   exigir(
-    faltanEnAprovisionar.length === 0 &&
-      faltanEnHerramientas.length === 0 &&
-      nombresRaros.length === 0,
-    'la lista de servicios coincide en comun.sh, aprovisionar.mjs y tools/lib/servicios.mjs',
-    `falta en aprovisionar.mjs: ${faltanEnAprovisionar.join(', ') || '—'} · falta en tools/lib/servicios.mjs: ${faltanEnHerramientas.join(', ') || '—'} · nombres que no son de ningún servicio: ${nombresRaros.join(', ') || '—'}`,
+    listasDeServiciosAMano.length === 0,
+    'ningún guion lleva la lista de servicios escrita a mano (sale de lib/servicios.sh)',
+    `estos guiones llevan la lista a mano: ${listasDeServiciosAMano.join(', ')}`,
   );
 
-  // (9-quáter) Y ninguna LISTA de puertos escrita a mano en los guiones: se LEEN de
-  //     `PUERTO_SERVICIO` (comun.sh). Un mapa (`[servicio]=4009`), en cambio, es la forma
-  //     buena: ahí el puerto va pegado a su nombre, no en una ristra suelta de números.
+  // Y la lista de BASES tampoco se escribe a mano en ningún guion del despliegue: sale de
+  // `bases_del_respaldo()` (lib/servicios.sh), que es `odonto_<servicio>` + la cola.
+  const basesAMano = [
+    'infra/fedora/instalar/30-desplegar.sh',
+    'infra/fedora/instalar/instalar.sh',
+    'infra/fedora/install.sh',
+    'infra/fedora/backup/odontocrm-backup.sh',
+    'infra/fedora/backup/odontocrm-restore.sh',
+    'infra/fedora/backup/crear-rol-respaldo.sh',
+    'infra/fedora/ensayo-despliegue.sh',
+  ].filter((ruta) =>
+    leer(ruta)
+      .split('\n')
+      .some(
+        (linea) =>
+          !/^\s*#/.test(linea) &&
+          /odonto_identity\b/.test(linea) &&
+          /odonto_(patients|billing|events)\b/.test(linea),
+      ),
+  );
+  exigir(
+    basesAMano.length === 0,
+    'ningún guion lleva la lista de bases escrita a mano (sale de lib/servicios.sh)',
+    `estos guiones volvieron a escribir las bases a mano: ${basesAMano.join(', ')}`,
+  );
+  exigir(
+    /bases_del_respaldo/.test(leer('infra/fedora/instalar/30-desplegar.sh')) &&
+      /bases_del_respaldo/.test(leer('infra/fedora/backup/odontocrm-backup.sh')),
+    'el respaldo y su configuración usan la lista derivada (bases_del_respaldo)',
+    'el despliegue o el respaldo volvieron a escribir las bases a mano',
+  );
+
+  // (9-quáter) Y ninguna LISTA de puertos escrita a mano en los guiones.
   const listasAMano = [
     'infra/fedora/instalar/30-desplegar.sh',
     'infra/fedora/instalar/40-verificar.sh',
@@ -599,7 +625,7 @@ const exigir = (condicion, bien, mal) => {
   );
   exigir(
     listasAMano.length === 0,
-    'los puertos internos se leen de comun.sh (nada de listas escritas a mano)',
+    'los puertos internos se leen de lib/servicios.sh (nada de listas escritas a mano)',
     `estos guiones vuelven a llevar una lista de puertos a mano: ${listasAMano.join(', ')}`,
   );
 
@@ -740,6 +766,7 @@ const exigir = (condicion, bien, mal) => {
   //      como si el guion se hubiera cortado: ruido que tapa los avisos de verdad (pasó al
   //      actualizar el servidor: catorce «✖ se detuvo» con los nueve servicios en verde).
   const sondasSinGuardar = [];
+  const comillasEnHeredoc = [];
   for (const ruta of [
     'infra/fedora/odontocrm',
     'infra/fedora/ensayo-despliegue.sh',
@@ -751,15 +778,28 @@ const exigir = (condicion, bien, mal) => {
     'infra/fedora/backup/crear-rol-respaldo.sh',
   ]) {
     // Dentro de un heredoc solo hay TEXTO (las instrucciones que se imprimen al operador):
-    // un `$(… | awk …)` ahí no se ejecuta y no es una sonda.
+    // un `$(… | awk …)` ahí no se ejecuta y no es una sonda. PERO si el heredoc no está
+    // entrecomillado (`<<EOF`), una comilla invertida SÍ se ejecuta: la ayuda de `odontocrm`
+    // llevaba cuatro y al pedirla salían tres «orden no encontrada». Ahí va escapada (`\``)
+    // o el heredoc se entrecomilla (`<<'EOF'`).
     let heredoc = null;
+    let heredocExpande = false;
     for (const [indice, linea] of leer(ruta).split('\n').entries()) {
       if (heredoc !== null) {
-        if (linea.trim() === heredoc) heredoc = null;
+        if (linea.trim() === heredoc) {
+          heredoc = null;
+          continue;
+        }
+        if (heredocExpande && /(^|[^\\])`/.test(linea)) {
+          comillasEnHeredoc.push(`${ruta}:${indice + 1}`);
+        }
         continue;
       }
-      const marca = /<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?/.exec(linea);
-      if (marca !== null) heredoc = marca[1];
+      const marca = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/.exec(linea);
+      if (marca !== null) {
+        heredoc = marca[2];
+        heredocExpande = marca[1] === '';
+      }
       const esSonda =
         /^\s*[\w[\]{}@-]+="\$\(.*(grep|awk|sed|head|ss |ip -|firewall-cmd|avahi-resolve|systemctl show).*\)"$/.test(
           linea,
@@ -792,6 +832,15 @@ const exigir = (condicion, bien, mal) => {
     sondasSinGuardar.length === 0,
     'las sondas (grep/ss/ip) no disparan los avisos de error',
     `sondas sin \`|| true\` (el aviso de error las contaría como fallo): ${sondasSinGuardar.slice(0, 5).join(', ')}`,
+  );
+
+  // Comillas invertidas dentro de un heredoc que EXPANDE: bash las ejecuta. La ayuda de
+  // `odontocrm` tenía cuatro y al pedirla salían tres «orden no encontrada» (y con el trap de
+  // ERR, un aviso de fallo). Se escapan con `\`` o se entrecomilla el heredoc.
+  exigir(
+    comillasEnHeredoc.length === 0,
+    'los heredocs que expanden no llevan comillas invertidas sin escapar',
+    `bash EJECUTA lo que va entre comillas invertidas en un heredoc sin entrecomillar: ${comillasEnHeredoc.slice(0, 6).join(', ')}`,
   );
 
   // (13-bis) El nombre en los demás equipos: la guía tiene que avisar de que Android no
@@ -889,16 +938,12 @@ const exigir = (condicion, bien, mal) => {
       .sort();
   };
 
-  const enComando = listaDe(odontocrm, 'SERVICIOS');
-  const enEnsayo = listaDe(leer('infra/fedora/ensayo-despliegue.sh'), 'SERVICIOS');
-  const faltanEnListas = serviciosEnDisco.filter(
-    (svc) => !enComando.includes(svc) || !enEnsayo.includes(svc),
-  );
-  exigir(
-    faltanEnListas.length === 0,
-    `los ${serviciosEnDisco.length} servicios de services/ están en las listas de despliegue`,
-    `services/ tiene ${serviciosEnDisco.join(', ')} pero faltan en las listas: ${faltanEnListas.join(', ')} (revisa SERVICIOS en odontocrm y en ensayo-despliegue.sh)`,
-  );
+  // (Antes aquí se comprobaba que cada servicio de `services/` apareciera en las listas
+  //  escritas a mano de `odontocrm` y del ensayo. Ya no hay listas: los guiones DESCUBREN los
+  //  servicios con `lib/servicios.sh`, así que ese fallo —añadir un servicio y olvidarlo en
+  //  alguna lista— es estructuralmente imposible. Lo que se vigila ahora es que nadie
+  //  vuelva a escribir una lista: lo hace la comprobación (9) de este mismo archivo.)
+  void serviciosEnDisco;
 
   const muertas = [
     'COOKIE_SECRET',

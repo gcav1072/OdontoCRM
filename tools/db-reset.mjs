@@ -59,18 +59,11 @@ const STORAGE = resolve(ROOT, 'storage');
  * propósito: el borrado nunca construye nombres desde argumentos del usuario, así
  * que no hay forma de que se lleve por delante otra base de la instancia.
  */
-const BASES = [
-  'odonto_identity',
-  'odonto_patients',
-  'odonto_scheduling',
-  'odonto_notifications',
-  'odonto_clinical',
-  'odonto_odontogram',
-  'odonto_screens',
-  'odonto_reporting',
-  'odonto_billing',
-  'odonto_events',
-];
+/* Las bases del proyecto: se DERIVAN de `services/` (tools/lib/servicios.mjs), más la cola
+ * compartida. Sigue siendo una **lista cerrada** —no se construye desde argumentos del
+ * usuario—, así que el borrado no puede llevarse por delante otra base de la instancia; lo que
+ * cambia es que ya no hay que acordarse de añadir la base de un servicio nuevo. */
+const BASES = [...SERVICIOS.map((s) => s.database), 'odonto_events'];
 
 const args = process.argv.slice(2);
 const CONOCIDAS = ['--yes', '--solo-bases', '--remoto'];

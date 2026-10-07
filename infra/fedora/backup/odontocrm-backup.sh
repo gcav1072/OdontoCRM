@@ -14,7 +14,7 @@
 #   3. Comprime el volcado (gzip nivel 6, integrado en el formato custom).
 #   4. Verifica la integridad de cada archivo:
 #        · primeros 5 bytes == "PGDMP"
-#        · `pg_restore --list` recorre el catálogo sin errores
+#        · \`pg_restore --list\` recorre el catálogo sin errores
 #        · suma SHA-256 registrada en SHA256SUMS
 #   5. Opcionalmente respalda /etc/odontocrm (--include-config) y el directorio
 #      de almacenamiento (--include-storage).
@@ -72,13 +72,24 @@ readonly SCRIPT_VERSION="0.1.0-draft"
 # Valores por defecto (los sobrescribe /etc/odontocrm/backup.env y los flags)
 # -----------------------------------------------------------------------------
 BACKUP_DIR="/var/backups/odontocrm"
+# La lista de bases se DERIVADA del repositorio (infra/fedora/lib/servicios.sh): una por
+# servicio + la cola. Estaba escrita a mano aquí y con `billing` la copia diaria se quedó sin
+# las facturas **diciendo «respaldo completado sin errores»**.
+LIB_SERVICIOS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/servicios.sh"
+if [[ -f "$LIB_SERVICIOS" ]]; then
+  # shellcheck source=../lib/servicios.sh
+  source "$LIB_SERVICIOS"
+  BASES_DERIVADAS="$(bases_del_respaldo)"
+else
+  BASES_DERIVADAS=""
+fi
 RETENTION_DAYS="30"
 LOG_FILE="/var/log/odontocrm/backup.log"
 PG_HOST="/var/run/postgresql"
 PG_PORT="5432"
 PG_USER="postgres"
 PGPASSFILE="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}/.pgpass"
-DATABASES="odonto_identity odonto_patients odonto_scheduling odonto_notifications odonto_clinical odonto_odontogram odonto_screens odonto_reporting odonto_billing odonto_events"
+DATABASES="${BASES_DERIVADAS}"
 STORAGE_DIR="/var/lib/odontocrm/storage"
 CONFIG_DIR="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}"
 CONFIG_FILE="${ODONTOCRM_ENV_DIR:-/etc/odontocrm}/backup.env"
@@ -129,7 +140,7 @@ die() { local code="${2:-1}"; err "${1:-error inesperado}"; exit "$code"; }
 
 usage() {
   cat <<EOF
-${SCRIPT_NAME} v${SCRIPT_VERSION} — respaldo de OdontoCRM (8 bases + copias opcionales)
+${SCRIPT_NAME} v${SCRIPT_VERSION} — respaldo de OdontoCRM (todas las bases + copias opcionales)
 
 USO
   sudo ./${SCRIPT_NAME} [opciones]
@@ -146,7 +157,7 @@ OPCIONES
   --pg-port N             Puerto de PostgreSQL (por defecto: 5432).
   --pg-user USER          Usuario de respaldo (debe poder leer todas las bases).
   --pgbin DIR             Directorio de binarios de PostgreSQL 18.
-  --no-verify             Omite `pg_restore --list` (solo para diagnóstico).
+  --no-verify             Omite \`pg_restore --list\` (solo para diagnóstico).
   --dry-run               Muestra lo que haría: no toma respaldos ni toca datos
                           (sí prepara el directorio destino, el log y el candado).
   -h, --help              Esta ayuda.
