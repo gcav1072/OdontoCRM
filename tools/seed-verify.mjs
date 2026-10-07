@@ -5,18 +5,24 @@
  * No se fía de contar filas: reconstruye el mundo en memoria (misma semilla, mismo
  * ancla), lo vuelve a calcular con los mismos UUID deterministas y compara **la
  * huella** de cada parte con la huella de lo que hay en las bases. Si alguien
- * cambió el reparto de pacientes, una hora de una cita o el contenido de una
- * historia, la huella deja de cuadrar y el comando dice cuál.
+ * cambió el reparto de pacientes, una hora de una cita, el contenido de una historia
+ * o el precio de un arancel, la huella deja de cuadrar y el comando dice cuál.
  *
  * ```
  * npm run seed:verify                    # huellas: mundo ↔ bases
  * npm run seed:verify -- --con-proyeccion   # además, el read model de reportes
  * npm run seed:verify -- --anchor 2026-10-02
  * ```
+ *
+ * Se comprueban las cinco partes que el seed escribe: pacientes, agenda, clínica,
+ * odontograma y **facturación** (tasas, aranceles, facturas, partidas, cobros, nota
+ * de crédito y los PDF archivados de los tres documentos).
  */
+import { createHash } from 'node:crypto';
+
 import pg from 'pg';
 
-import { buildTestWorld, worldEventIds } from '@odontocrm/testing';
+import { buildTestWorld, sessionClosedEventId, worldEventIds } from '@odontocrm/testing';
 
 import {
   aviso,
@@ -45,6 +51,15 @@ const ids = {
   solicitudes: world.requests.map((request) => request.id),
   citas: world.appointments.map((appointment) => appointment.id),
   cupos: world.capacities.map((capacity) => capacity.date),
+  sesiones: world.sessions.map((session) => session.id),
+  facturas: world.billing.invoices.map((invoice) => invoice.id),
+  cobros: world.billing.invoices.flatMap((invoice) => invoice.payments.map((pago) => pago.id)),
+  notas: world.billing.invoices.flatMap((invoice) =>
+    invoice.creditNote === null ? [] : [invoice.creditNote.id],
+  ),
+  tasas: world.billing.rates.map((rate) => rate.rateDate),
+  aranceles: world.billing.aranceles.map((arancel) => arancel.code),
+  cierres: world.sessions.map((session) => sessionClosedEventId(session.id)),
 };
 
 const fallos = [];
@@ -348,7 +363,6 @@ const verificarClinica = async () => {
       'Documento de prueba: no corresponde a un paciente real.',
       'Para ver el A5 real, emita un recipe desde la aplicacion.',
     ]);
-    const { createHash } = await import('node:crypto');
     const huella = createHash('sha256').update(esperado).digest('hex');
     if (huella === recipe.pdfSha256) pdfsOk += 1;
   }
@@ -409,6 +423,375 @@ const verificarOdontograma = async () => {
     'odontogram.tooth_finding_history',
     fingerprint({ total: world.findings.length }),
     fingerprint({ total: historial[0]?.total ?? 0 }),
+  );
+};
+
+// ── Facturación ───────────────────────────────────────────────────────────────
+
+/**
+ * Las claves naturales de una partida: el orden de las filas de `invoice_items` no
+ * está garantizado (hay piezas nulas y caras), así que se ordenan las dos listas por
+ * lo que identifica la partida antes de comparar.
+ */
+const claveDePartida = (item) =>
+  [
+    item.invoiceId,
+    item.code,
+    String(item.toothNumber ?? -1),
+    JSON.stringify(item.surfaces ?? []),
+  ].join('|');
+
+/** La proyección sin las columnas del archivo, que se comprueban aparte (por su sha256). */
+const sinArchivo = (fila) => {
+  const copia = { ...fila };
+  delete copia.pdfPath;
+  delete copia.pdfSha256;
+  return copia;
+};
+
+const porClaveDePartida = (items) =>
+  [...items].sort((left, right) =>
+    claveDePartida(left) < claveDePartida(right)
+      ? -1
+      : claveDePartida(left) > claveDePartida(right)
+        ? 1
+        : 0,
+  );
+
+/**
+ * La facturación frente a la base (Fase 11): las tasas del histórico, los aranceles,
+ * las facturas con sus partidas, los cobros, la nota de crédito y —lo que hace que el
+ * papel sirva— los PDF archivados, cuyo `sha256` tiene que ser el del mundo.
+ *
+ * Los **bigint** de dinero (`rate_micros`, los céntimos de Bs., lo entregado) llegan
+ * de `pg` como texto: se convierten aquí, en la proyección, para que la huella
+ * compare números y no cadenas.
+ */
+const verificarFacturacion = async () => {
+  const tasas = await consultar(
+    'billing',
+    `select id, to_char(rate_date, 'YYYY-MM-DD') as "rateDate", rate_micros as "rateMicros", source, note
+       from exchange_rates
+      where rate_date = any($1::date[]) and superseded_by_id is null
+      order by rate_date`,
+    [ids.tasas],
+  );
+  const esperadoTasas = [...world.billing.rates]
+    .sort((left, right) => (left.rateDate < right.rateDate ? -1 : 1))
+    .map((rate) => ({
+      id: rate.id,
+      rateDate: rate.rateDate,
+      rateMicros: rate.rateMicros,
+      source: rate.source,
+      note: rate.note,
+    }));
+  comparar(
+    'billing.exchange_rates',
+    fingerprint(esperadoTasas),
+    fingerprint(tasas.map((fila) => ({ ...fila, rateMicros: Number(fila.rateMicros) }))),
+    `${String(tasas.length)} de ${String(esperadoTasas.length)} tasas`,
+  );
+
+  const aranceles = await consultar(
+    'billing',
+    `select code, kind, price_cents_usd as "priceCentsUsd", tax_category as "taxCategory"
+       from treatment_catalog where code = any($1::text[]) order by code collate "C"`,
+    [ids.aranceles],
+  );
+  const esperadoAranceles = [...world.billing.aranceles]
+    .sort((left, right) => (left.code < right.code ? -1 : 1))
+    .map((arancel) => ({
+      code: arancel.code,
+      kind: arancel.kind,
+      priceCentsUsd: arancel.priceCentsUsd,
+      taxCategory: arancel.taxCategory,
+    }));
+  comparar(
+    'billing.treatment_catalog',
+    fingerprint(esperadoAranceles),
+    fingerprint(aranceles),
+    `${String(aranceles.length)} de ${String(esperadoAranceles.length)} aranceles`,
+  );
+
+  const facturas = await consultar(
+    'billing',
+    `select i.id, i.series, i.status, i.invoice_number as "invoiceNumber",
+            i.rate_at_draft_micros as "rateAtDraftMicros",
+            i.exchange_rate_micros as "exchangeRateMicros",
+            i.exempt_amount_cents_usd as "exemptAmountCentsUsd",
+            i.taxable_amount_cents_usd as "taxableAmountCentsUsd",
+            i.iva_amount_cents_usd as "ivaAmountCentsUsd",
+            i.total_cents_usd as "totalCentsUsd", i.balance_cents_usd as "balanceCentsUsd",
+            i.total_ves_centimos as "totalVesCentimos", i.is_test as "isTest",
+            i.pdf_path as "pdfPath", i.pdf_sha256 as "pdfSha256",
+            to_char(i.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",
+            to_char(i.issued_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "issuedAt",
+            to_char(i.voided_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "voidedAt",
+            (select s.clinical_session_id from invoice_sessions s where s.invoice_id = i.id) as "sessionId"
+       from invoices i where i.id = any($1::uuid[]) order by i.id`,
+    [ids.facturas],
+  );
+  const esperadoFacturas = [...world.billing.invoices]
+    .sort((left, right) => (left.id < right.id ? -1 : 1))
+    .map((invoice) => ({
+      id: invoice.id,
+      series: invoice.series,
+      status: invoice.status,
+      invoiceNumber: invoice.invoiceNumber,
+      rateAtDraftMicros: invoice.rateAtDraftMicros,
+      exchangeRateMicros: invoice.exchangeRateMicros,
+      exemptAmountCentsUsd: invoice.exemptAmountCentsUsd,
+      taxableAmountCentsUsd: invoice.taxableAmountCentsUsd,
+      ivaAmountCentsUsd: invoice.ivaAmountCentsUsd,
+      totalCentsUsd: invoice.totalCentsUsd,
+      balanceCentsUsd: invoice.balanceCentsUsd,
+      totalVesCentimos: invoice.venBs?.totalVesCentimos ?? 0,
+      isTest: true,
+      sessionId: invoice.sessionId,
+      createdAt: invoice.createdAt,
+      issuedAt: invoice.issuedAt,
+      voidedAt: invoice.voidedAt,
+    }));
+  const obtenidoFacturas = facturas.map((fila) => ({
+    id: fila.id,
+    series: fila.series,
+    status: fila.status,
+    invoiceNumber: fila.invoiceNumber,
+    rateAtDraftMicros: fila.rateAtDraftMicros === null ? null : Number(fila.rateAtDraftMicros),
+    exchangeRateMicros: fila.exchangeRateMicros === null ? null : Number(fila.exchangeRateMicros),
+    exemptAmountCentsUsd: fila.exemptAmountCentsUsd,
+    taxableAmountCentsUsd: fila.taxableAmountCentsUsd,
+    ivaAmountCentsUsd: fila.ivaAmountCentsUsd,
+    totalCentsUsd: fila.totalCentsUsd,
+    balanceCentsUsd: fila.balanceCentsUsd,
+    totalVesCentimos: Number(fila.totalVesCentimos),
+    isTest: fila.isTest,
+    sessionId: fila.sessionId,
+    createdAt: fila.createdAt,
+    issuedAt: fila.issuedAt,
+    voidedAt: fila.voidedAt,
+  }));
+  comparar(
+    'billing.invoices',
+    fingerprint(esperadoFacturas),
+    fingerprint(obtenidoFacturas),
+    `${String(facturas.length)} de ${String(esperadoFacturas.length)} facturas`,
+  );
+
+  const partidas = await consultar(
+    'billing',
+    `select invoice_id as "invoiceId", code, description, tooth_number as "toothNumber", surfaces,
+            quantity, unit_price_cents_usd as "unitPriceCentsUsd",
+            total_price_cents_usd as "totalPriceCentsUsd", tax_category as "taxCategory",
+            tax_rate_basis_points as "taxRateBasisPoints",
+            iva_amount_cents_usd as "ivaAmountCentsUsd", needs_pricing as "needsPricing"
+       from invoice_items where invoice_id = any($1::uuid[])`,
+    [ids.facturas],
+  );
+  const esperadoPartidas = world.billing.invoices.flatMap((invoice) =>
+    invoice.items.map((item) => ({
+      invoiceId: invoice.id,
+      code: item.code,
+      description: item.description,
+      toothNumber: item.toothNumber,
+      surfaces: item.surfaces,
+      quantity: item.quantity,
+      unitPriceCentsUsd: item.unitPriceCentsUsd,
+      totalPriceCentsUsd: item.totalPriceCentsUsd,
+      taxCategory: item.taxCategory,
+      taxRateBasisPoints: item.taxRateBasisPoints,
+      ivaAmountCentsUsd: item.ivaAmountCentsUsd,
+      needsPricing: item.needsPricing,
+    })),
+  );
+  comparar(
+    'billing.invoice_items',
+    fingerprint(porClaveDePartida(esperadoPartidas)),
+    fingerprint(porClaveDePartida(partidas)),
+    `${String(partidas.length)} de ${String(esperadoPartidas.length)} partidas`,
+  );
+
+  const cobros = await consultar(
+    'billing',
+    `select id, invoice_id as "invoiceId", receipt_number as "receiptNumber", method, reference,
+            tendered_amount as "tenderedAmount", tendered_currency as "tenderedCurrency",
+            amount_cents_usd as "amountCentsUsd", exchange_rate_micros as "exchangeRateMicros",
+            imputation_policy as "imputationPolicy", fx_difference_cents_usd as "fxDifferenceCentsUsd",
+            applies_igtf as "appliesIgtf", igtf_basis_points as "igtfBasisPoints",
+            igtf_perceived_by as "igtfPerceivedBy", igtf_amount_cents_usd as "igtfAmountCentsUsd",
+            igtf_amount_ves_centimos as "igtfAmountVesCentimos",
+            received_by_username as "receivedByUsername", is_test as "isTest",
+            pdf_path as "pdfPath", pdf_sha256 as "pdfSha256",
+            to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",
+            to_char(voided_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "voidedAt",
+            void_reason as "voidReason"
+       from payments where id = any($1::uuid[]) order by receipt_number`,
+    [ids.cobros],
+  );
+  const esperadoCobros = world.billing.invoices
+    .flatMap((invoice) => invoice.payments.map((pago) => ({ ...pago, invoiceId: invoice.id })))
+    .sort((left, right) => left.receiptNumber - right.receiptNumber)
+    .map((pago) => ({
+      id: pago.id,
+      invoiceId: pago.invoiceId,
+      receiptNumber: pago.receiptNumber,
+      method: pago.method,
+      reference: pago.reference,
+      tenderedAmount: pago.tenderedAmount,
+      tenderedCurrency: pago.tenderedCurrency,
+      amountCentsUsd: pago.amountCentsUsd,
+      exchangeRateMicros: pago.exchangeRateMicros,
+      imputationPolicy: pago.imputationPolicy,
+      fxDifferenceCentsUsd: pago.fxDifferenceCentsUsd,
+      appliesIgtf: pago.appliesIgtf,
+      igtfBasisPoints: pago.igtfBasisPoints,
+      igtfPerceivedBy: pago.igtfPerceivedBy,
+      igtfAmountCentsUsd: pago.igtfAmountCentsUsd,
+      igtfAmountVesCentimos: pago.igtfAmountVesCentimos,
+      receivedByUsername: pago.receivedByUsername,
+      isTest: true,
+      createdAt: pago.createdAt,
+      voidedAt: pago.voidedAt,
+      voidReason: pago.voidReason,
+    }));
+  const obtenidoCobros = cobros.map((fila) =>
+    sinArchivo({
+      ...fila,
+      tenderedAmount: Number(fila.tenderedAmount),
+      exchangeRateMicros: Number(fila.exchangeRateMicros),
+      igtfAmountVesCentimos: Number(fila.igtfAmountVesCentimos),
+    }),
+  );
+  comparar(
+    'billing.payments',
+    fingerprint(esperadoCobros),
+    fingerprint(obtenidoCobros),
+    `${String(cobros.length)} de ${String(esperadoCobros.length)} cobros`,
+  );
+
+  const notas = await consultar(
+    'billing',
+    `select id, credit_note_number as "creditNoteNumber", invoice_id as "invoiceId",
+            invoice_number as "invoiceNumber", invoice_total_cents_usd as "invoiceTotalCentsUsd",
+            kind, reason, total_cents_usd as "totalCentsUsd",
+            exchange_rate_micros as "exchangeRateMicros",
+            total_ves_centimos as "totalVesCentimos",
+            issued_by_username as "issuedByUsername", is_test as "isTest",
+            pdf_path as "pdfPath", pdf_sha256 as "pdfSha256",
+            to_char(invoice_issued_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "invoiceIssuedAt",
+            to_char(issued_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "issuedAt"
+       from credit_notes where id = any($1::uuid[]) order by credit_note_number`,
+    [ids.notas],
+  );
+  const esperadoNotas = world.billing.invoices
+    .flatMap((invoice) =>
+      invoice.creditNote === null
+        ? []
+        : [
+            {
+              ...invoice.creditNote,
+              invoiceId: invoice.id,
+              invoiceNumber: invoice.invoiceNumber,
+              invoiceIssuedAt: invoice.issuedAt,
+              invoiceTotalCentsUsd: invoice.totalCentsUsd,
+            },
+          ],
+    )
+    .sort((left, right) => left.creditNoteNumber - right.creditNoteNumber)
+    .map((nota) => ({
+      id: nota.id,
+      creditNoteNumber: nota.creditNoteNumber,
+      invoiceId: nota.invoiceId,
+      invoiceNumber: nota.invoiceNumber,
+      invoiceTotalCentsUsd: nota.invoiceTotalCentsUsd,
+      kind: nota.kind,
+      reason: nota.reason,
+      totalCentsUsd: nota.totalCentsUsd,
+      exchangeRateMicros: nota.exchangeRateMicros,
+      totalVesCentimos: nota.totalVesCentimos,
+      issuedByUsername: nota.issuedByUsername,
+      isTest: true,
+      invoiceIssuedAt: nota.invoiceIssuedAt,
+      issuedAt: nota.issuedAt,
+    }));
+  const obtenidoNotas = notas.map((fila) =>
+    sinArchivo({
+      ...fila,
+      totalVesCentimos: Number(fila.totalVesCentimos),
+      exchangeRateMicros: Number(fila.exchangeRateMicros),
+    }),
+  );
+  comparar(
+    'billing.credit_notes',
+    fingerprint(esperadoNotas),
+    fingerprint(obtenidoNotas),
+    `${String(notas.length)} de ${String(esperadoNotas.length)} notas de crédito`,
+  );
+
+  /**
+   * Los PDF archivados: el seed guarda un documento de prueba cuyas líneas vienen del
+   * mundo, así que el `sha256` se puede **recalcular** aquí. Si alguien recompone el
+   * papel (ADR 0048: lo reimpreso es el archivo, no una composición nueva) o lo borra,
+   * la huella lo dice.
+   */
+  const sha = (lineas) => createHash('sha256').update(pdfDePrueba(lineas)).digest('hex');
+  const documentos = [
+    ...world.billing.invoices
+      .filter((invoice) => invoice.pdfLines !== null)
+      .map((invoice) => ({
+        nombre: 'factura',
+        esperado: sha(invoice.pdfLines ?? []),
+        obtenido: facturas.find((fila) => fila.id === invoice.id)?.pdfSha256 ?? null,
+        ruta: facturas.find((fila) => fila.id === invoice.id)?.pdfPath ?? null,
+      })),
+    ...world.billing.invoices.flatMap((invoice) =>
+      invoice.payments.map((pago) => ({
+        nombre: 'recibo',
+        esperado: sha(pago.pdfLines),
+        obtenido: cobros.find((fila) => fila.id === pago.id)?.pdfSha256 ?? null,
+        ruta: cobros.find((fila) => fila.id === pago.id)?.pdfPath ?? null,
+      })),
+    ),
+    ...world.billing.invoices.flatMap((invoice) =>
+      invoice.creditNote === null
+        ? []
+        : [
+            {
+              nombre: 'nota de crédito',
+              esperado: sha(invoice.creditNote.pdfLines),
+              obtenido: notas.find((fila) => fila.id === invoice.creditNote?.id)?.pdfSha256 ?? null,
+              ruta: notas.find((fila) => fila.id === invoice.creditNote?.id)?.pdfPath ?? null,
+            },
+          ],
+    ),
+  ];
+  const pdfsOk = documentos.filter(
+    (documento) => documento.obtenido === documento.esperado && documento.ruta !== null,
+  ).length;
+  comparar(
+    'billing.documentos.pdf',
+    fingerprint({ pdfs: documentos.length }),
+    fingerprint({ pdfs: pdfsOk }),
+    'sha256 y ruta del PDF archivado de la factura, el recibo y la nota de crédito',
+  );
+
+  /**
+   * El mundo **reclama** el cierre de cada sesión que facturó: sin ese reclamo, la
+   * cola crearía un borrador para una sesión que ya tiene factura. La base lo impide
+   * igual (índice único de sesión), pero el reclamo es lo que hace que sembrar y
+   * arrancar la pila den exactamente el mismo resultado.
+   */
+  const cierres = await consultar(
+    'billing',
+    // `billing.processed_events.event_id` es **text** (no uuid, como en reporting).
+    'select count(1)::int as total from processed_events where event_id = any($1::text[])',
+    [ids.cierres],
+  );
+  comparar(
+    'billing.processed_events',
+    fingerprint({ cierres: world.sessions.length }),
+    fingerprint({ cierres: cierres[0]?.total ?? 0 }),
+    'cierres de sesión reclamados por el mundo',
   );
 };
 
@@ -499,6 +882,7 @@ const main = async () => {
   await verificarAgenda();
   await verificarClinica();
   await verificarOdontograma();
+  await verificarFacturacion();
 
   if (conProyeccion) {
     titulo('Read model de reportes');

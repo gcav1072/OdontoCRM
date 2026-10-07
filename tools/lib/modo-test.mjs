@@ -179,11 +179,17 @@ const escaparPdf = (texto) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/([\\()])/g, '\\$1');
 
-/** Almacén de binarios del servicio clínico (`STORAGE_DIR` de su `.env`). */
-export const almacenClinico = (env) => {
-  const dir = env.STORAGE_DIR ?? './storage/clinical';
+/** Almacén de binarios de un servicio, a partir del `STORAGE_DIR` de su `.env`. */
+export const almacenDe = (env, porDefecto) => {
+  const dir = env.STORAGE_DIR ?? porDefecto;
   return createDiskBlobStore({ rootDir: isAbsolute(dir) ? dir : resolve(ROOT, dir) });
 };
+
+/** Almacén de binarios del servicio clínico (`STORAGE_DIR` de su `.env`). */
+export const almacenClinico = (env) => almacenDe(env, './storage/clinical');
+
+/** Almacén de los documentos de cobro del servicio de facturación (ADR 0048). */
+export const almacenBilling = (env) => almacenDe(env, './storage/billing');
 
 export { fingerprint };
 
