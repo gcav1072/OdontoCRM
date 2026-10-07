@@ -4,6 +4,32 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Tiempo real] — Recepción y caja se enteran solas de lo que pasa · 2026-10-07
+
+Las pantallas de sala ya se actualizaban por SSE, pero el **personal** no: cuando el odontólogo
+cerraba una sesión, la fila de `/flujo` seguía diciendo lo de antes y el cobro no aparecía en
+`/caja` hasta que alguien recargaba la página o cerraba un diálogo. Entra el canal del personal.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `StaffSignal` (contrato) | El aviso: **tema** del evento, hora y agregado. Sin datos de pacientes |
+| `broadcast.ts` | El reparto pasa a ser por **canales** (`lobby`, `consultorio`, `staff`); el canal es el nombre del evento |
+| `staff-signal.ts` | Traduce el lote de eventos en avisos: **por tema, no por evento**, y en orden de hora |
+| `GET /api/v1/screens/staff/stream` | El flujo del personal. Guardia por **rol** (`admin`/`secretario`/`odontologo`), no por `screens:display` |
+| `RealtimeSyncProvider` | Abre el canal con sesión y traduce cada aviso en invalidar lo que quedó viejo |
+| `lib/sse.ts` | El lector de tramas, uno solo: lo comparten el kiosko y el canal del personal |
+
+La pantalla kiosko y el personal reciben cosas distintas a propósito: la primera el **estado
+completo** de la sala (solo lo pinta) y el segundo **avisos** de qué cambió (ya tiene los datos y
+solo necesita saber que se quedaron viejos). Cerrar una sesión invalida la historia, el odontograma,
+la jornada y la caja; emitir una factura, solo la caja. El mapa de invalidación va por **dominio**
+—el tema es `<dominio>.<entidad>.<acción>`—, así que un evento nuevo de un dominio conocido no exige
+tocar la interfaz, y un tema desconocido no recarga nada.
+
+Una pantalla kiosko que pida el canal recibe **403**: ya tiene el suyo. Comprobado contra PostgreSQL
+real (11 de la suite de pantallas, incluido el aviso llegando al conectar y al cerrar una sesión) y
+con la suite completa en verde (870 pruebas).
+
 ## [Expediente] — El dossier del paciente, en un solo PDF verificable · 2026-10-07
 
 Hasta ahora, entregar el historial de un paciente era imprimir cada pieza por separado: la
