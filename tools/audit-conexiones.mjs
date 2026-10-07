@@ -317,6 +317,41 @@ const auditarPermisosYConfig = () => {
   for (const clave of [...noDocumentadas].sort()) deuda.push(`Variable sin documentar: ${clave}`);
   if (noDocumentadas.size === 0)
     console.log('Toda variable de configuración está en la plantilla ✔');
+
+  /**
+   * Y la otra mitad: las URL de los **módulos que el gateway enruta** tienen que estar en el `.env`.
+   * Una que falte no rompe nada visible —el gateway devuelve 404 y el módulo parece vacío—, así que se
+   * comprueba aquí. Las de conexión (`DATABASE_URL`, `EVENTS_DATABASE_URL`, `PG_ADMIN_URL`) no son
+   * rutas de módulo y no entran.
+   */
+  const DE_CONEXION = new Set(['DATABASE_URL', 'EVENTS_DATABASE_URL', 'PG_ADMIN_URL']);
+  const envLocal = join(ROOT, '.env');
+  if (statSync(envLocal, { throwIfNoEntry: false })?.isFile()) {
+    const definidas = new Set(
+      [...readFileSync(envLocal, 'utf8').matchAll(/^\s*([A-Z][A-Z0-9_]*)\s*=/gm)].map(
+        ([, clave]) => clave,
+      ),
+    );
+    const delGateway = [
+      ...new Set(
+        [
+          ...readFileSync(join(ROOT, 'apps/gateway/src/config.ts'), 'utf8').matchAll(
+            /^\s{2}([A-Z][A-Z0-9_]*_URL):/gm,
+          ),
+        ].map(([, clave]) => clave),
+      ),
+    ].filter((clave) => !DE_CONEXION.has(clave));
+    const faltantes = delGateway.filter((clave) => !definidas.has(clave));
+    console.log(
+      `URL de módulos definidas en .env: ${String(delGateway.length - faltantes.length)}/${String(delGateway.length)}`,
+    );
+    for (const clave of faltantes.sort()) {
+      estructurables.push(
+        `El .env no define ${clave}: ese módulo responde 404 por el gateway sin avisar`,
+      );
+    }
+    if (faltantes.length === 0) console.log('Todas las URL de los módulos están en el .env ✔');
+  }
 };
 
 /* ── 4) Datos y cola ───────────────────────────────────────────────────────── */
