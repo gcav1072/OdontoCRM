@@ -62,7 +62,11 @@ admin_role="${SUDO_USER:-}"   # rol con permiso para DROP/CREATE (restauración)
 LIB_SERVICIOS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/servicios.sh"
 # shellcheck source=../lib/servicios.sh
 [[ -f "$LIB_SERVICIOS" ]] && source "$LIB_SERVICIOS"
-mapfile -t bases < <(bases_del_respaldo)
+# `bases_del_respaldo` devuelve UNA línea con las bases separadas por espacios (es el formato
+# que espera `DATABASES`), así que aquí se parte con `read -r -a`. Con `mapfile -t` quedaba UN
+# solo elemento con los diez nombres pegados: el rol no recibía ni un GRANT y el respaldo
+# fallaba en las diez bases con «permiso denegado a la base de datos» (lo cazó el examen).
+read -r -a bases <<<"$(bases_del_respaldo)"
 if (( ${#bases[@]} == 0 )); then
   echo "  ✖ no pude descubrir las bases (¿falta $LIB_SERVICIOS?)" >&2
   exit 1

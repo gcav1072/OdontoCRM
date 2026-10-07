@@ -613,6 +613,24 @@ const exigir = (condicion, bien, mal) => {
     'el despliegue o el respaldo volvieron a escribir las bases a mano',
   );
 
+  // Y las listas derivadas se consumen con el formato que DEVUELVEN: `bases_del_respaldo` va en
+  // UNA línea con espacios (formato `DATABASES`), así que con `mapfile -t` queda un solo
+  // elemento con los diez nombres pegados —el rol de respaldo se quedó sin GRANTs y el respaldo
+  // falló en las diez bases por permisos—. Se parte con `read -r -a` o se recorre con `for`.
+  const consumosMalos = [
+    'infra/fedora/backup/crear-rol-respaldo.sh',
+    'infra/fedora/backup/odontocrm-backup.sh',
+    'infra/fedora/backup/odontocrm-restore.sh',
+    'infra/fedora/instalar/30-desplegar.sh',
+    'infra/fedora/install.sh',
+    'infra/fedora/ensayo-despliegue.sh',
+  ].filter((ruta) => /mapfile[^\n]*bases_del_respaldo/.test(leer(ruta)));
+  exigir(
+    consumosMalos.length === 0,
+    'las listas derivadas se consumen con el formato que devuelven (read -r -a, no mapfile)',
+    `estos guiones leen «bases_del_respaldo» con mapfile (una línea con espacios = un elemento): ${consumosMalos.join(', ')}`,
+  );
+
   // (9-quáter) Y ninguna LISTA de puertos escrita a mano en los guiones.
   const listasAMano = [
     'infra/fedora/instalar/30-desplegar.sh',

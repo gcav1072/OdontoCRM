@@ -4,6 +4,27 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Corrección] — El rol del respaldo se quedaba sin permisos (lo cazó el examen) · 2026-10-06
+
+Al reescribir las listas para que se derivaran del repositorio metí la pata en un consumo:
+`bases_del_respaldo()` devuelve **una línea con las bases separadas por espacios** (que es el
+formato de `DATABASES`), y en `crear-rol-respaldo.sh` la leí con `mapfile -t` → **un solo
+elemento** con los diez nombres pegados. Consecuencia: el rol `odonto_backup` no recibía ni un
+`GRANT`, y el respaldo fallaba **en las diez bases**:
+
+```
+✔ CONNECT y USAGE en todos los esquemas de las bases existentes (1 previstas)
+pg_dump: error: FATAL: permiso denegado a la base de datos «odonto_identity»
+```
+
+El «1 previstas» era la pista. Ahora se parte con `read -r -a` (10 elementos), el **contrato de
+cada lista está escrito en la librería** (una por línea para `servicios_del_repo` y
+`puertos_internos`; una sola línea con espacios para `bases_del_respaldo`), el arnés prueba
+también el consumo como array y `fedora:check` lo vigila (147 comprobaciones).
+
+Lo bueno de la prueba de desinstalar-y-volver-a-instalar es justo esto: el fallo salió en la PC
+de pruebas, con el respaldo delante, y no en la consulta un día que hiciera falta restaurar.
+
 ## [Instalador] — Una sola fuente de verdad para los servicios (y el respaldo que no llevaba las facturas) · 2026-10-06
 
 La prueba de desinstalar-y-volver-a-instalar con `billing` destapó **el peor fallo posible en un

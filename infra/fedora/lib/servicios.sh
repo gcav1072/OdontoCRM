@@ -43,6 +43,14 @@ puerto_de_servicio() {
   printf '%s\n' "${linea#*=}"
 }
 
+# CONTRATO de las listas de aquí (importa, y ya falló una vez):
+#   · `servicios_del_repo` y `puertos_internos` → **una por línea** (`mapfile -t` o `while read`).
+#   · `bases_del_respaldo` → **una sola línea con espacios**, que es lo que espera `DATABASES=`.
+#     Para recorrerla como array:  read -r -a bases <<<"$(bases_del_respaldo)"
+#     Con `mapfile -t` queda UN elemento con los diez nombres pegados; así el rol de respaldo se
+#     quedó sin GRANTs y el respaldo falló en las diez bases con «permiso denegado» (lo cazó la
+#     prueba de desinstalar y volver a instalar).
+
 # La lista de servicios, en orden de puerto (el orden de arranque natural: 4001, 4002…).
 servicios_del_repo() {
   local fuente
