@@ -1436,7 +1436,15 @@ Una sola pantalla, pensada para el mostrador (y para la tableta, como `/flujo`):
 17. `npm run e2e:caja` (si el flujo lo pide): cerrar una sesión en `/flujo`, cobrar en `/caja` e imprimir
     el PDF, con las comprobaciones de siempre (URL vigilada, PDF descargado y abrible).
 18. `seed:test` siembra tasas, catálogo (servicios y bienes), facturas y pagos en la numeración de prueba,
-    y `seed:verify` cuadra sus huellas.
+    y `seed:verify` cuadra sus huellas. **Hecho (2026-10-06)**: [`packages/testing/src/test-world/billing.ts`](../packages/testing/src/test-world/billing.ts)
+    construye el mundo de facturación con las funciones del contrato; `seed:test` (parte `billing`) y
+    `seed:reset` escriben y borran tasas, aranceles, facturas, partidas, cobros y notas de crédito con
+    sus PDF archivados, y `seed:verify` compara seis huellas más el `sha256` de cada documento. El mundo
+    factura **una vez por sesión cerrada** y reclama su `clinical.session.closed`, así que la cola no
+    duplica nada. Dos matices respecto del plan: los aranceles del mundo son los **28 servicios** (los
+    bienes conservan el precio de la migración, que el mundo no toca) y los documentos van a la **serie
+    `A`** con `is_test = true` y correlativo reservado —la serie `T` sigue sin uso porque el servicio
+    todavía no cambia de serie en modo test—.
 
 **Criterios de aceptación de la fase** (al estilo del plan maestro): `npm run verify` en verde; la
 migración desde cero crea todas las tablas; cerrar una sesión no tarda más que antes (la factura es

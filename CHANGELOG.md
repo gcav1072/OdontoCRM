@@ -4,6 +4,32 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Facturación] — El mundo de prueba factura: tasas, aranceles, facturas y cobros · 2026-10-06
+
+El seed del modo test ([ADR 0020](docs/adr/0020-modo-test.md)) ya no se queda en lo clínico: el mundo
+que reconstruyen `seed:test` y `seed:verify` incluye la **facturación** de la Fase 11, así que la caja
+abre con trabajo de verdad y sin depender de que la cola drene.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `packages/testing/src/test-world/billing.ts` | **Nuevo**: el mundo factura lo que facturaría el servicio. Una factura por sesión cerrada, con sus partidas del arancel y las **mismas funciones del contrato** que usa `billing` (`invoiceTotalsFromItems`, `ivaCentsForItem`, `invoiceVesTotals`, `igtfDecision`…): no hay una segunda aritmética del dinero que pueda discrepar |
+| La cola de la caja | Las **tres sesiones más recientes** quedan en borrador; la siguiente, emitida sin cobrar; después una abonada a medias, una **anulada con su nota de crédito** y una pagada **con un cobro anulado** (el que se registró mal y se corrigió). Todo lo anterior, cobrado, con correlativo reservado 900.000+ y `is_test` |
+| Tasas y aranceles | Un histórico de tasas **creciente** por día laborable (36,5420 Bs./USD y +0,0185 al día) hasta el día del ancla —que va como `manual`, como si lo hubiera tecleado la secretaría— y los **28 aranceles** del catálogo clínico, que la migración deja a cero esperando a la clínica: sin precio, `billing` marca la partida y **no deja emitir** |
+| PDF archivados | La factura, el recibo y la nota de crédito se archivan con el `pdfDePrueba` del modo test, con **sus líneas en el mundo**: `seed:verify` recalcula el `sha256` sin duplicar textos y el documento se descarga de verdad por `GET /billing/invoices/:id/pdf` |
+| `seed:test` / `seed:reset` | `PARTES` gana `billing`: siembra tasas, aranceles, facturas, partidas, cobros y notas (y sus PDF); el reset lo borra todo, devuelve los aranceles a cero y deja las tres secuencias de la caja apuntando al último número real |
+| `seed:verify` | Seis huellas nuevas (tasas, aranceles, facturas, partidas, cobros y nota de crédito), los PDF por su `sha256` y el **reclamo del cierre de cada sesión** en `billing.processed_events` |
+
+Lo que hace que esto no dependa de cómo se arranque: el seed **reclama el `clinical.session.closed`**
+de cada sesión que facturó —y borra antes lo que la cola hubiera facturado por su cuenta—, así que
+cuando el consumidor reciba el evento lo verá como duplicado; la segunda red ya estaba en la base
+(`uq_invoice_sessions_session`). Con eso, sembrar con la pila parada y sembrar con la pila arriba dan
+el mismo resultado.
+
+Dos cosas que conviene saber: el mundo usa la **serie `A`**, la misma que crea el consumidor (el
+servicio todavía no marca `is_test` ni cambia de serie en modo test: la serie `T` sigue sin uso), y los
+**eventos de facturación** —la tasa de cada día, cada emisión, cada cobro, cada anulación y la nota de
+crédito— van al outbox de `billing` para que `/auditoria` tenga también el recorrido del dinero.
+
 ## [Red] — El servidor se adapta solo cuando cambia la IP (y el nombre en Android) · 2026-10-06
 
 Probar en un portátil que cambia de red destapó el último hueco de «lo que se queda apuntando
