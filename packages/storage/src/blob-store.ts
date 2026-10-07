@@ -1,14 +1,20 @@
-import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
+
+import { decryptBlob, encryptBlob, looksEncrypted, sha256OfPlain } from './crypto.js';
 
 /**
  * Almacén de binarios **compartido por los servicios** (adjuntos del paciente,
  * radiografías de la sesión y el PDF del récipe). Hoy escribe en disco; la interfaz
  * está pensada para que mañana se cambie por S3/MinIO sin tocar a quien la usa.
  *
- * Las rutas son **relativas al almacén** y las construye el propio almacén a partir
- * de identificadores validados: nunca se acepta una ruta del cliente.
+ * Las rutas son **relativas al almacén** y las construye el propio almacén a partir de
+ * identificadores validados: nunca se acepta una ruta del cliente.
+ *
+ * **Cifrado en reposo** (mejora 4.B del plan post-Fase 11): si se le pasa `encryptionKey`,
+ * lo que escribe va cifrado con AES-256-GCM y lo que ya estaba en claro se sigue leyendo.
+ * La clave es una decisión de la instalación (la genera el aprovisionador): sin ella el
+ * almacén funciona como siempre, que es lo que hace el desarrollo.
  *
  * Vivía dentro del servicio de pacientes; se movió aquí cuando la historia clínica
  * necesitó el mismo almacén para los adjuntos de la sesión (una copia por servicio
@@ -20,11 +26,21 @@ export interface BlobStore {
     key: string;
     data: Buffer;
   }) => Promise<{ path: string; sha256: string; size: number }>;
+  /** Devuelve el contenido **en claro**, venga cifrado o no. */
   read: (path: string) => Promise<Buffer>;
   exists: (path: string) => Promise<boolean>;
   remove: (path: string) => Promise<void>;
-  /** Ruta absoluta en disco (solo la usa el almacén de disco, p. ej. para enviar el archivo). */
+  /**
+   * Ruta absoluta en disco.
+   *
+   * ⚠️ Con el almacén **cifrado** el archivo en disco no es el contenido: quien necesite el
+   * binario tiene que usar `read`. Se mantiene —y no se retira— porque hay cosas que sí
+   * quieren la ruta: el re-cifrado (`tools/recifrar-almacen.mjs`) y el respaldo del
+   * directorio entero.
+   */
   absolutePath: (path: string) => string;
+  /** `true` si esta instancia cifra lo que escribe. */
+  encrypted: () => boolean;
 }
 
 const EXTENSION_BY_MIME: Readonly<Record<string, string>> = {
@@ -57,10 +73,16 @@ export const buildStorageKey = (
 
 export interface DiskBlobStoreOptions {
   rootDir: string;
+  /**
+   * Clave de 32 bytes para cifrar lo que se escriba (`parseEncryptionKey`). Sin ella el
+   * almacén escribe en claro, como siempre: es lo que hace el desarrollo.
+   */
+  encryptionKey?: Buffer | undefined;
 }
 
 export const createDiskBlobStore = (options: DiskBlobStoreOptions): BlobStore => {
   const root = resolve(options.rootDir);
+  const key = options.encryptionKey;
 
   const absolutePath = (path: string): string => {
     const absolute = resolve(join(root, path));
@@ -74,18 +96,42 @@ export const createDiskBlobStore = (options: DiskBlobStoreOptions): BlobStore =>
   return {
     absolutePath,
 
-    save: async ({ key, data }) => {
-      const absolute = absolutePath(key);
+    encrypted: () => key !== undefined,
+
+    save: async ({ key: path, data }) => {
+      const absolute = absolutePath(path);
       await mkdir(dirname(absolute), { recursive: true });
-      await writeFile(absolute, data);
+      // Lo que se guarda en disco puede ir cifrado; lo que se **devuelve** (la huella) es
+      // siempre del contenido en claro: si el sha256 cambiara al activar el cifrado, las
+      // huellas guardadas en la base dejarían de cuadrar y las comprobaciones de integridad
+      // darían falsos positivos.
+      await writeFile(absolute, key === undefined ? data : encryptBlob(data, key));
       return {
-        path: key,
-        sha256: createHash('sha256').update(data).digest('hex'),
+        path,
+        sha256: sha256OfPlain(data),
         size: data.byteLength,
       };
     },
 
-    read: async (path) => readFile(absolutePath(path)),
+    /**
+     * Devuelve el contenido **en claro**, venga cifrado o no.
+     *
+     * Es lo que hace que activar el cifrado no rompa nada: los archivos que ya estaban se
+     * leen tal cual (no llevan cabecera) y los nuevos se descifran. El día que se quiera
+     * dejar de aceptar claro, `tools/recifrar-almacen.mjs` los pasa todos.
+     */
+    read: async (path) => {
+      const data = await readFile(absolutePath(path));
+      if (!looksEncrypted(data)) return data;
+
+      if (key === undefined) {
+        throw new Error(
+          'El archivo está cifrado y esta instancia no tiene STORAGE_ENCRYPTION_KEY: ' +
+            'pon la clave (la misma de cuando se escribió) y vuelve a intentarlo',
+        );
+      }
+      return decryptBlob(data, key);
+    },
 
     exists: async (path) => {
       try {
