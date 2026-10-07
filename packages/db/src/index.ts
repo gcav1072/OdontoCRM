@@ -1,5 +1,7 @@
 export * from './boss.js';
 export * from './client.js';
+export * from './dead-letter-watcher.js';
+export * from './dead-letter.js';
 export * from './health.js';
 export * from './migrate.js';
 export * from './outbox.js';

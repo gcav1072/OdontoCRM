@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   consumerQueueName,
+  DEAD_LETTER_QUEUE,
   DOMAIN_EVENTS_QUEUE,
   enqueueDomainEvent,
   ensureConsumerQueues,
@@ -159,24 +160,35 @@ describe('publicación en las colas de consumidores', () => {
 describe('colas de los consumidores', () => {
   const jefeFalso = () => {
     const creadas: string[] = [];
+    const opciones = new Map<string, Record<string, unknown> | undefined>();
     return {
       creadas,
+      opciones,
       boss: {
-        createQueue: async (name: string) => {
+        createQueue: async (name: string, opcionesDeLaCola?: Record<string, unknown>) => {
           creadas.push(name);
+          opciones.set(name, opcionesDeLaCola);
         },
       },
     };
   };
 
   it('declara todas las colas conocidas antes de publicar', async () => {
-    const { boss, creadas } = jefeFalso();
+    const { boss, creadas, opciones } = jefeFalso();
 
     await ensureConsumerQueues(boss as never);
 
-    expect(creadas).toHaveLength(EVENT_CONSUMERS.length);
+    // Cada consumidor **y** la cola de descarte: la de descarte tiene que existir antes de
+    // que algo falle, o `pg-boss` no podría copiar allí el trabajo.
+    expect(creadas).toHaveLength(EVENT_CONSUMERS.length + 1);
     expect(creadas).toContain(consumerQueueName('reporting'));
     expect(creadas).toContain(consumerQueueName('identity'));
+    expect(creadas).toContain(DEAD_LETTER_QUEUE);
+
+    // Las colas de consumidores apuntan a la de descarte…
+    expect(opciones.get(consumerQueueName('reporting'))?.deadLetter).toBe(DEAD_LETTER_QUEUE);
+    // …y la de descarte no apunta a ninguna (sería una cadena sin fin).
+    expect(opciones.get(DEAD_LETTER_QUEUE)?.deadLetter).toBeUndefined();
   });
 
   it('el gateway no consume eventos: no se le crea cola', () => {
@@ -184,11 +196,17 @@ describe('colas de los consumidores', () => {
     expect(EVENT_CONSUMERS).toContain('screens');
   });
 
-  it('con una cola concreta (pruebas) solo declara esa', async () => {
+  it('la cola de descarte no se confunde con una de consumidores', () => {
+    // Si empezara por `domain-events.`, el publicador le mandaría una copia de CADA evento
+    // publicado y se llenaría de trabajos que nadie ha fallado.
+    expect(DEAD_LETTER_QUEUE.startsWith(`${DOMAIN_EVENTS_QUEUE}.`)).toBe(false);
+  });
+
+  it('con una cola concreta (pruebas) solo declara esa y la de descarte', async () => {
     const { boss, creadas } = jefeFalso();
 
     await ensureConsumerQueues(boss as never, ['domain-events.prueba']);
 
-    expect(creadas).toEqual([consumerQueueName('prueba')]);
+    expect(creadas).toEqual([consumerQueueName('prueba'), DEAD_LETTER_QUEUE]);
   });
 });

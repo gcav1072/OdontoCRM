@@ -1,4 +1,4 @@
-import { PgBoss } from 'pg-boss';
+import { PgBoss, type JobWithMetadata, type WorkOptions } from 'pg-boss';
 
 import { DOMAIN_EVENTS_QUEUE, type DomainEvent } from '@odontocrm/events';
 
@@ -50,7 +50,54 @@ export const ensureDomainEventsQueue = async (
     retryLimit: 5,
     retryBackoff: true,
     retryDelay: 60,
+    // Un evento que agota sus reintentos **no se pierde**: `pg-boss` copia el trabajo a la
+    // cola de descarte, donde lo recoge el vigilante para dejarlo en la tabla y avisar. La
+    // propia cola de descarte no tiene otra (sería una cadena sin fin).
+    ...(queue === DEAD_LETTER_QUEUE ? {} : { deadLetter: DEAD_LETTER_QUEUE }),
   });
+
+  // Y la de descarte tiene que existir **antes** de que algo falle en la de arriba: si no,
+  // `pg-boss` no puede copiar el trabajo y el evento se quedaría por el camino.
+  if (queue !== DEAD_LETTER_QUEUE) await ensureDeadLetterQueue(boss);
+};
+
+/**
+ * Nombre de la cola de **descarte** (dead letter queue, DLQ).
+ *
+ * ⚠️ Deliberadamente **no** empieza por `domain-events.`: el publicador entrega una copia
+ * del evento a *toda* cola que empiece así (es su manera de encontrar a los consumidores),
+ * de modo que una cola de descarte con ese prefijo recibiría una copia de cada evento
+ * publicado y se llenaría de trabajos que nadie ha fallado.
+ */
+export const DEAD_LETTER_QUEUE = 'dead-letter.domain-events';
+
+/**
+ * Declara la cola de descarte. Idempotente, como las demás.
+ *
+ * Retención larga (30 días) porque es un buzón para mirar a mano: el registro duradero
+ * —con el payload, el error y los reintentos— lo lleva la tabla `events.dead_letter_events`.
+ *
+ * Se recuerda **por cliente** (`WeakMap`) para no repetir la llamada: `ensureDomainEventsQueue`
+ * la invoca al declarar cada cola, un servicio declara seis y las declara **a la vez**
+ * (`Promise.all`). Guardar la **promesa** —y no un simple «ya está»— es lo que hace que las
+ * seis llamadas simultáneas compartan un solo viaje a la base: con una bandera, las seis
+ * comprobarían antes de que la primera termine.
+ */
+const deadLetterPendiente = new WeakMap<PgBoss, Promise<void>>();
+
+export const ensureDeadLetterQueue = async (boss: PgBoss): Promise<void> => {
+  let enCurso = deadLetterPendiente.get(boss);
+  if (enCurso === undefined) {
+    enCurso = boss
+      .createQueue(DEAD_LETTER_QUEUE, {
+        retryLimit: 0,
+        expireInSeconds: 60,
+        deleteAfterSeconds: 30 * 24 * 60 * 60,
+      })
+      .then(() => undefined);
+    deadLetterPendiente.set(boss, enCurso);
+  }
+  await enCurso;
 };
 
 /** Cola propia de un consumidor concreto (`domain-events.<servicio>`). */
@@ -167,6 +214,54 @@ export const enqueueDomainEvent = async (
 };
 
 export type DomainEventHandler = (events: DomainEvent[]) => Promise<void>;
+
+/**
+ * Manejador de los eventos que **agotaron sus reintentos**.
+ *
+ * Recibe los trabajos ya copiados a la cola de descarte, con su **metadatos** (`includeMetadata`):
+ * de ahí salen la cola original (`sourceName`), el motivo del fallo (`sourceOutput`) y cuántos
+ * reintentos consumió (`sourceRetryCount`), que es lo que necesita el registro duradero.
+ *
+ * **Tiene que ser idempotente**: si el manejador falla, `pg-boss` vuelve a entregar el
+ * trabajo. Es lo que permite que dos servicios que vigilen la misma cola no dupliquen el
+ * apunte ni avisen dos veces (el que inserta la fila es el que avisa).
+ */
+export type DeadLetterHandler = (jobs: JobWithMetadata<DomainEvent>[]) => Promise<void>;
+
+/**
+ * Registra el consumidor de la cola de descarte.
+ *
+ * A diferencia de la cola de eventos, esta la pueden trabajar **varios** servicios a la
+ * vez: `pg-boss` da cada trabajo a **un solo** trabajador, así que el vigilante esté donde
+ * esté —y sin importar cuántos estén escuchando— cada evento perdido se apunta exactamente
+ * una vez y se avisa una sola vez.
+ */
+export const registerDeadLetterHandler = async (
+  boss: PgBoss,
+  handler: DeadLetterHandler,
+  options: { batchSize?: number; pollingIntervalSeconds?: number } = {},
+): Promise<string> => {
+  await ensureDeadLetterQueue(boss);
+  /**
+   * El tipo se anota **con `includeMetadata: true` literal** a propósito: `pg-boss` elige
+   * la firma del manejador según el tipo literal de sus opciones, y un `true` que se
+   * ensanche a `boolean` hace que el manejador reciba trabajos **sin** metadatos —el error
+   * aparecería luego, al leer `sourceName`, y no aquí—.
+   *
+   * Tampoco se le pasan los genéricos a `work()`: su tercer parámetro (`O`) tiene valor por
+   * defecto, así que indicar solo los dos primeros haría que **no** se infiriera de las
+   * opciones y volviéramos al manejador sin metadatos.
+   */
+  const workOptions: WorkOptions & { includeMetadata: true } = {
+    includeMetadata: true,
+    batchSize: options.batchSize ?? 10,
+    pollingIntervalSeconds: options.pollingIntervalSeconds ?? 5,
+  };
+
+  return boss.work(DEAD_LETTER_QUEUE, workOptions, async (jobs: JobWithMetadata<DomainEvent>[]) => {
+    await handler(jobs);
+  });
+};
 
 /** Opciones del trabajador de la cola: lotes grandes y sondeo frecuente. */
 export interface DomainEventWorkerOptions {
