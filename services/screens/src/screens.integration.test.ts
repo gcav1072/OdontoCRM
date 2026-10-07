@@ -1,4 +1,5 @@
 import { createDomainEvent, EVENT_TOPICS, type DomainEvent } from '@odontocrm/events';
+import { STAFF_READY_TOPIC } from '@odontocrm/contracts';
 import { eq, inArray, like, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -481,6 +482,79 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
 
       await leerHasta((acumulado) => acumulado.includes('Sofía M.'), 5_000);
       expect(texto).toContain('Sofía M.');
+
+      await lector!.cancel();
+    } finally {
+      await server.close();
+    }
+  }, 60_000);
+
+  it('el canal del personal avisa de lo que cambió, y solo al personal', async () => {
+    const server = await createScreensServer({ config, database: handle, services });
+    const baseUrl = await server.listen({ port: 0, host: '127.0.0.1' });
+
+    /** Una persona del consultorio: recepción, caja o sillón. */
+    const comoPersonal = {
+      'x-user-id': globalThis.crypto.randomUUID(),
+      'x-user-username': 'recepcion',
+      'x-user-roles': 'secretario',
+      'x-user-permissions': 'scheduling:read',
+      'x-user-must-change-password': 'false',
+      'x-session-id': globalThis.crypto.randomUUID(),
+    };
+
+    const decoder = new TextDecoder();
+
+    try {
+      // Una pantalla kiosko no entra: ya tiene su propio canal y su token no es de persona.
+      const pantalla = await fetch(`${baseUrl}/api/v1/screens/staff/stream`, {
+        headers: {
+          'x-user-id': globalThis.crypto.randomUUID(),
+          'x-user-username': 'Lobby',
+          'x-user-roles': 'pantalla',
+          'x-user-permissions': 'screens:display',
+          'x-user-must-change-password': 'false',
+          'x-session-id': globalThis.crypto.randomUUID(),
+        },
+      });
+      expect(pantalla.status).toBe(403);
+
+      // Sin identidad tampoco.
+      const anonimo = await fetch(`${baseUrl}/api/v1/screens/staff/stream`);
+      expect(anonimo.status).toBe(401);
+
+      const respuesta = await fetch(`${baseUrl}/api/v1/screens/staff/stream`, {
+        headers: comoPersonal,
+      });
+      expect(respuesta.status).toBe(200);
+      expect(respuesta.headers.get('content-type')).toContain('text/event-stream');
+
+      const lector = respuesta.body?.getReader();
+      expect(lector).toBeDefined();
+      let texto = '';
+
+      const leerHasta = async (condicion: (acumulado: string) => boolean): Promise<void> => {
+        const limite = Date.now() + 10_000;
+        while (!condicion(texto)) {
+          if (Date.now() > limite) throw new Error(`tiempo agotado. Recibido: ${texto}`);
+          const { value, done } = await lector!.read();
+          if (done === true) throw new Error(`El flujo se cerró. Recibido: ${texto}`);
+          texto += decoder.decode(value);
+        }
+      };
+
+      // 1) Al conectar llega el aviso de que el canal está vivo.
+      await leerHasta((acumulado) => acumulado.includes(STAFF_READY_TOPIC));
+
+      // 2) Un cierre de sesión se avisa sin que nadie pregunte (el caso del plan:
+      //    la fila de recepción y el cobro de la caja dependen de este aviso).
+      services.broadcast.publicar('staff', {
+        topic: EVENT_TOPICS.sessionClosed,
+        at: new Date().toISOString(),
+        aggregateId: globalThis.crypto.randomUUID(),
+      });
+      await leerHasta((acumulado) => acumulado.includes(EVENT_TOPICS.sessionClosed));
+      expect(texto).toContain('event: staff');
 
       await lector!.cancel();
     } finally {

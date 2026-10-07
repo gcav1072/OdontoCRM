@@ -1,26 +1,45 @@
 import {
+  STAFF_CHANNEL,
   formatSseFrame,
   type ConsultationState,
   type LobbyState,
   type ScreenStreamEvent,
+  type StaffSignal,
 } from '@odontocrm/contracts';
 
-/** Quién está mirando: la sala de espera o el consultorio. */
-export type PantallaKind = Extract<ScreenStreamEvent, 'lobby' | 'consultorio'>;
+/**
+ * Canal de un flujo SSE. El nombre **es** el del evento que viaja en la trama: quien se
+ * suscribe a `lobby` solo recibe las tramas `lobby`, y así un mismo servidor sostiene el
+ * canal de las pantallas kiosko y el del personal sin que se mezclen.
+ */
+export type ScreenChannel = Extract<ScreenStreamEvent, 'lobby' | 'consultorio' | 'staff'>;
+
+/** Lo que se puede repartir por un canal: estado de sala, de consultorio o un aviso. */
+export type ChannelPayload = LobbyState | ConsultationState | StaffSignal;
+
+/** Quién está mirando: la sala de espera o el consultorio (las pantallas kiosko). */
+export type PantallaKind = Extract<ScreenChannel, 'lobby' | 'consultorio'>;
 
 interface Suscriptor {
-  kind: PantallaKind;
+  canal: ScreenChannel;
   enviar: (trama: string) => void;
 }
 
 /**
- * Reparto de estado por **SSE** en el mismo proceso.
+ * Reparto por **SSE** en el mismo proceso.
  *
- * Cuando la sala cambia (un llamado, un check-in, alguien que pasa al
- * consultorio), el servicio manda a cada pantalla conectada el estado completo:
- * el cliente solo reemplaza lo que pinta, así que una reconexión no necesita
- * reproducir eventos. El `id` de cada trama permite rastrear el último estado
- * recibido y el keepalive evita que el proxy cierre la conexión inactiva.
+ * Hay dos clases de suscriptor y las dos caben aquí:
+ *
+ *  - las **pantallas kiosko** (`lobby`, `consultorio`) reciben el **estado completo** cada
+ *    vez que la sala cambia —un llamado, un check-in, alguien que pasa al consultorio—,
+ *    de modo que el cliente solo reemplaza lo que pinta y una reconexión no necesita
+ *    reproducir eventos;
+ *  - el **personal** (`staff`, recepción y caja) recibe **avisos** de qué cambió para
+ *    volver a pedir los datos: tienen la pantalla llena de información y solo les falta
+ *    enterarse de que algo la dejó vieja.
+ *
+ * El `id` de cada trama permite rastrear el último estado recibido y el keepalive evita
+ * que el proxy cierre la conexión inactiva.
  */
 export const createScreenBroadcaster = () => {
   const suscriptores = new Set<Suscriptor>();
@@ -28,8 +47,8 @@ export const createScreenBroadcaster = () => {
 
   return {
     /** Devuelve la función para darse de baja (al cerrar la conexión). */
-    suscribir: (kind: PantallaKind, enviar: (trama: string) => void): (() => void) => {
-      const suscriptor: Suscriptor = { kind, enviar };
+    suscribir: (canal: ScreenChannel, enviar: (trama: string) => void): (() => void) => {
+      const suscriptor: Suscriptor = { canal, enviar };
       suscriptores.add(suscriptor);
       return () => {
         suscriptores.delete(suscriptor);
@@ -37,27 +56,27 @@ export const createScreenBroadcaster = () => {
     },
 
     /** Cuántas pantallas están conectadas (lo usa la administración). */
-    conectadas: (kind?: PantallaKind): number =>
-      [...suscriptores].filter((suscriptor) => kind === undefined || suscriptor.kind === kind)
+    conectadas: (canal?: ScreenChannel): number =>
+      [...suscriptores].filter((suscriptor) => canal === undefined || suscriptor.canal === canal)
         .length,
 
-    /** Manda el estado a todas las pantallas de ese tipo. */
-    publicar: (kind: PantallaKind, datos: LobbyState | ConsultationState): number => {
+    /** Manda un estado (o un aviso) a todos los suscriptores de ese canal. */
+    publicar: (canal: ScreenChannel, datos: ChannelPayload): number => {
       secuencia += 1;
       const trama = formatSseFrame({
-        id: `${kind}-${String(Date.now())}-${String(secuencia)}`,
-        evento: kind,
+        id: `${canal}-${String(Date.now())}-${String(secuencia)}`,
+        evento: canal,
         datos,
       });
 
       let enviados = 0;
       for (const suscriptor of [...suscriptores]) {
-        if (suscriptor.kind !== kind) continue;
+        if (suscriptor.canal !== canal) continue;
         try {
           suscriptor.enviar(trama);
           enviados += 1;
         } catch {
-          // Una pantalla que se cayó a mitad de escritura se descarta.
+          // Un cliente que se cayó a mitad de escritura se descarta.
           suscriptores.delete(suscriptor);
         }
       }
@@ -67,3 +86,6 @@ export const createScreenBroadcaster = () => {
 };
 
 export type ScreenBroadcaster = ReturnType<typeof createScreenBroadcaster>;
+
+/** El canal del personal, para no repetir el literal por el servicio. */
+export const STAFF = STAFF_CHANNEL;

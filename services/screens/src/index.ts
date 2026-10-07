@@ -7,12 +7,14 @@ import {
   stopBoss,
 } from '@odontocrm/db';
 import { startServer } from '@odontocrm/kernel';
+import type { DomainEvent } from '@odontocrm/events';
 
 import { loadScreensConfig } from './config.js';
 import { handleDomainEvents } from './consumer.js';
 import { createScreensDatabase } from './db/client.js';
 import { createPatientLookup, createAlertLookup } from './internal-client.js';
 import { createScreenBroadcaster } from './sala/broadcast.js';
+import { staffSignals } from './sala/staff-signal.js';
 import { consultationState, lobbyState } from './sala/estado-service.js';
 import { createScreensServer } from './server.js';
 import type { ScreensServices } from './services.js';
@@ -39,6 +41,20 @@ const main = async (): Promise<void> => {
     broadcast.publicar('consultorio', await consultationState(database.db, { alertLookup }));
   };
 
+  /**
+   * Avisa al personal de lo que acaba de cambiar.
+   *
+   * Va **aparte** del refresco de la sala: el aviso sale con **cualquier** lote que traiga
+   * un tema interesante —también los que la proyección de la sala ignora, como cerrar una
+   * sesión o emitir una factura—, mientras que el estado solo se reparte cuando la sala
+   * cambió de verdad. Si dependiera del refresco, la caja no se enteraría de un cobro.
+   */
+  const avisarAlPersonal = (events: readonly DomainEvent[]): void => {
+    for (const senal of staffSignals(events)) {
+      broadcast.publicar('staff', senal);
+    }
+  };
+
   // Cola de eventos: la sala se alimenta de lo que pasa en la agenda.
   const boss = createBoss({
     connectionString: config.EVENTS_DATABASE_URL ?? config.DATABASE_URL,
@@ -50,6 +66,8 @@ const main = async (): Promise<void> => {
     boss,
     async (events) => {
       try {
+        // El personal se entera **siempre**; la sala solo cuando su estado cambió.
+        avisarAlPersonal(events);
         const resultados = await handleDomainEvents(
           { db: database.db, config, patientLookup, onCambio: refrescar },
           events,

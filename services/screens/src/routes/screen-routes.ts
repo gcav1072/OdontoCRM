@@ -1,11 +1,14 @@
 import {
   SSE_KEEPALIVE,
+  STAFF_READY_TOPIC,
   criticalFlagsInputSchema,
   formatSseFrame,
   screenDeviceInputSchema,
   screenDeviceUpdateSchema,
+  type Role,
   type ScreenDevice,
   type ScreenDeviceList,
+  type StaffSignal,
 } from '@odontocrm/contracts';
 import {
   ForbiddenError,
@@ -30,7 +33,7 @@ import {
   touchDevice,
   updateDevice,
 } from '../sala/estado-service.js';
-import type { PantallaKind } from '../sala/broadcast.js';
+import type { PantallaKind, ScreenChannel } from '../sala/broadcast.js';
 
 const idParamsSchema = z.object({ id: z.uuid() });
 
@@ -73,6 +76,28 @@ export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServ
     }
     await touchDevice(db, device.id);
     return { id: device.id, kind: device.kind as PantallaKind };
+  };
+
+  /**
+   * El canal del personal lo abre una **persona con sesión**, no una pantalla kiosko.
+   *
+   * Se comprueba el rol y no un permiso suelto: lo que se está autorizando es «pertenecer
+   * al personal del consultorio» —estar en la recepción, en la caja o en el sillón—, y los
+   * tres roles del personal tienen derecho a enterarse de que el flujo cambió. La pantalla
+   * kiosko (`rol pantalla`) queda fuera: ya recibe el suyo, y su token no es de persona.
+   *
+   * Se mantiene la regla de siempre: mientras la contraseña sea temporal, nada.
+   */
+  const STAFF_ROLES: readonly Role[] = ['admin', 'secretario', 'odontologo'];
+
+  const staffOnly = async (request: FastifyRequest): Promise<void> => {
+    const identity = requireIdentity(request);
+    if (identity.mustChangePassword) {
+      throw new ForbiddenError('Debes cambiar tu contraseña antes de continuar');
+    }
+    if (!identity.roles.some((rol) => STAFF_ROLES.includes(rol))) {
+      throw new ForbiddenError('Este canal es para el personal del consultorio');
+    }
   };
 
   /* ── Administración ──────────────────────────────────────────────────────── */
@@ -134,6 +159,8 @@ export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServ
     reply.status(200).send({
       lobby: broadcast.conectadas('lobby'),
       consultorio: broadcast.conectadas('consultorio'),
+      // El canal del personal: cuántas pestañas de recepción y caja están escuchando.
+      staff: broadcast.conectadas('staff'),
     }),
   );
 
@@ -142,14 +169,10 @@ export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServ
   const abrirFlujo = async (
     request: FastifyRequest,
     reply: FastifyReply,
-    kind: PantallaKind,
+    canal: ScreenChannel,
+    /** Trama inicial: el estado de la pantalla, o el aviso de que el canal está vivo. */
+    inicial: unknown,
   ): Promise<void> => {
-    await pantallaDe(request);
-    const estado =
-      kind === 'lobby'
-        ? await lobbyState(db, config)
-        : await consultationState(db, { alertLookup });
-
     // A partir de aquí la respuesta la controla el flujo de eventos.
     reply.hijack();
     reply.raw.writeHead(200, {
@@ -165,12 +188,12 @@ export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServ
     reply.raw.write(
       formatSseFrame({
         id: `inicial-${String(Date.now())}`,
-        evento: kind,
-        datos: estado,
+        evento: canal,
+        datos: inicial,
       }),
     );
 
-    const baja = broadcast.suscribir(kind, (trama) => {
+    const baja = broadcast.suscribir(canal, (trama) => {
       reply.raw.write(trama);
     });
 
@@ -187,12 +210,43 @@ export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServ
     request.raw.on('error', cerrar);
   };
 
+  /** Flujo de una pantalla kiosko: se comprueba el dispositivo y se manda su estado. */
+  const abrirFlujoPantalla = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    kind: PantallaKind,
+  ): Promise<void> => {
+    await pantallaDe(request);
+    const estado =
+      kind === 'lobby'
+        ? await lobbyState(db, config)
+        : await consultationState(db, { alertLookup });
+    await abrirFlujo(request, reply, kind, estado);
+  };
+
   app.get('/api/v1/screens/lobby/stream', { preHandler: display }, async (request, reply) => {
-    await abrirFlujo(request, reply, 'lobby');
+    await abrirFlujoPantalla(request, reply, 'lobby');
   });
 
   app.get('/api/v1/screens/consultorio/stream', { preHandler: display }, async (request, reply) => {
-    await abrirFlujo(request, reply, 'consultorio');
+    await abrirFlujoPantalla(request, reply, 'consultorio');
+  });
+
+  /**
+   * Flujo en vivo del **personal** (recepción, caja y consultorio).
+   *
+   * No lo abre una pantalla kiosko —esas ya tienen el suyo— sino una persona con sesión:
+   * por eso el guardia exige un rol de consultorio y no `screens:display`. Lo que viaja
+   * son **avisos** (`StaffSignal`), no estado: la interfaz ya tiene los datos y solo
+   * necesita saber que algo los dejó viejos.
+   */
+  app.get('/api/v1/screens/staff/stream', { preHandler: staffOnly }, async (request, reply) => {
+    const listo: StaffSignal = {
+      topic: STAFF_READY_TOPIC,
+      at: new Date().toISOString(),
+      aggregateId: null,
+    };
+    await abrirFlujo(request, reply, 'staff', listo);
   });
 
   /* ── Rutas internas (solo entre servicios, con el secreto compartido) ────── */
