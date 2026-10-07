@@ -1,6 +1,7 @@
 # ADR 0001 — Desarrollo nativo sin Docker; producción en Fedora
 
-- **Fecha:** 2026-10-02 · **Estado:** aceptada
+- **Fecha:** 2026-10-02 · **Estado:** aceptada · **Ampliada por la [0050](0050-windows-segundo-destino-de-produccion.md)**
+  (Windows pasa a ser un segundo destino de producción, no solo de desarrollo)
 
 ## Contexto
 
@@ -23,3 +24,8 @@ configuración depende exclusivamente de variables de entorno y rutas resueltas 
   con `.gitattributes`) y probar en Fedora en la Fase 10.
 - ⚠️ Si más adelante se quiere Docker, la arquitectura ya es portable (un contenedor por
   servicio y una base por servicio).
+- ➕ **Ampliación (2026-10-06).** "Producción en Fedora" pasa a "producción en Fedora **o
+  Windows**": el [ADR 0050](0050-windows-segundo-destino-de-produccion.md) añade Windows como
+  segundo destino soportado, porque los equipos de las clínicas piloto son Windows. El código
+  y las migraciones siguen siendo los mismos; lo que cambia por sistema es la orquestación
+  (PM2 y Caddy en Windows, `systemd` y nginx en Fedora).
