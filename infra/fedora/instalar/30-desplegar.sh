@@ -11,7 +11,7 @@
 #   3. Claves EdDSA de los JWT (si no existen; no se regeneran nunca solas)
 #   4. Migraciones de las 8 bases
 #   5. Usuarios iniciales (contraseña temporal, se imprime UNA vez)
-#   6. Unidades de systemd y arranque de los 9 servicios
+#   6. Unidades de systemd y arranque de los servicios
 #   7. Certificado TLS interno (mkcert) si no hay
 #   8. Proxy inverso, SELinux y firewall: 80 y 443 para la LAN
 #   9. Respaldos diarios (con --sin-respaldo se omiten)
@@ -245,7 +245,7 @@ fi
 # ════════════════════════════════════════════════════════════════════════════
 # 4. Migraciones — con el entorno de /etc/odontocrm, no con los .env del repo
 # ════════════════════════════════════════════════════════════════════════════
-paso '4/9 · Migraciones de las 8 bases'
+paso "4/9 · Migraciones de las ${#SERVICIOS[@]} bases"
 #
 # `tools/con-entorno.mjs` carga los .env SIN interpretarlos como shell. Es
 # importante: `source` vaciaba WEB_ORIGIN por el espacio tras la coma y expandía las
@@ -434,7 +434,7 @@ if [[ -f "$CODE_DIR/infra/fedora/logrotate/odontocrm" ]]; then
   ok 'rotación de logs instalada'
 fi
 
-# Los 9 servicios. Se habilitan (arrancan solos al encender la máquina).
+# Los servicios. Se habilitan (arrancan solos al encender la máquina).
 UNIDADES_SERVICIO=()
 for s in "${SERVICIOS[@]}"; do UNIDADES_SERVICIO+=("odontocrm@$s.service"); done
 UNIDADES_SERVICIO+=(odontocrm-gateway.service)
@@ -455,18 +455,23 @@ else
   fi
   systemctl enable --now odontocrm-alertas.timer >/dev/null 2>&1 || true
   systemctl enable --now odontocrm-red.timer >/dev/null 2>&1 || true
-  ok 'los 9 servicios habilitados (arrancan solos al encender la máquina)'
+  ok "los ${#SERVICIOS[@]} servicios habilitados (arrancan solos al encender la máquina)"
   detalle 'esperando a que escuchen…'
+  # Los puertos salen de `PUERTO_SERVICIO` (comun.sh): antes estaban escritos a mano aquí y,
+  # al añadir un servicio (billing fue el último), esta espera se quedaba corta en silencio.
+  mapfile -t PUERTOS_ESPERADOS < <(puertos_internos)
+  total_puertos=$(( ${#PUERTOS_ESPERADOS[@]} - 1 ))   # 5432 (la base) no se espera aquí
   for _ in $(seq 1 30); do
     listos=0
-    for p in 4001 4002 4003 4004 4005 4006 4007 4008 8090; do
+    for p in "${PUERTOS_ESPERADOS[@]}"; do
+      [[ "$p" == "5432" ]] && continue
       ss -ltn 2>/dev/null | grep -q "127.0.0.1:$p" && listos=$((listos + 1))
     done
-    (( listos >= 9 )) && break
+    (( listos >= total_puertos )) && break
     sleep 1
   done
-  (( listos >= 9 )) && ok 'los 9 puertos internos escuchan' ||
-    av "solo $listos de 9 escuchan todavía: mira «sudo odontocrm verificar»"
+  (( listos >= total_puertos )) && ok "los $total_puertos puertos internos escuchan" ||
+    av "solo $listos de $total_puertos escuchan todavía: mira «sudo odontocrm verificar»"
 fi
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -580,7 +585,7 @@ else
 fi
 
 # ── Firewall ────────────────────────────────────────────────────────────────
-# Se abren SOLO el 80 y el 443. El gateway (8090) y los 8 servicios (4001-4008)
+# Se abren SOLO el 80 y el 443. El gateway y los servicios internos
 # escuchan en 127.0.0.1 y NO se publican: los aparatos entran por el proxy.
 if ! systemctl is-active --quiet firewalld && ! systemctl is-enabled --quiet firewalld 2>/dev/null; then
   av 'firewalld no está activo: los puertos no se filtran en esta máquina'
@@ -633,12 +638,15 @@ else
     abiertos+="$(timeout 15 firewall-cmd --zone="$z" --list-rich-rules 2>/dev/null || true)"$'\n'
   done
   publicados=0
-  for puerto in 5432 4001 4002 4003 4004 4005 4006 4007 4008 8090; do
+  # La lista sale de `puertos_internos` (comun.sh): escrita a mano se quedaba sin el puerto
+  # del último servicio, y esta comprobación —que es de seguridad— decía «todo bien» sin
+  # haberlo mirado.
+  while IFS= read -r puerto; do
     if grep -qE "(^|[^0-9])${puerto}/(tcp|udp)" <<<"$abiertos"; then
       av "el puerto $puerto está abierto a la red y no debería (la base y los servicios van por dentro)"
       publicados=$((publicados + 1))
     fi
-  done
+  done < <(puertos_internos)
   (( publicados == 0 )) && ok 'comprobado: la base y los servicios internos NO están publicados'
 fi
 

@@ -4,6 +4,30 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — Reblindado tras el merge de facturación: los puertos, en un solo sitio · 2026-10-06
+
+Con `billing` el despliegue pasó a **9 servicios** (y 10 unidades con el gateway). Revisar el
+merge encontró el hueco clásico del «servicio nuevo a medias»: **cuatro listas de puertos
+escritas a mano** se quedaron sin el 4009. Dos de ellas no eran cosméticas:
+
+| Sitio | Qué pasaba | Ahora |
+| :--- | :--- | :--- |
+| `30-desplegar.sh` (espera de arranque) | Decía «los 9 puertos internos escuchan» **sin esperar el de billing**: un despliegue con billing caído pasaba por bueno | Los puertos se calculan con `#SERVICIOS` desde `PUERTO_SERVICIO` |
+| `30-desplegar.sh` y `40-verificar.sh` (nada publicado) | La comprobación —**de seguridad**— no miraba el 4009: un puerto de billing abierto a la red habría pasado como «no publicado» | Recorren `puertos_internos` |
+| `ensayo-despliegue.sh` | La misma lista a mano | Usa su mapa `PUERTO_DE`, que ya tenía billing |
+
+Y para que no vuelva: los puertos viven en **`PUERTO_SERVICIO` (`comun.sh`)** con el helper
+`puertos_internos`, y `fedora:check` estrena **tres candados** (los tres probados en negativo:
+quito `[billing]=4009`, quito billing de `aprovisionar.mjs`, devuelvo una lista a mano… y falla):
+
+1. cada servicio de `SERVICIOS` tiene puerto, y no hay puertos que no sean de ningún servicio;
+2. las tres listas de servicios coinciden (`comun.sh` · `aprovisionar.mjs` · `tools/lib/servicios.mjs`);
+3. ningún guion del despliegue vuelve a llevar una lista de puertos a mano.
+
+De paso, los textos que contaban a mano («los 9 servicios», «las 8 bases», «las 10 unidades»)
+ahora **se calculan** con `${#SERVICIOS[@]}`: al añadir el próximo servicio no habrá que
+perseguirlos por todo el código.
+
 ## [Facturación] — La caja completa: historial, reimpresión contada y anulación · 2026-10-06
 
 La biblioteca de la caja sabía emitir y cobrar desde la entrega anterior, pero **la pantalla no**: seguía

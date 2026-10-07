@@ -89,15 +89,15 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    outbox, envíos, reportes y alertas.
   sudo odontocrm alertas           Solo los problemas. Sale con 1 si hay alguno
                                    (es lo que ejecuta el temporizador cada 5 minutos).
-  sudo odontocrm respaldar         Respaldo ahora mismo de las 8 bases y de la
+  sudo odontocrm respaldar         Respaldo ahora mismo de las bases y de la
                                    configuración (/etc/odontocrm, CONTIENE SECRETOS).
   sudo odontocrm restaurar ...     Restaurar desde un respaldo (pasa las opciones tal
                                    cual: --from /var/backups/odontocrm/<fecha> --all --yes).
-  sudo odontocrm verificar         Los 9 servicios: unidad activa, puerto servido por
+  sudo odontocrm verificar         Los ${#SERVICIOS[@]} servicios: unidad activa, puerto servido por
                                    ELLA y /health + /ready en 200. Espera (hasta 45 s,
                                    ODONTOCRM_ESPERA) a que todos escuchen: tras un
                                    reinicio no tardan todos lo mismo.
-  sudo odontocrm servicios         Estado de las 10 unidades de systemd.
+  sudo odontocrm servicios         Estado de las $(( ${#SERVICIOS[@]} + 1 )) unidades de systemd.
   sudo odontocrm logs <servicio|gateway|nginx|postgres> [líneas]
                                    Últimos registros.
   sudo odontocrm actualizar [--rama=<nombre>]
@@ -108,7 +108,7 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    Para el despliegue COMPLETO con evidencia (TLS,
                                    firewall, SELinux, respaldo y restauración probada)
                                    está `infra/fedora/ensayo-despliegue.sh`.
-  sudo odontocrm parar             Detener los 9 servicios (el gateway primero: es la
+  sudo odontocrm parar             Detener los ${#SERVICIOS[@]} servicios (el gateway primero: es la
                                    puerta). nginx y PostgreSQL se quedan; con `--todo`
                                    se paran también ellos (sistema completamente parado).
   sudo odontocrm arrancar          Arrancarlos en orden y comprobar que los 9 responden.
@@ -257,7 +257,7 @@ case "$ORDEN" in
       done
     done
     echo
-    if (( fallos == 0 )); then ok 'los 9 servicios están bien'; else err "$fallos comprobación(es) con problemas"; fi
+    if (( fallos == 0 )); then ok "los ${#SERVICIOS[@]} servicios están bien"; else err "$fallos comprobación(es) con problemas"; fi
     exit $(( fallos > 0 ))
     ;;
 
@@ -1007,7 +1007,7 @@ EOF
     echo
 
     if [[ "${nuestras_n:-0}" == "0" ]]; then
-      ok "sin denegaciones del proyecto (nginx, los 9 servicios, Chromium, PostgreSQL)"
+      ok "sin denegaciones del proyecto (nginx, los ${#SERVICIOS[@]} servicios, Chromium, PostgreSQL)"
       if [[ "${ajenas_n:-0}" != "0" ]]; then
         av "$ajenas_n denegación(es) de servicios del SISTEMA (no del proyecto):"
         printf '%s' "$registro" | grep -oE 'comm="[^"]+"' | sort | uniq -c |

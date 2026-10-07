@@ -102,7 +102,7 @@ sudo -u "$USUARIO_REAL" psql -h /var/run/postgresql -d postgres -tAc 'select ver
 echo
 echo "== 3-bis/6 · pg_hba.conf: TCP con contraseña (scram-sha-256) =============="
 # `postgresql-setup --initdb` deja `ident` en las líneas de TCP: el servidor compara el
-# usuario del SISTEMA con el rol pedido, así que los 8 servicios —que entran por
+# usuario del SISTEMA con el rol pedido, así que los servicios —que entran por
 # 127.0.0.1 con su contraseña— fallan con «Peer authentication failed» y systemd los
 # reintenta en bucle. Se cambia SOLO eso: el socket local conserva `peer`, que es lo que
 # permite administrar sin contraseñas guardadas.

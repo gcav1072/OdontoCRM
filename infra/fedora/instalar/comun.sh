@@ -51,10 +51,44 @@ BACKUP_DIR="${ODONTOCRM_BACKUP_DIR:-/var/backups/odontocrm}"
 SERVICE_USER="${ODONTOCRM_USER:-odontocrm}"
 SERVICE_GROUP="${ODONTOCRM_GROUP:-odontocrm}"
 
-# Los 8 servicios con base de datos propia, en orden. El gateway va aparte: no
-# tiene base de datos y su unidad es otra.
+# Los servicios con base de datos propia, en orden. El gateway va aparte: no tiene base
+# de datos y su unidad es otra.
 SERVICIOS=(identity patients scheduling notifications clinical odontogram screens reporting billing)
 PUERTO_GATEWAY=8090
+
+# Puerto interno de cada servicio, en UN SOLO SITIO. Estaba copiado a mano en cuatro
+# guiones (el despliegue, la verificación, el ensayo…), así que al añadir `billing` se
+# quedaron tres listas sin el 4009: el despliegue decía «los 9 puertos escuchan» sin
+# esperar al de billing y —peor— la comprobación de «nada publicado» no miraba su puerto,
+# con lo que un 4009 abierto a la red habría pasado como bueno. Ahora se declara aquí y
+# los guiones lo LEEN; `fedora:check` comprueba que no vuelva a haber listas a mano.
+declare -A PUERTO_SERVICIO=(
+  [identity]=4001
+  [patients]=4002
+  [scheduling]=4003
+  [notifications]=4004
+  [clinical]=4005
+  [odontogram]=4006
+  [screens]=4007
+  [reporting]=4008
+  [billing]=4009
+)
+
+# Los puertos que NO pueden estar publicados: la base, los servicios internos y el gateway.
+# Se calcula, no se escribe: un servicio nuevo entra solo.
+puertos_internos() {
+  printf '%s\n' 5432
+  local s
+  for s in "${SERVICIOS[@]}"; do
+    if [[ -n "${PUERTO_SERVICIO[$s]:-}" ]]; then
+      printf '%s\n' "${PUERTO_SERVICIO[$s]}"
+    else
+      printf '      (aviso: %s no tiene puerto en PUERTO_SERVICIO)\n' "$s" >&2
+    fi
+  done
+  printf '%s\n' "$PUERTO_GATEWAY"
+}
+
 NOMBRE_MDNS_POR_DEFECTO=odontocrm
 ZONA_HORARIA="${ODONTOCRM_TZ:-America/Caracas}"
 

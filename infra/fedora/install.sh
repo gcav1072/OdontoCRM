@@ -1053,7 +1053,7 @@ configure_firewall() {
   if (( ! WITH_FIREWALL )); then
     log "omitido (use --with-firewall --lan-cidr=<red> para configurarlo)"
     log "  Regla prevista: abrir SOLO el puerto ${PROXY_PORT}/tcp a la LAN."
-    log "  Nunca abrir 8090 ni 4001-4008 (servicios) ni 5432 (PostgreSQL)."
+    log "  Nunca abrir 8090 ni los puertos de los servicios ni 5432 (PostgreSQL)."
     return 0
   fi
 

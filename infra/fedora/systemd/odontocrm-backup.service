@@ -1,5 +1,5 @@
 [Unit]
-Description=OdontoCRM · respaldo diario de las 8 bases y de la configuración
+Description=OdontoCRM · respaldo diario de las bases y de la configuración
 Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
 
 # El respaldo tiene que correr con las bases arriba y, si están caídas, esperar.

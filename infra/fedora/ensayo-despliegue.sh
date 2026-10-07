@@ -501,7 +501,7 @@ if [[ "$HASTA" == "tls" || "$HASTA" == "respaldos" ]]; then
     av 'SELinux no está en Enforcing: no se toca'
   fi
 
-  # 4) firewalld: solo el proxy (443 y 80). Nada de 5432 ni de 4001-4008.
+  # 4) firewalld: solo el proxy (443 y 80). Nada de 5432 ni de los puertos internos.
   #
   # Se abre en la **zona** de la interfaz de la red local, no para un rango de IPs: así
   # sigue valiendo cuando cambia la red (el PC de pruebas en otro wifi, o el consultorio
@@ -524,7 +524,9 @@ if [[ "$HASTA" == "tls" || "$HASTA" == "respaldos" ]]; then
     fi
     firewall-cmd --reload >/dev/null
     ok "firewalld: 443/tcp (y 80 para el redirect) abiertos — $modo_fw"
-    for puerto in 5432 4001 4002 4003 4004 4005 4006 4007 4008 8090; do
+    # La lista sale del mapa PUERTO_DE de este mismo guion (que se usa más arriba para
+    # comprobar cada servicio): escrita a mano se quedaba sin el puerto del último servicio.
+    for puerto in 5432 "${PUERTO_DE[@]}" "${PUERTO_GATEWAY:-8090}"; do
       if firewall-cmd --list-ports 2>/dev/null | grep -q "\b${puerto}/tcp\b"; then
         av "el $puerto está ABIERTO en firewalld y no debería (solo 127.0.0.1)"
       fi

@@ -542,6 +542,67 @@ const exigir = (condicion, bien, mal) => {
     `las listas de bases no coinciden o falta la cola:\n      plantilla: ${enPlantilla}\n      guion:     ${enRespaldo}`,
   );
 
+  // (9-bis) Los servicios y sus puertos viven en UN solo sitio (`comun.sh`) y aparecen en
+  //     todos los guiones que tienen que saberlo. Un servicio añadido a medias es un fallo
+  //     silencioso, y pasó con `billing`: cuatro listas de puertos escritas a mano se
+  //     quedaron sin el 4009, así que el despliegue no esperaba su puerto y la comprobación
+  //     de «nada publicado» —que es de seguridad— decía «todo bien» sin haberlo mirado.
+  const comun = leer('infra/fedora/instalar/comun.sh');
+  const serviciosComun = /^SERVICIOS=\(([^)]*)\)/m.exec(comun)?.[1].trim().split(/\s+/) ?? [];
+  const puertosComun = Object.fromEntries(
+    [...comun.matchAll(/\[([a-z]+)\]=(\d{4,5})/g)].map((m) => [m[1], m[2]]),
+  );
+  const sinPuerto = serviciosComun.filter((s) => puertosComun[s] === undefined);
+  const puertosHuerfanos = Object.keys(puertosComun).filter((s) => !serviciosComun.includes(s));
+  exigir(
+    serviciosComun.length > 0 && sinPuerto.length === 0 && puertosHuerfanos.length === 0,
+    'cada servicio tiene su puerto en PUERTO_SERVICIO, y no hay puertos de más',
+    `sin puerto: ${sinPuerto.join(', ') || '—'} · puertos que no son de ningún servicio: ${puertosHuerfanos.join(', ') || '—'}`,
+  );
+
+  // (9-ter) Y las tres listas de servicios tienen que coincidir: la del instalador, la del
+  //     aprovisionador y la de las herramientas de desarrollo (esta última incluye el
+  //     `gateway`, que no está en SERVICIOS porque tiene su unidad propia y no lleva base).
+  const nombresDe = (ruta, patron) =>
+    [...new Set([...leer(ruta).matchAll(patron)].map((m) => m[1]))].sort();
+  const esperados = [...serviciosComun].sort();
+  const enAprovisionar = nombresDe('infra/fedora/instalar/aprovisionar.mjs', /nombre: '([a-z]+)'/g);
+  const enHerramientas = nombresDe('tools/lib/servicios.mjs', /name: '([a-z]+)'/g);
+  const faltanEnAprovisionar = esperados.filter((s) => !enAprovisionar.includes(s));
+  const faltanEnHerramientas = esperados.filter((s) => !enHerramientas.includes(s));
+  const nombresRaros = [
+    ...new Set(
+      enAprovisionar
+        .concat(enHerramientas)
+        .filter((s) => !esperados.includes(s) && s !== 'gateway'),
+    ),
+  ];
+  exigir(
+    faltanEnAprovisionar.length === 0 &&
+      faltanEnHerramientas.length === 0 &&
+      nombresRaros.length === 0,
+    'la lista de servicios coincide en comun.sh, aprovisionar.mjs y tools/lib/servicios.mjs',
+    `falta en aprovisionar.mjs: ${faltanEnAprovisionar.join(', ') || '—'} · falta en tools/lib/servicios.mjs: ${faltanEnHerramientas.join(', ') || '—'} · nombres que no son de ningún servicio: ${nombresRaros.join(', ') || '—'}`,
+  );
+
+  // (9-quáter) Y ninguna LISTA de puertos escrita a mano en los guiones: se LEEN de
+  //     `PUERTO_SERVICIO` (comun.sh). Un mapa (`[servicio]=4009`), en cambio, es la forma
+  //     buena: ahí el puerto va pegado a su nombre, no en una ristra suelta de números.
+  const listasAMano = [
+    'infra/fedora/instalar/30-desplegar.sh',
+    'infra/fedora/instalar/40-verificar.sh',
+    'infra/fedora/ensayo-despliegue.sh',
+  ].filter((ruta) =>
+    leer(ruta)
+      .split('\n')
+      .some((linea) => /\b400\d\b[^\n]*\b400\d\b/.test(linea) && !/\[[a-z]+\]=\d/.test(linea)),
+  );
+  exigir(
+    listasAMano.length === 0,
+    'los puertos internos se leen de comun.sh (nada de listas escritas a mano)',
+    `estos guiones vuelven a llevar una lista de puertos a mano: ${listasAMano.join(', ')}`,
+  );
+
   // (10) El agente `odontocrm` avisa de los marcadores sin sustituir.
   exigir(
     /CAMBIAR/.test(odontocrm) && /marcador/.test(odontocrm),

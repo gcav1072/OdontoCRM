@@ -392,7 +392,7 @@ if [[ -z "$SOLO" ]]; then
     # En `--dry-run` no se verifica de verdad: la instalación todavía no existe, así
     # que lo único que saldría son fallos inventados. Además las comprobaciones tocan
     # cosas que necesitan root (firewall, certificado) y colgarían o mentirían.
-    detalle "[dry-run] comprobaría los 9 servicios, HTTPS, la CA y los puertos"
+    detalle "[dry-run] comprobaría los ${#SERVICIOS[@]} servicios, HTTPS, la CA y los puertos"
     detalle "    sudo bash $INSTALADOR_DIR/40-verificar.sh"
   elif ! bash "$INSTALADOR_DIR/40-verificar.sh" --nombre-mdns="$NOMBRE_MDNS"; then
     echo
@@ -410,7 +410,7 @@ printf '  Desde los aparatos de la consulta:\n'
 printf '      %shttps://%s%s\n\n' "$C_TI" "$FQDN" "$C_RE"
 printf '  El día a día del servidor:\n'
 printf '      sudo odontocrm estado        cómo va todo\n'
-printf '      sudo odontocrm verificar     los 9 servicios, uno a uno\n'
+printf '      sudo odontocrm verificar     los %s servicios, uno a uno\n' "${#SERVICIOS[@]}"
 printf '      sudo odontocrm respaldar     copia de seguridad ahora\n'
 printf '      sudo odontocrm actualizar    traer la versión nueva\n\n'
 printf '  Los secretos viven SOLO en %s. El código de %s\n' "$ETC_DIR" "$CODE_DIR"

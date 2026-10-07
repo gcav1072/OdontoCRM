@@ -83,7 +83,7 @@ else
 fi
 
 # ── 2. Los 9 servicios: unidad activa, puerto suyo y /health ────────────────
-paso '2/6 · Los 9 servicios'
+paso "2/6 · Los ${#SERVICIOS[@]} servicios"
 if (( RAPIDO )); then
   detalle 'omitido (--rapido)'
 elif [[ -x /usr/local/bin/odontocrm ]]; then
@@ -241,12 +241,15 @@ else
   # Contador PROPIO de esta sección: usar el total haría que un fallo anterior
   # silenciara un «todo bien» del firewall, que es justo lo que no se quiere.
   publicados=0
-  for puerto in 5432 4001 4002 4003 4004 4005 4006 4007 4008 8090; do
+  # Los puertos salen de `PUERTO_SERVICIO` (comun.sh). A mano se quedaban sin el del último
+  # servicio añadido: esta comprobación es de seguridad y decía «no está publicado» sin
+  # haber mirado ese puerto.
+  while IFS= read -r puerto; do
     if grep -q "\b${puerto}/tcp\b" <<<"$puertos_fw"; then
       fallo "el puerto $puerto está ABIERTO a la red y no debería (la base y los servicios van por dentro)"
       publicados=$((publicados + 1))
     fi
-  done
+  done < <(puertos_internos)
   (( publicados == 0 )) && ok 'la base de datos y los servicios internos NO están publicados'
 fi
 

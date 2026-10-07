@@ -249,7 +249,7 @@ export const retratoDeLaPila = async () => {
   }
 
   /**
-   * El modo lo deciden los **servicios** (4001-4008 y la puerta), no la interfaz:
+   * El modo lo deciden los **servicios** (sus puertos internos y la puerta), no la interfaz:
    * Vite sirve igual en los dos modos y su línea de comandos nunca dice `--watch`.
    * Así, «dev» es una pila de servicios con recarga y «fijo» una sin ella.
    */
