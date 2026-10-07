@@ -4,6 +4,36 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Recuperación] — El respaldo se prueba solo y los expedientes van cifrados · 2026-10-07
+
+Dos huecos que solo se notan el día que se notan. Un respaldo que nunca se ha restaurado es una
+carpeta con ficheros dentro, y nadie lo sabe hasta que hace falta de verdad. Y los expedientes
+—radiografías, recetas, documentos— estaban en el disco **en claro**: si el equipo se roba o el
+disco se extrae, las historias clínicas se van con él.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| Cifrado en reposo | `packages/storage`: AES-256-GCM con formato propio y **versionado** (`ODBLOB` + versión + algoritmo + IV(12) + etiqueta(16) + cifrado), clave de `STORAGE_ENCRYPTION_KEY` |
+| Lo que se guarda | El `sha256` **del texto en claro**, no del fichero cifrado: así el cifrado no cambia las comprobaciones de integridad ni la detección de duplicados |
+| Compatibilidad hacia atrás | Al leer se descifra si el fichero lo está y se devuelve tal cual si no: lo ya guardado se sigue leyendo sin necesidad de la clave |
+| Los servicios sirven **contenido** | `file-service` y `attachment-service` devuelven `Buffer` en vez de una ruta: el cifrado no puede depender de que el disco sea legible |
+| `npm run recifrar:almacen` | Pasa a cifrado lo que quedó en claro. Idempotente; `--estado` para mirar y `--todos` para los tres almacenes; escribe a un temporal y renombra, y comprueba el `sha256` después |
+| `npm run verify:backup` | El simulacro: restaura el último respaldo en bases **temporales** (`odonto_verify_*`), cuenta las tablas de control y las destruye siempre —también cuando algo falla—. Detecta un `.dump` truncado o con un bit cambiado |
+| Temporizador semanal | Domingos 04:30. Si el simulacro falla, el aviso de emergencia sale por el bot de administración |
+| Verificación de la instalación | Paso nuevo: la clave de cifrado, que no queden ficheros en claro y que **un respaldo se restaure de verdad** |
+
+De paso salió un fallo real de despliegue: al servicio de facturación le faltaba `STORAGE_DIR` en
+`aprovisionar.mjs`, así que en una instalación limpia habría intentado escribir los PDF en
+`/opt/odontocrm`, que es de solo lectura. La clave de cifrado se genera una sola vez y la
+comparten los tres servicios: rotarla dejaría ilegibles los ficheros anteriores, y por eso
+`--rotate` no la toca.
+
+Comprobado contra PostgreSQL y disco reales: un respaldo de las nueve bases se restauró entero con
+sus conteos de control; un `.dump` truncado y otro con un bit invertido se detectaron (código de
+salida 1, por `sha256` y por error de `pg_restore`); los 23 ficheros de `storage/clinical` se
+cifraron, se leyeron idénticos, resultaron ilegibles sin la clave y volvieron byte a byte tras el
+simulacro.
+
 ## [Observabilidad] — Un evento perdido ya no se pierde en silencio · 2026-10-07
 
 Tres huecos del mismo tipo: cosas que el sistema sabía y nadie podía ver. El `/ready` de cada
