@@ -78,6 +78,84 @@ export const toDraftItems = (lineas: readonly EditableLine[]): DraftItemInput[] 
     surfaces: linea.surfaces,
   }));
 
+/* ── El historial: qué se puede hacer con cada documento ───────────────────── */
+
+/** Lo mínimo del historial para decidir los botones: el estado del documento. */
+export interface DocumentoDelHistorial {
+  status: string;
+}
+
+/**
+ * Un **borrador** se puede descartar (nunca fue documento: no lleva nota de crédito) y una factura
+ * emitida se anula con nota. Una **pagada** no: primero hay que devolver sus cobros, y eso lo dice la
+ * propia pantalla (el servicio lo rechaza con un 409 explicado).
+ */
+export const puedeDescartarse = (documento: DocumentoDelHistorial): boolean =>
+  documento.status === 'borrador';
+
+/** Se cobra lo que está emitido y no está pagado: `emitida` (entera) o `parcial` (el resto). */
+export const puedeCobrarse = (documento: DocumentoDelHistorial): boolean =>
+  documento.status === 'emitida' || documento.status === 'parcial';
+
+/** Se anula con nota de crédito lo emitido que **no** está cobrado del todo. */
+export const puedeAnularse = (documento: DocumentoDelHistorial): boolean =>
+  documento.status === 'emitida' || documento.status === 'parcial';
+
+/** Lo que tiene papel archivado: todo lo emitido, anulado incluido (el PDF no se borra, ADR 0048). */
+export const puedeReimprimirse = (documento: DocumentoDelHistorial): boolean =>
+  documento.status !== 'borrador';
+
+/** La palabra del mostrador sobre el papel: «sin reimprimir» no es lo mismo que «reimpresa 3 veces». */
+export const reimpresionesEnTexto = (printCount: number): string =>
+  printCount === 0
+    ? 'Sin reimprimir'
+    : `Reimpresa ${String(printCount)} ${printCount === 1 ? 'vez' : 'veces'}`;
+
+/** Los bolívares, como se escriben en el mostrador: `73084` céntimos → «730,84». */
+export const formatBs = (centimos: number): string =>
+  (centimos / 100).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Filtros del historial tal como los maneja la pantalla (vacíos = sin filtrar). */
+export interface FiltrosDelHistorial {
+  status: string;
+  from: string;
+  to: string;
+  search: string;
+}
+
+export const FILTROS_VACIOS: FiltrosDelHistorial = { status: '', from: '', to: '', search: '' };
+
+export const hayFiltros = (filtros: FiltrosDelHistorial): boolean =>
+  filtros.status !== '' || filtros.from !== '' || filtros.to !== '' || filtros.search.trim() !== '';
+
+/**
+ * Lo que se manda al servicio: el vacío se omite para no mandar filtros en blanco, y el texto se
+ * recorta. La página la pide el servidor, que es quien pagina.
+ */
+export const aParametrosDeConsulta = (
+  filtros: FiltrosDelHistorial,
+  pagina: number,
+  porPagina: number,
+): {
+  status?: string;
+  from?: string;
+  to?: string;
+  search?: string;
+  page: number;
+  pageSize: number;
+} => ({
+  ...(filtros.status === '' ? {} : { status: filtros.status }),
+  ...(filtros.from === '' ? {} : { from: filtros.from }),
+  ...(filtros.to === '' ? {} : { to: filtros.to }),
+  ...(filtros.search.trim() === '' ? {} : { search: filtros.search.trim() }),
+  page: pagina,
+  pageSize: porPagina,
+});
+
+/** El rango inválido (desde > hasta) se avisa antes de consultar, como en la auditoría. */
+export const rangoInvalido = (filtros: FiltrosDelHistorial): boolean =>
+  filtros.from !== '' && filtros.to !== '' && filtros.from > filtros.to;
+
 /* ── Emitir y cobrar (ADR 0046 y 0048) ────────────────────────────────────── */
 
 /** Lo mínimo de una factura para decidir qué se puede hacer con ella en el mostrador. */

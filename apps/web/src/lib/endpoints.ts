@@ -94,9 +94,15 @@ import {
   type UserSummary,
   type BillingInvoiceIssued,
   type BillingInvoiceDetail,
+  type BillingInvoiceList,
+  type BillingInvoiceVoided,
   type BillingPaymentResult,
+  type BillingPrintResult,
   type BillingRateStatus,
   type CollectPaymentInput,
+  type InvoiceStatus,
+  type SetExchangeRateInput,
+  type BillingRate,
 } from '@odontocrm/contracts';
 
 import { API_BASE, api, apiBinary, refreshSession, type QueryParams } from './api';
@@ -345,9 +351,20 @@ export interface PatientRemoveResult {
  */
 /**
  * La caja (Fase 11). Rutas del servicio de facturación a través de la puerta
- * (`/api/v1/billing/...`): los borradores que deja el cierre de cada sesión clínica, el detalle para
- * revisarlos y el arancel del que la secretaría añade un bien.
+ * (`/api/v1/billing/...`): los borradores que deja el cierre de cada sesión clínica, el **historial**
+ * de lo emitido, el dinero (tasa, cobros y anulaciones) y los documentos archivados.
  */
+export interface BillingInvoiceListParams {
+  status?: InvoiceStatus;
+  /** Día del documento (`AAAA-MM-DD`), en el calendario de Caracas. */
+  from?: string;
+  to?: string;
+  /** Nombre o documento del paciente. */
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export const billingApi = {
   drafts: (signal?: AbortSignal): Promise<{ items: BillingDraftSummary[] }> =>
     api.get<{ items: BillingDraftSummary[] }>('/billing/drafts', { signal }),
@@ -361,7 +378,16 @@ export const billingApi = {
   /** **Emitir**: toma los dos números, congela la tasa y archiva el PDF. No hay vuelta atrás. */
   issue: (id: string): Promise<BillingInvoiceIssued> =>
     api.post<BillingInvoiceIssued>(`/billing/drafts/${id}/issue`, { confirm: true }),
-  /** La factura emitida con sus cobros: el historial de la caja. */
+  /** Descartar un borrador: nunca fue documento, así que se anula con motivo y sin nota de crédito. */
+  discardDraft: (id: string, reason: string): Promise<BillingInvoiceVoided> =>
+    api.post<BillingInvoiceVoided>(`/billing/drafts/${id}/discard`, { reason }),
+  /** El historial: los documentos del período, con filtros y paginación. */
+  invoices: (params: BillingInvoiceListParams, signal?: AbortSignal): Promise<BillingInvoiceList> =>
+    api.get<BillingInvoiceList>('/billing/invoices', {
+      query: { ...params } as QueryParams,
+      signal,
+    }),
+  /** La factura emitida con sus cobros: el detalle del historial. */
   invoice: (id: string, signal?: AbortSignal): Promise<BillingInvoiceDetail> =>
     api.get<BillingInvoiceDetail>(`/billing/invoices/${id}`, { signal }),
   /** **Cobrar**: registra el recibo con la tasa del pago y la política de imputación. */
@@ -370,11 +396,30 @@ export const billingApi = {
   /** Anular un cobro: vuelve el saldo y el estado retrocede (exige motivo). */
   voidPayment: (id: string, reason: string): Promise<BillingPaymentResult> =>
     api.post<BillingPaymentResult>(`/billing/payments/${id}/void`, { reason }),
+  /** **Anular una factura emitida**: exige motivo y emite su nota de crédito (Art. 22 y 23). */
+  voidInvoice: (id: string, reason: string): Promise<BillingInvoiceVoided> =>
+    api.post<BillingInvoiceVoided>(`/billing/invoices/${id}/void`, { reason }),
   /** La tasa del día, y si hay que confirmarla por el hueco (M8). */
   rateToday: (signal?: AbortSignal): Promise<BillingRateStatus> =>
     api.get<BillingRateStatus>('/billing/rates/today', { signal }),
-  /** El PDF archivado: el archivo lo sirve el servicio y se abre en otra pestaña. */
-  invoicePdfUrl: (id: string): string => `/api/v1/billing/invoices/${id}/pdf`,
+  /** Fijar (o corregir, con motivo) la tasa del día: la caja no llama a internet. */
+  setRate: (input: SetExchangeRateInput): Promise<BillingRate> =>
+    api.post<BillingRate>('/billing/rates', input),
+  /**
+   * El PDF archivado. Se pide **con la sesión** (`apiBinary`) y se abre como objeto local: la ruta
+   * está detrás de la puerta y un `window.open` a pelo iría sin token.
+   */
+  downloadInvoicePdf: (id: string, signal?: AbortSignal): Promise<Blob> =>
+    apiBinary('GET', `/billing/invoices/${id}/pdf`, { signal }),
+  downloadPaymentReceipt: (id: string, signal?: AbortSignal): Promise<Blob> =>
+    apiBinary('GET', `/billing/payments/${id}/receipt`, { signal }),
+  downloadCreditNotePdf: (id: string, signal?: AbortSignal): Promise<Blob> =>
+    apiBinary('GET', `/billing/credit-notes/${id}/pdf`, { signal }),
+  /** Constancia de impresión o descarga (la reimpresión se cuenta y queda en la auditoría). */
+  markInvoicePrinted: (id: string): Promise<BillingPrintResult> =>
+    api.post<BillingPrintResult>(`/billing/invoices/${id}/printed`, {}),
+  markPaymentPrinted: (id: string): Promise<BillingPrintResult> =>
+    api.post<BillingPrintResult>(`/billing/payments/${id}/printed`, {}),
 };
 
 export const patientsApi = {
