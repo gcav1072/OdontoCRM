@@ -1,4 +1,13 @@
-import type { BillingDraftItem, DraftItemInput, ToothSurface } from '@odontocrm/contracts';
+import {
+  findPaymentMethod,
+  formatRateMicros,
+  usdCentsFromVes,
+  vesCentimosFromUsd,
+  type BillingDraftItem,
+  type DraftItemInput,
+  type ImputationPolicy,
+  type ToothSurface,
+} from '@odontocrm/contracts';
 
 /**
  * Piezas puras de la caja (Fase 11): cómo se escribe el dinero, cómo se convierte lo que se teclea y
@@ -68,3 +77,75 @@ export const toDraftItems = (lineas: readonly EditableLine[]): DraftItemInput[] 
     toothNumber: linea.toothNumber,
     surfaces: linea.surfaces,
   }));
+
+/* ── Emitir y cobrar (ADR 0046 y 0048) ────────────────────────────────────── */
+
+/** Lo mínimo de una factura para decidir qué se puede hacer con ella en el mostrador. */
+export interface FacturaParaCobrar {
+  status: string;
+  totalCentsUsd: number;
+  balanceCentsUsd: number;
+}
+
+/** La palabra del mostrador: «Sin emitir» no es «Por cobrar», y confundirlas cuesta dinero. */
+export const estadoDeFactura = (factura: FacturaParaCobrar): string => {
+  if (factura.status === 'borrador') return 'Sin emitir';
+  if (factura.status === 'anulada') return 'Anulada';
+  if (factura.status === 'pagada') return 'Pagada';
+  if (factura.status === 'parcial') return 'Abonada';
+  return 'Por cobrar';
+};
+
+/** Un borrador se emite cuando tiene partidas y **todas** tienen precio. */
+export const puedeEmitirse = (lineas: readonly EditableLine[]): boolean =>
+  lineas.length > 0 && linesReady(lineas);
+
+/** El saldo en bolívares a la tasa **congelada** de la factura (`null` si aún no tiene). */
+export const saldoEnBs = (balanceCentsUsd: number, rateMicros: number | null): number | null =>
+  rateMicros === null || rateMicros <= 0 ? null : vesCentimosFromUsd(balanceCentsUsd, rateMicros);
+
+/** La tasa como se escribe en el mostrador. */
+export const tasaEnTexto = (rateMicros: number | null): string =>
+  rateMicros === null || rateMicros <= 0 ? '—' : formatRateMicros(rateMicros);
+
+export interface ImputacionPrevista {
+  /** Lo que se imputará a la deuda, en céntimos de USD. `null` si lo tecleado no es un importe. */
+  cents: number | null;
+  /** Lo que hay que avisar antes de cobrar (o `null` si todo está en orden). */
+  aviso: string | null;
+}
+
+/**
+ * Lo que se va a imputar con lo tecleado, **con la regla del servidor**: la moneda la declara el medio
+ * de pago y, en bolívares, la política decide si se imputa a la tasa del pago o a la de la factura. La
+ * cuenta la hacen los helpers del contrato, así que es la misma que va a hacer el servicio: la pantalla
+ * **no** tiene su propia aritmética de dinero.
+ */
+export const imputacionPrevista = (input: {
+  tenderedText: string;
+  method: string;
+  rateMicros: number | null;
+  invoiceRateMicros: number | null;
+  policy: ImputationPolicy;
+  balanceCentsUsd: number;
+}): ImputacionPrevista => {
+  const tecleado = parseUsdToCents(input.tenderedText);
+  if (tecleado === null || tecleado <= 0) {
+    return { cents: null, aviso: 'Escribe el monto que entregó el paciente (por ejemplo 12,34).' };
+  }
+
+  const moneda = findPaymentMethod(input.method)?.currency ?? 'VES';
+  if (moneda === 'USD') {
+    return {
+      cents: tecleado,
+      aviso: tecleado > input.balanceCentsUsd ? 'El monto supera el saldo.' : null,
+    };
+  }
+
+  const tasa = input.policy === 'tasa_de_la_factura' ? input.invoiceRateMicros : input.rateMicros;
+  if (tasa === null || tasa <= 0) {
+    return { cents: null, aviso: 'No hay tasa publicada: fíjala antes de cobrar.' };
+  }
+  const cents = usdCentsFromVes(tecleado, tasa);
+  return { cents, aviso: cents > input.balanceCentsUsd ? 'El monto supera el saldo.' : null };
+};

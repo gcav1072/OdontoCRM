@@ -92,6 +92,11 @@ import {
   type UpdatePatientInput,
   type UpdateUserInput,
   type UserSummary,
+  type BillingInvoiceIssued,
+  type BillingInvoiceDetail,
+  type BillingPaymentResult,
+  type BillingRateStatus,
+  type CollectPaymentInput,
 } from '@odontocrm/contracts';
 
 import { API_BASE, api, apiBinary, refreshSession, type QueryParams } from './api';
@@ -353,6 +358,23 @@ export const billingApi = {
     api.put<BillingDraftSaved>(`/billing/drafts/${id}/items`, input),
   catalog: (signal?: AbortSignal): Promise<{ items: BillingCatalogItem[] }> =>
     api.get<{ items: BillingCatalogItem[] }>('/billing/catalog', { signal }),
+  /** **Emitir**: toma los dos números, congela la tasa y archiva el PDF. No hay vuelta atrás. */
+  issue: (id: string): Promise<BillingInvoiceIssued> =>
+    api.post<BillingInvoiceIssued>(`/billing/drafts/${id}/issue`, { confirm: true }),
+  /** La factura emitida con sus cobros: el historial de la caja. */
+  invoice: (id: string, signal?: AbortSignal): Promise<BillingInvoiceDetail> =>
+    api.get<BillingInvoiceDetail>(`/billing/invoices/${id}`, { signal }),
+  /** **Cobrar**: registra el recibo con la tasa del pago y la política de imputación. */
+  collect: (id: string, input: CollectPaymentInput): Promise<BillingPaymentResult> =>
+    api.post<BillingPaymentResult>(`/billing/invoices/${id}/payments`, input),
+  /** Anular un cobro: vuelve el saldo y el estado retrocede (exige motivo). */
+  voidPayment: (id: string, reason: string): Promise<BillingPaymentResult> =>
+    api.post<BillingPaymentResult>(`/billing/payments/${id}/void`, { reason }),
+  /** La tasa del día, y si hay que confirmarla por el hueco (M8). */
+  rateToday: (signal?: AbortSignal): Promise<BillingRateStatus> =>
+    api.get<BillingRateStatus>('/billing/rates/today', { signal }),
+  /** El PDF archivado: el archivo lo sirve el servicio y se abre en otra pestaña. */
+  invoicePdfUrl: (id: string): string => `/api/v1/billing/invoices/${id}/pdf`,
 };
 
 export const patientsApi = {
