@@ -489,6 +489,35 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
     }
   }, 60_000);
 
+  it('/ready publica las cifras del pool y del outbox contra la base de verdad', async () => {
+    const server = await createScreensServer({ config, database: handle, services });
+
+    try {
+      const respuesta = await server.inject({ method: 'GET', url: '/ready' });
+      const informe = respuesta.json() as {
+        status: string;
+        checks: { name: string; status: string; details?: Record<string, unknown> }[];
+      };
+
+      expect(respuesta.statusCode).toBe(200);
+      expect(informe.status).toBe('ok');
+
+      const database = informe.checks.find((check) => check.name === 'database');
+      // Las cifras salen de un pool de verdad: al menos la conexión de esta consulta.
+      expect(typeof database?.details?.['total']).toBe('number');
+      expect(database?.details?.['total']).toBeGreaterThanOrEqual(1);
+      expect(database?.details?.['max']).toBe(10);
+
+      const outbox = informe.checks.find((check) => check.name === 'outbox');
+      // La consulta del outbox corre contra la tabla real (si el SQL estuviera mal,
+      // el chequeo saldría en `error` en vez de traer el número).
+      expect(outbox?.status).toBe('ok');
+      expect(typeof outbox?.details?.['pendientes']).toBe('number');
+    } finally {
+      await server.close();
+    }
+  }, 40_000);
+
   it('el canal del personal avisa de lo que cambió, y solo al personal', async () => {
     const server = await createScreensServer({ config, database: handle, services });
     const baseUrl = await server.listen({ port: 0, host: '127.0.0.1' });

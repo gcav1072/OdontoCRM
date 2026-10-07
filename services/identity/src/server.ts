@@ -1,4 +1,4 @@
-import { checkConnection } from '@odontocrm/db';
+import { createOutboxCheck, createPoolCheck } from '@odontocrm/db';
 import { buildServer, isProduction, type PrivateKey } from '@odontocrm/kernel';
 import cookie from '@fastify/cookie';
 import type { FastifyInstance } from 'fastify';
@@ -38,10 +38,11 @@ export const createIdentityServer = async (
     prettyLogs: config.LOG_PRETTY,
     production: isProduction(config),
     checks: [
-      {
-        name: 'database',
-        run: () => checkConnection(database.pool),
-      },
+      // El pool con sus cifras (conexiones en uso, en espera) y el outbox con lo que
+      // lleva sin publicar: el panel del administrador los enseña, y un servicio que
+      // responde con el outbox atascado deja de parecer sano.
+      createPoolCheck('database', database.pool, { max: config.DATABASE_POOL_MAX }),
+      createOutboxCheck('outbox', database.pool),
     ],
   });
 

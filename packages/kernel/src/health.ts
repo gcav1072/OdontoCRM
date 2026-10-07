@@ -7,7 +7,15 @@ import { sanitizeMessage } from './errors.js';
 /** Verificación de una dependencia (base de datos, cola, bot de Telegram…). */
 export interface HealthCheck {
   name: string;
-  run: () => Promise<void> | void;
+  /**
+   * Comprueba la dependencia. Si **devuelve un objeto**, sus claves viajan como
+   * `details` en el informe (conexiones del pool, eventos sin publicar del outbox…):
+   * el panel del administrador enseña así las cifras, no solo el «ok». Devolver
+   * `undefined` es lo normal en un chequeo que solo confirma que responde.
+   *
+   * Los detalles son para mirarlos: **nunca** credenciales ni cadenas de conexión.
+   */
+  run: () => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
   timeoutMs?: number;
 }
 
@@ -38,16 +46,23 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T
   }
 };
 
+/** Un objeto plano (y no un `null` ni un array): lo que se admite como `details`. */
+const esRegistro = (valor: unknown): valor is Record<string, unknown> =>
+  typeof valor === 'object' && valor !== null && !Array.isArray(valor);
+
 const runCheck = async (check: HealthCheck, production: boolean): Promise<HealthCheckResult> => {
   const startedAt = performance.now();
   const timeoutMs = check.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   try {
-    await withTimeout(Promise.resolve(check.run()), timeoutMs);
+    const resultado = await withTimeout(Promise.resolve(check.run()), timeoutMs);
     return {
       name: check.name,
       status: 'ok',
       latencyMs: Math.round(performance.now() - startedAt),
+      // Un chequeo que devuelve cifras (pool, outbox) las publica como detalles; el que
+      // solo confirma que responde no añade nada.
+      ...(esRegistro(resultado) ? { details: resultado } : {}),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error desconocido';

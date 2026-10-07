@@ -20,6 +20,12 @@ const baseEnv = {
 
 const fakePool = (behaviour: 'ok' | 'fail'): pg.Pool =>
   ({
+    // Las cifras del pool son lo que publica el chequeo `database`: un pool de verdad
+    // las lleva en sus contadores, así que el doble también tiene que traerlas (si no,
+    // la comprobación pasaría con `NaN` y nadie se enteraría).
+    totalCount: 3,
+    idleCount: 2,
+    waitingCount: 0,
     query: () =>
       behaviour === 'ok'
         ? Promise.resolve({ rows: [{ ok: 1 }] })
@@ -128,13 +134,21 @@ describe('servidor de identity', () => {
     expect(response.json()).toMatchObject({ service: 'identity', version: '0.1.0', status: 'ok' });
   });
 
-  it('/ready confirma la conexión a PostgreSQL', async () => {
+  it('/ready confirma la conexión a PostgreSQL y publica las cifras del pool y del outbox', async () => {
     const app = await buildServerWith('ok');
     const response = await app.inject({ method: 'GET', url: '/ready' });
     const report = response.json<HealthReport>();
 
     expect(response.statusCode).toBe(200);
-    expect(report.checks).toEqual([expect.objectContaining({ name: 'database', status: 'ok' })]);
+    expect(report.checks).toEqual([
+      expect.objectContaining({
+        name: 'database',
+        status: 'ok',
+        // Las cifras viajan en el informe: es lo que enseña el panel del administrador.
+        details: { total: 3, idle: 2, enUso: 1, waiting: 0, max: 10 },
+      }),
+      expect.objectContaining({ name: 'outbox', status: 'ok' }),
+    ]);
   });
 
   it('/ready devuelve 503 si la base no responde, sin filtrar credenciales', async () => {
