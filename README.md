@@ -355,6 +355,7 @@ canjean por un JWT de rol `pantalla`, y se actualizan por **SSE**.
 | `GET /api/v1/screens/device` | Ficha de **esta** pantalla, con sus ajustes | `screens:display` |
 | `GET /api/v1/screens/lobby` · `GET /api/v1/screens/consultorio` | Estado de la sala y del consultorio | `screens:display` |
 | `GET /api/v1/screens/lobby/stream` · `GET /api/v1/screens/consultorio/stream` | Flujo **SSE** con el estado (trama completa por cambio + latido) | `screens:display` |
+| `GET /api/v1/screens/staff/stream` | Flujo **SSE del personal**: avisos de qué cambió (`clinical.session.closed`, `billing.invoice.issued`…) para que recepción y caja refresquen solas | rol del personal (`admin`, `secretario`, `odontologo`) |
 | `POST /internal/v1/screens/room/critical-flags` | Datos críticos del paciente en curso (los enviará la historia clínica) | secreto interno |
 
 - **El llamado se empuja**: la secretaría llama por `/api/v1/appointments/:id/call` y el
@@ -373,6 +374,13 @@ canjean por un JWT de rol `pantalla`, y se actualizan por **SSE**.
   `attend`, `no-show`); la llamada fuera de orden registra llegada y llamado para que las
   dos transiciones queden en el historial y en la auditoría.
 - `npm run smoke:screens` comprueba todo el camino contra el gateway real (26 comprobaciones).
+- **El personal también tiene su flujo** (`/api/v1/screens/staff/stream`, mejora 2 del plan
+  post-Fase 11): mientras una pantalla kiosko recibe el **estado completo**, recepción, caja y
+  consultorio reciben **avisos** de qué cambió —cerrar una sesión deja la fila de `/flujo` con el
+  estado viejo y hace nacer un borrador por cobrar— y la interfaz vuelve a pedir solo lo que está
+  mirando. El canal lo abre una persona con sesión: una pantalla kiosko recibe 403. No manda datos
+  de pacientes: el aviso es el **tema** del evento (`clinical.session.closed`) y el dominio decide
+  qué caché se invalida, así que un evento nuevo de un dominio conocido funciona sin tocar la web.
 
 ---
 

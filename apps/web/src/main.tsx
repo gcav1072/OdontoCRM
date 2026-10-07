@@ -8,6 +8,7 @@ import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { queryClient } from './lib/queryClient';
 import { AuthProvider } from './providers/AuthProvider';
+import { RealtimeSyncProvider } from './providers/RealtimeSyncProvider';
 import { ThemeProvider, aplicarTemaGuardado } from './providers/ThemeProvider';
 
 import './index.css';
@@ -96,7 +97,12 @@ try {
           <QueryClientProvider client={queryClient}>
             <BrowserRouter>
               <AuthProvider>
-                <App />
+                {/* Dentro de AuthProvider (necesita saber si hay sesión) y de
+                    QueryClientProvider (invalida consultas): es el canal en vivo del
+                    personal, y sin sesión no abre nada. */}
+                <RealtimeSyncProvider>
+                  <App />
+                </RealtimeSyncProvider>
               </AuthProvider>
             </BrowserRouter>
           </QueryClientProvider>
