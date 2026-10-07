@@ -5,6 +5,7 @@ import {
   SURFACE_DRAW_ORDER,
   SURFACE_LABELS,
   SURFACE_POLYGONS,
+  TOOTH_LABEL_BASELINE,
   surfaceLabelFor,
   toothGroupTransform,
   unscreenPoint,
@@ -43,11 +44,12 @@ export const TOOTH_CANVAS = 100;
 /**
  * Línea base del número de pieza, en unidades del lienzo.
  *
- * El cuadro de la pieza acaba en 100 y el número tiene que quedar **debajo y con
- * aire**: a 124 quedaba pegado al borde (con una tipografía de 26–30 el alto de las
- * cifras se come casi todo el hueco) y el dibujo se leía como un amasijo de cuadros.
+ * Se lee del contrato (`@odontocrm/contracts`) y se reexporta aquí para no romper a
+ * quien la importaba de este módulo: el mismo valor lo usa el SVG del dossier que el
+ * servicio clínico compone en el servidor, y el número tiene que caer a la misma
+ * altura en pantalla, en el papel del navegador y en ese PDF.
  */
-export const TOOTH_LABEL_BASELINE = 138;
+export { TOOTH_LABEL_BASELINE } from '@odontocrm/contracts';
 
 /**
  * Cara que hay bajo un punto **del lienzo visible** de la pieza.

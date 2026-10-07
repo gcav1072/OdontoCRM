@@ -943,6 +943,19 @@ export const unscreenPoint = (
 export const TOOTH_CANVAS = 100;
 
 /**
+ * Línea base del número de pieza, en unidades del lienzo.
+ *
+ * El cuadro de la pieza acaba en 100 y el número tiene que quedar **debajo y con
+ * aire**: a 124 quedaba pegado al borde (con una tipografía de 26–30 el alto de las
+ * cifras se come casi todo el hueco) y el dibujo se leía como un amasijo de cuadros.
+ *
+ * Vive en el contrato porque lo usan **los tres** renderizadores: el gráfico de
+ * pantalla, el de papel del navegador y el SVG del dossier que se compone en el
+ * servidor. El número tiene que caer a la misma altura en los tres.
+ */
+export const TOOTH_LABEL_BASELINE = 138;
+
+/**
  * Hueco extra **en la línea media** (entre el 11 y el 21, y entre el 41 y el 31), en
  * unidades del lienzo.
  *

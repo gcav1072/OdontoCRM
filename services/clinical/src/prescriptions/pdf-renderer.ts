@@ -16,9 +16,33 @@ export interface PdfRendererOptions {
   timeoutMs: number;
 }
 
+/** Márgenes del papel, en milímetros, cuando los fija el PDF y no la plantilla. */
+export interface PdfMarginMm {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/**
+ * Cómo se compone el papel.
+ *
+ * El **récipe** va a A5 sin opciones: su `@page` ya lleva el tamaño y los márgenes, y
+ * esa es la firma que ya usaban las pruebas. El **dossier** necesita A4, folio en cada
+ * página y márgenes que Chromium respete para dejar sitio al folio —y el folio solo
+ * existe si el propio PDF lo dibuja (`displayHeaderFooter`); Chromium no soporta
+ * `counter(page)` en los márgenes de `@page`, así que no hay forma de hacerlo con CSS.
+ */
+export interface PdfRenderOptions {
+  format?: 'A5' | 'A4';
+  /** Pie repetido en cada página (HTML; admite `class="pageNumber"` y `"totalPages"`). */
+  footerHtml?: string;
+  marginMm?: PdfMarginMm;
+}
+
 export interface PdfRenderer {
-  /** HTML → PDF A5 (devuelve los bytes). */
-  render: (html: string) => Promise<Buffer>;
+  /** HTML → PDF (A5 por defecto; el dossier pide A4 con folio). */
+  render: (html: string, options?: PdfRenderOptions) => Promise<Buffer>;
   /** Cierra el navegador (lo llama el apagado del servicio). */
   close: () => Promise<void>;
   /** `true` cuando el navegador ya está levantado (diagnóstico y pruebas). */
@@ -42,7 +66,7 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
     return browser;
   };
 
-  const render = (html: string): Promise<Buffer> => {
+  const render = (html: string, opciones?: PdfRenderOptions): Promise<Buffer> => {
     const tarea = async (): Promise<Buffer> => {
       const instance = await launch();
       const page = await instance.newPage();
@@ -54,10 +78,29 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
         // páginas que imprime el navegador.
         await page.emulateMedia({ colorScheme: 'light' });
         await page.setContent(html, { waitUntil: 'load', timeout: options.timeoutMs });
-        // A5 exacto (148 × 210 mm) con los márgenes de la plantilla.
+        // El récipe va a A5 exacto (148 × 210 mm) con los márgenes de su `@page`. El
+        // dossier pide A4 y márgenes explícitos (para que quepa el folio del pie).
+        const margen = opciones?.marginMm;
         return await page.pdf({
-          format: 'A5',
+          format: opciones?.format ?? 'A5',
           printBackground: true,
+          ...(margen === undefined
+            ? {}
+            : {
+                margin: {
+                  top: `${String(margen.top)}mm`,
+                  bottom: `${String(margen.bottom)}mm`,
+                  left: `${String(margen.left)}mm`,
+                  right: `${String(margen.right)}mm`,
+                },
+              }),
+          ...(opciones?.footerHtml === undefined
+            ? {}
+            : {
+                displayHeaderFooter: true,
+                headerTemplate: '<span></span>',
+                footerTemplate: opciones.footerHtml,
+              }),
         });
       } finally {
         await page.close().catch(() => undefined);
