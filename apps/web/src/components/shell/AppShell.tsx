@@ -5,6 +5,7 @@ import { Outlet } from 'react-router-dom';
 import { STORAGE_KEYS, readFlag, writeFlag } from '../../lib/storage';
 import { AppHeader } from './AppHeader';
 import { BottomPanel } from './BottomPanel';
+import { MobileNav } from './MobileNav';
 import { Sidebar } from './Sidebar';
 
 /**
@@ -27,6 +28,9 @@ export const AppShell = () => {
   const [panelAbierto, setPanelAbierto] = useState(
     () => readFlag(STORAGE_KEYS.panelInferior) ?? false,
   );
+  // Cajón de navegación para móvil: en pantallas pequeñas el raíl lateral desaparece
+  // y las secciones se abren aquí, con sus etiquetas completas.
+  const [menuMovilAbierto, setMenuMovilAbierto] = useState(false);
 
   useEffect(() => {
     writeFlag(STORAGE_KEYS.menuLateral, menuColapsado);
@@ -52,7 +56,7 @@ export const AppShell = () => {
       <Sidebar collapsed={menuColapsado} onToggle={() => setMenuColapsado((valor) => !valor)} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <AppHeader />
+        <AppHeader onOpenMenu={() => setMenuMovilAbierto(true)} />
         {/* El relleno inferior deja sitio al panel fijo: sin él, el final de las
             tablas quedaría tapado cuando el panel está desplegado. En papel no
             hay panel, así que el relleno se anula con `print:pb-0`. */}
@@ -65,6 +69,10 @@ export const AppShell = () => {
         >
           <Outlet />
         </main>
+      </div>
+
+      <div className="print:hidden">
+        <MobileNav open={menuMovilAbierto} onClose={() => setMenuMovilAbierto(false)} />
       </div>
 
       <div className="print:hidden">

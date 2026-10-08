@@ -136,6 +136,8 @@ const DICCIONARIO = {
   'menu.titulo': 'Módulos del sistema',
   'menu.colapsar': 'Colapsar el menú',
   'menu.expandir': 'Expandir el menú',
+  'menu.abrir': 'Abrir el menú',
+  'menu.cerrar': 'Cerrar el menú',
   'menu.seccion.principal': 'Principal',
   'menu.seccion.operacion': 'Operación',
   'menu.seccion.analisis': 'Análisis',
