@@ -272,11 +272,11 @@ describe('plantilla del aviso al paciente', () => {
       ticket: '#000123',
     });
 
-    expect(texto).toContain(
-      'Hola María Pérez: tu cita quedó confirmada para el 05/10/2026 a las 8:30 a. m.',
-    );
+    expect(texto).toContain('Hola María Pérez: te esperamos el 05/10/2026 a las 8:30 a. m.');
     expect(texto).toContain('Lugar: Av. Luis del Valle García, C.E. Nueva Esparta');
     expect(texto).toContain('Tu ticket es #000123');
+    // El aviso pide confirmar (ADR 0052): avisar y confirmar son dos hechos distintos.
+    expect(texto).toContain('Responde «confirmar»');
     expect(texto).not.toContain('m..');
     expect(texto).not.toContain('{');
   });

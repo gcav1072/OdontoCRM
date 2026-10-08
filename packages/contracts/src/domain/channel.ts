@@ -146,7 +146,15 @@ export const resolveNumberedOption = (
  * cita» a la misma intención. Así el guion del asistente es el mismo en todos los
  * canales y añadir uno nuevo no toca el núcleo.
  */
-export const BOT_INTENTS = ['nueva', 'estado', 'mi_ticket', 'cancelar', 'ayuda', 'start'] as const;
+export const BOT_INTENTS = [
+  'nueva',
+  'estado',
+  'mi_ticket',
+  'confirmar',
+  'cancelar',
+  'ayuda',
+  'start',
+] as const;
 export type BotIntent = (typeof BOT_INTENTS)[number];
 
 /** Frases que llevan a cada intención (se comparan normalizadas: sin acentos ni signos). */
@@ -180,6 +188,28 @@ export const INTENT_PHRASES: Readonly<Record<BotIntent, readonly string[]>> = {
     'seguimiento',
   ],
   mi_ticket: ['mi ticket', 'mi tiquete', 'ticket', 'tiquete', 'mi turno'],
+  /**
+   * Confirmar la asistencia (ADR 0052). El aviso de la cita invita a hacerlo y el
+   * mismo mensaje lleva un botón con esta acción; el texto se admite para quien
+   * responda escribiendo (y para los canales sin botones).
+   *
+   * No se incluyen respuestas de una sola palabra del tipo «sí» u «ok»: son
+   * demasiado ambiguas —durante el alta del paciente se escribe cualquier cosa— y
+   * un «sí» a mitad del asistente no tiene por qué ser una confirmación de cita.
+   */
+  confirmar: [
+    'confirmar',
+    'confirmar cita',
+    'confirmar mi cita',
+    'confirmar asistencia',
+    'confirmo',
+    'confirmo mi cita',
+    'confirmo asistencia',
+    'si asistire',
+    'asistire',
+    'voy a asistir',
+    'asistencia confirmada',
+  ],
   cancelar: [
     'cancelar',
     'cancelar cita',
@@ -239,6 +269,7 @@ export const BOT_COMMANDS: readonly BotCommand[] = [
     admiteArgumento: true,
   },
   { comando: 'mi_ticket', descripcion: 'Recordarme mi ticket', intencion: 'mi_ticket' },
+  { comando: 'confirmar', descripcion: 'Confirmar mi cita', intencion: 'confirmar' },
   {
     comando: 'cancelar',
     descripcion: 'Anular mi solicitud',

@@ -24,6 +24,11 @@ export const EVENT_TOPICS = {
   appointmentRescheduled: 'scheduling.appointment.rescheduled',
   appointmentCancelled: 'scheduling.appointment.cancelled',
   appointmentNotified: 'scheduling.appointment.notified',
+  /**
+   * El paciente confirmó su asistencia (ADR 0052). Es un hecho distinto de
+   * `notified`: aquel dice que se le avisó, este que respondió que sí.
+   */
+  appointmentConfirmed: 'scheduling.appointment.confirmed',
   appointmentCheckedIn: 'scheduling.appointment.checked_in',
   appointmentCalled: 'scheduling.appointment.called',
   appointmentInConsultation: 'scheduling.appointment.in_consultation',

@@ -290,6 +290,13 @@ export const clinicalSessionContentSchema = z
     /** Próxima cita sugerida: fecha y nota («control de endodoncia»). */
     proximaCitaFecha: optionalDate,
     proximaCitaNota: optionalText(300),
+    /**
+     * Cita **real** creada a partir de la sugerencia ([ADR 0052](../../../docs/adr/0052-confirmacion-de-citas-por-el-paciente.md)),
+     * cuando el odontólogo aceptó el cuadro de confirmación al cerrar la sesión. Sin
+     * ella, la fecha de arriba es solo una nota escrita; con ella, la cita existe en
+     * la agenda y se le puede avisar y confirmar como a cualquier otra.
+     */
+    proximaCitaAppointmentId: z.uuid().nullable().default(null),
     /** Notas internas: no se imprimen para el paciente. */
     notasInternas: optionalText(2000),
   })
@@ -315,6 +322,7 @@ export const emptyClinicalSessionContent = (): ClinicalSessionContent => ({
   indicaciones: null,
   proximaCitaFecha: null,
   proximaCitaNota: null,
+  proximaCitaAppointmentId: null,
   notasInternas: null,
 });
 

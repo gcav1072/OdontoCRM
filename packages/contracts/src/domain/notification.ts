@@ -1,7 +1,15 @@
 import { z } from 'zod';
 
 import { CHANNEL_IDS } from './channel.js';
-import { CHANNELS, DOC_TYPES, NOTIFICATION_STATUSES, SEXES, type DocType } from './enums.js';
+import { queryBoolean } from '../common/optional.js';
+import {
+  APPOINTMENT_STATUSES,
+  CHANNELS,
+  DOC_TYPES,
+  NOTIFICATION_STATUSES,
+  SEXES,
+  type DocType,
+} from './enums.js';
 import { APPOINTMENT_CONFIRMATION_TEMPLATE, renderTemplate } from './scheduling.js';
 
 /**
@@ -189,6 +197,10 @@ export const NOTIFICATION_TEMPLATE_KEYS = [
   'documento_duplicado',
   'manual_pendiente',
   'servicio_no_disponible',
+  /** Respuesta al paciente que acaba de confirmar su cita (ADR 0052). */
+  'cita_confirmada_paciente',
+  /** Cuando escribe «confirmar» y no tiene ninguna cita próxima que confirmar. */
+  'sin_citas',
 ] as const;
 export type NotificationTemplateKey = (typeof NOTIFICATION_TEMPLATE_KEYS)[number];
 
@@ -375,6 +387,25 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
       'Tu solicitud no se ha perdido: seguimos en el mismo paso.',
     placeholders: [],
   },
+  {
+    key: 'cita_confirmada_paciente',
+    channel: 'telegram',
+    subject: null,
+    body:
+      '¡Listo, {paciente}! Quedaste confirmado para el {fecha} a las {hora}.\n' +
+      'Lugar: {lugar}\n' +
+      'Te esperamos. Si al final no puedes venir, avísanos por aquí.',
+    placeholders: ['paciente', 'fecha', 'hora', 'lugar'],
+  },
+  {
+    key: 'sin_citas',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'No veo ninguna cita tuya próxima, así que no hay nada que confirmar.\n' +
+      'Si crees que es un error, escríbenos por aquí o llama al consultorio y lo miramos.',
+    placeholders: [],
+  },
 ];
 
 export const messageTemplateSchema = z.object({
@@ -533,11 +564,80 @@ export const botStatusSchema = z.object({
 
 export type BotStatus = z.infer<typeof botStatusSchema>;
 
+/* ── Sección de citas de la bandeja (ADR 0052) ─────────────────────────────── */
+
+/**
+ * Una **cita futura** tal como la pinta la sección de citas de `/notificaciones`:
+ * la cita, por dónde se le puede escribir al paciente y cómo está su aviso.
+ *
+ * El servicio de notificaciones lo compone —pregunta la agenda por su cliente
+ * interno, mira el canal vinculado y el último envío de esa cita— porque cruzar eso
+ * en la interfaz serían tres consultas y una paginación que no cuadra. La fecha y la
+ * hora son las de la cita local del consultorio; la interfaz las formatea.
+ */
+export const appointmentNotificationItemSchema = z.object({
+  appointmentId: z.uuid(),
+  patientId: z.uuid(),
+  patientName: z.string(),
+  patientDocument: z.string().nullable(),
+  patientPhone: z.string().nullable(),
+  ticket: z.string().nullable(),
+  date: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+  status: z.enum(APPOINTMENT_STATUSES),
+  /** Cuándo confirmó y por dónde; `null` mientras no lo haya hecho. */
+  confirmedAt: z.string().nullable(),
+  confirmedChannel: z.enum(CHANNELS).nullable(),
+  /**
+   * Canal vinculado del paciente **enmascarado** (el de verdad no circula): es el
+   * «tlg/wa» que dice si hay por dónde avisarle. `null` cuando no tiene ninguno, que
+   * es el caso en el que el aviso queda como llamada manual.
+   */
+  channel: z.enum(CHANNEL_IDS).nullable(),
+  direccionMasked: z.string().nullable(),
+  /** Último aviso de esta cita, si lo hay: dice si salió, falló o quedó pendiente. */
+  lastNotification: z
+    .object({
+      id: z.uuid(),
+      templateKey: z.string(),
+      channel: z.enum(CHANNELS),
+      status: z.enum(NOTIFICATION_STATUSES),
+      sentAt: z.string().nullable(),
+      manualNote: z.string().nullable(),
+      contactedAt: z.string().nullable(),
+    })
+    .nullable(),
+});
+
+export type AppointmentNotificationItem = z.infer<typeof appointmentNotificationItemSchema>;
+
+export const appointmentNotificationFiltersSchema = z.object({
+  /** Rango de fechas de la cita (no del aviso): lo natural para «las próximas». */
+  from: z.string().optional(),
+  to: z.string().optional(),
+  status: z.enum(APPOINTMENT_STATUSES).optional(),
+  /** `true` solo las confirmadas; `false` solo las que no lo están. */
+  confirmed: queryBoolean,
+  search: z.string().trim().max(120).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(25),
+});
+
+export type AppointmentNotificationFilters = z.infer<typeof appointmentNotificationFiltersSchema>;
+
 /** Máximo de mensajes por chat en la ventana de anti-flood. */
 export const ANTI_FLOOD_MAX_MESSAGES = 10;
 export const ANTI_FLOOD_WINDOW_SECONDS = 60;
 /** Un chat no puede tener dos solicitudes en curso a la vez. */
 export const MAX_ACTIVE_REQUESTS_PER_CHAT = 1;
+/**
+ * Cuántos días hacia adelante mira el asistente cuando el paciente escribe
+ * «confirmar» (ADR 0052): son las citas que le ofrece para confirmar. Con un tope,
+ * un paciente con muchas citas no recibe una lista interminable de opciones; y como
+ * las citas se confirman cerca de su fecha, 60 días cubre el caso real con holgura.
+ */
+export const BOT_CONFIRM_WINDOW_DAYS = 60;
 /** Intentos y espera entre reintentos (segundos): 1 m, 5 m, 15 m, 1 h, 6 h. */
 export const NOTIFICATION_RETRY_DELAYS_SECONDS = [60, 300, 900, 3600, 21600] as const;
 export const NOTIFICATION_MAX_ATTEMPTS = NOTIFICATION_RETRY_DELAYS_SECONDS.length + 1;

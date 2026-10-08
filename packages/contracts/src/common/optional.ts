@@ -23,6 +23,23 @@ export const optionalDate = z
   .optional()
   .transform((value) => (value === '' || value === null || value === undefined ? null : value));
 
+/**
+ * Booleano que llega por la **URL** de un filtro.
+ *
+ * `z.coerce.boolean()` no sirve aquí y es una trampa que muerde de verdad:
+ * `Boolean('false')` es `true`, así que `?confirmed=false` («las que no están
+ * confirmadas») se leería justo al revés. Solo se aceptan las formas explícitas
+ * (`true`/`false`, en texto o como booleano) y lo que no se entiende se descarta a
+ * «sin filtro», que es lo que quiere un filtro opcional.
+ */
+export const queryBoolean = z
+  .preprocess((valor) => {
+    if (valor === true || valor === 'true') return true;
+    if (valor === false || valor === 'false') return false;
+    return undefined;
+  }, z.boolean().optional())
+  .optional();
+
 export interface OptionalNumberOptions {
   min: number;
   max: number;

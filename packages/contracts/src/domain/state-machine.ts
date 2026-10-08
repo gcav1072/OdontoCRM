@@ -30,6 +30,23 @@ export const APPOINTMENT_TRANSITIONS: readonly AppointmentTransition[] = [
     label: 'Asignar fecha y hora',
   },
   { from: 'programada', to: 'notificada', roles: ['secretario'], label: 'Notificar al paciente' },
+  /**
+   * Confirmar en dos pasos (ADR 0052): la secretaría puede dejarlo constancia tanto
+   * si la cita venía de un aviso (`notificada`) como si la llamó ella por teléfono
+   * sin aviso previo (`programada`), que es el caso «la llamé yo».
+   */
+  {
+    from: 'programada',
+    to: 'confirmada',
+    roles: ['secretario'],
+    label: 'Confirmar la cita',
+  },
+  {
+    from: 'notificada',
+    to: 'confirmada',
+    roles: ['secretario'],
+    label: 'Registrar la confirmación',
+  },
   {
     from: 'programada',
     to: 'en_sala_espera',
@@ -38,6 +55,17 @@ export const APPOINTMENT_TRANSITIONS: readonly AppointmentTransition[] = [
   },
   {
     from: 'notificada',
+    to: 'en_sala_espera',
+    roles: ['secretario', 'odontologo'],
+    label: 'Registrar llegada',
+  },
+  /**
+   * Confirmar **no** es requisito para llegar: el paciente aparece sin haber
+   * respondido y la recepción lo registra igual. Por eso `notificada` conserva su
+   * salida y `confirmada` gana la suya.
+   */
+  {
+    from: 'confirmada',
     to: 'en_sala_espera',
     roles: ['secretario', 'odontologo'],
     label: 'Registrar llegada',
@@ -80,6 +108,12 @@ export const APPOINTMENT_TRANSITIONS: readonly AppointmentTransition[] = [
     label: 'Marcar inasistencia',
   },
   {
+    from: 'confirmada',
+    to: 'no_asistio',
+    roles: ['secretario', 'odontologo'],
+    label: 'Marcar inasistencia',
+  },
+  {
     from: 'en_sala_espera',
     to: 'no_asistio',
     roles: ['secretario', 'odontologo'],
@@ -94,8 +128,10 @@ export const APPOINTMENT_TRANSITIONS: readonly AppointmentTransition[] = [
   { from: 'en_espera_cita', to: 'cancelada', roles: ['secretario'], label: 'Cancelar solicitud' },
   { from: 'programada', to: 'cancelada', roles: ['secretario'], label: 'Cancelar cita' },
   { from: 'notificada', to: 'cancelada', roles: ['secretario'], label: 'Cancelar cita' },
+  { from: 'confirmada', to: 'cancelada', roles: ['secretario'], label: 'Cancelar cita' },
   { from: 'programada', to: 'reprogramada', roles: ['secretario'], label: 'Reprogramar' },
   { from: 'notificada', to: 'reprogramada', roles: ['secretario'], label: 'Reprogramar' },
+  { from: 'confirmada', to: 'reprogramada', roles: ['secretario'], label: 'Reprogramar' },
 ] as const;
 
 const TERMINAL_STATUSES: readonly AppointmentStatus[] = [

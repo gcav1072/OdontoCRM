@@ -65,7 +65,8 @@ export const REPORT_LABELS: Readonly<Record<ReportKey, string>> = {
 };
 
 export const REPORT_DESCRIPTIONS: Readonly<Record<ReportKey, string>> = {
-  funnel: 'Solicitudes → programadas → notificadas → atendidas, con la tasa de inasistencia.',
+  funnel:
+    'Solicitudes → programadas → notificadas → confirmadas → atendidas, con la tasa de inasistencia.',
   capacity: 'Cupos usados frente a disponibles por día y detección de horas pico.',
   demographics: 'Pirámide de edad y distribución por sexo, con rango de edad editable.',
   'clinical-profile': 'Pacientes con diabetes, hipertensión, alergias, anticoagulantes y otros.',
@@ -270,6 +271,8 @@ export const reportSummarySchema = z.object({
   generatedAt: z.string(),
   appointments: z.object({
     scheduled: z.number().int().min(0),
+    /** Cuántas de esas citas confirmó el paciente (ADR 0052). */
+    confirmed: z.number().int().min(0),
     attended: z.number().int().min(0),
     noShow: z.number().int().min(0),
     pending: z.number().int().min(0),

@@ -1,6 +1,13 @@
 import { z } from 'zod';
 
-import { APPOINTMENT_STATUSES, CHANNELS, type AppointmentStatus, type Channel } from './enums.js';
+import {
+  APPOINTMENT_STATUSES,
+  CHANNELS,
+  REQUEST_STATUSES,
+  type AppointmentStatus,
+  type Channel,
+} from './enums.js';
+import { queryBoolean } from '../common/optional.js';
 
 /**
  * Agenda: solicitudes (con ticket), citas, cupo diario y plantillas de franjas.
@@ -223,7 +230,7 @@ export const requestSummarySchema = z.object({
   patientDocument: z.string().nullable(),
   patientPhone: z.string().nullable(),
   reason: z.string(),
-  status: z.enum(APPOINTMENT_STATUSES),
+  status: z.enum(REQUEST_STATUSES),
   priority: z.number().int(),
   requestedAt: z.string(),
   notes: z.string().nullable(),
@@ -238,8 +245,10 @@ export const requestSummarySchema = z.object({
 export type RequestSummary = z.infer<typeof requestSummarySchema>;
 
 export const requestFiltersSchema = z.object({
-  status: z.enum(APPOINTMENT_STATUSES).optional(),
-  onlyWaiting: z.coerce.boolean().optional(),
+  status: z.enum(REQUEST_STATUSES).optional(),
+  // Ojo: `z.coerce.boolean()` leería `?onlyWaiting=false` como `true` (el clásico
+  // `Boolean('false')`), así que se usa el booleano de URL explícito.
+  onlyWaiting: queryBoolean,
   channel: z.enum(REQUEST_CHANNELS).optional(),
   search: z.string().trim().max(120).optional(),
   order: z.enum(['ticket', 'antiguedad']).default('ticket'),
@@ -327,6 +336,9 @@ export const appointmentSummarySchema = z.object({
   slotKind: z.enum(SLOT_KINDS),
   status: z.enum(APPOINTMENT_STATUSES),
   callCount: z.number().int().min(0),
+  /** Cuándo y por dónde confirmó el paciente su asistencia (ADR 0052). */
+  confirmedAt: z.string().nullable(),
+  confirmedChannel: z.enum(CHANNELS).nullable(),
   dentistId: z.uuid().nullable(),
   chairId: z.uuid().nullable(),
   checkedInAt: z.string().nullable(),
@@ -355,6 +367,8 @@ export const appointmentFiltersSchema = z.object({
   from: dateSchema.optional(),
   to: dateSchema.optional(),
   status: z.enum(APPOINTMENT_STATUSES).optional(),
+  /** Filtra por asistencia confirmada: `true` confirmadas, `false` sin confirmar. */
+  confirmed: queryBoolean,
   patientId: z.uuid().optional(),
   search: z.string().trim().max(120).optional(),
   page: z.coerce.number().int().min(1).default(1),
@@ -383,6 +397,20 @@ export const cancelAppointmentSchema = z.object({
 });
 
 export type CancelAppointmentInput = z.infer<typeof cancelAppointmentSchema>;
+
+/**
+ * Confirmación de la cita ([ADR 0052](../../../docs/adr/0052-confirmacion-de-citas-por-el-paciente.md)).
+ *
+ * `channel` dice **por dónde** confirmó el paciente: `telegram`/`whatsapp` si lo hizo
+ * por el bot, `telefono` si lo apuntó la secretaría al llamarlo. Es un dato, no una
+ * decoración: permite saber qué canal funciona y quién se enteró de qué.
+ */
+export const confirmAppointmentSchema = z.object({
+  channel: z.enum(CHANNELS),
+  note: z.string().trim().max(300).optional(),
+});
+
+export type ConfirmAppointmentInput = z.infer<typeof confirmAppointmentSchema>;
 
 /* ── Cupo del día ──────────────────────────────────────────────────────────── */
 
@@ -443,6 +471,7 @@ export const dayViewSchema = z.object({
   counts: z.object({
     programadas: z.number().int().min(0),
     notificadas: z.number().int().min(0),
+    confirmadas: z.number().int().min(0),
     enSala: z.number().int().min(0),
     atendidas: z.number().int().min(0),
     noAsistio: z.number().int().min(0),
@@ -481,10 +510,14 @@ export const APPOINTMENT_CONFIRMATION_TEMPLATE = {
   key: APPOINTMENT_CONFIRMATION_TEMPLATE_KEY,
   subject: 'Confirmación de tu cita',
   // Ojo con la puntuación: la hora en 12 h ya termina en «a. m.» o «p. m.».
+  //
+  // El aviso **invita a confirmar** (ADR 0052) y no dice «quedó confirmada»: eso era
+  // lo que decía antes, cuando `notificada` se leía como «confirmada». Avisar y
+  // confirmar son dos hechos distintos, y el texto ahora pide el segundo.
   body:
-    'Hola {paciente}: tu cita quedó confirmada para el {fecha} a las {hora}\n' +
+    'Hola {paciente}: te esperamos el {fecha} a las {hora}\n' +
     'Lugar: {lugar}\n' +
-    'Tu ticket es {ticket}. Si no puedes asistir, avísanos por este mismo chat.',
+    'Tu ticket es {ticket}. Responde «confirmar» (o pulsa el botón) para avisarnos de que asistirás; si no puedes, escríbenos por este mismo chat.',
 } as const;
 
 /**

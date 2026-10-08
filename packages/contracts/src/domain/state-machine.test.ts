@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AppointmentStatus } from './enums.js';
-import { APPOINTMENT_STATUSES } from './enums.js';
+import { APPOINTMENT_STATUSES, REQUEST_STATUSES } from './enums.js';
 import {
   allowedTransitions,
   APPOINTMENT_TRANSITIONS,
@@ -74,5 +74,31 @@ describe('máquina de estados de la cita', () => {
 
   it('la tolerancia de inasistencia es de 15 minutos', () => {
     expect(NO_SHOW_GRACE_MINUTES).toBe(15);
+  });
+
+  it('confirmar es un paso más, sin cerrar el paso a la sala (ADR 0052)', () => {
+    // La secretaría confirma tras avisar o tras llamar por teléfono.
+    expect(canTransition('notificada', 'confirmada', 'secretario')).toBe(true);
+    expect(canTransition('programada', 'confirmada', 'secretario')).toBe(true);
+    // Confirmar no es requisito para llegar: la recepción registra la llegada igual.
+    expect(canTransition('confirmada', 'en_sala_espera', 'secretario')).toBe(true);
+    expect(canTransition('confirmada', 'en_sala_espera', 'odontologo')).toBe(true);
+    expect(canTransition('notificada', 'en_sala_espera', 'secretario')).toBe(true);
+    // Y desde confirmada se puede cerrar el día como cualquier otra.
+    expect(canTransition('confirmada', 'no_asistio', 'secretario')).toBe(true);
+    expect(canTransition('confirmada', 'cancelada', 'secretario')).toBe(true);
+    expect(canTransition('confirmada', 'reprogramada', 'secretario')).toBe(true);
+    // El bot confirma con un actor sin rol, así que no puede inventarse transiciones.
+    expect(canTransition('en_espera_cita', 'confirmada', 'secretario')).toBe(false);
+    expect(canTransition('confirmada', 'confirmada', 'secretario')).toBe(false);
+  });
+
+  it('las solicitudes no usan el estado de una cita confirmada (ADR 0052)', () => {
+    // Se declara aparte para que la cola no ofrezca un estado que no le pertenece:
+    // una solicitud todavía no tiene fecha, así que no hay nada que confirmar.
+    expect(REQUEST_STATUSES).toEqual(
+      APPOINTMENT_STATUSES.filter((status) => status !== 'confirmada'),
+    );
+    expect(REQUEST_STATUSES as readonly string[]).not.toContain('confirmada');
   });
 });

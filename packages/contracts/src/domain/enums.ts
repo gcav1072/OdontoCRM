@@ -128,6 +128,12 @@ export const APPOINTMENT_STATUSES = [
   'en_espera_cita',
   'programada',
   'notificada',
+  /**
+   * El paciente respondió que sí (ADR 0052). Va **después** de `notificada` y no la
+   * sustituye: «avisada» y «confirmada» son dos hechos distintos —se puede llegar sin
+   * haber confirmado, y eso es lo normal en un consultorio—, así que el estado lo dice.
+   */
+  'confirmada',
   'en_sala_espera',
   'llamado',
   'en_consulta',
@@ -137,6 +143,28 @@ export const APPOINTMENT_STATUSES = [
   'reprogramada',
 ] as const;
 export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
+
+/**
+ * Estados que puede tener una **solicitud** (el ticket de la cola de espera): la
+ * lista de la cita **sin `confirmada`**. Una solicitud todavía no tiene fecha, así
+ * que no hay nada que confirmar; se declara aparte para que la base y la interfaz no
+ * ofrezcan en la cola un estado que no le pertenece.
+ *
+ * Una prueba comprueba que es exactamente `APPOINTMENT_STATUSES` menos `confirmada`.
+ */
+export const REQUEST_STATUSES = [
+  'en_espera_cita',
+  'programada',
+  'notificada',
+  'en_sala_espera',
+  'llamado',
+  'en_consulta',
+  'atendido',
+  'no_asistio',
+  'cancelada',
+  'reprogramada',
+] as const;
+export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 
 export const MEDICAL_RECORD_STATUSES = ['borrador', 'firmada'] as const;
 export type MedicalRecordStatus = (typeof MEDICAL_RECORD_STATUSES)[number];

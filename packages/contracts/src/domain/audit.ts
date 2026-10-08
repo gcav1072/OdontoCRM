@@ -37,6 +37,7 @@ export const AUDIT_ACTIONS = [
   'appointment_rescheduled',
   'appointment_cancelled',
   'appointment_notified',
+  'appointment_confirmed',
   'appointment_checked_in',
   'appointment_called',
   'appointment_in_consultation',
