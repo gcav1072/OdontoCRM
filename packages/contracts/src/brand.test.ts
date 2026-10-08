@@ -3,7 +3,15 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { BRAND, brandCssVariables, brandRootBlock, brandStyles, logoMimeType } from './brand.js';
+import {
+  BRAND,
+  brandCssVariables,
+  brandRootBlock,
+  brandStyles,
+  brandWatermarkCss,
+  brandWatermarkHtml,
+  logoMimeType,
+} from './brand.js';
 
 /**
  * La marca es una **fuente única** que dos consumidores leen de formas distintas:
@@ -62,5 +70,23 @@ describe('la marca del consultorio', () => {
   it('el logo y la marca de agua apuntan a un archivo del almacén de la clínica', () => {
     expect(BRAND.logoPath.startsWith('assets/clinic/')).toBe(true);
     expect(BRAND.watermarkPath.startsWith('assets/clinic/')).toBe(true);
+  });
+
+  it('la marca de agua se centra, se repite por hoja y deja el contenido por encima', () => {
+    const css = brandWatermarkCss();
+    expect(css).toContain('.brand-watermark');
+    expect(css).toContain('position: fixed');
+    expect(css).toContain('width: var(--brand-watermark-width-mm)');
+    expect(css).toContain('opacity: var(--brand-watermark-opacity)');
+    // El contenido va sobre el velo; sin esta regla, la marca taparía el texto.
+    expect(css).toContain('.brand-doc');
+  });
+
+  it('sin logo no hay marca de agua (una cadena vacía, no un elemento roto)', () => {
+    expect(brandWatermarkHtml(null)).toBe('');
+    expect(brandWatermarkHtml('')).toBe('');
+    expect(brandWatermarkHtml('data:image/svg+xml;base64,AAAA')).toBe(
+      '<img class="brand-watermark" src="data:image/svg+xml;base64,AAAA" alt="" aria-hidden="true">',
+    );
   });
 });

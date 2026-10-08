@@ -219,3 +219,47 @@ body {
   background: var(--brand-table-head-bg);
   color: var(--brand-primary);
 }`;
+
+/**
+ * CSS de la **marca de agua**: el logo del consultorio, centrado y translúcido,
+ * detrás del contenido del documento.
+ *
+ * `position: fixed` es lo que hace que la marca **se repita en todas las hojas**:
+ * Chromium la vuelve a pintar en cada página al convertir el HTML en PDF, y el
+ * navegador hace lo mismo al imprimir. Las medidas salen de la marca
+ * (`--brand-watermark-width-mm` y `--brand-watermark-opacity`), así que se cambian
+ * en `brand.ts` y se mueven en papel.
+ *
+ * El contenido del documento tiene que ir dentro de un contenedor `.brand-doc`
+ * (`position: relative; z-index: 1`) para quedar **encima** del velo; sin él, la
+ * marca de agua taparía el texto.
+ */
+export const brandWatermarkCss = (): string => `
+.brand-watermark {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: var(--brand-watermark-width-mm);
+  max-height: 82%;
+  opacity: var(--brand-watermark-opacity);
+  z-index: 0;
+  pointer-events: none;
+}
+.brand-doc {
+  position: relative;
+  z-index: 1;
+}`;
+
+/**
+ * La marca de agua como `<img>`, lista para poner al principio del `<body>`, o
+ * **cadena vacía** si no hay logo que poner (el documento sale sin marca de agua,
+ * igual que sale sin logo si falta el archivo).
+ *
+ * La imagen va ya como `data:` URI: un documento compuesto a PDF no puede depender
+ * de una ruta del sistema al abrirse.
+ */
+export const brandWatermarkHtml = (dataUri: string | null): string =>
+  dataUri === null || dataUri.trim() === ''
+    ? ''
+    : `<img class="brand-watermark" src="${dataUri}" alt="" aria-hidden="true">`;
