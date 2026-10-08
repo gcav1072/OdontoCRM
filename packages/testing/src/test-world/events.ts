@@ -333,6 +333,13 @@ const eventosDeAgenda = (world: TestWorld): TestWorldEvent[] => {
         resumen: `Aviso enviado a ${appointment.patientName} por la cita del ${dateVe(appointment.date)}`,
       },
       {
+        topic: EVENT_TOPICS.appointmentConfirmed,
+        status: 'confirmada',
+        occurredAt: appointment.confirmedAt,
+        action: 'appointment_confirmed',
+        resumen: `${appointment.patientName} confirmó su cita`,
+      },
+      {
         topic: EVENT_TOPICS.appointmentCheckedIn,
         status: 'en_sala_espera',
         occurredAt: appointment.checkedInAt,

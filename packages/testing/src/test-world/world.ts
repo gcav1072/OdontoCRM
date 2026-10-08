@@ -124,6 +124,8 @@ export interface TestWorldAppointment {
   status: AppointmentStatus;
   scheduledAt: string;
   notifiedAt: string | null;
+  /** Cuándo confirmó el paciente su asistencia (ADR 0052). */
+  confirmedAt: string | null;
   checkedInAt: string | null;
   calledAt: string | null;
   startedAt: string | null;
@@ -704,6 +706,7 @@ export const buildTestWorld = (options: TestWorldOptions = {}): TestWorld => {
       | 'no_asistio'
       | 'programada'
       | 'notificada'
+      | 'confirmada'
       | 'en_sala_espera'
       | 'en_consulta'
       | 'cancelada'
@@ -732,6 +735,7 @@ export const buildTestWorld = (options: TestWorldOptions = {}): TestWorld => {
       status: 'programada',
       scheduledAt,
       notifiedAt: null,
+      confirmedAt: null,
       checkedInAt: null,
       calledAt: null,
       startedAt: null,
@@ -761,9 +765,22 @@ export const buildTestWorld = (options: TestWorldOptions = {}): TestWorld => {
           : notifiedAt;
     }
 
+    /**
+     * Confirmación del paciente (ADR 0052), derivada **sin gastar aleatoriedad**:
+     * un `rng.int` de más movería la secuencia del generador y cambiaría todos los
+     * datos del mundo (y con ellos lo que afirman las pruebas). Cinco horas después
+     * del aviso y, si eso no cabría, una hora antes de la cita.
+     */
+    const confirmadoEn = (): string | null => {
+      if (base.notifiedAt === null) return null;
+      const cincoDespues = new Date(addHoursToIso(base.notifiedAt, 5)).getTime();
+      return iso(new Date(Math.min(cincoDespues, inicio - 3_600_000)));
+    };
+
     switch (input.status) {
       case 'atendido': {
         base.status = 'atendido';
+        base.confirmedAt = confirmadoEn();
         base.checkedInAt = enFecha(12);
         base.calledAt = enFecha(4);
         base.startedAt = enFecha(-2);
@@ -778,11 +795,13 @@ export const buildTestWorld = (options: TestWorldOptions = {}): TestWorld => {
       }
       case 'en_sala_espera': {
         base.status = 'en_sala_espera';
+        base.confirmedAt = confirmadoEn();
         base.checkedInAt = enFecha(8);
         break;
       }
       case 'en_consulta': {
         base.status = 'en_consulta';
+        base.confirmedAt = confirmadoEn();
         base.checkedInAt = enFecha(20);
         base.calledAt = enFecha(12);
         base.callCount = 1;
@@ -791,6 +810,11 @@ export const buildTestWorld = (options: TestWorldOptions = {}): TestWorld => {
       }
       case 'notificada': {
         base.status = 'notificada';
+        break;
+      }
+      case 'confirmada': {
+        base.status = 'confirmada';
+        base.confirmedAt = confirmadoEn();
         break;
       }
       case 'cancelada': {
@@ -950,7 +974,9 @@ export const buildTestWorld = (options: TestWorldOptions = {}): TestWorld => {
       request,
       date: hoyIso,
       startTime: CLINIC_SLOTS[5 + index * 2] ?? '10:30',
-      status: index % 2 === 0 ? 'notificada' : 'programada',
+      // Un tercio de la jornada de hoy en cada estado: así el mundo ejercita la
+      // cita confirmada (ADR 0052) además de la avisada y la recién programada.
+      status: index % 3 === 0 ? 'confirmada' : index % 3 === 1 ? 'notificada' : 'programada',
     });
   });
 

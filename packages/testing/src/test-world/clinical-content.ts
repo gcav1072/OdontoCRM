@@ -1572,6 +1572,9 @@ export const buildSessionContent = (input: {
     indicaciones: limitar(blueprint.indicaciones, 2000),
     proximaCitaFecha: null,
     proximaCitaNota: limitar(blueprint.proximaCitaNota, 300),
+    // El mundo de prueba no crea la cita de la sugerencia: deja la nota, como una
+    // sesión cerrada sin pasar por el cuadro de confirmación (ADR 0052).
+    proximaCitaAppointmentId: null,
     notasInternas: limitar(blueprint.notasInternas, 2000),
   };
 };
