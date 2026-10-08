@@ -272,7 +272,7 @@ export const BOT_COMMANDS: readonly BotCommand[] = [
   { comando: 'confirmar', descripcion: 'Confirmar mi cita', intencion: 'confirmar' },
   {
     comando: 'cancelar',
-    descripcion: 'Anular mi solicitud',
+    descripcion: 'Cancelar mi cita o solicitud',
     intencion: 'cancelar',
     admiteArgumento: true,
   },

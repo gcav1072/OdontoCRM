@@ -339,6 +339,13 @@ export const appointmentSummarySchema = z.object({
   /** Cuándo y por dónde confirmó el paciente su asistencia (ADR 0052). */
   confirmedAt: z.string().nullable(),
   confirmedChannel: z.enum(CHANNELS).nullable(),
+  /**
+   * Cuándo y por dónde se canceló la cita (ADR 0053). Un canal de paciente
+   * (`telegram`/`whatsapp`) es lo que distingue «la canceló el paciente» de «la
+   * canceló la secretaría», que es justo lo que mira el KPI de reportes.
+   */
+  cancelledAt: z.string().nullable(),
+  cancelledChannel: z.enum(CHANNELS).nullable(),
   dentistId: z.uuid().nullable(),
   chairId: z.uuid().nullable(),
   checkedInAt: z.string().nullable(),
@@ -397,6 +404,34 @@ export const cancelAppointmentSchema = z.object({
 });
 
 export type CancelAppointmentInput = z.infer<typeof cancelAppointmentSchema>;
+
+/**
+ * Cancelación por el **bot** ([ADR 0053](../../../../docs/adr/0053-cancelacion-de-citas-por-el-paciente.md)).
+ *
+ * Es un schema aparte del público a propósito: el interno exige el **canal** por el
+ * que canceló el paciente —dato que se guarda y que distingue «cancelada por el
+ * paciente» de «cancelada por la secretaría» en la tarjeta y en el KPI—. Al no estar
+ * en el schema público, ese campo no se puede forjar por la ruta `/api/v1/appointments/:id/cancel`.
+ */
+export const cancelAppointmentBotSchema = z.object({
+  channel: z.enum(CHANNELS),
+  reason: z.string().trim().max(300).optional(),
+});
+
+export type CancelAppointmentBotInput = z.infer<typeof cancelAppointmentBotSchema>;
+
+/**
+ * Filtros de la lista de **cancelaciones hechas por el paciente** (ADR 0053): lo que
+ * alimenta la tarjeta de `/programacion`. El rango va sobre `cancelled_at`.
+ */
+export const appointmentCancellationFiltersSchema = z.object({
+  from: dateSchema.optional(),
+  to: dateSchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export type AppointmentCancellationFilters = z.infer<typeof appointmentCancellationFiltersSchema>;
 
 /**
  * Confirmación de la cita ([ADR 0052](../../../docs/adr/0052-confirmacion-de-citas-por-el-paciente.md)).
@@ -511,13 +546,13 @@ export const APPOINTMENT_CONFIRMATION_TEMPLATE = {
   subject: 'Confirmación de tu cita',
   // Ojo con la puntuación: la hora en 12 h ya termina en «a. m.» o «p. m.».
   //
-  // El aviso **invita a confirmar** (ADR 0052) y no dice «quedó confirmada»: eso era
-  // lo que decía antes, cuando `notificada` se leía como «confirmada». Avisar y
-  // confirmar son dos hechos distintos, y el texto ahora pide el segundo.
+  // El aviso **invita a responder** (ADR 0052): «confirmar» si asistirá o «cancelar»
+  // si no puede, que es la petición de la ADR 0053. No dice «quedó confirmada»: avisar
+  // y confirmar son hechos distintos.
   body:
     'Hola {paciente}: te esperamos el {fecha} a las {hora}\n' +
     'Lugar: {lugar}\n' +
-    'Tu ticket es {ticket}. Responde «confirmar» (o pulsa el botón) para avisarnos de que asistirás; si no puedes, escríbenos por este mismo chat.',
+    'Tu ticket es {ticket}. Responde «confirmar» (o pulsa el botón) para avisarnos de que asistirás; si no puedes, aprieta (cancelar) o escribe cancelar para revocarte la cita.',
 } as const;
 
 /**
@@ -587,3 +622,18 @@ export type NotifyBatchResult = z.infer<typeof notifyBatchResultSchema>;
 
 /** Estados desde los que tiene sentido avisar al paciente. */
 export const NOTIFIABLE_STATUSES: readonly AppointmentStatus[] = ['programada'];
+
+/**
+ * Estados desde los que el **paciente** puede cancelar su cita desde el bot
+ * ([ADR 0053](../../../../docs/adr/0053-cancelacion-de-citas-por-el-paciente.md)): los
+ * que todavía no han llegado al consultorio. A partir de `en_sala_espera` el paciente ya
+ * está aquí (o en consulta), así que cancelar por chat no tiene sentido.
+ *
+ * Vive en el contrato para que la agenda y el asistente del bot compartan **la misma**
+ * lista: si divergieran, el bot ofrecería cancelar lo que la agenda rechaza.
+ */
+export const CANCELLABLE_STATUSES: readonly AppointmentStatus[] = [
+  'programada',
+  'notificada',
+  'confirmada',
+];

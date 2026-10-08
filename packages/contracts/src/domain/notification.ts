@@ -199,6 +199,10 @@ export const NOTIFICATION_TEMPLATE_KEYS = [
   'servicio_no_disponible',
   /** Respuesta al paciente que acaba de confirmar su cita (ADR 0052). */
   'cita_confirmada_paciente',
+  /** Respuesta al paciente que acaba de cancelar su cita (ADR 0053). */
+  'cita_cancelada_paciente',
+  /** Cuando intenta cancelar una cita que ya no se puede cancelar por el bot. */
+  'cita_no_cancelable',
   /** Cuando escribe «confirmar» y no tiene ninguna cita próxima que confirmar. */
   'sin_citas',
 ] as const;
@@ -396,6 +400,24 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
       'Lugar: {lugar}\n' +
       'Te esperamos. Si al final no puedes venir, avísanos por aquí.',
     placeholders: ['paciente', 'fecha', 'hora', 'lugar'],
+  },
+  {
+    key: 'cita_cancelada_paciente',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Entendido, {paciente}: tu cita del {fecha} a las {hora} quedó cancelada y vuelves a la lista de espera.\n' +
+      'Te avisaremos por aquí cuando te asignemos una fecha nueva.',
+    placeholders: ['paciente', 'fecha', 'hora'],
+  },
+  {
+    key: 'cita_no_cancelable',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'No puedo cancelar esa cita por aquí: {estado}.\n' +
+      'Si necesitas cambiarla, habla con el consultorio.',
+    placeholders: ['estado'],
   },
   {
     key: 'sin_citas',
