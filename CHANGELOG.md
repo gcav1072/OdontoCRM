@@ -4,6 +4,36 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Cancelación] — El paciente puede cancelar su cita · 2026-10-08
+
+El aviso ya se podía responder (confirmar), pero no **revocar**. Si el paciente no podía asistir,
+el mensaje se quedaba en la bandeja y el mostrador lo atendía a mano. Y una cancelación no decía
+**quién** la había pedido: la del paciente y la de la secretaría eran la misma fila.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| Botón «Cancelar» en el aviso | El mensaje de la cita ofrece **confirmar o cancelar**: dos botones en el código (no en la plantilla) y el texto que invita a escribir «cancelar» (ADR 0053) |
+| Intención `cancelar` | «Cancelar» (o `/cancelar`) cancela la **cita** asignada; sin cita, cae a anular la **solicitud**, como antes. Con `/cancelar #000123` se conserva el comportamiento de siempre |
+| `cancelAppointment` | La hermana de `confirmAppointment`: actor de sistema **sin roles**, guardia propia de estado (`programada`/`notificada`/`confirmada`) e **idempotente** |
+| `cancelled_at` · `cancelled_channel` | **Cuándo** y **por dónde** se canceló. Un canal de paciente distingue «la canceló el paciente» de «la canceló la secretaría» |
+| `POST /internal/v1/appointments/:id/cancel` | El bot cancela por la ruta interna; el schema público sigue sin admitir `channel` (no se puede forjar) |
+| `skipNotice` | La cancelación del bot **no** encola un `cita_cancelada` duplicado: el asistente ya responde él mismo. El bloque `notification` se conserva para pacientes, pantallas y reportes |
+| Plantillas nuevas | `cita_cancelada_paciente` (la respuesta al paciente) y `cita_no_cancelable` (cuando ya no se puede) |
+| Tarjeta «Canceladas por el paciente» | En `/programacion`: rango de fechas, paciente, ticket, la cita original, cuándo canceló y el canal. Solo las del **bot** (ADR 0053) |
+| `GET /api/v1/appointments/cancellations` | Lo que sirve la tarjeta: filtra por la fecha de cancelación y solo devuelve las hechas por un canal de paciente |
+| KPI del embudo | «Canceladas por el paciente» como **KPI card**, **columna** (y CSV) y **serie** propia. Sale de `mv_funnel.cancelled_by_patient` |
+
+Cancelar **devuelve el ticket a la cola** ([ADR 0028](docs/adr/0028-cancelar-devuelve-el-ticket.md)):
+la solicitud vuelve a `en_espera_cita`, así que el hueco no se pierde y al paciente se le puede
+reasignar. Con un matiz defensivo: solo si la solicitud **no le queda otra cita en pie**, para no
+sacar de la agenda la cita nueva de una reprogramación.
+
+El silencio del aviso se resolvió con una **marca en el evento**, no borrando su bloque `notification`:
+ese bloque lo leen también los servicios de pacientes y pantallas (y reportes saca de ahí al
+paciente), así que quitarlo habría roto a tres consumidores. El flag `skipNotice` lo entiende solo el
+consumidor de notificaciones. La cancelación de la secretaría, que no lleva la marca, manda su
+`cita_cancelada` como siempre.
+
 ## [Confirmación] — El aviso de la cita ahora se responde · 2026-10-07
 
 El aviso existía desde la Fase 4, pero era de una sola dirección: el paciente sabía cuándo
