@@ -25,6 +25,7 @@ export const STAFF_TOPICS: readonly EventTopic[] = [
   EVENT_TOPICS.appointmentScheduled,
   EVENT_TOPICS.appointmentRescheduled,
   EVENT_TOPICS.appointmentCancelled,
+  EVENT_TOPICS.appointmentConfirmed,
   EVENT_TOPICS.appointmentCheckedIn,
   EVENT_TOPICS.appointmentCalled,
   EVENT_TOPICS.appointmentInConsultation,
