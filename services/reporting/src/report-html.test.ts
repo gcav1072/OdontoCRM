@@ -32,8 +32,8 @@ const documentoDePrueba = (): ReportDocument =>
  * **escapa** lo que viene de los datos (hay nombres de paciente en la tabla).
  */
 describe('plantilla HTML del reporte', () => {
-  it('lleva el membrete del consultorio, el rango y la fecha de generación', () => {
-    const html = reportHtml(documentoDePrueba());
+  it('lleva el membrete del consultorio, el rango y la fecha de generación', async () => {
+    const html = await reportHtml(documentoDePrueba());
     expect(html).toContain('Consultorio - Od. Erika Gómez');
     expect(html).toContain('Av. Luis del Valle García');
     expect(html).toContain('Del 01/10/2026 al 31/10/2026');
@@ -41,15 +41,23 @@ describe('plantilla HTML del reporte', () => {
     expect(html).toContain('Filtros aplicados');
   });
 
-  it('pinta los KPIs y la tabla del documento', () => {
-    const html = reportHtml(documentoDePrueba());
+  it('estampa el logo y la marca de agua del consultorio en el papel', async () => {
+    const html = await reportHtml(documentoDePrueba());
+    // El logo se incrusta como data URI (el PDF no depende de rutas al abrirse).
+    expect(html).toContain('class="logo" src="data:image/svg+xml;base64,');
+    expect(html).toContain('class="brand-watermark"');
+    expect(html).toContain('class="brand-doc"');
+  });
+
+  it('pinta los KPIs y la tabla del documento', async () => {
+    const html = await reportHtml(documentoDePrueba());
     expect(html).toContain('Tasa de inasistencia');
     expect(html).toContain('Embudo y tasa de inasistencia');
     expect(html).toContain('semana del 2026-10-05');
     expect(html).toContain('33,3');
   });
 
-  it('escapa el HTML de los datos: un nombre con etiquetas no rompe el PDF', () => {
+  it('escapa el HTML de los datos: un nombre con etiquetas no rompe el PDF', async () => {
     const documento = documentoDePrueba();
     const conEtiquetas: ReportDocument = {
       ...documento,
@@ -60,16 +68,16 @@ describe('plantilla HTML del reporte', () => {
       ],
     };
 
-    const html = reportHtml(conEtiquetas);
+    const html = await reportHtml(conEtiquetas);
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).not.toContain('<img src=x>');
     expect(html).toContain('&lt;b&gt;Peligro&lt;/b&gt;');
   });
 
-  it('sin filas avisa en vez de imprimir una tabla vacía', () => {
+  it('sin filas avisa en vez de imprimir una tabla vacía', async () => {
     const documento = documentoDePrueba();
-    const html = reportHtml({ ...documento, table: { ...documento.table, rows: [] } });
+    const html = await reportHtml({ ...documento, table: { ...documento.table, rows: [] } });
     expect(html).toContain('Sin filas que imprimir');
     expect(html).not.toContain('<tbody>');
   });

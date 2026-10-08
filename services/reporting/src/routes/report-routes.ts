@@ -129,7 +129,7 @@ export const registerReportRoutes = (app: FastifyInstance, services: ReportingSe
 
       let cuerpo: Buffer;
       try {
-        cuerpo = await pdf.render(reportHtml(documento));
+        cuerpo = await pdf.render(await reportHtml(documento));
       } catch (error) {
         request.log.error({ err: error, key }, 'No se pudo generar el PDF del reporte');
         throw new ServiceUnavailableError(

@@ -1,10 +1,14 @@
 import {
+  BRAND,
   CLINIC,
   brandStyles,
+  brandWatermarkCss,
+  brandWatermarkHtml,
   clinicContactLine,
   clinicFullAddress,
   type ReportDocument,
 } from '@odontocrm/contracts';
+import { readImageDataUri } from '@odontocrm/kernel';
 
 /**
  * Plantilla HTML imprimible del reporte: es lo que Chromium convierte en PDF
@@ -57,11 +61,14 @@ const fechaHora = (iso: string): string => {
 
 const estilos = `
   ${brandStyles()}
+  ${brandWatermarkCss()}
   @page { size: A4 landscape; margin: 10mm 12mm; }
   * { box-sizing: border-box; }
   /* El cuerpo (fuente y tinta) lo pone brandStyles(): la MISMA marca que el récipe y el
      dossier, para que los documentos del consultorio no salgan cada uno de un color. */
   .letterhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; border-bottom: 0.6mm solid var(--brand-accent); padding-bottom: 3mm; }
+  .letterhead-brand { display: flex; align-items: flex-start; gap: 6mm; }
+  .logo { height: var(--brand-logo-height-mm); width: auto; }
   .clinic-name { font-size: 14pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
   .clinic-line { font-size: 8pt; color: var(--brand-ink-muted); margin: 0.6mm 0 0; }
   .doc-meta { text-align: right; font-size: 8pt; color: var(--brand-ink-muted); min-width: 60mm; }
@@ -89,7 +96,9 @@ const estilos = `
  * HTML completo del reporte. Se devuelve como cadena (no se escribe en disco): el
  * navegador lo recibe con `page.setContent` y de ahí sale el PDF.
  */
-export const reportHtml = (documento: ReportDocument): string => {
+export const reportHtml = async (documento: ReportDocument): Promise<string> => {
+  const logo = await readImageDataUri(BRAND.logoPath);
+  const marcaDeAgua = brandWatermarkHtml(await readImageDataUri(BRAND.watermarkPath));
   const contactos = clinicContactLine(CLINIC);
   const lineasMembrete = [
     clinicFullAddress(CLINIC),
@@ -153,10 +162,15 @@ export const reportHtml = (documento: ReportDocument): string => {
 <style>${estilos}</style>
 </head>
 <body>
+  ${marcaDeAgua}
+  <div class="brand-doc">
   <header class="letterhead">
-    <div>
-      <p class="clinic-name">${escapeHtml(CLINIC.name)}</p>
-      ${lineasMembrete}
+    <div class="letterhead-brand">
+      ${logo === null ? '' : `<img class="logo" src="${logo}" alt="Logo del consultorio">`}
+      <div>
+        <p class="clinic-name">${escapeHtml(CLINIC.name)}</p>
+        ${lineasMembrete}
+      </div>
     </div>
     <div class="doc-meta">
       <p class="clinic-line">Generado el ${escapeHtml(fechaHora(documento.generatedAt))}</p>
@@ -180,6 +194,7 @@ export const reportHtml = (documento: ReportDocument): string => {
   ${notas === '' ? '' : `<section class="notes"><h2>Notas</h2><ul>${notas}</ul></section>`}
 
   <p class="footer">${escapeHtml(CLINIC.name)} · OdontoCRM · informe generado por el servicio de reportes</p>
+  </div>
 </body>
 </html>`;
 };
