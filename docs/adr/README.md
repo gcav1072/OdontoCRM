@@ -11,7 +11,9 @@ de facturación por defecto y la regla de tasa, y quedan documentadas por la mis
 **0050** se toma al portar el instalador a Windows, la **0051** al cubrir la dentición mixta
 del odontograma, la **0052** al permitir que el paciente confirme su cita (y que la «próxima
 cita» de la sesión clínica se cree de verdad en la agenda) y la **0053** al permitir que el
-paciente **cancela** su cita desde el bot.
+paciente **cancela** su cita desde el bot. La **0054** se toma al unificar el membrete, el logo
+y la marca de agua de todos los imprimibles (y cablear la marca de agua, que estaba declarada
+en `brand.ts` y sin usar).
 
 > **Numeración de la Fase 11:** el plan de facturación
 > ([`../feat_billing.md`](../feat_billing.md)) numeraba sus cinco ADRs **0043–0047** porque daba por hecho
@@ -74,3 +76,4 @@ paciente **cancela** su cita desde el bot.
 | [0051](0051-denticion-mixta-en-el-odontograma.md) | El odontograma admite dentición mixta (el paciente que está mudando) | aceptada |
 | [0052](0052-confirmacion-de-citas-por-el-paciente.md) | El paciente confirma su cita: estado `confirmada`, botón en el aviso y la próxima cita de la sesión se crea en la agenda | aceptada |
 | [0053](0053-cancelacion-de-citas-por-el-paciente.md) | El paciente cancela su cita: botón y palabra «cancelar», atribución con `cancelled_at`/`cancelled_channel` y el KPI del embudo | aceptada |
+| [0054](0054-membrete-unico-en-los-imprimibles.md) | El membrete, el logo y la marca de agua son los mismos en todos los imprimibles (y la marca de agua, antes declarada y sin usar, se cablea) | aceptada |
