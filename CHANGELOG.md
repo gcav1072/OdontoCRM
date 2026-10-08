@@ -34,6 +34,20 @@ paciente), así que quitarlo habría roto a tres consumidores. El flag `skipNoti
 consumidor de notificaciones. La cancelación de la secretaría, que no lleva la marca, manda su
 `cita_cancelada` como siempre.
 
+### Corregido
+
+- **El botón «Confirmar» y el botón «Cancelar» daban error y no hacían nada.** El cliente interno
+  del bot manda siempre el campo opcional —`note` al confirmar, `reason` al cancelar— con `null`
+  cuando el paciente no escribe nada, pero los esquemas del contrato lo declaraban
+  `z.string().optional()`, que en Zod 4 solo acepta `undefined`. La agenda respondía **400** y el
+  asistente mostraba al paciente el aviso genérico de «servicio no disponible»: el botón parecía
+  roto. Ahora los dos campos son `.nullish()` (`null | undefined`), que es como este código
+  representa «sin dato» en todas partes.
+  - Las pruebas de integración no lo vieron porque el doble del cliente (`fakeClients`) llama a la
+    función del servicio directamente y **nunca cruza el contrato Zod**; el fallo vivía justo en el
+    borde HTTP de la agenda (`POST /internal/v1/appointments/:id/confirm|cancel`). Se añade una
+    prueba de contrato que fija que `null` se acepta.
+
 ## [Confirmación] — El aviso de la cita ahora se responde · 2026-10-07
 
 El aviso existía desde la Fase 4, pero era de una sola dirección: el paciente sabía cuándo

@@ -7,6 +7,8 @@ import {
   addMinutes,
   assignAppointmentSchema,
   attendAppointmentSchema,
+  cancelAppointmentBotSchema,
+  confirmAppointmentSchema,
   createRequestSchema,
   expandTemplateSlots,
   formatTime12h,
@@ -250,6 +252,42 @@ describe('marcar atendido', () => {
       attendAppointmentSchema.parse({ forceReason: 'paciente llegó tarde y se atendió' })
         .forceReason,
     ).toContain('tarde');
+  });
+});
+
+describe('confirmar y cancelar por el bot (ADR 0052/0053)', () => {
+  it('acepta `null` en los campos opcionales: es como los manda el cliente del bot', () => {
+    // El cliente interno del bot manda siempre `note`/`reason`, con `null` cuando el
+    // paciente no escribe nada. Con `.optional()` Zod 4 rechazaba ese `null` con un 400
+    // y el paciente se quedaba sin poder confirmar ni cancelar (regresión real).
+    expect(
+      confirmAppointmentSchema.safeParse({ channel: 'telegram', note: null }).success,
+    ).toBe(true);
+    expect(
+      cancelAppointmentBotSchema.safeParse({ channel: 'telegram', reason: null }).success,
+    ).toBe(true);
+  });
+
+  it('sigue admitiendo que el campo no venga y recorta los espacios', () => {
+    const sinNota = confirmAppointmentSchema.parse({ channel: 'telefono' });
+    expect(sinNota.note).toBeUndefined();
+
+    const conNota = confirmAppointmentSchema.parse({
+      channel: 'telefono',
+      note: '  dijo que sí  ',
+    });
+    expect(conNota.note).toBe('dijo que sí');
+
+    const conMotivo = cancelAppointmentBotSchema.parse({
+      channel: 'telegram',
+      reason: '  no puedo ir  ',
+    });
+    expect(conMotivo.reason).toBe('no puedo ir');
+  });
+
+  it('exige el canal en los dos', () => {
+    expect(confirmAppointmentSchema.safeParse({ note: null }).success).toBe(false);
+    expect(cancelAppointmentBotSchema.safeParse({}).success).toBe(false);
   });
 });
 

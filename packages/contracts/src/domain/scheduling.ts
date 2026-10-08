@@ -415,7 +415,13 @@ export type CancelAppointmentInput = z.infer<typeof cancelAppointmentSchema>;
  */
 export const cancelAppointmentBotSchema = z.object({
   channel: z.enum(CHANNELS),
-  reason: z.string().trim().max(300).optional(),
+  /**
+   * El cliente interno del bot manda `null` cuando el paciente no escribe motivo
+   * (igual que el de confirmación manda `note: null`). `.nullish()` acepta
+   * `null | undefined`; con `.optional()` Zod 4 solo aceptaría `undefined` y
+   * rechazaría el `null` con un 400 que dejaba al paciente sin poder cancelar.
+   */
+  reason: z.string().trim().max(300).nullish(),
 });
 
 export type CancelAppointmentBotInput = z.infer<typeof cancelAppointmentBotSchema>;
@@ -442,7 +448,12 @@ export type AppointmentCancellationFilters = z.infer<typeof appointmentCancellat
  */
 export const confirmAppointmentSchema = z.object({
   channel: z.enum(CHANNELS),
-  note: z.string().trim().max(300).optional(),
+  /**
+   * La secretaría puede llamar sin nota y el bot manda `note: null` siempre; en los
+   * dos casos «sin dato» es `null`, que es lo que acepta `.nullish()` (con
+   * `.optional()` Zod 4 rechazaba el `null` del bot con un 400).
+   */
+  note: z.string().trim().max(300).nullish(),
 });
 
 export type ConfirmAppointmentInput = z.infer<typeof confirmAppointmentSchema>;
