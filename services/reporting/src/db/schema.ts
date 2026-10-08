@@ -145,6 +145,8 @@ export const factAppointment = pgTable(
     requestedAt: timestamp('requested_at', { withTimezone: true }),
     scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
     notifiedAt: timestamp('notified_at', { withTimezone: true }),
+    /** Cuándo confirmó el paciente su asistencia (ADR 0052). */
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     checkedInAt: timestamp('checked_in_at', { withTimezone: true }),
     calledAt: timestamp('called_at', { withTimezone: true }),
     startedAt: timestamp('started_at', { withTimezone: true }),

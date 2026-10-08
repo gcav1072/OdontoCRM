@@ -1267,7 +1267,7 @@ describeConBases('reporting: read model por eventos, reportes y exportación', (
     expect(csv).toContain('\r\n');
     // Cabecera con acentos intactos y el separador que espera Excel en español.
     expect(csv.split('\r\n')[0]).toBe(
-      '\uFEFFPeríodo;Solicitudes;Programadas;Avisadas;Atendidas;Inasistencias;Canceladas;Tasa de inasistencia',
+      '\uFEFFPeríodo;Solicitudes;Programadas;Avisadas;Confirmadas;Atendidas;Inasistencias;Canceladas;Tasa de inasistencia',
     );
 
     // Los porcentajes salen con coma decimal: 2 de 3 renglones son de Amoxicilina.

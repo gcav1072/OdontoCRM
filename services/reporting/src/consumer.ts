@@ -75,6 +75,7 @@ export const REPORTING_TOPICS: readonly string[] = [
   EVENT_TOPICS.appointmentRescheduled,
   EVENT_TOPICS.appointmentCancelled,
   EVENT_TOPICS.appointmentNotified,
+  EVENT_TOPICS.appointmentConfirmed,
   EVENT_TOPICS.appointmentCheckedIn,
   EVENT_TOPICS.appointmentCalled,
   EVENT_TOPICS.appointmentInConsultation,
@@ -249,6 +250,7 @@ const planificar = (event: DomainEvent): Planificacion => {
     case EVENT_TOPICS.appointmentRescheduled:
     case EVENT_TOPICS.appointmentCancelled:
     case EVENT_TOPICS.appointmentNotified:
+    case EVENT_TOPICS.appointmentConfirmed:
     case EVENT_TOPICS.appointmentCheckedIn:
     case EVENT_TOPICS.appointmentCalled:
     case EVENT_TOPICS.appointmentInConsultation:
@@ -406,6 +408,7 @@ const planificarSolicitud = (event: DomainEvent): Planificacion => {
 type MarcaTiempo =
   | 'scheduledAt'
   | 'notifiedAt'
+  | 'confirmedAt'
   | 'checkedInAt'
   | 'calledAt'
   | 'startedAt'
@@ -416,6 +419,7 @@ type MarcaTiempo =
 /** Estado y sello de tiempo que deja cada transición de la máquina de estados. */
 const TRANSICIONES_CITA: Readonly<Record<string, { estado: string; marca: MarcaTiempo }>> = {
   [EVENT_TOPICS.appointmentNotified]: { estado: 'notificada', marca: 'notifiedAt' },
+  [EVENT_TOPICS.appointmentConfirmed]: { estado: 'confirmada', marca: 'confirmedAt' },
   [EVENT_TOPICS.appointmentCheckedIn]: { estado: 'en_sala_espera', marca: 'checkedInAt' },
   [EVENT_TOPICS.appointmentCalled]: { estado: 'llamado', marca: 'calledAt' },
   [EVENT_TOPICS.appointmentInConsultation]: { estado: 'en_consulta', marca: 'startedAt' },

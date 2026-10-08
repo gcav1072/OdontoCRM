@@ -18,6 +18,7 @@ const dia = (day: string, valores: Partial<Omit<FilaDiaEmbudo, 'day'>> = {}): Fi
   requests: 0,
   scheduled: 0,
   notified: 0,
+  confirmed: 0,
   attended: 0,
   noShow: 0,
   cancelled: 0,
@@ -41,6 +42,7 @@ describe('embudo e inasistencia', () => {
       solicitudes: 4,
       programadas: 5,
       notificadas: 3,
+      confirmadas: 0,
       atendidas: 3,
       inasistencias: 1,
       canceladas: 0,
@@ -52,6 +54,7 @@ describe('embudo e inasistencia', () => {
       solicitudes: 6,
       programadas: 6,
       notificadas: 3,
+      confirmadas: 0,
       atendidas: 4,
       inasistencias: 1,
       canceladas: 0,
@@ -114,12 +117,13 @@ describe('embudo e inasistencia', () => {
     );
     expect(documento.table.rows).toHaveLength(3);
     expect(documento.notes.join(' ')).toContain('Sin datos');
-    expect(documento.series.find((serie) => serie.id === 'embudo')?.points).toHaveLength(12);
+    // Cinco etapas por cada uno de los tres días.
+    expect(documento.series.find((serie) => serie.id === 'embudo')?.points).toHaveLength(15);
   });
 
-  it('la serie del embudo lleva las cuatro etapas por período', () => {
+  it('la serie del embudo lleva las cinco etapas por período', () => {
     const documento = componerEmbudo(
-      [dia('2026-10-05', { requests: 2, scheduled: 1, notified: 1, attended: 1 })],
+      [dia('2026-10-05', { requests: 2, scheduled: 1, notified: 1, confirmed: 1, attended: 1 })],
       contexto({ granularity: 'day' }, { from: '2026-10-05', to: '2026-10-05' }),
     );
     const puntos = documento.series.find((serie) => serie.id === 'embudo')?.points ?? [];
@@ -127,6 +131,7 @@ describe('embudo e inasistencia', () => {
       'solicitudes',
       'programadas',
       'notificadas',
+      'confirmadas',
       'atendidas',
     ]);
     expect(documento.series.find((serie) => serie.id === 'inasistencia')?.kind).toBe('line');

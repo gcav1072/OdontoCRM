@@ -116,6 +116,7 @@ export const buildReportSummary = async (
         capacity: mvDailyKpis.capacity,
         assigned: mvDailyKpis.assigned,
         scheduled: mvDailyKpis.scheduled,
+        confirmed: mvDailyKpis.confirmed,
         attended: mvDailyKpis.attended,
         noShow: mvDailyKpis.noShow,
         cancelled: mvDailyKpis.cancelled,
@@ -132,6 +133,7 @@ export const buildReportSummary = async (
   const dia = dias[0] ?? null;
   const assigned = dia?.assigned ?? 0;
   const scheduled = dia?.scheduled ?? 0;
+  const confirmed = dia?.confirmed ?? 0;
   const attended = dia?.attended ?? 0;
   const noShow = dia?.noShow ?? 0;
   const cancelled = dia?.cancelled ?? 0;
@@ -146,6 +148,7 @@ export const buildReportSummary = async (
     generatedAt,
     appointments: {
       scheduled,
+      confirmed,
       attended,
       noShow,
       // Pendientes: las que siguen en pie y todavía no tienen desenlace.

@@ -231,7 +231,7 @@ const proyectarDesdeHechos = async (
   const citas = deps.db
     .select({
       day: diaTexto(factAppointment.appointmentDate),
-      assigned: sql<number>`(count(*) filter (where ${factAppointment.status} in ('programada', 'notificada', 'en_sala_espera', 'llamado', 'en_consulta', 'atendido', 'no_asistio')))::int`,
+      assigned: sql<number>`(count(*) filter (where ${factAppointment.status} in ('programada', 'notificada', 'confirmada', 'en_sala_espera', 'llamado', 'en_consulta', 'atendido', 'no_asistio')))::int`,
       attended: sql<number>`(count(*) filter (where ${factAppointment.status} = 'atendido'))::int`,
       noShow: sql<number>`(count(*) filter (where ${factAppointment.status} = 'no_asistio'))::int`,
     })

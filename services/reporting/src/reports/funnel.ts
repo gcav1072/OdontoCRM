@@ -27,12 +27,13 @@ import {
 
 /**
  * Reporte del **embudo** y de la tasa de inasistencia (plan §13, Fase 9):
- * solicitudes → programadas → notificadas → atendidas, con la inasistencia al lado.
+ * solicitudes → programadas → notificadas → confirmadas → atendidas, con la
+ * inasistencia al lado.
  *
  * La fecha de cada etapa es la que le toca:
  *  - **solicitudes** por su fecha de solicitud (`fact_request.requested_at`);
- *  - **citas** (programadas, notificadas, atendidas e inasistencias) por la fecha de
- *    la cita (`fact_appointment.appointment_date`).
+ *  - **citas** (programadas, notificadas, confirmadas, atendidas e inasistencias) por
+ *    la fecha de la cita (`fact_appointment.appointment_date`).
  *
  * Así el embudo de una semana se lee de arriba abajo sin que una cita pedida en
  * septiembre y atendida en octubre descuadre las dos semanas.
@@ -44,6 +45,8 @@ export interface FilaDiaEmbudo {
   requests: number;
   scheduled: number;
   notified: number;
+  /** Confirmadas por el paciente (ADR 0052): van entre avisadas y atendidas. */
+  confirmed: number;
   attended: number;
   noShow: number;
   cancelled: number;
@@ -53,6 +56,7 @@ export interface TotalesEmbudo {
   solicitudes: number;
   programadas: number;
   notificadas: number;
+  confirmadas: number;
   atendidas: number;
   inasistencias: number;
   canceladas: number;
@@ -62,6 +66,7 @@ const vacio = (): TotalesEmbudo => ({
   solicitudes: 0,
   programadas: 0,
   notificadas: 0,
+  confirmadas: 0,
   atendidas: 0,
   inasistencias: 0,
   canceladas: 0,
@@ -71,6 +76,7 @@ const sumarFila = (totales: TotalesEmbudo, fila: FilaDiaEmbudo): TotalesEmbudo =
   solicitudes: totales.solicitudes + fila.requests,
   programadas: totales.programadas + fila.scheduled,
   notificadas: totales.notificadas + fila.notified,
+  confirmadas: totales.confirmadas + fila.confirmed,
   atendidas: totales.atendidas + fila.attended,
   inasistencias: totales.inasistencias + fila.noShow,
   canceladas: totales.canceladas + fila.cancelled,
@@ -112,6 +118,7 @@ export const componerEmbudo = (
     { clave: 'solicitudes', etiqueta: 'solicitudes' },
     { clave: 'programadas', etiqueta: 'programadas' },
     { clave: 'notificadas', etiqueta: 'notificadas' },
+    { clave: 'confirmadas', etiqueta: 'confirmadas' },
     { clave: 'atendidas', etiqueta: 'atendidas' },
   ];
 
@@ -137,6 +144,7 @@ export const componerEmbudo = (
       solicitudes: delPeriodo.solicitudes,
       programadas: delPeriodo.programadas,
       notificadas: delPeriodo.notificadas,
+      confirmadas: delPeriodo.confirmadas,
       atendidas: delPeriodo.atendidas,
       inasistencias: delPeriodo.inasistencias,
       canceladas: delPeriodo.canceladas,
@@ -165,6 +173,14 @@ export const componerEmbudo = (
         hint: `${String(totales.canceladas)} canceladas o reprogramadas`,
       }),
       kpi('Avisadas al paciente', totales.notificadas),
+      // El dato útil no es «cuántas confirmaron» sino «de las avisadas, cuántas
+      // respondieron»: es lo que mide si el recordatorio sirve.
+      kpi('Confirmadas por el paciente', totales.confirmadas, {
+        hint:
+          totales.notificadas === 0
+            ? 'no hubo citas avisadas en el período'
+            : `de ${String(totales.notificadas)} avisadas`,
+      }),
       kpi('Atendidas', totales.atendidas, { tone: totales.atendidas > 0 ? 'good' : 'neutral' }),
       kpi('Conseguir cita', porcentaje(totales.programadas, totales.solicitudes), {
         unit: '%',
@@ -192,6 +208,7 @@ export const componerEmbudo = (
         columna('solicitudes', 'Solicitudes', 'number'),
         columna('programadas', 'Programadas', 'number'),
         columna('notificadas', 'Avisadas', 'number'),
+        columna('confirmadas', 'Confirmadas', 'number'),
         columna('atendidas', 'Atendidas', 'number'),
         columna('inasistencias', 'Inasistencias', 'number'),
         columna('canceladas', 'Canceladas', 'number'),
@@ -219,6 +236,7 @@ const proyectarDesdeVista = async (
       requests: mvFunnel.requests,
       scheduled: mvFunnel.scheduled,
       notified: mvFunnel.notified,
+      confirmed: mvFunnel.confirmed,
       attended: mvFunnel.attended,
       noShow: mvFunnel.noShow,
       cancelled: mvFunnel.cancelled,
@@ -244,6 +262,7 @@ const proyectarDesdeHechos = async (
       day: diaTexto(factAppointment.appointmentDate),
       scheduled: sql<number>`count(*)::int`,
       notified: sql<number>`(count(*) filter (where ${factAppointment.notifiedAt} is not null))::int`,
+      confirmed: sql<number>`(count(*) filter (where ${factAppointment.confirmedAt} is not null))::int`,
       attended: sql<number>`(count(*) filter (where ${factAppointment.status} = 'atendido'))::int`,
       noShow: sql<number>`(count(*) filter (where ${factAppointment.status} = 'no_asistio'))::int`,
       cancelled: sql<number>`(count(*) filter (where ${factAppointment.status} in ('cancelada', 'reprogramada')))::int`,
@@ -276,6 +295,7 @@ const proyectarDesdeHechos = async (
       requests: 0,
       scheduled: 0,
       notified: 0,
+      confirmed: 0,
       attended: 0,
       noShow: 0,
       cancelled: 0,
@@ -289,6 +309,7 @@ const proyectarDesdeHechos = async (
     const acumulado = dia(fila.day);
     acumulado.scheduled += fila.scheduled;
     acumulado.notified += fila.notified;
+    acumulado.confirmed += fila.confirmed;
     acumulado.attended += fila.attended;
     acumulado.noShow += fila.noShow;
     acumulado.cancelled += fila.cancelled;

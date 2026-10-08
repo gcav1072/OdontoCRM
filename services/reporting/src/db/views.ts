@@ -22,6 +22,8 @@ export const mvDailyKpis = pgTable('mv_daily_kpis', {
   assigned: integer('assigned').notNull(),
   scheduled: integer('scheduled').notNull(),
   notified: integer('notified').notNull(),
+  /** Confirmadas por el paciente (ADR 0052). */
+  confirmed: integer('confirmed').notNull(),
   attended: integer('attended').notNull(),
   noShow: integer('no_show').notNull(),
   cancelled: integer('cancelled').notNull(),
@@ -32,12 +34,13 @@ export const mvDailyKpis = pgTable('mv_daily_kpis', {
   notificationsFailed: integer('notifications_failed').notNull(),
 });
 
-/** Embudo por día: solicitudes → programadas → notificadas → atendidas. */
+/** Embudo por día: solicitudes → programadas → notificadas → confirmadas → atendidas. */
 export const mvFunnel = pgTable('mv_funnel', {
   day: date('day', { mode: 'string' }).notNull(),
   requests: integer('requests').notNull(),
   scheduled: integer('scheduled').notNull(),
   notified: integer('notified').notNull(),
+  confirmed: integer('confirmed').notNull(),
   attended: integer('attended').notNull(),
   noShow: integer('no_show').notNull(),
   cancelled: integer('cancelled').notNull(),

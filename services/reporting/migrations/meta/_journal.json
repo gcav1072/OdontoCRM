@@ -22,6 +22,13 @@
       "when": 1791146000001,
       "tag": "0002_lucky_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791419131669,
+      "tag": "0003_sticky_red_skull",
+      "breakpoints": true
     }
   ]
 }

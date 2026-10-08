@@ -12,6 +12,7 @@ const documentoDePrueba = (): ReportDocument =>
         requests: 4,
         scheduled: 3,
         notified: 3,
+        confirmed: 2,
         attended: 2,
         noShow: 1,
         cancelled: 0,
