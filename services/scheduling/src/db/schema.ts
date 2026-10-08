@@ -116,6 +116,14 @@ export const appointments = pgTable(
      */
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     confirmedChannel: text('confirmed_channel'),
+    /**
+     * Cancelación del paciente (ADR 0053): **cuándo** y **por dónde** se canceló. Un
+     * canal de paciente (`telegram`/`whatsapp`) es lo que distingue una cancelación
+     * hecha por el propio paciente de una hecha por la secretaría; la tarjeta y el KPI
+     * de reportes miran exactamente eso.
+     */
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    cancelledChannel: text('cancelled_channel'),
     overbookAuthorized: boolean('overbook_authorized').notNull().default(false),
     overbookReason: text('overbook_reason'),
     rescheduledFromId: uuid('rescheduled_from_id').references((): AnyPgColumn => appointments.id, {
@@ -159,6 +167,10 @@ export const appointments = pgTable(
     check(
       'chk_appointments_channel',
       sql`${table.confirmedChannel} is null or ${table.confirmedChannel} in (${sqlLiteralList(CHANNELS)})`,
+    ),
+    check(
+      'chk_appointments_cancelled_channel',
+      sql`${table.cancelledChannel} is null or ${table.cancelledChannel} in (${sqlLiteralList(CHANNELS)})`,
     ),
     check(
       'chk_appointments_status',

@@ -1,5 +1,6 @@
 import {
   appointmentFiltersSchema,
+  cancelAppointmentBotSchema,
   confirmAppointmentSchema,
   createRequestSchema,
 } from '@odontocrm/contracts';
@@ -9,6 +10,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
 import {
+  cancelAppointment,
   confirmAppointment,
   getAppointment,
   listAppointments,
@@ -124,6 +126,25 @@ export const registerInternalRoutes = (
       db,
       id,
       input,
+      systemActor(`servicio:${input.channel}`),
+    );
+    return reply.status(200).send(summary);
+  });
+
+  /**
+   * El **paciente cancela** su cita desde el bot (ADR 0053). Igual que la
+   * confirmación: el actor es de sistema y va **sin roles**, así que
+   * `cancelAppointment` salta la máquina de estados por rol y aplica su propia guardia
+   * de estado. El **canal** viaja en el cuerpo y se guarda: es lo que distingue una
+   * cancelación del paciente de una de la secretaría.
+   */
+  app.post('/internal/v1/appointments/:id/cancel', async (request, reply) => {
+    const { id } = parseOrThrow(idParamsSchema, request.params);
+    const input = parseOrThrow(cancelAppointmentBotSchema, request.body ?? {});
+    const summary = await cancelAppointment(
+      db,
+      id,
+      { channel: input.channel, reason: input.reason ?? null, config: services.config },
       systemActor(`servicio:${input.channel}`),
     );
     return reply.status(200).send(summary);

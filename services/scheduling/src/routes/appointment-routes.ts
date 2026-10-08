@@ -1,4 +1,5 @@
 import {
+  appointmentCancellationFiltersSchema,
   appointmentFiltersSchema,
   assignAppointmentSchema,
   attendAppointmentSchema,
@@ -17,6 +18,7 @@ import {
   getAppointment,
   getHistory,
   listAppointments,
+  listPatientCancellations,
   rescheduleAppointment,
   transitionAppointment,
 } from '../appointments/appointment-service.js';
@@ -51,6 +53,17 @@ export const registerAppointmentRoutes = (
   app.get('/api/v1/appointments', { preHandler: read }, async (request, reply) => {
     const filters = parseQuery(appointmentFiltersSchema, request.query);
     return reply.status(200).send(await listAppointments(db, filters));
+  });
+
+  /**
+   * **Cancelaciones hechas por el paciente** (ADR 0053): lo que pinta la tarjeta de
+   * `/programacion`. Es una ruta **estática**, declarada antes de `/:id` para que
+   * «cancellations» no se lea como un identificador (Fastify prioriza las estáticas,
+   * pero dejarlo explícito evita sorpresas al añadir rutas).
+   */
+  app.get('/api/v1/appointments/cancellations', { preHandler: read }, async (request, reply) => {
+    const filters = parseQuery(appointmentCancellationFiltersSchema, request.query);
+    return reply.status(200).send(await listPatientCancellations(db, filters));
   });
 
   /** Asignar una solicitud a una franja (o crear una cita directa). */

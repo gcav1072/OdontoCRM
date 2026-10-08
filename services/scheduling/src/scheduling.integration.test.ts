@@ -28,10 +28,12 @@ import { createSchedulingDatabase } from './db/client.js';
 import { appointmentRequests, appointments } from './db/schema.js';
 import {
   assignAppointment,
+  cancelAppointment,
   confirmAppointment,
   getAppointment,
   getHistory,
   listAppointments,
+  listPatientCancellations,
   rescheduleAppointment,
   transitionAppointment,
 } from './appointments/appointment-service.js';
@@ -44,7 +46,7 @@ import {
   listRequests,
   waitingQueue,
 } from './requests/request-service.js';
-import type { ActorContext } from './shared/context.js';
+import { todayInClinic, type ActorContext } from './shared/context.js';
 
 /**
  * Pruebas de integración de la Fase 3 contra PostgreSQL real:
@@ -844,6 +846,95 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     await expect(
       confirmAppointment(schedulingHandle.db, atendida.id, { channel: 'telegram' }, bot),
     ).rejects.toThrow(/No se puede confirmar/);
+  }, 60_000);
+
+  it('el paciente cancela su cita y el ticket vuelve a la cola (ADR 0053)', async () => {
+    const request = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
+    const cita = await assignAppointment(
+      schedulingHandle.db,
+      anAssignment(request.id, { date: otherDay, startTime: '22:00', slotKind: 'manual' }),
+      admin,
+      { config },
+    );
+
+    // El bot cancela con un actor **sin roles** y por su canal (ADR 0053).
+    const bot = { ...admin, roles: [] as const };
+    const cancelada = await cancelAppointment(
+      schedulingHandle.db,
+      cita.id,
+      { channel: 'telegram', config },
+      bot,
+    );
+    expect(cancelada.status).toBe('cancelada');
+    expect(cancelada.cancelledAt).not.toBeNull();
+    expect(cancelada.cancelledChannel).toBe('telegram');
+
+    // Idempotente: repetir no mueve la fecha ni escribe otro historial.
+    const otraVez = await cancelAppointment(
+      schedulingHandle.db,
+      cita.id,
+      { channel: 'telegram', config },
+      bot,
+    );
+    expect(otraVez.cancelledAt).toBe(cancelada.cancelledAt);
+    const historial = await getHistory(schedulingHandle.db, 'appointment', cita.id);
+    expect(historial.filter((entrada) => entrada.toStatus === 'cancelada')).toHaveLength(1);
+    expect(historial.find((entrada) => entrada.toStatus === 'cancelada')?.reason).toContain(
+      'Telegram',
+    );
+
+    // El ticket vuelve a la cola: la solicitud queda «en espera de cita».
+    expect((await getRequestRow(schedulingHandle.db, request.id)).status).toBe('en_espera_cita');
+
+    // La tarjeta ve las cancelaciones **del paciente** por su canal.
+    const hoy = todayInClinic();
+    const delPaciente = await listPatientCancellations(schedulingHandle.db, {
+      from: hoy,
+      to: hoy,
+      page: 1,
+      pageSize: 50,
+    });
+    expect(delPaciente.items.some((item) => item.id === cita.id)).toBe(true);
+
+    // Una cita ya en sala no se cancela por aquí (guardia de estado).
+    const enSala = await assignAppointment(
+      schedulingHandle.db,
+      anAssignment(
+        (await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin)).id,
+        { date: otherDay, startTime: '22:30', slotKind: 'manual' },
+      ),
+      admin,
+      { config },
+    );
+    await transitionAppointment(schedulingHandle.db, enSala.id, 'en_sala_espera', secretary, {
+      config,
+    });
+    await expect(
+      cancelAppointment(schedulingHandle.db, enSala.id, { channel: 'telegram', config }, bot),
+    ).rejects.toThrow(/ya no puede cancelar/);
+
+    // Y la secretaría cancela **sin canal**: no entra en la tarjeta del paciente.
+    const porSecretaria = await assignAppointment(
+      schedulingHandle.db,
+      anAssignment(
+        (await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin)).id,
+        { date: otherDay, startTime: '23:00', slotKind: 'manual' },
+      ),
+      admin,
+      { config },
+    );
+    await transitionAppointment(schedulingHandle.db, porSecretaria.id, 'cancelada', secretary, {
+      config,
+      reason: 'la anuló la secretaría',
+    });
+    const soloPaciente = await listPatientCancellations(schedulingHandle.db, {
+      from: hoy,
+      to: hoy,
+      page: 1,
+      pageSize: 50,
+    });
+    expect(soloPaciente.items.some((item) => item.id === porSecretaria.id)).toBe(false);
+    expect(soloPaciente.items.some((item) => item.id === enSala.id)).toBe(false);
   }, 60_000);
 
   it('las plantillas por defecto son la jornada del consultorio', async () => {

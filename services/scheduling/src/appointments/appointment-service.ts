@@ -1,7 +1,9 @@
 import {
   addMinutes,
+  CANCELLABLE_STATUSES,
   hasPermission,
   minutesBetween,
+  type AppointmentCancellationFilters,
   type AppointmentFilters,
   type AppointmentStatus,
   type AppointmentSummary,
@@ -13,7 +15,20 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS, type EventTopic } from '@odontocrm/events';
 import { AppError, ConflictError, NotFoundError } from '@odontocrm/kernel';
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 
 import type { SchedulingConfig } from '../config.js';
 import type { SchedulingDb } from '../db/client.js';
@@ -571,6 +586,25 @@ export interface TransitionOptions {
   clinicalSessionId?: string | undefined;
   /** Comprueba la sesión contra el servicio clínico (Fase 7). */
   sessionLookup?: ClinicalSessionLookup | undefined;
+  /**
+   * Por dónde se canceló, cuando lo sabe quien cancela (el bot, ADR 0053). La
+   * secretaría no lo manda: así una cancelación del personal **no** se atribuye a un
+   * canal de paciente.
+   */
+  channel?: Channel | undefined;
+  /**
+   * Salta la comprobación de la máquina de estados por rol. Lo usa el bot, cuyo actor
+   * de sistema va **sin roles** y cuya guardia de estado la pone `cancelAppointment`.
+   * La ruta pública de la agenda **no** lo activa.
+   */
+  skipTransitionCheck?: boolean | undefined;
+  /**
+   * No avisar al paciente por la cola: el asistente ya le responde en el mismo turno
+   * (ADR 0053). El bloque `notification` del evento se conserva —lo leen pacientes,
+   * pantallas y reportes—, pero se marca con `skipNotice` para que el servicio de
+   * notificaciones **no** encole un `cita_cancelada` duplicado.
+   */
+  skipNotice?: boolean | undefined;
   config: SchedulingConfig;
   now?: Date;
 }
@@ -635,7 +669,10 @@ export const transitionAppointment = async (
 ): Promise<AppointmentSummary> => {
   const current = await getAppointmentRow(db, id);
   const from = current.status as AppointmentStatus;
-  assertCanTransition(from, to, actor);
+  // El bot cancela con un actor de sistema **sin roles** (ADR 0053): ahí la máquina de
+  // estados por rol no tiene nada que comprobar y la guardia de estado la pone
+  // `cancelAppointment`. La ruta pública de la agenda sigue pasando por aquí.
+  if (options.skipTransitionCheck !== true) assertCanTransition(from, to, actor);
 
   const now = options.now ?? new Date();
   const patch: Partial<typeof appointments.$inferInsert> = { status: to, updatedAt: now };
@@ -643,6 +680,13 @@ export const transitionAppointment = async (
   if (to === 'en_sala_espera') patch.checkedInAt = now;
   if (to === 'llamado') patch.callCount = current.callCount + 1;
   if (to === 'en_consulta') patch.startedAt = now;
+
+  if (to === 'cancelada') {
+    patch.cancelledAt = now;
+    // Solo hay canal cuando lo dice quien cancela (el bot). Una cancelación de la
+    // secretaría queda sin canal: no se puede atribuir «a un paciente».
+    if (options.channel !== undefined) patch.cancelledChannel = options.channel;
+  }
 
   if (to === 'atendido') {
     const sessionId = options.clinicalSessionId ?? current.clinicalSessionId ?? null;
@@ -695,20 +739,36 @@ export const transitionAppointment = async (
       actor,
     });
 
-    // Cancelar la cita devuelve el ticket a la cola: el paciente sigue esperando.
+    // Cancelar la cita devuelve el ticket a la cola: el paciente sigue esperando. Solo
+    // si **no le queda otra cita en pie**: una solicitud reprogramada puede tener ya la
+    // cita nueva, y devolverla a «en espera» la sacaría de la agenda por error.
     if (to === 'cancelada' && request !== null) {
-      await tx
-        .update(appointmentRequests)
-        .set({ status: 'en_espera_cita', updatedAt: new Date() })
-        .where(eq(appointmentRequests.id, request.id));
-      await writeHistory(tx, {
-        entityType: 'request',
-        entityId: request.id,
-        fromStatus: request.status as AppointmentStatus,
-        toStatus: 'en_espera_cita',
-        reason: options.reason ?? 'la cita se canceló y el paciente vuelve a la cola',
-        actor,
-      });
+      const otras = await tx
+        .select({ id: appointments.id })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.requestId, request.id),
+            inArray(appointments.status, [...OCCUPYING_STATUSES]),
+            sql`${appointments.id} <> ${id}`,
+          ),
+        )
+        .limit(1);
+
+      if (otras.length === 0) {
+        await tx
+          .update(appointmentRequests)
+          .set({ status: 'en_espera_cita', updatedAt: new Date() })
+          .where(eq(appointmentRequests.id, request.id));
+        await writeHistory(tx, {
+          entityType: 'request',
+          entityId: request.id,
+          fromStatus: request.status as AppointmentStatus,
+          toStatus: 'en_espera_cita',
+          reason: options.reason ?? 'la cita se canceló y el paciente vuelve a la cola',
+          actor,
+        });
+      }
     }
 
     const topic = TRANSITION_TOPICS[to];
@@ -732,7 +792,9 @@ export const transitionAppointment = async (
                     clinicalSessionId: patch.clinicalSessionId ?? null,
                     forceAttendedReason: patch.forceAttendedReason ?? null,
                   }
-                : { status: to },
+                : to === 'cancelada'
+                  ? { status: to, cancelledChannel: patch.cancelledChannel ?? null }
+                  : { status: to },
             reason: options.reason ?? options.forceReason ?? null,
             actor,
           }),
@@ -745,6 +807,11 @@ export const transitionAppointment = async (
             requestId: current.requestId,
           },
           notification: buildAppointmentMessage(current, request, options.config),
+          // La cancelación del bot no debe disparar el aviso `cita_cancelada` de la
+          // cola: el asistente ya responde al paciente en el mismo turno (ADR 0053). El
+          // bloque `notification` se conserva intacto porque lo leen otros consumidores
+          // (pacientes, pantallas y reportes); lo que se marca es el aviso.
+          ...(options.skipNotice === true ? { skipNotice: true } : {}),
         },
       });
     }
@@ -883,6 +950,113 @@ export const confirmAppointment = async (
   });
 
   return getAppointment(db, id);
+};
+
+/* ── Cancelación a petición del paciente (ADR 0053) ─────────────────────────── */
+
+export interface CancelByPatientOptions {
+  /** Por dónde canceló el paciente (`telegram`/`whatsapp`). */
+  channel: Channel;
+  reason?: string | null | undefined;
+  config: SchedulingConfig;
+  now?: Date;
+}
+
+/**
+ * Cancela la cita **a petición del paciente** desde el bot (ADR 0053).
+ *
+ * Es la mitad de escritura de la cancelación conversacional, hermana de
+ * `confirmAppointment`: el actor es de sistema y va **sin roles**, así que se salta la
+ * máquina de estados por rol (`skipTransitionCheck`) y en su lugar aplica su **propia
+ * guardia de estado** (`CANCELLABLE_STATUSES`, del contrato). Delega en
+ * `transitionAppointment`, que ya sabe liberar la franja y devolver el ticket a la
+ * cola —si no le queda otra cita—.
+ *
+ * Es **idempotente**: si la cita ya está cancelada se devuelve tal cual, sin escribir
+ * historial ni mover la fecha de cancelación. Dos pulsaciones del botón, o un `update`
+ * reenviado por Telegram, no ensucian el rastro.
+ */
+export const cancelAppointment = async (
+  db: SchedulingDb,
+  id: string,
+  options: CancelByPatientOptions,
+  actor: ActorContext,
+): Promise<AppointmentSummary> => {
+  const current = await getAppointmentRow(db, id);
+  const from = current.status as AppointmentStatus;
+
+  if (from === 'cancelada') return getAppointment(db, id);
+
+  if (!CANCELLABLE_STATUSES.includes(from)) {
+    throw new ConflictError(
+      `El paciente ya no puede cancelar una cita en «${from}»: solo las programadas, notificadas o confirmadas.`,
+      { extensions: { status: from } },
+    );
+  }
+
+  return transitionAppointment(db, id, 'cancelada', actor, {
+    config: options.config,
+    reason: options.reason ?? `el paciente canceló por ${channelLabel(options.channel)}`,
+    channel: options.channel,
+    skipTransitionCheck: true,
+    skipNotice: true,
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
+};
+
+/** Canales por los que cancela el **paciente** (el bot). La secretaría no entra. */
+const PATIENT_CHANNELS: readonly string[] = ['telegram', 'whatsapp'];
+
+/**
+ * Cancelaciones hechas por el **paciente** (ADR 0053): es lo que pinta la tarjeta de
+ * `/programacion`. Solo cuenta lo cancelado por un canal de paciente —las que cancela
+ * la secretaría ya son conocimiento del consultorio— y se ordena por la más reciente.
+ *
+ * El rango del filtro va sobre `cancelled_at`, que es un **instante**: los cortes se
+ * calculan en el calendario del consultorio (Caracas, UTC−4) para que «hoy» sea el día
+ * del consultorio y no el de UTC.
+ */
+export const listPatientCancellations = async (
+  db: SchedulingDb,
+  filters: AppointmentCancellationFilters,
+): Promise<Paginated<AppointmentSummary>> => {
+  const conditions: SQL[] = [
+    eq(appointments.status, 'cancelada'),
+    inArray(appointments.cancelledChannel, [...PATIENT_CHANNELS]),
+    isNotNull(appointments.cancelledAt),
+  ];
+
+  if (filters.from !== undefined) {
+    conditions.push(gte(appointments.cancelledAt, toClinicInstant(filters.from, '00:00')));
+  }
+  if (filters.to !== undefined) {
+    // `< (to + 1 día)`: el día final entra entero.
+    const hasta = new Date(toClinicInstant(filters.to, '00:00').getTime() + 86_400_000);
+    conditions.push(sql`${appointments.cancelledAt} < ${hasta}`);
+  }
+
+  const where = and(...conditions);
+  const offset = (filters.page - 1) * filters.pageSize;
+
+  const [rows, totals] = await Promise.all([
+    db
+      .select()
+      .from(appointments)
+      .where(where)
+      .orderBy(desc(appointments.cancelledAt))
+      .limit(filters.pageSize)
+      .offset(offset),
+    db.select({ value: count() }).from(appointments).where(where),
+  ]);
+
+  const total = totals[0]?.value ?? 0;
+  return {
+    items: await toSummaries(db, rows),
+    total,
+    page: filters.page,
+    pageSize: filters.pageSize,
+    totalPages: Math.max(1, Math.ceil(total / filters.pageSize)),
+  };
 };
 
 /**

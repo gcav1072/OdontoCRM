@@ -86,6 +86,9 @@ export const toAppointmentSummary = (
     clinicalSessionId: row.clinicalSessionId,
     confirmedAt: row.confirmedAt?.toISOString() ?? null,
     confirmedChannel: (row.confirmedChannel as Channel | null) ?? null,
+    // Cuándo y por dónde se canceló (ADR 0053).
+    cancelledAt: row.cancelledAt?.toISOString() ?? null,
+    cancelledChannel: (row.cancelledChannel as Channel | null) ?? null,
     rescheduledFromId: row.rescheduledFromId,
     rescheduledToId: options.rescheduledToId ?? null,
     icsSequence: row.icsSequence,

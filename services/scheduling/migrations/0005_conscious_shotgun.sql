@@ -1,0 +1,3 @@
+ALTER TABLE "appointments" ADD COLUMN "cancelled_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "appointments" ADD COLUMN "cancelled_channel" text;--> statement-breakpoint
+ALTER TABLE "appointments" ADD CONSTRAINT "chk_appointments_cancelled_channel" CHECK ("appointments"."cancelled_channel" is null or "appointments"."cancelled_channel" in ('telegram', 'whatsapp', 'registro', 'telefono', 'presencial'));
