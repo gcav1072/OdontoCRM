@@ -3,7 +3,7 @@
  * **Tablero de estado y alertas** de la pila (Fase 10, observabilidad).
  *
  * ```
- * npm run estado                 # una foto legible de los 9 servicios, las bases, la cola y el outbox
+ * npm run estado                 # una foto legible de las 10 unidades (9 servicios + gateway), las bases, la cola y el outbox
  * npm run estado -- --json       # la misma foto en JSON (para una máquina)
  * npm run estado -- --alertas    # solo lo que está mal; sale con 1 si hay algo (cron/systemd timer)
  * npm run estado -- --vigilar 5  # refresca cada 5 s (para una terminal abierta)

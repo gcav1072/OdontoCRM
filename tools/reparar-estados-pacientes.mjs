@@ -71,7 +71,7 @@ const pacientes = createPatientsDatabase(
 
 /** Citas que cuentan como «tiene cita»: cualquier estado menos cancelada. */
 const CON_CITA =
-  "('programada', 'notificada', 'en_sala_espera', 'llamado', 'en_consulta', 'atendido', 'no_asistio')";
+  "('programada', 'notificada', 'confirmada', 'en_sala_espera', 'llamado', 'en_consulta', 'atendido', 'no_asistio')";
 
 await agenda.connect();
 
