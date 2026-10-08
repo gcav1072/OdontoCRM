@@ -233,7 +233,7 @@ export const collectPayment = async (
   const paidAt = new Date();
   const nuevoSaldo = pendiente - amountCentsUsd;
 
-  const html = renderReceiptHtml({
+  const html = await renderReceiptHtml({
     receiptLabel,
     invoiceLabel:
       factura.invoiceNumber === null

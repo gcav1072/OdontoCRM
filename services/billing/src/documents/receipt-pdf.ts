@@ -1,9 +1,14 @@
 import {
+  BRAND,
   CLINIC,
+  brandRootBlock,
+  brandWatermarkCss,
+  brandWatermarkHtml,
   formatRateMicros,
   paymentMethodLabel,
   type ClinicIdentity,
 } from '@odontocrm/contracts';
+import { readImageDataUri } from '@odontocrm/kernel';
 
 import { fechaFiscal } from './invoice-pdf.js';
 
@@ -54,8 +59,10 @@ const dinero = (cents: number): string =>
 const porcentaje = (basisPoints: number): string =>
   (basisPoints / 100).toFixed(2).replace('.', ',');
 
-export const renderReceiptHtml = (input: ReceiptPdfInput): string => {
+export const renderReceiptHtml = async (input: ReceiptPdfInput): Promise<string> => {
   const clinic = input.clinic ?? CLINIC;
+  const logo = await readImageDataUri(clinic.logoPath ?? BRAND.logoPath);
+  const marcaDeAgua = brandWatermarkHtml(await readImageDataUri(BRAND.watermarkPath));
   const enBs = (cents: number): string =>
     dinero(Math.round((cents * input.rateMicros) / 1_000_000));
 
@@ -65,28 +72,38 @@ export const renderReceiptHtml = (input: ReceiptPdfInput): string => {
 <meta charset="utf-8" />
 <title>${escapar(`Recibo ${input.receiptLabel}`)}</title>
 <style>
+  ${brandRootBlock()}
+  ${brandWatermarkCss()}
   @page { size: A4 portrait; margin: 16mm 14mm; }
-  body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10pt; color: #111; margin: 0; }
-  h1 { font-size: 14pt; margin: 0 0 1mm; letter-spacing: .04em; }
-  .cabecera { display: flex; justify-content: space-between; border-bottom: 1.2pt solid #111; padding-bottom: 3mm; }
-  .emisor .nombre { font-weight: 700; }
-  .dato { color: #333; }
+  body { font-family: var(--brand-font-doc); font-size: 10pt; color: var(--brand-ink); margin: 0; }
+  h1 { font-size: 14pt; margin: 0 0 1mm; letter-spacing: .04em; color: var(--brand-primary); }
+  .cabecera { display: flex; justify-content: space-between; border-bottom: 1.2pt solid var(--brand-ink); padding-bottom: 3mm; }
+  .emisor { display: flex; align-items: flex-start; gap: 5mm; }
+  .emisor .logo { height: var(--brand-logo-height-mm); width: auto; }
+  .emisor .nombre { font-weight: 700; color: var(--brand-primary); }
+  .dato { color: var(--brand-ink-muted); }
   table { width: 100%; border-collapse: collapse; margin-top: 5mm; }
-  td { padding: 1.6mm 1mm; border-bottom: .5pt solid #ddd; }
-  td.etiqueta { color: #444; width: 55mm; }
+  td { padding: 1.6mm 1mm; border-bottom: .5pt solid var(--brand-line-soft); }
+  td.etiqueta { color: var(--brand-ink-muted); width: 55mm; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .saldo td { border-top: 1pt solid #111; font-weight: 700; font-size: 12pt; }
-  .igtf { margin-top: 4mm; border: .6pt dashed #666; padding: 2mm; font-size: 8.5pt; }
-  .leyendas { margin-top: 5mm; font-size: 8pt; color: #222; }
-  .pie { margin-top: 8mm; font-size: 8pt; color: #444; }
+  .saldo td { border-top: 1pt solid var(--brand-ink); font-weight: 700; font-size: 12pt; }
+  .igtf { margin-top: 4mm; border: .6pt dashed var(--brand-ink-subtle); padding: 2mm; font-size: 8.5pt; }
+  .leyendas { margin-top: 5mm; font-size: 8pt; color: var(--brand-ink-strong); }
+  .pie { margin-top: 8mm; font-size: 8pt; color: var(--brand-ink-muted); }
 </style>
 </head>
 <body>
+  ${marcaDeAgua}
+  <div class="brand-doc">
   <div class="cabecera">
     <div class="emisor">
-      <div class="nombre">${escapar(clinic.legalName)}</div>
-      <div class="dato">RIF: ${escapar(clinic.rif)}</div>
-      <div class="dato">${escapar(`${clinic.address}, ${clinic.city}`)}</div>
+      ${logo === null ? '' : `<img class="logo" src="${logo}" alt="Logo del consultorio">`}
+      <div>
+        <div class="nombre">${escapar(clinic.legalName)}</div>
+        <div class="dato">${escapar(clinic.name)}</div>
+        <div class="dato">RIF: ${escapar(clinic.rif)}</div>
+        <div class="dato">${escapar(`${clinic.address}, ${clinic.city}`)}</div>
+      </div>
     </div>
     <div style="text-align:right">
       <h1>RECIBO</h1>
@@ -128,6 +145,7 @@ export const renderReceiptHtml = (input: ReceiptPdfInput): string => {
   </div>
 
   <div class="pie">Recibido por: ${escapar(input.receivedByUsername)}</div>
+  </div>
 </body>
 </html>`;
 };

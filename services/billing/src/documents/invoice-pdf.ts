@@ -1,5 +1,9 @@
 import {
+  BRAND,
   CLINIC,
+  brandRootBlock,
+  brandWatermarkCss,
+  brandWatermarkHtml,
   formatRateMicros,
   rateToMicros,
   vesCentimosFromUsd,
@@ -7,6 +11,7 @@ import {
   type ClinicIdentity,
   type InvoiceTotals,
 } from '@odontocrm/contracts';
+import { readImageDataUri } from '@odontocrm/kernel';
 
 /**
  * La **factura** en A4, compuesta una sola vez y archivada (ADR 0048).
@@ -101,8 +106,10 @@ const partida = (item: BillingDraftItem, rateMicros: number): string => {
   </tr>`;
 };
 
-export const renderInvoiceHtml = (input: InvoicePdfInput): string => {
+export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string> => {
   const clinic = input.clinic ?? CLINIC;
+  const logo = await readImageDataUri(clinic.logoPath ?? BRAND.logoPath);
+  const marcaDeAgua = brandWatermarkHtml(await readImageDataUri(BRAND.watermarkPath));
   const fecha = fechaFiscal(input.issuedAt);
   const enBs = (cents: number): number => vesCentimosFromUsd(cents, input.rateMicros);
 
@@ -123,43 +130,51 @@ export const renderInvoiceHtml = (input: InvoicePdfInput): string => {
 <meta charset="utf-8" />
 <title>${escapar(`Factura ${input.numberLabel}`)}</title>
 <style>
+  ${brandRootBlock()}
+  ${brandWatermarkCss()}
   /* Una factura = una página (Art. 33). Los márgenes se miden sobre la forma física. */
   @page { size: A4 portrait; margin: 14mm 12mm 12mm 12mm; }
   * { box-sizing: border-box; }
-  body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 9.5pt; color: #111; margin: 0; }
-  h1 { font-size: 13pt; margin: 0; letter-spacing: .04em; }
-  .cabecera { display: flex; justify-content: space-between; gap: 8mm; border-bottom: 1.2pt solid #111; padding-bottom: 3mm; }
-  .emisor { max-width: 95mm; }
-  .emisor .nombre { font-weight: 700; font-size: 11pt; }
-  .emisor .dato { color: #333; }
+  body { font-family: var(--brand-font-doc); font-size: 9.5pt; color: var(--brand-ink); margin: 0; }
+  h1 { font-size: 13pt; margin: 0; letter-spacing: .04em; color: var(--brand-primary); }
+  .cabecera { display: flex; justify-content: space-between; gap: 8mm; border-bottom: 1.2pt solid var(--brand-ink); padding-bottom: 3mm; }
+  .emisor { display: flex; align-items: flex-start; gap: 5mm; max-width: 95mm; }
+  .emisor .logo { height: var(--brand-logo-height-mm); width: auto; }
+  .emisor .nombre { font-weight: 700; font-size: 11pt; color: var(--brand-primary); }
+  .emisor .dato { color: var(--brand-ink-muted); }
   .documento { text-align: right; min-width: 60mm; }
-  .documento .numero { font-size: 12pt; font-weight: 700; }
+  .documento .numero { font-size: 12pt; font-weight: 700; color: var(--brand-primary); }
   .documento .control { font-weight: 600; }
   .bloque { margin-top: 3mm; display: flex; justify-content: space-between; gap: 8mm; }
-  .caja { border: .6pt solid #999; padding: 2mm; }
+  .caja { border: .6pt solid var(--brand-line); padding: 2mm; }
   table { width: 100%; border-collapse: collapse; margin-top: 3mm; }
-  th, td { border-bottom: .5pt solid #ccc; padding: 1.4mm 1mm; text-align: left; }
-  th { background: #f2f2f2; font-size: 8.5pt; text-transform: uppercase; letter-spacing: .03em; }
+  th, td { border-bottom: .5pt solid var(--brand-line-soft); padding: 1.4mm 1mm; text-align: left; }
+  th { background: var(--brand-table-head-bg); color: var(--brand-primary); font-size: 8.5pt; text-transform: uppercase; letter-spacing: .03em; }
   .num { text-align: right; white-space: nowrap; }
   .totales { margin-top: 3mm; display: flex; justify-content: flex-end; }
   .totales table { width: 95mm; }
   .totales td { border: none; padding: .8mm 1mm; }
-  .totales .fila-total td { border-top: 1pt solid #111; font-weight: 700; font-size: 11pt; }
-  .leyendas { margin-top: 4mm; font-size: 8pt; color: #222; }
+  .totales .fila-total td { border-top: 1pt solid var(--brand-ink); font-weight: 700; font-size: 11pt; }
+  .leyendas { margin-top: 4mm; font-size: 8pt; color: var(--brand-ink-strong); }
   .leyendas p { margin: 1mm 0; }
-  .igtf { border: .6pt dashed #666; padding: 2mm; margin-top: 3mm; font-size: 8pt; }
+  .igtf { border: .6pt dashed var(--brand-ink-subtle); padding: 2mm; margin-top: 3mm; font-size: 8pt; }
   .copia { margin-top: 3mm; font-weight: 700; font-size: 8.5pt; }
-  .imprenta { margin-top: 4mm; border-top: .6pt solid #111; padding-top: 2mm; font-size: 7.5pt; color: #333; }
-  .faltantes { margin-top: 2mm; font-size: 8pt; color: #8a1c1c; font-weight: 600; }
+  .imprenta { margin-top: 4mm; border-top: .6pt solid var(--brand-line); padding-top: 2mm; font-size: 7.5pt; color: var(--brand-ink-muted); }
+  .faltantes { margin-top: 2mm; font-size: 8pt; color: var(--brand-bad); font-weight: 600; }
 </style>
 </head>
 <body>
+  ${marcaDeAgua}
+  <div class="brand-doc">
   <div class="cabecera">
     <div class="emisor">
-      <div class="nombre">${escapar(clinic.legalName)}</div>
-      <div class="dato">${escapar(clinic.name)}</div>
-      <div class="dato">RIF: ${escapar(clinic.rif)}</div>
-      <div class="dato">${escapar(`${clinic.address}, ${clinic.city}`)}</div>
+      ${logo === null ? '' : `<img class="logo" src="${logo}" alt="Logo del consultorio">`}
+      <div>
+        <div class="nombre">${escapar(clinic.legalName)}</div>
+        <div class="dato">${escapar(clinic.name)}</div>
+        <div class="dato">RIF: ${escapar(clinic.rif)}</div>
+        <div class="dato">${escapar(`${clinic.address}, ${clinic.city}`)}</div>
+      </div>
     </div>
     <div class="documento">
       <h1>FACTURA</h1>
@@ -228,6 +243,7 @@ export const renderInvoiceHtml = (input: InvoicePdfInput): string => {
            Providencia ${escapar(input.printer.authorizationRef)} del ${escapar(input.printer.authorizationDate)} ·
            Fecha de elaboración de la forma: ${escapar(input.printer.printDate)}`
     }
+  </div>
   </div>
 </body>
 </html>`;

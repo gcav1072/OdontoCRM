@@ -70,8 +70,8 @@ const factura = (extra: Partial<InvoicePdfInput> = {}): InvoicePdfInput => ({
 });
 
 describe('la plantilla de la factura', () => {
-  it('lleva los dos números, su rango y la fecha en DDMMAAAA', () => {
-    const html = renderInvoiceHtml(factura());
+  it('lleva los dos números, su rango y la fecha en DDMMAAAA', async () => {
+    const html = await renderInvoiceHtml(factura());
     expect(html).toContain('FACTURA');
     expect(html).toContain('A-000123');
     expect(html).toContain('N° de control: 000456');
@@ -82,8 +82,8 @@ describe('la plantilla de la factura', () => {
     expect(fechaFiscal(new Date('2026-10-05T02:00:00.000Z'))).toBe('04102026');
   });
 
-  it('desglosa la base por alícuota con el total exento aparte y marca (E) y (G)', () => {
-    const html = renderInvoiceHtml(factura());
+  it('desglosa la base por alícuota con el total exento aparte y marca (E) y (G)', async () => {
+    const html = await renderInvoiceHtml(factura());
     expect(html).toContain('(E)');
     expect(html).toContain('(G)');
     expect(html).toContain('Total exento');
@@ -96,8 +96,8 @@ describe('la plantilla de la factura', () => {
     expect(html).toContain('Total general');
   });
 
-  it('imprime la leyenda de doble tasa, la exención y los datos de la imprenta', () => {
-    const html = renderInvoiceHtml(factura());
+  it('imprime la leyenda de doble tasa, la exención y los datos de la imprenta', async () => {
+    const html = await renderInvoiceHtml(factura());
     expect(html).toContain('Art. 19, numeral 6 de la Ley de IVA');
     expect(html).toContain('Convenio Cambiario N.º 1, Art. 8.a');
     expect(html).toContain('Imprenta Autorizada, C.A.');
@@ -106,16 +106,16 @@ describe('la plantilla de la factura', () => {
     expect(html).toContain(IGTF_NO_PERCIBIDO);
   });
 
-  it('la copia lleva «sin derecho a crédito fiscal»; el original, no', () => {
-    expect(renderInvoiceHtml(factura())).not.toContain('SIN DERECHO A CRÉDITO FISCAL');
-    expect(renderInvoiceHtml(factura({ esCopia: true }))).toContain(
+  it('la copia lleva «sin derecho a crédito fiscal»; el original, no', async () => {
+    expect(await renderInvoiceHtml(factura())).not.toContain('SIN DERECHO A CRÉDITO FISCAL');
+    expect(await renderInvoiceHtml(factura({ esCopia: true }))).toContain(
       'COPIA — SIN DERECHO A CRÉDITO FISCAL',
     );
   });
 
-  it('un membrete incompleto no rompe el papel: se imprime lo que hay', () => {
+  it('un membrete incompleto no rompe el papel: se imprime lo que hay', async () => {
     // La clínica tiene que poder cobrar el primer día aunque falten el RIF o la dirección.
-    const html = renderInvoiceHtml(
+    const html = await renderInvoiceHtml(
       factura({
         clinic: {
           name: 'Consultorio',

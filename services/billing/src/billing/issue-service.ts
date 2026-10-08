@@ -129,7 +129,7 @@ export const issueInvoice = async (
 
   // 3) El PDF, fuera de la transacción.
   const issuedAt = new Date();
-  const html = renderInvoiceHtml({
+  const html = await renderInvoiceHtml({
     series: serie.series,
     numberLabel,
     controlNumber,

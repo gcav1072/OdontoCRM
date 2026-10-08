@@ -199,7 +199,7 @@ export const voidInvoice = async (
   const creditNoteLabel = formatCreditNoteNumber(creditNoteNumber);
   const issuedAt = new Date();
 
-  const html = renderCreditNoteHtml({
+  const html = await renderCreditNoteHtml({
     creditNoteLabel,
     issuedAt,
     invoice: { numberLabel, issuedAt: factura.issuedAt, totalCentsUsd: factura.totalCentsUsd },
