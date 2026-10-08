@@ -22,3 +22,6 @@ La ruta, la paleta y las tipografías se cambian en
 demás del membrete —nombre, RIF, teléfonos y odontólogos con su MPPS— en
 [`packages/contracts/src/clinic.ts`](../../packages/contracts/src/clinic.ts).
 
+El paso a paso (desarrollo y producción) está en
+[`docs/IDENTIDAD_Y_DATOS.md`](../../docs/IDENTIDAD_Y_DATOS.md).
+

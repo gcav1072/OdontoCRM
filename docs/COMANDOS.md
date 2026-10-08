@@ -582,7 +582,9 @@ workspace y las rutas siguen siendo correctas.
 | Saber cuántos ficheros del almacén están sin cifrar | `npm run recifrar:almacen -- --estado` |
 | Cifrar el historial que quedó en claro | `npm run recifrar:almacen` (idempotente; se puede cortar y repetir) |
 | Cambiar la clave de cifrado del almacén | guardar la vieja → nueva `STORAGE_ENCRYPTION_KEY` en los tres servicios → `npm run recifrar:almacen -- --todos` |
-| Reemplazar el logo de la clínica | `assets/clinic/logo.svg` → `npm run marca:css` |
+| Poner los datos de mi consultorio (nombre, RIF, teléfonos, logo y odontólogos) | editar `packages/contracts/src/clinic.ts` → `npm run build` (y `npm run seed:users` si cambió un odontólogo) · [`IDENTIDAD_Y_DATOS.md`](IDENTIDAD_Y_DATOS.md) |
+| Cambiar la marca de los documentos (colores, fuentes, medidas) | editar `packages/contracts/src/brand.ts` → `npm run build:node && npm run marca:css && npm run build` |
+| Reemplazar el logo de la clínica | `assets/clinic/logo.svg` (mismo nombre) → recompilar la web; si cambia la **ruta**, en `clinic.ts` **y** `brand.ts` |
 | Añadir una columna a un servicio | editar `src/db/schema.ts` → `npx drizzle-kit generate --config services/<svc>/drizzle.config.ts --name <cambio>` → revisar el SQL → `npm run db:migrate -- --only <svc>` |
 | Vaciar y rehacer los datos de prueba | `npm run seed:demo -- --reset` y `npm run seed:agenda -- --reset` |
 | Recuperar el acceso del administrador | `npm run seed:users -- --reset` |

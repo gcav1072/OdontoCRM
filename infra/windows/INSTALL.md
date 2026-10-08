@@ -145,6 +145,12 @@ Se crea **una sola cuenta: `admin`**. El resto del personal se da de alta desde 
 Los tokens van a `C:\ProgramData\OdontoCRM\env` (solo Administradores y el servicio, en
 lectura) y no se imprimen.
 
+> **Los datos del consultorio** (nombre, RIF, teléfonos, logo y **odontólogos con su MPPS**) no
+> se piden aquí: viven en la sección editable del código, `packages/contracts/src/clinic.ts`, y
+> se cambian **antes** de desplegar (o con la «vía B» de
+> [`docs/IDENTIDAD_Y_DATOS.md`](../../docs/IDENTIDAD_Y_DATOS.md) §9.1). El paso a paso está en ese
+> mismo documento.
+
 ## 6. Dónde vive cada cosa
 
 | Qué | Dónde | Quién puede |

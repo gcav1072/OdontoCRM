@@ -1044,6 +1044,10 @@ npm run seed:users
 **Apúntalo en la lista de comprobación** (§17.3): una instalación con los datos de otra
 clínica imprime récipes con el membrete equivocado.
 
+> El paso a paso completo —marca impresa (colores, fuentes, logo y **marca de agua**), cuentas
+> del personal y las **tres vías** de producción (editar y desplegar · editar en el servidor ·
+> sobrescribir por entorno)— está en [`docs/IDENTIDAD_Y_DATOS.md`](../../docs/IDENTIDAD_Y_DATOS.md).
+
 ---
 
 ## 9. Despliegue del código y compilación

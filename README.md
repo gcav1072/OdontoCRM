@@ -23,6 +23,7 @@ más adelante, fuera de ella por VPN.
 > | Quiero… | Documento |
 > | :--- | :--- |
 > | **Instalar el servidor de la clínica** | `sudo bash infra/fedora/instalar/instalar.sh` (Fedora) o `powershell -ExecutionPolicy Bypass -File infra\windows\instalar\instalar.ps1` (Windows) y, para el detalle, [`INSTALL.md`](infra/fedora/INSTALL.md) §3-bis o [`infra/windows/INSTALL.md`](infra/windows/INSTALL.md) |
+> | **Poner mi consultorio, mi logo y mis colores** | [`docs/IDENTIDAD_Y_DATOS.md`](docs/IDENTIDAD_Y_DATOS.md) — datos del consultorio, marca y tema, en desarrollo y en producción |
 > | **Operar el sistema ya instalado** | [`infra/fedora/RUNBOOK.md`](infra/fedora/RUNBOOK.md) y [`infra/windows/RUNBOOK.md`](infra/windows/RUNBOOK.md) y [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) |
 > | **Usar el consultorio** (sin terminal) | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) |
 > | **Conectar tablets, móviles y TVs** | [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) |
@@ -183,7 +184,7 @@ Lo que se deje en `null` simplemente **no se imprime**.
 | :--- | :--- |
 | `name`, `address`, `city` | Avisos del bot, `.ics`, pantallas y membrete del récipe |
 | `phones`, `email`, `rif`, `website` | Membrete del récipe |
-| `logoPath` (por defecto `assets/clinic/logo.png`) | Logo del membrete; si el archivo no está, sale sin logo |
+| `logoPath` (por defecto `assets/clinic/logo.svg`) | Logo del membrete; si el archivo no está, sale sin logo |
 | `dentists[]` | Quién firma los récipes (con su MPPS) y **las cuentas que crea `npm run seed:users`** |
 
 Después: `npm run build` (los servicios y la web lo compilan dentro) y, si se añadió o cambió un
@@ -198,6 +199,10 @@ odontólogo, `npm run seed:users`. El logo se deja en [`assets/clinic/`](assets/
   (están en [`.env.example`](.env.example)).
 - Lo que falte para un membrete completo se enumera solo con `letterheadMissingFields()` (por
   ejemplo «MPPS del odontólogo»), así que el récipe avisa en vez de inventar un número.
+
+**El paso a paso completo** —con la identidad de marca (colores, fuentes, logo y marca de agua),
+las cuentas del personal y las tres vías de producción— está en
+[`docs/IDENTIDAD_Y_DATOS.md`](docs/IDENTIDAD_Y_DATOS.md).
 
 ### Puertos (todos en `127.0.0.1`; la red local entra solo por el gateway)
 
@@ -673,6 +678,7 @@ nuevo en negrita), el autor, la IP y la petición. `Descargar CSV` baja exactame
 ## Documentación
 
 - [Plan maestro por fases](docs/PLAN_MAESTRO_FASES.md)
+- [Instalación e identidad del consultorio](docs/IDENTIDAD_Y_DATOS.md)
 - [Política de secretos y tokens](docs/SEGURIDAD_SECRETOS.md)
 - [Formato de historia clínica odontológica](docs/formato_historia.md)
 - [Plan del servicio de odontograma](docs/implementation_plan_odontogram_microservice.md)
