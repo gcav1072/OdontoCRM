@@ -65,10 +65,18 @@ const suffix = String(Date.now()).slice(-6);
 const MARK = `PRUEBA-F41-${suffix}`;
 
 /** Paciente y solicitud de mentira: el flujo del asistente no toca otros servicios. */
-const fakeClients = (): InternalClients & { requests: RequestSummary[] } => {
+const fakeClients = (): InternalClients & {
+  requests: RequestSummary[];
+  citas: AppointmentSummary[];
+  confirmadas: { id: string; channel: string }[];
+} => {
   const requests: RequestSummary[] = [];
+  const citas: AppointmentSummary[] = [];
+  const confirmadas: { id: string; channel: string }[] = [];
   return {
     requests,
+    citas,
+    confirmadas,
     upsertPatient: async (input) => ({
       created: true,
       patient: {
@@ -111,8 +119,74 @@ const fakeClients = (): InternalClients & { requests: RequestSummary[] } => {
       return found;
     },
     getAppointment: async () => null,
+
+    // Listado y confirmación de citas (ADR 0052): el asistente confirma contra la
+    // agenda, así que el doble imita los filtros que de verdad se usan.
+    listAppointments: async (filters) => {
+      const items = citas
+        .filter((cita) => filters.patientId === undefined || cita.patientId === filters.patientId)
+        .filter((cita) => filters.from === undefined || cita.date >= filters.from)
+        .filter((cita) => filters.to === undefined || cita.date <= filters.to)
+        .filter((cita) => filters.status === undefined || cita.status === filters.status)
+        .filter(
+          (cita) =>
+            filters.confirmed === undefined || (cita.confirmedAt !== null) === filters.confirmed,
+        );
+      return {
+        items,
+        total: items.length,
+        page: 1,
+        pageSize: filters.pageSize ?? 25,
+        totalPages: 1,
+      };
+    },
+    confirmAppointment: async (id, input) => {
+      const encontrada = citas.find((cita) => cita.id === id);
+      if (encontrada === undefined) throw new Error('la cita no existe');
+      confirmadas.push({ id, channel: input.channel });
+      encontrada.status = 'confirmada';
+      encontrada.confirmedAt = new Date().toISOString();
+      encontrada.confirmedChannel = input.channel;
+      return encontrada;
+    },
   };
 };
+
+/** Cita de mentira para el asistente: lo justo para confirmarla. */
+const unaCita = (overrides: Partial<AppointmentSummary> = {}): AppointmentSummary => ({
+  id: globalThis.crypto.randomUUID(),
+  requestId: null,
+  ticket: '#000900',
+  ticketNumber: 900,
+  patientId: globalThis.crypto.randomUUID(),
+  patientName: `Paciente ${MARK}`,
+  patientDocument: 'V-12345678',
+  patientPhone: '+584121234567',
+  date: '2026-12-01',
+  startTime: '09:00',
+  endTime: '09:30',
+  durationMinutes: 30,
+  slotKind: 'franja',
+  status: 'notificada',
+  callCount: 0,
+  confirmedAt: null,
+  confirmedChannel: null,
+  dentistId: null,
+  chairId: null,
+  checkedInAt: null,
+  startedAt: null,
+  finishedAt: null,
+  noShowReason: null,
+  forceAttendedReason: null,
+  clinicalSessionId: null,
+  rescheduledFromId: null,
+  rescheduledToId: null,
+  icsSequence: 0,
+  notes: null,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  ...overrides,
+});
 
 describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', () => {
   let handle: Awaited<ReturnType<typeof createNotificationsDatabase>>;
@@ -208,6 +282,44 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     await stopBoss(boss).catch(() => undefined);
     await handle.close();
   });
+
+  it('el paciente confirma su cita por el botón y escribiendo «confirmar» (ADR 0052)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}C`;
+    await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
+
+    // Dentro de la ventana de confirmación (hoy + 3 días).
+    const fecha = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    const cita = unaCita({ patientId, date: fecha });
+    clients.citas.push(cita);
+
+    // El botón del aviso llega como acción del canal.
+    const porBoton = await enviar(telegram, { direccion, accion: `confirmar_cita:${cita.id}` });
+    expect(porBoton.action).toBe('confirmar_confirmada');
+    expect(clients.confirmadas.at(-1)).toEqual({ id: cita.id, channel: 'telegram' });
+    expect(telegram.sent.at(-1)?.texto).toContain('Quedaste confirmado');
+
+    // Volver a escribir «confirmar» no es un error: se le recuerda lo que ya dijo.
+    const porTexto = await enviar(telegram, { direccion, texto: 'confirmar' });
+    expect(porTexto.action).toBe('confirmar_ya_estaba');
+    expect(clients.confirmadas).toHaveLength(1);
+
+    // Sin citas próximas, se le dice que no hay nada que confirmar.
+    const sinCitas = await enviar(telegram, { direccion: `${direccionBase}D`, texto: 'confirmar' });
+    expect(sinCitas.action).toBe('confirmar_sin_citas');
+    expect(telegram.sent.at(-1)?.texto).toContain('No veo ninguna cita');
+
+    // Y una cita de **otro** paciente no se puede confirmar con su botón: el
+    // identificador viaja por el chat, así que se comprueba que sea suya.
+    const ajena = unaCita({ patientId: globalThis.crypto.randomUUID(), date: fecha });
+    clients.citas.push(ajena);
+    const noEsSuya = await enviar(telegram, { direccion, accion: `confirmar_cita:${ajena.id}` });
+    expect(noEsSuya.action).toBe('confirmar_no_es_suya');
+    expect(clients.confirmadas.some((item) => item.id === ajena.id)).toBe(false);
+
+    await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 60_000);
 
   it('si un servicio interno se cae, el paciente recibe aviso y sigue en su paso', async () => {
     const direccion = `${direccionBase}9`;
@@ -427,6 +539,8 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
       slotKind: 'franja',
       status: 'programada',
       callCount: 0,
+      confirmedAt: null,
+      confirmedChannel: null,
       dentistId: null,
       chairId: null,
       checkedInAt: null,
@@ -494,7 +608,18 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     expect(porWhatsApp[0]?.direccion).toBe(direccion);
     expect(porWhatsApp[0]?.documento?.nombre).toBe('cita-000123.ics');
     expect(porWhatsApp[0]?.documento?.mime).toContain('text/calendar');
-    expect(porWhatsApp[0]?.texto).toContain('Paciente');
+    /**
+     * El aviso sale en **dos mensajes** (ADR 0052): el texto —con el nombre del
+     * paciente y la invitación a confirmar— y después el calendario, que lleva un pie
+     * corto porque el texto ya fue. WhatsApp no tiene botones, así que la invitación
+     * viaja escrita dentro del propio texto.
+     */
+    expect(porWhatsApp[0]?.texto).toBe('Tu calendario');
+    const textoDelAviso = whatsapp.sent.filter((message) => message.documento === undefined);
+    expect(textoDelAviso.some((message) => message.texto.includes(appointment.patientName))).toBe(
+      true,
+    );
+    expect(textoDelAviso.some((message) => message.texto.includes('«confirmar»'))).toBe(true);
     expect(telegram.sent.some((message) => message.documento !== undefined)).toBe(false);
 
     // El `.ics` quedó archivado y es un RFC 5545 válido con la hora en UTC.
@@ -624,6 +749,8 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
       slotKind: 'franja',
       status: 'notificada',
       callCount: 0,
+      confirmedAt: null,
+      confirmedChannel: null,
       dentistId: null,
       chairId: null,
       checkedInAt: null,

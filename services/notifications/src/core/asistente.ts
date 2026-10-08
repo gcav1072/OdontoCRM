@@ -1,10 +1,12 @@
 import {
+  BOT_CONFIRM_WINDOW_DAYS,
   BOT_STEP_LABELS,
   CHANNEL_LABELS,
   botDraftSchema,
   cleanText,
   detectIntent,
   formatTicket,
+  formatTime12h,
   isMinor,
   maskDocument,
   normalizeBotName,
@@ -15,6 +17,7 @@ import {
   resolveNumberedOption,
   validateDocument,
   type AppointmentStatus,
+  type AppointmentSummary,
   type BotDraft,
   type ChannelId,
   type DocType,
@@ -35,7 +38,7 @@ import {
   type BotConversationRow,
 } from '../db/schema.js';
 import type { InternalClients } from '../internal-client.js';
-import { linkChat, renderMessageFor } from '../messaging.js';
+import { channelByDireccion, linkChat, renderMessageFor, todayInClinic } from '../messaging.js';
 
 export interface AsistenteServices {
   db: NotificationsDb;
@@ -307,7 +310,10 @@ const estadoDe = (status: AppointmentStatus): string => {
   const labels: Partial<Record<AppointmentStatus, string>> = {
     en_espera_cita: 'EN ESPERA DE CITA',
     programada: 'PROGRAMADA',
-    notificada: 'CONFIRMADA Y AVISADA',
+    // «Avisada» y «confirmada» son dos hechos distintos (ADR 0052): antes de este
+    // cambio, `notificada` se rotulaba «CONFIRMADA Y AVISADA», que era falso.
+    notificada: 'AVISADA',
+    confirmada: 'CONFIRMADA POR EL PACIENTE',
     en_sala_espera: 'EN SALA DE ESPERA',
     llamado: 'LLAMADO',
     en_consulta: 'EN CONSULTA',
@@ -388,6 +394,146 @@ const cancelRequest = async (
     estado: estadoDe(cancelled.status),
     cita: 'Tu solicitud quedó anulada. Cuando quieras otra, escríbeme «nueva».',
   });
+};
+
+/* ── Pasos del asistente ───────────────────────────────────────────────────── */
+
+/* ── Confirmar la cita (ADR 0052) ──────────────────────────────────────────── */
+
+/** Fecha `AAAA-MM-DD` como `dd/mm/aaaa`, que es como se lee y se dicta aquí. */
+const fechaVe = (date: string): string => date.split('-').reverse().join('/');
+
+/**
+ * Ventana de citas que el asistente ofrece al confirmar: de hoy a 60 días
+ * (`BOT_CONFIRM_WINDOW_DAYS`). Sin tope, un paciente con muchas citas recibiría una
+ * lista interminable de opciones.
+ */
+const ventanaDeConfirmacion = (now: Date = new Date()): { from: string; to: string } => {
+  const from = todayInClinic(now);
+  const tope = new Date(
+    new Date(`${from}T00:00:00Z`).getTime() + BOT_CONFIRM_WINDOW_DAYS * 86_400_000,
+  );
+  return { from, to: tope.toISOString().slice(0, 10) };
+};
+
+const responderConfirmada = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  cita: AppointmentSummary,
+): Promise<void> => {
+  await reply(services, conversacion, 'cita_confirmada_paciente', {
+    paciente: cita.patientName,
+    fecha: fechaVe(cita.date),
+    hora: formatTime12h(cita.startTime),
+    lugar: services.config.CLINIC_ADDRESS,
+  });
+};
+
+/** Confirma de verdad y responde. Devuelve `false` si la cita ya estaba confirmada. */
+const confirmarYResponder = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  cita: AppointmentSummary,
+): Promise<boolean> => {
+  if (cita.status === 'confirmada') {
+    // Volver a confirmar no es un error: se le recuerda lo que ya dijo.
+    await responderConfirmada(services, conversacion, cita);
+    return false;
+  }
+
+  const confirmada = await services.clients.confirmAppointment(cita.id, {
+    channel: conversacion.canal,
+    note: null,
+  });
+  await responderConfirmada(services, conversacion, confirmada);
+  return true;
+};
+
+export type ResultadoConfirmar = 'confirmada' | 'ya_estaba' | 'elegir' | 'sin_citas' | 'no_es_suya';
+
+/**
+ * El paciente dice que sí. Es la mitad conversacional de la confirmación (ADR 0052):
+ * el asistente busca **sus** citas próximas y confirma la que corresponda.
+ *
+ * Reglas:
+ *  - si viene un `id` (de un botón o de una opción numerada), se comprueba que esa
+ *    cita sea **suya** antes de tocar nada: el identificador viaja por el chat y
+ *    nadie debería poder confirmar la cita de otro con un botón ajeno;
+ *  - con **una** cita pendiente se confirma directamente;
+ *  - con **varias** se le ofrecen numeradas (o como botones, si el canal los tiene);
+ *  - sin ninguna pendiente, si ya tenía una confirmada se le recuerda —confirmar dos
+ *    veces no es un error— y si no hay nada, se le dice que no hay nada que confirmar.
+ */
+const confirmarCita = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  id: string | null,
+): Promise<ResultadoConfirmar> => {
+  // El paciente se identifica por la dirección del canal, no por el `patientId` de la
+  // conversación: quien escribió «confirmar» puede tener el chat vinculado hace tiempo.
+  const vinculado = await channelByDireccion(
+    services.db,
+    conversacion.canal,
+    conversacion.direccion,
+  );
+  if (vinculado === null) {
+    await reply(services, conversacion, 'sin_citas');
+    return 'sin_citas';
+  }
+
+  const { from, to } = ventanaDeConfirmacion();
+  const pagina = await services.clients.listAppointments({
+    patientId: vinculado.patientId,
+    from,
+    to,
+    pageSize: 20,
+  });
+  const citas = pagina.items;
+
+  if (id !== null) {
+    const suya = citas.find((cita) => cita.id === id);
+    if (suya === undefined) {
+      await reply(services, conversacion, 'sin_citas');
+      return 'no_es_suya';
+    }
+    return (await confirmarYResponder(services, conversacion, suya)) ? 'confirmada' : 'ya_estaba';
+  }
+
+  // Las que esperan respuesta: `confirmada` ya la tiene, y de `en_sala_espera` en
+  // adelante el paciente está en el consultorio (o ya pasó).
+  const pendientes = citas.filter(
+    (cita) => cita.status === 'programada' || cita.status === 'notificada',
+  );
+
+  if (pendientes.length === 0) {
+    const yaConfirmada = citas.find((cita) => cita.status === 'confirmada');
+    if (yaConfirmada !== undefined) {
+      await responderConfirmada(services, conversacion, yaConfirmada);
+      return 'ya_estaba';
+    }
+    await reply(services, conversacion, 'sin_citas');
+    return 'sin_citas';
+  }
+
+  if (pendientes.length === 1) {
+    const unica = pendientes[0];
+    if (unica !== undefined) {
+      return (await confirmarYResponder(services, conversacion, unica))
+        ? 'confirmada'
+        : 'ya_estaba';
+    }
+  }
+
+  await enviar(
+    services,
+    conversacion,
+    'Tienes varias citas próximas. Dime cuál quieres confirmar.',
+    pendientes.map((cita) => ({
+      etiqueta: `${fechaVe(cita.date)} · ${formatTime12h(cita.startTime)}`,
+      accion: `confirmar_cita:${cita.id}`,
+    })),
+  );
+  return 'elegir';
 };
 
 /* ── Pasos del asistente ───────────────────────────────────────────────────── */
@@ -747,6 +893,11 @@ export const handleInbound = async (
       return { ...conversacion, handled: true, action: 'duplicado_no' };
     }
 
+    if (kind === 'confirmar_cita') {
+      const resultado = await confirmarCita(services, conversacion, value === '' ? null : value);
+      return { ...conversacion, handled: true, action: `confirmar_${resultado}` };
+    }
+
     if (kind === 'confirmar') {
       if (value === 'si') {
         await finalize(services, conversacion, draft, conversation.patientId);
@@ -812,6 +963,11 @@ export const handleInbound = async (
               : formatTicket(conversation.lastTicket).value;
         await cancelRequest(services, conversacion, ticket);
         return { ...conversacion, handled: true, action: 'cancelar' };
+      }
+      case 'confirmar': {
+        // La misma acción que el botón del aviso, para quien responde escribiendo.
+        const resultado = await confirmarCita(services, conversacion, null);
+        return { ...conversacion, handled: true, action: `confirmar_${resultado}` };
       }
       case 'nueva': {
         const blocked = await hasActiveRequest(services, conversation);

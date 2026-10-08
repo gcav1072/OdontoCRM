@@ -1,6 +1,7 @@
 import {
   CHANNEL_IDS,
   adminAlertSchema,
+  appointmentNotificationFiltersSchema,
   markContactedSchema,
   messageTemplateInputSchema,
   notificationFiltersSchema,
@@ -20,6 +21,7 @@ import QRCode from 'qrcode';
 import { z } from 'zod';
 import { desc } from 'drizzle-orm';
 
+import { appointmentsInInbox } from './appointments.js';
 import { botConversations } from './db/schema.js';
 import {
   createLinkCode,
@@ -93,6 +95,17 @@ export const registerNotificationRoutes = (
   app.get('/api/v1/notifications', { preHandler: read }, async (request, reply) => {
     const filters = parseQuery(notificationFiltersSchema, request.query);
     return reply.status(200).send(await listNotifications(db, filters));
+  });
+
+  /**
+   * **Citas próximas** (ADR 0052): la sección desde la que la secretaría ve lo que
+   * viene, por dónde se le puede avisar a cada paciente y si ya confirmó. Los datos
+   * se componen en el servicio —agenda + canales + avisos— y llegan listos para
+   * pintar; ver el porqué en `appointmentsInInbox`.
+   */
+  app.get('/api/v1/notifications/appointments', { preHandler: read }, async (request, reply) => {
+    const filters = parseQuery(appointmentNotificationFiltersSchema, request.query);
+    return reply.status(200).send(await appointmentsInInbox(db, services.clients, filters));
   });
 
   /** Estado de los canales y de la cola: lo que pinta la cabecera de la bandeja. */

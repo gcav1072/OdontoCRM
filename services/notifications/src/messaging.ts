@@ -152,6 +152,14 @@ export const ensureDefaultTemplates = async (db: NotificationsDb): Promise<numbe
 
 /* ── Canales del paciente ──────────────────────────────────────────────────── */
 
+/**
+ * Fecha de hoy (`AAAA-MM-DD`) en la zona del consultorio. No vale
+ * `toISOString()`: entre las 20:00 y la medianoche de Caracas (UTC−4) ya es el día
+ * siguiente en UTC, y la agenda habla de días locales.
+ */
+export const todayInClinic = (now: Date = new Date()): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Caracas' }).format(now);
+
 /** Canales que el asistente puede atender hoy (el resto son canales «de oficina»). */
 const ATTENDED_CHANNELS: readonly ChannelId[] = ['telegram', 'whatsapp'];
 
@@ -730,9 +738,29 @@ export const processQueue = async (
 
       if (attachIcs && appointment !== null) {
         const ics = await ensureIcsArtifact(db, config, appointment);
+
+        /**
+         * El aviso de cita sale en **dos mensajes** (ADR 0052). El motivo es del
+         * adaptador de Telegram: cuando el saliente lleva documento, `enviar` manda
+         * el archivo con el texto como **pie de foto** y **descarta los botones**; el
+         * `.ics` viaja así desde la Fase 4. Para que el paciente pueda confirmar con
+         * un toque, el texto y su botón van primero y el calendario después —con un
+         * pie corto, para que las dos burbujas se entiendan—. Los canales sin botones
+         * reciben el mismo texto, que ya invita a escribir «confirmar».
+         */
+        if (adapter.capacidades.botones) {
+          await adapter.enviar({
+            direccion: recipient,
+            texto: text,
+            botones: [{ etiqueta: 'Confirmar', accion: `confirmar_cita:${appointment.id}` }],
+          });
+        } else {
+          await adapter.enviar({ direccion: recipient, texto: text });
+        }
+
         const attachment = await adapter.enviar({
           direccion: recipient,
-          texto: text,
+          texto: 'Tu calendario',
           documento: {
             nombre: ics.filename,
             contenido: Buffer.from(ics.content, 'utf8'),

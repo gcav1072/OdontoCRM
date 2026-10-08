@@ -1,4 +1,10 @@
-import type { AppointmentSummary, Channel, RequestSummary } from '@odontocrm/contracts';
+import type {
+  AppointmentStatus,
+  AppointmentSummary,
+  Channel,
+  Paginated,
+  RequestSummary,
+} from '@odontocrm/contracts';
 
 import type { NotificationsConfig } from './config.js';
 
@@ -48,6 +54,37 @@ export interface InternalClients {
   findRequestByTicket: (ticket: string) => Promise<RequestSummary | null>;
   cancelRequest: (id: string, reason: string) => Promise<RequestSummary>;
   getAppointment: (id: string) => Promise<AppointmentSummary | null>;
+
+  /**
+   * Citas que cumplen los filtros (ADR 0052). La usa la sección de la bandeja
+   * —para listar las próximas— y el asistente, para saber qué citas puede
+   * confirmar el paciente que acaba de escribir «confirmar».
+   */
+  listAppointments: (filters: AppointmentInternalFilters) => Promise<Paginated<AppointmentSummary>>;
+
+  /**
+   * El **paciente** confirma su cita desde el bot (ADR 0052). Va por la ruta
+   * interna porque la agenda no puede pedirle un JWT a un paciente de Telegram.
+   */
+  confirmAppointment: (
+    id: string,
+    input: { channel: Channel; note?: string | null },
+  ) => Promise<AppointmentSummary>;
+}
+
+/**
+ * Filtros que la agenda entiende por su ruta interna. Son un subconjunto de los
+ * públicos: los mismos nombres y tipos, para que el servicio no traduzca nada.
+ */
+export interface AppointmentInternalFilters {
+  patientId?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  status?: AppointmentStatus | undefined;
+  confirmed?: boolean | undefined;
+  search?: string | undefined;
+  page?: number | undefined;
+  pageSize?: number | undefined;
 }
 
 export class InternalRequestError extends Error {
@@ -126,6 +163,20 @@ const LECTURA: RetryOptions = { intentos: 3, esperaMs: 250 };
  * (el asistente ya avisa al paciente y conserva la conversación).
  */
 const ESCRITURA: RetryOptions = { intentos: 3, esperaMs: 250, soloSiNoLlego: true };
+
+/**
+ * Filtros como `?clave=valor`. Los `undefined` se omiten; `false` **no**, porque
+ * `confirmed=false` («las que no están confirmadas») es un filtro de verdad.
+ */
+const queryString = (params: object): string => {
+  const search = new URLSearchParams();
+  for (const [clave, valor] of Object.entries(params)) {
+    if (valor === undefined || valor === null) continue;
+    search.set(clave, String(valor));
+  }
+  const texto = search.toString();
+  return texto === '' ? '' : `?${texto}`;
+};
 
 const request = async <T>(
   config: NotificationsConfig,
@@ -260,4 +311,30 @@ export const createInternalClients = (config: NotificationsConfig): InternalClie
         throw error;
       }
     }, LECTURA),
+
+  listAppointments: async (filters) =>
+    conReintentos(
+      () =>
+        request<Paginated<AppointmentSummary>>(
+          config,
+          config.SCHEDULING_URL,
+          `/internal/v1/appointments${queryString(filters)}`,
+          { method: 'GET' },
+        ),
+      LECTURA,
+    ),
+
+  confirmAppointment: async (id, input) =>
+    conReintentos(
+      () =>
+        request<AppointmentSummary>(
+          config,
+          config.SCHEDULING_URL,
+          `/internal/v1/appointments/${id}/confirm`,
+          { method: 'POST', body: { channel: input.channel, note: input.note ?? null } },
+        ),
+      // Confirmar es **idempotente** en la agenda, así que repetirlo por un corte de
+      // red es seguro: el paciente vería el mismo «listo» y no habría dos historiales.
+      ESCRITURA,
+    ),
 });
