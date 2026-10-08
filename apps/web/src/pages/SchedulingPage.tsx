@@ -21,6 +21,7 @@ import { DayCapacityCard } from '../components/scheduling/DayCapacityCard';
 import { DayToolbar } from '../components/scheduling/DayToolbar';
 import { NewRequestDialog } from '../components/scheduling/NewRequestDialog';
 import { NotifyBatchDialog } from '../components/scheduling/NotifyBatchDialog';
+import { PatientCancellationsCard } from '../components/scheduling/PatientCancellationsCard';
 import { RequestCancelDialog } from '../components/scheduling/RequestCancelDialog';
 import { RequestQueuePanel } from '../components/scheduling/RequestQueuePanel';
 import { RescheduleAppointmentDialog } from '../components/scheduling/RescheduleAppointmentDialog';
@@ -301,6 +302,8 @@ export const SchedulingPage = () => {
                   </span>
                 </CardContent>
               </Card>
+
+              <PatientCancellationsCard />
             </>
           )}
         </div>

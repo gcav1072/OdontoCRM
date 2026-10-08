@@ -10,7 +10,11 @@ import {
 } from '@odontocrm/contracts';
 
 import { apiErrorMessage, isApiError } from './api';
-import type { AppointmentsListParams, RequestsListParams } from './endpoints';
+import type {
+  AppointmentCancellationsParams,
+  AppointmentsListParams,
+  RequestsListParams,
+} from './endpoints';
 import { TIME_ZONE } from './format';
 import { APPOINTMENT_STATUS_LABELS, isAppointmentStatus, t, type TranslationKey } from './i18n';
 
@@ -36,6 +40,9 @@ export const schedulingKeys = {
   requestsRoot: ['solicitudes'] as const,
   appointments: (filters: AppointmentsListParams) => ['citas', filters] as const,
   appointmentsRoot: ['citas'] as const,
+  /** Cancelaciones hechas por el paciente (ADR 0053), bajo `['citas']` para invalidarlas con el resto. */
+  cancellations: (filters: AppointmentCancellationsParams) =>
+    ['citas', 'cancelaciones', filters] as const,
   history: (appointmentId: string) => ['cita', appointmentId, 'historial'] as const,
   /** Todas las historias de cita cargadas (se invalidan al cambiar un estado). */
   historyRoot: ['cita'] as const,

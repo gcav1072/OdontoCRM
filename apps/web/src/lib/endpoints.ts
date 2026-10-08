@@ -517,6 +517,14 @@ export interface AppointmentsListParams {
   pageSize?: number;
 }
 
+/** Filtros de las **cancelaciones del paciente** (ADR 0053): el rango va sobre la fecha en que canceló. */
+export interface AppointmentCancellationsParams {
+  from?: string;
+  to?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 /** Lista de plantillas de franjas: el contrato devuelve `{ items }`, sin paginar. */
 export interface SlotTemplateList {
   items: SlotTemplate[];
@@ -603,6 +611,20 @@ export const appointmentsApi = {
     signal?: AbortSignal,
   ): Promise<Paginated<AppointmentSummary>> =>
     api.get<Paginated<AppointmentSummary>>('/appointments', {
+      query: { ...params } as QueryParams,
+      signal,
+    }),
+
+  /**
+   * **Cancelaciones hechas por el paciente** (ADR 0053): alimenta la tarjeta de
+   * `/programacion`. Solo devuelve las canceladas por un canal de paciente (el bot),
+   * no las que anula la secretaría.
+   */
+  cancellations: (
+    params: AppointmentCancellationsParams,
+    signal?: AbortSignal,
+  ): Promise<Paginated<AppointmentSummary>> =>
+    api.get<Paginated<AppointmentSummary>>('/appointments/cancellations', {
       query: { ...params } as QueryParams,
       signal,
     }),
