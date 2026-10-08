@@ -44,6 +44,8 @@ export const mvFunnel = pgTable('mv_funnel', {
   attended: integer('attended').notNull(),
   noShow: integer('no_show').notNull(),
   cancelled: integer('cancelled').notNull(),
+  /** Canceladas por el **paciente** por el bot (ADR 0053); excluye las de secretaría. */
+  cancelledByPatient: integer('cancelled_by_patient').notNull(),
 });
 
 /** Pirámide demográfica por día de alta, tramo de edad, sexo y estado. */

@@ -29,6 +29,13 @@
       "when": 1791419131669,
       "tag": "0003_sticky_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791469507739,
+      "tag": "0004_late_magdalene",
+      "breakpoints": true
     }
   ]
 }

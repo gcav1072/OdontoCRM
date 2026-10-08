@@ -26,7 +26,7 @@ type Tx = Parameters<Parameters<ReportingDb['transaction']>[0]>[0];
 type ExtrasCita = Partial<
   Pick<
     typeof factAppointment.$inferInsert,
-    'clinicalSessionId' | 'forceAttendedReason' | 'noShowReason'
+    'clinicalSessionId' | 'forceAttendedReason' | 'noShowReason' | 'cancelledChannel'
   >
 >;
 
@@ -144,6 +144,8 @@ const appointmentPayloadSchema = z.object({
       status: z.string().optional(),
       clinicalSessionId: uuid.nullish(),
       forceAttendedReason: z.string().nullish(),
+      /** Canal por el que canceló el paciente (ADR 0053); nulo si la canceló la secretaría. */
+      cancelledChannel: z.string().nullish(),
     })
     .partial()
     .nullish(),
@@ -461,6 +463,11 @@ const planificarCita = (event: DomainEvent): Planificacion => {
       }
       if (event.eventType === EVENT_TOPICS.appointmentNoShow) {
         extras.noShowReason = carga.reason ?? null;
+      }
+      if (event.eventType === EVENT_TOPICS.appointmentCancelled) {
+        // Por dónde se canceló: un canal de paciente (`telegram`/`whatsapp`) es lo que
+        // distingue «la canceló el paciente» de «la canceló la secretaría» en el embudo.
+        extras.cancelledChannel = carga.after?.cancelledChannel ?? null;
       }
 
       // 1) La transición. El `case` evita que un evento **viejo** (pg-boss no

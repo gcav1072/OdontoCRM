@@ -50,6 +50,8 @@ export interface FilaDiaEmbudo {
   attended: number;
   noShow: number;
   cancelled: number;
+  /** Canceladas por el **paciente** por el bot (ADR 0053); excluye las de secretaría. */
+  cancelledByPatient: number;
 }
 
 export interface TotalesEmbudo {
@@ -60,6 +62,7 @@ export interface TotalesEmbudo {
   atendidas: number;
   inasistencias: number;
   canceladas: number;
+  canceladasPaciente: number;
 }
 
 const vacio = (): TotalesEmbudo => ({
@@ -70,6 +73,7 @@ const vacio = (): TotalesEmbudo => ({
   atendidas: 0,
   inasistencias: 0,
   canceladas: 0,
+  canceladasPaciente: 0,
 });
 
 const sumarFila = (totales: TotalesEmbudo, fila: FilaDiaEmbudo): TotalesEmbudo => ({
@@ -80,6 +84,7 @@ const sumarFila = (totales: TotalesEmbudo, fila: FilaDiaEmbudo): TotalesEmbudo =
   atendidas: totales.atendidas + fila.attended,
   inasistencias: totales.inasistencias + fila.noShow,
   canceladas: totales.canceladas + fila.cancelled,
+  canceladasPaciente: totales.canceladasPaciente + fila.cancelledByPatient,
 });
 
 /** Agrupa los días en períodos (día, semana o mes) sumando cada etapa. */
@@ -137,6 +142,17 @@ export const componerEmbudo = (
     );
   });
 
+  // Serie propia (no apilada en el embudo) para leer la evolución de las cancelaciones
+  // hechas por el paciente, que es el dato que dice si el botón «Cancelar» se usa.
+  const puntosCanceladasPaciente = periodos.map((periodo) => {
+    const delPeriodo = porPeriodo.get(periodo) ?? vacio();
+    return punto(
+      etiquetaDePeriodo(periodo, granularidad),
+      delPeriodo.canceladasPaciente,
+      'canceladas_paciente',
+    );
+  });
+
   const filasTabla: ReportRow[] = periodos.map((periodo) => {
     const delPeriodo = porPeriodo.get(periodo) ?? vacio();
     return {
@@ -145,6 +161,7 @@ export const componerEmbudo = (
       programadas: delPeriodo.programadas,
       notificadas: delPeriodo.notificadas,
       confirmadas: delPeriodo.confirmadas,
+      canceladasPaciente: delPeriodo.canceladasPaciente,
       atendidas: delPeriodo.atendidas,
       inasistencias: delPeriodo.inasistencias,
       canceladas: delPeriodo.canceladas,
@@ -181,6 +198,12 @@ export const componerEmbudo = (
             ? 'no hubo citas avisadas en el período'
             : `de ${String(totales.notificadas)} avisadas`,
       }),
+      // Cancelaciones hechas por el **paciente** por el bot (ADR 0053): las que anula la
+      // secretaría ya son conocimiento del consultorio y no se cuentan aquí.
+      kpi('Canceladas por el paciente', totales.canceladasPaciente, {
+        tone: totales.canceladasPaciente > 0 ? 'warn' : 'neutral',
+        hint: 'canceladas por el bot, no por la secretaría',
+      }),
       kpi('Atendidas', totales.atendidas, { tone: totales.atendidas > 0 ? 'good' : 'neutral' }),
       kpi('Conseguir cita', porcentaje(totales.programadas, totales.solicitudes), {
         unit: '%',
@@ -201,6 +224,13 @@ export const componerEmbudo = (
         xLabel: 'período',
         yLabel: '%',
       }),
+      serie(
+        'canceladas_paciente',
+        'Canceladas por el paciente por período',
+        'bar',
+        puntosCanceladasPaciente,
+        { xLabel: 'período', yLabel: 'cantidad' },
+      ),
     ],
     table: tabla(
       [
@@ -209,6 +239,7 @@ export const componerEmbudo = (
         columna('programadas', 'Programadas', 'number'),
         columna('notificadas', 'Avisadas', 'number'),
         columna('confirmadas', 'Confirmadas', 'number'),
+        columna('canceladasPaciente', 'Canceladas por el paciente', 'number'),
         columna('atendidas', 'Atendidas', 'number'),
         columna('inasistencias', 'Inasistencias', 'number'),
         columna('canceladas', 'Canceladas', 'number'),
@@ -240,6 +271,7 @@ const proyectarDesdeVista = async (
       attended: mvFunnel.attended,
       noShow: mvFunnel.noShow,
       cancelled: mvFunnel.cancelled,
+      cancelledByPatient: mvFunnel.cancelledByPatient,
     })
     .from(mvFunnel)
     .where(enRango(mvFunnel.day, ctx.range));
@@ -266,6 +298,9 @@ const proyectarDesdeHechos = async (
       attended: sql<number>`(count(*) filter (where ${factAppointment.status} = 'atendido'))::int`,
       noShow: sql<number>`(count(*) filter (where ${factAppointment.status} = 'no_asistio'))::int`,
       cancelled: sql<number>`(count(*) filter (where ${factAppointment.status} in ('cancelada', 'reprogramada')))::int`,
+      // Solo las que canceló el **paciente** por el bot (canal de paciente): las que
+      // anula la secretaría no entran aquí (ADR 0053).
+      cancelledByPatient: sql<number>`(count(*) filter (where ${factAppointment.cancelledChannel} in ('telegram', 'whatsapp')))::int`,
     })
     .from(factAppointment)
     .leftJoin(dimPatient, eq(dimPatient.patientId, factAppointment.patientId))
@@ -299,6 +334,7 @@ const proyectarDesdeHechos = async (
       attended: 0,
       noShow: 0,
       cancelled: 0,
+      cancelledByPatient: 0,
     };
     porDia.set(day, existente);
     return existente;
@@ -313,6 +349,7 @@ const proyectarDesdeHechos = async (
     acumulado.attended += fila.attended;
     acumulado.noShow += fila.noShow;
     acumulado.cancelled += fila.cancelled;
+    acumulado.cancelledByPatient += fila.cancelledByPatient;
   }
 
   return [...porDia.values()].sort((izquierda, derecha) =>

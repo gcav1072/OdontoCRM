@@ -16,6 +16,7 @@ const documentoDePrueba = (): ReportDocument =>
         attended: 2,
         noShow: 1,
         cancelled: 0,
+        cancelledByPatient: 0,
       },
     ],
     {

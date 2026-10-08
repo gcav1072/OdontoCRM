@@ -22,6 +22,7 @@ const dia = (day: string, valores: Partial<Omit<FilaDiaEmbudo, 'day'>> = {}): Fi
   attended: 0,
   noShow: 0,
   cancelled: 0,
+  cancelledByPatient: 0,
   ...valores,
 });
 
@@ -46,6 +47,7 @@ describe('embudo e inasistencia', () => {
       atendidas: 3,
       inasistencias: 1,
       canceladas: 0,
+      canceladasPaciente: 0,
     });
     expect(porSemana.get('2026-10-12')?.atendidas).toBe(1);
 
@@ -58,6 +60,7 @@ describe('embudo e inasistencia', () => {
       atendidas: 4,
       inasistencias: 1,
       canceladas: 0,
+      canceladasPaciente: 0,
     });
   });
 
@@ -135,5 +138,33 @@ describe('embudo e inasistencia', () => {
       'atendidas',
     ]);
     expect(documento.series.find((serie) => serie.id === 'inasistencia')?.kind).toBe('line');
+  });
+
+  it('las cancelaciones del paciente salen en KPI, columna y serie propias (ADR 0053)', () => {
+    const documento = componerEmbudo(
+      [
+        dia('2026-10-05', {
+          requests: 3,
+          scheduled: 2,
+          notified: 2,
+          attended: 1,
+          cancelled: 1,
+          cancelledByPatient: 1,
+        }),
+      ],
+      contexto({ granularity: 'day' }, { from: '2026-10-05', to: '2026-10-05' }),
+    );
+
+    // KPI card con la cifra (no se mezcla con las canceladas por la secretaría).
+    expect(documento.kpis.find((kpi) => kpi.label === 'Canceladas por el paciente')?.value).toBe(1);
+    // Columna de la tabla (y por tanto del CSV).
+    expect(documento.table.columns.some((columna) => columna.key === 'canceladasPaciente')).toBe(
+      true,
+    );
+    expect(documento.table.rows[0]?.['canceladasPaciente']).toBe(1);
+    // Serie propia, separada de la del embudo.
+    const serie = documento.series.find((serie) => serie.id === 'canceladas_paciente');
+    expect(serie?.kind).toBe('bar');
+    expect(serie?.points.map((punto) => punto.y)).toEqual([1]);
   });
 });

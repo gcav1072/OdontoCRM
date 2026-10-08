@@ -704,6 +704,9 @@ describeConBases('reporting: read model por eventos, reportes y exportación', (
         occurredAt: `${DIA_3}T12:00:00.000Z`,
         topic: EVENT_TOPICS.appointmentCancelled,
         status: 'cancelada',
+        // Cancelada por el **paciente** desde el bot (ADR 0053): el canal viaja en
+        // `after` y es lo que cuenta el embudo como «cancelada por el paciente».
+        after: { status: 'cancelada', cancelledChannel: 'telegram' },
         reason: 'el paciente avisó',
       }),
       // Avisos de hoy para el tablero.
@@ -771,6 +774,7 @@ describeConBases('reporting: read model por eventos, reportes y exportación', (
           'atendidas',
           'inasistencias',
           'canceladas',
+          'canceladasPaciente',
         ]) {
           const valor = fila[clave];
           suma[clave] = (suma[clave] ?? 0) + (typeof valor === 'number' ? valor : 0);
@@ -786,6 +790,8 @@ describeConBases('reporting: read model por eventos, reportes y exportación', (
       atendidas: 1,
       inasistencias: 1,
       canceladas: 1,
+      // La única cancelación del lote la hizo el paciente por Telegram (ADR 0053).
+      canceladasPaciente: 1,
     };
     const totales = await esperarReporte(
       sumarEmbudo,
@@ -1267,7 +1273,7 @@ describeConBases('reporting: read model por eventos, reportes y exportación', (
     expect(csv).toContain('\r\n');
     // Cabecera con acentos intactos y el separador que espera Excel en español.
     expect(csv.split('\r\n')[0]).toBe(
-      '\uFEFFPeríodo;Solicitudes;Programadas;Avisadas;Confirmadas;Atendidas;Inasistencias;Canceladas;Tasa de inasistencia',
+      '\uFEFFPeríodo;Solicitudes;Programadas;Avisadas;Confirmadas;Canceladas por el paciente;Atendidas;Inasistencias;Canceladas;Tasa de inasistencia',
     );
 
     // Los porcentajes salen con coma decimal: 2 de 3 renglones son de Amoxicilina.

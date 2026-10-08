@@ -153,6 +153,12 @@ export const factAppointment = pgTable(
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     noShowAt: timestamp('no_show_at', { withTimezone: true }),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    /**
+     * Por dónde se canceló (ADR 0053): `telegram`/`whatsapp` cuando la canceló el
+     * **paciente** desde el bot; nulo cuando la canceló la secretaría. Es la columna
+     * que separa las dos cosas en el embudo.
+     */
+    cancelledChannel: text('cancelled_channel'),
     rescheduledAt: timestamp('rescheduled_at', { withTimezone: true }),
     rescheduledFromId: uuid('rescheduled_from_id'),
     noShowReason: text('no_show_reason'),
