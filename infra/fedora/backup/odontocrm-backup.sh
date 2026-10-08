@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 # =============================================================================
-# OdontoCRM · Respaldo diario de las 8 bases + copias opcionales
+# OdontoCRM · Respaldo diario de todas las bases + copias opcionales
 # -----------------------------------------------------------------------------
 # Archivo : infra/fedora/backup/odontocrm-backup.sh
 # Versión : 0.1.0-draft (borrador Fase 0 — se prueba y completa en la Fase 10)

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Prepara la infraestructura de datos en PostgreSQL:
- *   · crea las 8 bases de datos (una por servicio) y su rol propietario;
+ *   · crea las 9 bases de datos (una por servicio) y su rol propietario;
  *   · genera contraseñas aleatorias de 32 bytes y las escribe en el `.env` de
  *     cada servicio (archivo ignorado por Git);
  *   · habilita las extensiones necesarias y fija la zona horaria;

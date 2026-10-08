@@ -637,7 +637,7 @@ if [[ "$HASTA" == "respaldos" ]]; then
     #    evidencia (--keep-verify-db), sin tocar las de producción.
     if timeout 3600 bash "$DESTINO/infra/fedora/backup/odontocrm-restore.sh" --from "$ULTIMO" --all --yes --keep-verify-db \
          >/tmp/ensayo-restore.log 2>&1; then
-      ok 'restablecimiento verificado en las 8 bases temporales __verif'
+      ok 'restablecimiento verificado en todas las bases temporales __verif'
     else
       err 'la verificación del restablecimiento falló'; tail -15 /tmp/ensayo-restore.log | sed 's/^/    /'
     fi

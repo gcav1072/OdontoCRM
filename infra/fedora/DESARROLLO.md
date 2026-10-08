@@ -74,7 +74,7 @@ cp .env.example .env
 #  Windows: postgres://postgres:CLAVE@127.0.0.1:5432/postgres)
 npm run env:check        # ¿a algún .env le falta una clave de su plantilla?
 
-npm run db:bootstrap     # 8 bases + 8 roles + la cola de eventos compartida (idempotente)
+npm run db:bootstrap     # una base y un rol por servicio + la cola de eventos compartida (idempotente)
 npm run keys:generate    # claves EdDSA del JWT (una vez por instalación; .keys/ está ignorado)
 npm run db:migrate       # migraciones de los 9 servicios
 npm run seed:users       # admin, recepcion y egomez con contraseña temporal

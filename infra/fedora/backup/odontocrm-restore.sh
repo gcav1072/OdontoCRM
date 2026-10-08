@@ -56,7 +56,7 @@
 #
 # > PENDIENTE FASE 10: el flujo completo (base temporal → restauración definitiva,
 #   `--no-owner --role=<rol>`, `DROP DATABASE ... WITH (FORCE)` y la comprobación
-#   de propiedad) debe validarse con las 8 bases en el servidor Fedora, siguiendo
+#   de propiedad) debe validarse con todas las bases en el servidor Fedora, siguiendo
 #   la prueba documentada de INSTALL.md §16.2. Hasta entonces, este script es un
 #   borrador no probado.
 # =============================================================================
@@ -554,7 +554,7 @@ restore_in_place() {
 # -----------------------------------------------------------------------------
 # Programa principal
 # -----------------------------------------------------------------------------
-# Borra las bases temporales que deja la verificación en las 8 bases conocidas.
+# Borra las bases temporales que deja la verificación en las bases conocidas.
 limpiar_verificacion() {
   if (( ! ASSUME_YES )); then
     err "--limpiar-verif borra bases: añade --yes para confirmarlo"

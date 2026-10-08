@@ -47,7 +47,7 @@
 | [`systemd/odontocrm-red.service`](systemd/odontocrm-red.service) + [`systemd/odontocrm-red.timer`](systemd/odontocrm-red.timer) | **La red, sola**: cada 5 minutos ejecuta `odontocrm red --arreglar --si-cambio`. Si la IP no cambió, no hace nada; si cambió, reajusta el firewall, reemite el certificado con la IP nueva (misma CA), actualiza `WEB_ORIGIN` y reescribe el DNS del nombre (el que hace que `odontocrm.local` funcione en los Android). En la clínica, con IP fija, nunca hace nada; en un portátil de pruebas, deja todo al día sin tocar nada a mano. |
 | [`logrotate/odontocrm`](logrotate/odontocrm) | Rotación diaria (30 días, comprimida) de `/var/log/odontocrm/*.log`. Con `systemd` los servicios van al journal, que rota solo; esto cubre los logs de operación y los de PM2 si se elige ese supervisor. |
 | [`ecosystem.config.cjs`](ecosystem.config.cjs) | **Alternativa a `systemd`**: procesos de PM2 para Fedora, con rutas absolutas (`/opt/odontocrm/...`) y los mismos dos `--env-file-if-exists=/etc/odontocrm/...`. Nunca los dos supervisores a la vez (§10.1 y §10.4). |
-| [`backup/odontocrm-backup.sh`](backup/odontocrm-backup.sh) | Respaldo diario de las 8 bases (`pg_dump -Fc`), verificación de integridad, retención configurable y copias opcionales. |
+| [`backup/odontocrm-backup.sh`](backup/odontocrm-backup.sh) | Respaldo diario de todas las bases (`pg_dump -Fc`), verificación de integridad, retención configurable y copias opcionales. |
 | [`backup/odontocrm-restore.sh`](backup/odontocrm-restore.sh) | Restauración de una base o de todas, con paso previo por una base temporal de verificación. |
 
 Los tres scripts deben ser **ejecutables** (Git en Windows puede no conservar el bit
@@ -116,7 +116,7 @@ sudo git update-index --chmod=+x infra/fedora/install.sh \
             clinical:4005 odontogram:4006 screens:4007 reporting:4008
                           │  (todos en 127.0.0.1, REST interno + outbox)
                           ▼
-                      PostgreSQL 18 en 127.0.0.1:5432 — 8 bases + outbox + pg-boss
+                      PostgreSQL 18 en 127.0.0.1:5432 — las bases de los servicios + outbox + pg-boss
 ```
 
 Reglas que no se negocian:
@@ -585,10 +585,10 @@ solo 443, SELinux sin denegaciones, y la restauración de las ocho bases. Si alg
 cuadra, lo dice con el comando que lo arregla. Es el mismo camino que usa el banco de
 pruebas de la Fase 10, así que **lo que corre en la clínica es lo que se probó**.
 
-### 6.4 Crear las 8 bases y sus roles
+### 6.4 Crear las 9 bases y sus roles
 
 **No lo hace `install.sh` a propósito** (no debe tocar datos). El camino previsto es el
-bootstrap del repositorio (Fase 0: `infra/db/bootstrap.mjs`), que crea las 8 bases, un
+bootstrap del repositorio (Fase 0: `infra/db/bootstrap.mjs`), que crea las 9 bases, un
 rol por servicio **con el mismo nombre que la base** y con privilegios solo sobre ella,
 habilita `pgcrypto` y `pg_trgm` y fija la zona horaria de cada base. Es idempotente y
 genera las contraseñas aleatorias de cada rol.
@@ -658,8 +658,8 @@ administrador. Es el camino probado en la PC Fedora de pruebas (Fase 10).
 Verificación:
 
 ```bash
-sudo -u postgres psql -c '\l'      # deben aparecer las 8 bases
-sudo -u postgres psql -c '\du'     # deben aparecer los 8 roles con el nombre de su base
+sudo -u postgres psql -c '\l'      # deben aparecer las 9 bases
+sudo -u postgres psql -c '\du'     # deben aparecer los 9 roles con el nombre de su base
 ```
 
 Si prefieres el equivalente a mano (referencia, no es necesario si usas el bootstrap):
@@ -920,7 +920,7 @@ sudo journalctl -u odontocrm@notifications -n 50 --no-pager
 
 ### 8.6 Trasladar los secretos del bootstrap a `/etc/odontocrm` (paso obligatorio)
 
-`npm run db:bootstrap` (§6.4) crea las 8 bases y sus roles y **escribe las credenciales
+`npm run db:bootstrap` (§6.4) crea las 9 bases y sus roles y **escribe las credenciales
 generadas** (contraseña aleatoria de 32 bytes por rol, más `INTERNAL_SERVICE_SECRET` y
 el `COOKIE_SECRET` de `identity`) en los `.env` **dentro del repositorio**
 (`services/<servicio>/.env`; ver `infra/db/bootstrap.mjs`). Esos archivos están
@@ -1897,7 +1897,7 @@ Plan §11: **`pg_dump` diario por base, retención de 30 días y restauración p
 
 | Contenido | Cómo | Dónde |
 | :--- | :--- | :--- |
-| Las 8 bases | `pg_dump --format=custom` por base | `/var/backups/odontocrm/AAAA-MM-DD/<base>_<fecha>.dump` |
+| Todas las bases | `pg_dump --format=custom` por base | `/var/backups/odontocrm/AAAA-MM-DD/<base>_<fecha>.dump` |
 | Integridad | `pg_restore --list` + `sha256sum` | `SHA256SUMS` y `manifest.txt` en el mismo directorio |
 | `/etc/odontocrm` (incluye **secretos**) | `--include-config` → `tar.gz` | `etc-odontocrm_<fecha>.tar.gz` (0600) |
 | `/var/lib/odontocrm/storage` (radiografías y PDFs) | `--include-storage` → `tar.gz` | `storage_<fecha>.tar.gz` |
@@ -2148,7 +2148,7 @@ Registra el resultado en §20 (y, si algo falla, la causa y la corrección).
 > `git -C /opt/odontocrm log --oneline -1`. El paso 0-a deja la credencial de
 > administración en el `.pgpass` y evita el problema de raíz.
 >
-> **P-15 (resuelto en la Fase 10):** la prueba se corre con las **8 bases** de una vez
+> **P-15 (resuelto en la Fase 10):** la prueba se corre con **todas las bases** de una vez
 > (`--all --keep-verify-db`), se comparan las filas de cada tabla entre la base real y
 > la restaurada, y las `__verif` **se conservan** como evidencia hasta completar el
 > registro de §20.2 (para retirarlas después: `--limpiar-verif --yes`).
@@ -2291,13 +2291,13 @@ df -h / /var/lib/odontocrm /var/backups/odontocrm
 | 4 | Node.js 26 y npm 11 | `node --version` · `npm --version` | ☐ |
 | 5 | PostgreSQL 18 inicializado y activo | `postgresql-setup --initdb` · `systemctl status postgresql` | ☐ |
 | 6 | PostgreSQL solo en `127.0.0.1` | `ss -lntp \| grep 5432` | ☐ |
-| 7 | Las 8 bases y los 8 roles creados | `sudo -u postgres psql -c '\l'` · `'\du'` | ☐ |
+| 7 | Las 9 bases y los 9 roles creados | `sudo -u postgres psql -c '\l'` · `'\du'` | ☐ |
 | 8 | Usuario `odontocrm` sin login | `getent passwd odontocrm` | ☐ |
 | 9 | Directorios y permisos según §7.2 | `ls -ld` / `find -printf` | ☐ |
 | 10 | Los **dos** archivos de entorno existen: `/etc/odontocrm/odontocrm.env` (común) y `/etc/odontocrm/<servicio>.env` (propio), con `0600 root:root` — `0640 root:odontocrm` si el supervisor es PM2 — y sin marcadores `CAMBIAR_*` | `ls -l /etc/odontocrm/*.env` · `grep -c CAMBIAR /etc/odontocrm/*.env` | ☐ |
 | 11 | Claves EdDSA generadas y con permisos `0640 root:odontocrm` | `ls -l /etc/odontocrm/keys` | ☐ |
 | 12 | Código desplegado y compilado en `/opt/odontocrm` | `npm ci && npm run build` | ☐ |
-| 13 | Migraciones aplicadas en las 8 bases | §9.3 | ☐ |
+| 13 | Migraciones aplicadas en las 9 bases | §9.3 | ☐ |
 | 13-bis | **Observabilidad**: tablero en verde y alertas programadas | `npm run estado` · `systemctl list-timers odontocrm-alertas.timer` (§10.6) | ☐ |
 | 13-ter | **Rotación de logs** instalada | `logrotate --debug /etc/logrotate.d/odontocrm` (§10.6) | ☐ |
 | 14 | SPA compilada y servida por el proxy | `curl -I https://odontocrm.local/` | ☐ |
@@ -2409,7 +2409,7 @@ Solo si el sistema se retira definitivamente:
 -- Con respaldo verificado y copia externa ya hecha
 DROP DATABASE "odonto_identity" WITH (FORCE);
 DROP ROLE "odonto_identity";
--- ... repetir para las 8 bases y roles
+-- ... repetir para las 9 bases y roles
 DROP ROLE "odonto_backup";
 ```
 
@@ -2472,7 +2472,7 @@ exige el plan (§13, Fase 10).
 | P-12 | Certificado interno y confianza en dispositivos | `openssl s_client` desde PC/tablet/TV | ✅ | **Probado en aparatos reales:** CA instalada y funcionando en **Windows** y **Android (Pixel 7)** y en **Linux** (`ca-linux.sh`), con la CA publicada en cinco formatos (`.crt`, `.der`, `.mobileconfig` y los dos scripts) y los enlaces servidos por HTTP y HTTPS. Pendiente solo el televisor, que en general no admite CA (§8 de la guía de certificados) |
 | P-13 | Recursos y cifrado de disco | `free -h` · `df -h` · LUKS | ◐ | **PC de pruebas:** 7,6 GiB de RAM con los 9 servicios, PostgreSQL, nginx y Chromium en marcha (4,3 GiB en uso, sin swap) y 88 GB libres en `/`. **El disco NO está cifrado** (`lsblk` sin LUKS): en la clínica hay que decidirlo antes de cargar datos reales. |
 | P-14 | Cifrado y copia externa del respaldo | `rsync` + `age`/`gpg` | ◐ | **PC de pruebas:** el respaldo diario ya se programa solo (`odontocrm-backup.timer`, 03:30 con `Persistent=true`); queda decidir el cifrado del medio externo (§15.5). |
-| P-15 | **Prueba de restauración documentada** | §16.2, con las 8 bases | ☐ | |
+| P-15 | **Prueba de restauración documentada** | §16.2, con todas las bases | ☐ | |
 | P-16 | **Reinicio del servidor: los 9 vuelven solos** | §10.5 | ✅ | **PC de pruebas (2026-10-04):** tras `systemctl reboot` los **9 servicios y nginx** volvieron solos, sin intervención: `active`, con 4 minutos de vida y `/health` y `/ready` en **200** por HTTPS (`sudo npm run estado`), el gateway incluido. |
 | P-17 | Cómo se sirve la SPA y su etiqueta SELinux | `curl -I` + `semanage fcontext -l` | ✅ | **PC de pruebas:** la SPA se sirve desde `/opt/odontocrm/apps/web/dist` por nginx (200 por https), con la etiqueta `httpd_sys_content_t` aplicada por `semanage fcontext` + `restorecon`. |
 | P-18 | `BYPASSRLS` para el rol de respaldo (si hay RLS) | `\du+ odonto_backup` | ✅ | **PC de pruebas:** el esquema **no usa RLS** (ninguna migración crea políticas), así que no hace falta. Sí hizo falta `USAGE` explícito en los esquemas `drizzle` y `pgboss`, que `pg_read_all_data` no cubre (el respaldo moría con «permiso denegado al esquema drizzle»). |

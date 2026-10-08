@@ -1140,7 +1140,7 @@ ${C_BOLD}Siguientes pasos manuales (en este orden)${C_RESET}
   1. Inicializar el clúster de PostgreSQL 18 si aún no lo está:
        sudo $(pg_setup_cmd) --initdb
        sudo systemctl enable --now $(pg_unit)
-  2. Crear las 8 bases y sus roles (bootstrap del repositorio; NO lo hace este script):
+  2. Crear las 9 bases y sus roles (bootstrap del repositorio; NO lo hace este script):
        cd ${CODE_DIR} && npm run db:bootstrap      # requiere .env con el superusuario
   3. Trasladar los secretos que genera el bootstrap (${CODE_DIR}/services/<servicio>/.env)
      a ${ETC_DIR}/<servicio>.env y BORRAR los .env del repositorio (INSTALL.md §8.6).

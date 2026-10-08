@@ -9,7 +9,7 @@
 #   1. Código en /opt/odontocrm (clon de git, sin .env ni claves)
 #   2. Dependencias y compilación
 #   3. Claves EdDSA de los JWT (si no existen; no se regeneran nunca solas)
-#   4. Migraciones de las 8 bases
+#   4. Migraciones de todas las bases
 #   5. Usuarios iniciales (contraseña temporal, se imprime UNA vez)
 #   6. Unidades de systemd y arranque de los servicios
 #   7. Certificado TLS interno (mkcert) si no hay
