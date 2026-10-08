@@ -260,9 +260,9 @@ describe('confirmar y cancelar por el bot (ADR 0052/0053)', () => {
     // El cliente interno del bot manda siempre `note`/`reason`, con `null` cuando el
     // paciente no escribe nada. Con `.optional()` Zod 4 rechazaba ese `null` con un 400
     // y el paciente se quedaba sin poder confirmar ni cancelar (regresión real).
-    expect(
-      confirmAppointmentSchema.safeParse({ channel: 'telegram', note: null }).success,
-    ).toBe(true);
+    expect(confirmAppointmentSchema.safeParse({ channel: 'telegram', note: null }).success).toBe(
+      true,
+    );
     expect(
       cancelAppointmentBotSchema.safeParse({ channel: 'telegram', reason: null }).success,
     ).toBe(true);
