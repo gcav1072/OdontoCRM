@@ -4,6 +4,52 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Identidad] — El membrete, el logo y la marca de agua, en todos los imprimibles · 2026-10-08
+
+La identidad del consultorio ya vivía en un solo sitio (`clinic.ts` para los datos, `brand.ts` para
+la paleta y las tipografías), pero **no llegaba a todos los papeles**. Al recorrer los siete
+imprimibles aparecieron los huecos: el **reporte A4** y los **documentos de cobro** salían sin logo;
+la **historia clínica** y el **odontograma** que imprime el navegador no llevaban membrete ninguno;
+y sus **colores de énfasis** —títulos, encabezados, líneas y tinta— eran grises, negros y `slate-*`
+a mano, ajenos a la marca; y la **marca de agua** estaba declarada en `brand.ts` (con sus variables
+en `marca.css`) pero **ningún documento la usaba**. Una decisión escrita y sin cablear.
+
+El criterio es el del repositorio: **una identidad copiada en varios sitios acaba siendo varias
+identidades**. Se cierra ahora, con los documentos todavía pocos ([ADR 0054](docs/adr/0054-membrete-unico-en-los-imprimibles.md)).
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `brandWatermarkCss()` · `brandWatermarkHtml()` | La marca de agua, **cableada**: el logo centrado y translúcido detrás del contenido, repetido en cada hoja. Puro, en `brand.ts` |
+| `readImageDataUri()` (`packages/kernel`) | El lector de imágenes compartido: lee el archivo y devuelve un `data:` URI (o `null` si falta). Un solo sitio para el récipe, el dossier, el reporte y los cobros |
+| Logo en el **reporte A4** y en **factura, recibo y nota de crédito** | El membrete que ya tenían, ahora con el logo del consultorio (§9 de la factura con formas libres, reversible) |
+| **Membrete** en la historia clínica y el odontograma impresos | Un componente de la SPA (`MembreteDocumento`) que lee `CLINIC` y pinta con los `--brand-*`: los mismos datos y colores que el récipe |
+| **Marca de agua** en los imprimibles del navegador | `MarcaDeAgua`, visible **solo al imprimir** (`hidden print:block`): en pantalla el documento se lee limpio |
+| Logo en la SPA con Vite | `import.meta.glob('assets/clinic/*', '?url')`: el mismo binario que el servidor incrusta en los PDF, sin duplicarlo ni mantener un `public/` |
+| `render*Html` de reporte y cobros | Pasan a **`async`**: leen el archivo del logo al componer el papel |
+| **Énfasis de marca en todos los imprimibles** | Títulos, encabezados de tabla, líneas, contornos y tinta pasan de colores sueltos a las variables `--brand-*`: los **cobros** (antes gris y negro), la **historia clínica** (antes `slate-*`) y el **odontograma** (antes tokens del tema y trazos fijos en el SVG). En SVG la marca entra por `style` (los atributos de presentación no resuelven `var()`) |
+
+**Lo que NO sigue la paleta**, a propósito: el rojo `pendiente` y el azul `completado` del
+odontograma (es un código clínico, `CLINICAL_STATE_COLORS`), la pantalla de carga de la SPA y el
+fondo blanco al imprimir. El **énfasis** de los documentos sí sale de `brand.ts`; re-tematizar la
+aplicación **no** obliga a «deshardcodear» nada más.
+
+### Añadido
+
+- **[`docs/IDENTIDAD_Y_DATOS.md`](docs/IDENTIDAD_Y_DATOS.md)**: la guía única de instalación y datos
+  personales del consultorio —las tres capas (datos, marca impresa, tema de pantalla), el logo, las
+  cuentas del personal, la sobrescritura por entorno y las **tres vías** de producción, con el aviso
+  de que `odontocrm actualizar` hace `git` y puede pisar una edición hecha en el servidor—.
+- **ADR 0054**: el membrete, el logo y la marca de agua son los mismos en todos los imprimibles.
+
+### Corregido
+
+- El **odontograma impreso** mostraba el nombre del consultorio pero ningún logo ni dirección: ahora
+  lleva el membrete completo.
+- Los **documentos de cobro** y los **imprimibles del navegador** ignoraban la paleta de la marca: su
+  énfasis salía en gris y negro (`billing`) o en `slate-*` (historia clínica).
+- El README daba por defecto `assets/clinic/logo.png`; el código usa `assets/clinic/logo.svg`.
+- Un comentario corrupto en `OdontogramDocument.tsx` (`ull o vacío`) que debía decir `null` o vacío.
+
 ## [Cancelación] — El paciente puede cancelar su cita · 2026-10-08
 
 El aviso ya se podía responder (confirmar), pero no **revocar**. Si el paciente no podía asistir,
