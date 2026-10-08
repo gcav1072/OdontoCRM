@@ -70,6 +70,16 @@ export interface InternalClients {
     id: string,
     input: { channel: Channel; note?: string | null },
   ) => Promise<AppointmentSummary>;
+
+  /**
+   * El **paciente cancela** su cita desde el bot (ADR 0053). Va por la ruta interna,
+   * como la confirmación. El canal dice por dónde canceló y se guarda: es lo que
+   * distingue una cancelación del paciente de una de la secretaría.
+   */
+  cancelAppointment: (
+    id: string,
+    input: { channel: Channel; reason?: string | null },
+  ) => Promise<AppointmentSummary>;
 }
 
 /**
@@ -335,6 +345,20 @@ export const createInternalClients = (config: NotificationsConfig): InternalClie
         ),
       // Confirmar es **idempotente** en la agenda, así que repetirlo por un corte de
       // red es seguro: el paciente vería el mismo «listo» y no habría dos historiales.
+      ESCRITURA,
+    ),
+
+  cancelAppointment: async (id, input) =>
+    conReintentos(
+      () =>
+        request<AppointmentSummary>(
+          config,
+          config.SCHEDULING_URL,
+          `/internal/v1/appointments/${id}/cancel`,
+          { method: 'POST', body: { channel: input.channel, reason: input.reason ?? null } },
+        ),
+      // Cancelar también es **idempotente** en la agenda: repetir por un corte de red
+      // es seguro (el paciente vería el mismo «entendido» y no habría doble historial).
       ESCRITURA,
     ),
 });

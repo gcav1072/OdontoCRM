@@ -36,6 +36,13 @@
       "when": 1791161523398,
       "tag": "0004_cita_confirmada_invita",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791248000000,
+      "tag": "0005_cita_invita_cancelar",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import {
   BOT_CONFIRM_WINDOW_DAYS,
   BOT_STEP_LABELS,
+  CANCELLABLE_STATUSES,
   CHANNEL_LABELS,
   botDraftSchema,
   cleanText,
@@ -404,11 +405,11 @@ const cancelRequest = async (
 const fechaVe = (date: string): string => date.split('-').reverse().join('/');
 
 /**
- * Ventana de citas que el asistente ofrece al confirmar: de hoy a 60 días
+ * Ventana de citas que el asistente mira para confirmar o cancelar: de hoy a 60 días
  * (`BOT_CONFIRM_WINDOW_DAYS`). Sin tope, un paciente con muchas citas recibiría una
  * lista interminable de opciones.
  */
-const ventanaDeConfirmacion = (now: Date = new Date()): { from: string; to: string } => {
+const ventanaDeCitas = (now: Date = new Date()): { from: string; to: string } => {
   const from = todayInClinic(now);
   const tope = new Date(
     new Date(`${from}T00:00:00Z`).getTime() + BOT_CONFIRM_WINDOW_DAYS * 86_400_000,
@@ -481,7 +482,7 @@ const confirmarCita = async (
     return 'sin_citas';
   }
 
-  const { from, to } = ventanaDeConfirmacion();
+  const { from, to } = ventanaDeCitas();
   const pagina = await services.clients.listAppointments({
     patientId: vinculado.patientId,
     from,
@@ -531,6 +532,139 @@ const confirmarCita = async (
     pendientes.map((cita) => ({
       etiqueta: `${fechaVe(cita.date)} · ${formatTime12h(cita.startTime)}`,
       accion: `confirmar_cita:${cita.id}`,
+    })),
+  );
+  return 'elegir';
+};
+
+/* ── Cancelar la cita (ADR 0053) ───────────────────────────────────────────── */
+
+const responderCancelada = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  cita: AppointmentSummary,
+): Promise<void> => {
+  await reply(services, conversacion, 'cita_cancelada_paciente', {
+    paciente: cita.patientName,
+    fecha: fechaVe(cita.date),
+    hora: formatTime12h(cita.startTime),
+  });
+};
+
+/** Cancela de verdad y responde. Devuelve `false` si la cita ya estaba cancelada. */
+const cancelarYResponder = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  cita: AppointmentSummary,
+): Promise<boolean> => {
+  if (cita.status === 'cancelada') {
+    // Volver a cancelar no es un error: se le recuerda lo que ya hizo.
+    await responderCancelada(services, conversacion, cita);
+    return false;
+  }
+
+  const cancelada = await services.clients.cancelAppointment(cita.id, {
+    channel: conversacion.canal,
+    reason: null,
+  });
+  await responderCancelada(services, conversacion, cancelada);
+  return true;
+};
+
+export type ResultadoCancelar =
+  'cancelada' | 'ya_estaba' | 'elegir' | 'sin_citas' | 'no_es_suya' | 'no_cancelable';
+
+/**
+ * El paciente dice que no puede asistir. Es la mitad conversacional de la cancelación
+ * (ADR 0053), hermana de `confirmarCita`: el asistente busca **sus** citas próximas y
+ * cancela la que corresponda; la agenda libera la franja y devuelve su ticket a la cola.
+ *
+ * Reglas:
+ *  - si viene un `id` (de un botón o de una opción numerada), se comprueba que esa cita
+ *    sea **suya** antes de tocar nada: el identificador viaja por el chat y nadie debe
+ *    poder cancelar la cita de otro con un botón ajeno;
+ *  - con **una** cita cancelable se cancela directamente; con **varias** se ofrecen
+ *    numeradas (o como botones, si el canal los tiene);
+ *  - sin ninguna, si ya tenía una cancelada se le recuerda —cancelar dos veces no es un
+ *    error— y si no hay nada, se le dice que no hay nada que cancelar;
+ *  - si la cita ya está en sala, llamada o en consulta, se le dice que por aquí ya no se
+ *    puede cancelar.
+ *
+ * `avisarSinCitas: false` deja que el llamador (el comando «cancelar» sin argumento)
+ * caiga a la cancelación de la **solicitud** sin mandar antes un «no tienes citas».
+ */
+const cancelarCita = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  id: string | null,
+  options: { avisarSinCitas?: boolean } = {},
+): Promise<ResultadoCancelar> => {
+  const avisarSinCitas = options.avisarSinCitas !== false;
+  const sinNada = async (): Promise<ResultadoCancelar> => {
+    if (avisarSinCitas) await reply(services, conversacion, 'sin_citas');
+    return 'sin_citas';
+  };
+
+  // El paciente se identifica por la dirección del canal, no por el `patientId` de la
+  // conversación: quien escribió «cancelar» puede tener el chat vinculado hace tiempo.
+  const vinculado = await channelByDireccion(
+    services.db,
+    conversacion.canal,
+    conversacion.direccion,
+  );
+  if (vinculado === null) return sinNada();
+
+  const { from, to } = ventanaDeCitas();
+  const pagina = await services.clients.listAppointments({
+    patientId: vinculado.patientId,
+    from,
+    to,
+    pageSize: 20,
+  });
+  const citas = pagina.items;
+
+  if (id !== null) {
+    const suya = citas.find((cita) => cita.id === id);
+    if (suya === undefined) {
+      await reply(services, conversacion, 'sin_citas');
+      return 'no_es_suya';
+    }
+    if (!CANCELLABLE_STATUSES.includes(suya.status)) {
+      await reply(services, conversacion, 'cita_no_cancelable', {
+        estado: estadoDe(suya.status),
+      });
+      return 'no_cancelable';
+    }
+    return (await cancelarYResponder(services, conversacion, suya)) ? 'cancelada' : 'ya_estaba';
+  }
+
+  // Las que el paciente todavía puede cancelar por aquí: las que no han llegado al
+  // consultorio. La lista es **la misma** que aplica la agenda (`CANCELLABLE_STATUSES`).
+  const cancelables = citas.filter((cita) => CANCELLABLE_STATUSES.includes(cita.status));
+
+  if (cancelables.length === 0) {
+    const yaCancelada = citas.find((cita) => cita.status === 'cancelada');
+    if (yaCancelada !== undefined) {
+      await responderCancelada(services, conversacion, yaCancelada);
+      return 'ya_estaba';
+    }
+    return sinNada();
+  }
+
+  if (cancelables.length === 1) {
+    const unica = cancelables[0];
+    if (unica !== undefined) {
+      return (await cancelarYResponder(services, conversacion, unica)) ? 'cancelada' : 'ya_estaba';
+    }
+  }
+
+  await enviar(
+    services,
+    conversacion,
+    'Tienes varias citas próximas. Dime cuál quieres cancelar.',
+    cancelables.map((cita) => ({
+      etiqueta: `${fechaVe(cita.date)} · ${formatTime12h(cita.startTime)}`,
+      accion: `cancelar_cita:${cita.id}`,
     })),
   );
   return 'elegir';
@@ -898,6 +1032,11 @@ export const handleInbound = async (
       return { ...conversacion, handled: true, action: `confirmar_${resultado}` };
     }
 
+    if (kind === 'cancelar_cita') {
+      const resultado = await cancelarCita(services, conversacion, value === '' ? null : value);
+      return { ...conversacion, handled: true, action: `cancelar_cita_${resultado}` };
+    }
+
     if (kind === 'confirmar') {
       if (value === 'si') {
         await finalize(services, conversacion, draft, conversation.patientId);
@@ -955,12 +1094,24 @@ export const handleInbound = async (
         return { ...conversacion, handled: true, action: 'mi_ticket' };
       }
       case 'cancelar': {
+        // Con un ticket detrás (`/cancelar #000123`) se conserva el comportamiento de
+        // siempre: anular la **solicitud**. Sin argumento, primero se intenta cancelar
+        // la **cita** ya asignada (ADR 0053) y, si el paciente no tiene ninguna, se cae
+        // a la solicitud, que es lo que hacía antes.
+        if (detectada.argumento !== '') {
+          await cancelRequest(services, conversacion, detectada.argumento);
+          return { ...conversacion, handled: true, action: 'cancelar' };
+        }
+
+        const resultado = await cancelarCita(services, conversacion, null, {
+          avisarSinCitas: false,
+        });
+        if (resultado !== 'sin_citas') {
+          return { ...conversacion, handled: true, action: `cancelar_cita_${resultado}` };
+        }
+
         const ticket =
-          detectada.argumento !== ''
-            ? detectada.argumento
-            : conversation.lastTicket === null
-              ? null
-              : formatTicket(conversation.lastTicket).value;
+          conversation.lastTicket === null ? null : formatTicket(conversation.lastTicket).value;
         await cancelRequest(services, conversacion, ticket);
         return { ...conversacion, handled: true, action: 'cancelar' };
       }

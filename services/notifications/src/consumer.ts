@@ -94,6 +94,12 @@ export const handleDomainEvent = async (
   const payload = readNotification(event);
   if (payload === null) return { status: 'ignorado' };
 
+  // El bot ya respondió al paciente en el mismo turno (ADR 0053): la cancelación hecha
+  // por el paciente llega marcada para que **no** se encole un `cita_cancelada`
+  // duplicado. El bloque `notification` sigue completo para los demás consumidores
+  // (pacientes, pantallas y reportes), que leen el evento entero.
+  if (event.payload['skipNotice'] === true) return { status: 'ignorado' };
+
   // Cancelar sin fecha/hora no tiene sentido avisarlo como reprogramación.
   const status: AppointmentStatus | null =
     typeof event.payload['appointment'] === 'object' &&

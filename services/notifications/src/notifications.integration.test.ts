@@ -69,14 +69,17 @@ const fakeClients = (): InternalClients & {
   requests: RequestSummary[];
   citas: AppointmentSummary[];
   confirmadas: { id: string; channel: string }[];
+  canceladas: { id: string; channel: string }[];
 } => {
   const requests: RequestSummary[] = [];
   const citas: AppointmentSummary[] = [];
   const confirmadas: { id: string; channel: string }[] = [];
+  const canceladas: { id: string; channel: string }[] = [];
   return {
     requests,
     citas,
     confirmadas,
+    canceladas,
     upsertPatient: async (input) => ({
       created: true,
       patient: {
@@ -149,6 +152,18 @@ const fakeClients = (): InternalClients & {
       encontrada.confirmedChannel = input.channel;
       return encontrada;
     },
+    // Cancelación del paciente (ADR 0053): imita la idempotencia de la agenda.
+    cancelAppointment: async (id, input) => {
+      const encontrada = citas.find((cita) => cita.id === id);
+      if (encontrada === undefined) throw new Error('la cita no existe');
+      if (encontrada.status !== 'cancelada') {
+        canceladas.push({ id, channel: input.channel });
+        encontrada.status = 'cancelada';
+        encontrada.cancelledAt = new Date().toISOString();
+        encontrada.cancelledChannel = input.channel;
+      }
+      return encontrada;
+    },
   };
 };
 
@@ -171,6 +186,8 @@ const unaCita = (overrides: Partial<AppointmentSummary> = {}): AppointmentSummar
   callCount: 0,
   confirmedAt: null,
   confirmedChannel: null,
+  cancelledAt: null,
+  cancelledChannel: null,
   dentistId: null,
   chairId: null,
   checkedInAt: null,
@@ -320,6 +337,92 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
   }, 60_000);
+
+  it('el paciente cancela su cita por el botón y escribiendo «cancelar» (ADR 0053)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}X`;
+    await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
+
+    // Dentro de la ventana de citas (hoy + 4 días).
+    const fecha = new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10);
+    const cita = unaCita({ patientId, date: fecha });
+    clients.citas.push(cita);
+
+    // El botón «Cancelar» del aviso llega como acción del canal.
+    const porBoton = await enviar(telegram, { direccion, accion: `cancelar_cita:${cita.id}` });
+    expect(porBoton.action).toBe('cancelar_cita_cancelada');
+    expect(clients.canceladas.at(-1)).toEqual({ id: cita.id, channel: 'telegram' });
+    expect(telegram.sent.at(-1)?.texto).toContain('quedó cancelada');
+
+    // Volver a escribir «cancelar» no es un error: se le recuerda lo que ya hizo.
+    const otraVez = await enviar(telegram, { direccion, texto: 'cancelar' });
+    expect(otraVez.action).toBe('cancelar_cita_ya_estaba');
+    expect(clients.canceladas).toHaveLength(1);
+
+    // Una cita de **otro** paciente no se cancela con su botón: el identificador
+    // viaja por el chat, así que se comprueba que sea suya.
+    const ajena = unaCita({ patientId: globalThis.crypto.randomUUID(), date: fecha });
+    clients.citas.push(ajena);
+    const noEsSuya = await enviar(telegram, {
+      direccion,
+      accion: `cancelar_cita:${ajena.id}`,
+    });
+    expect(noEsSuya.action).toBe('cancelar_cita_no_es_suya');
+    expect(clients.canceladas.some((item) => item.id === ajena.id)).toBe(false);
+
+    // En sala de espera el paciente ya está aquí: por el bot no se cancela.
+    const enSala = unaCita({ patientId, date: fecha, status: 'en_sala_espera' });
+    clients.citas.push(enSala);
+    const noCancelable = await enviar(telegram, {
+      direccion,
+      accion: `cancelar_cita:${enSala.id}`,
+    });
+    expect(noCancelable.action).toBe('cancelar_cita_no_cancelable');
+    expect(telegram.sent.at(-1)?.texto).toContain('No puedo cancelar');
+
+    await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 60_000);
+
+  it('la cancelación del bot no encola un «cita_cancelada» duplicado (ADR 0053)', async () => {
+    // El asistente ya respondió al paciente en el mismo turno; el evento llega marcado
+    // con `skipNotice` para que el consumidor **no** encole un segundo mensaje. El
+    // bloque `notification` viaja intacto (lo leen pacientes, pantallas y reportes).
+    const appointmentId = globalThis.crypto.randomUUID();
+    const event = createDomainEvent({
+      topic: EVENT_TOPICS.appointmentCancelled,
+      aggregateId: appointmentId,
+      producer: 'scheduling',
+      payload: {
+        appointment: { id: appointmentId, date: '2026-12-01', status: 'cancelada' },
+        notification: {
+          appointmentId,
+          patientId: globalThis.crypto.randomUUID(),
+          patientName: `Paciente ${MARK}`,
+          patientPhone: null,
+          ticket: '#000900',
+          date: '2026-12-01',
+          startTime: '09:00',
+          endTime: '09:30',
+          place: 'Consultorio',
+          subject: 'Cita cancelada',
+          body: 'Hola: tu cita quedó cancelada.',
+          channel: 'telegram',
+          templateKey: 'cita_cancelada',
+          icsSequence: 0,
+        },
+        skipNotice: true,
+      },
+    });
+
+    expect((await handleDomainEvent(handle.db, config, event)).status).toBe('ignorado');
+
+    const filas = await handle.db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.appointmentId, appointmentId));
+    expect(filas).toHaveLength(0);
+  }, 30_000);
 
   it('si un servicio interno se cae, el paciente recibe aviso y sigue en su paso', async () => {
     const direccion = `${direccionBase}9`;
@@ -541,6 +644,8 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
       callCount: 0,
       confirmedAt: null,
       confirmedChannel: null,
+      cancelledAt: null,
+      cancelledChannel: null,
       dentistId: null,
       chairId: null,
       checkedInAt: null,
@@ -751,6 +856,8 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
       callCount: 0,
       confirmedAt: null,
       confirmedChannel: null,
+      cancelledAt: null,
+      cancelledChannel: null,
       dentistId: null,
       chairId: null,
       checkedInAt: null,

@@ -752,7 +752,14 @@ export const processQueue = async (
           await adapter.enviar({
             direccion: recipient,
             texto: text,
-            botones: [{ etiqueta: 'Confirmar', accion: `confirmar_cita:${appointment.id}` }],
+            // Dos botones: confirmar o cancelar la cita (ADR 0052/0053). Van en el
+            // **código** y no en la plantilla a propósito: el consultorio puede editar
+            // el texto sin quedarse sin los botones. WhatsApp admite hasta tres, así
+            // que dos caben.
+            botones: [
+              { etiqueta: 'Confirmar', accion: `confirmar_cita:${appointment.id}` },
+              { etiqueta: 'Cancelar', accion: `cancelar_cita:${appointment.id}` },
+            ],
           });
         } else {
           await adapter.enviar({ direccion: recipient, texto: text });
