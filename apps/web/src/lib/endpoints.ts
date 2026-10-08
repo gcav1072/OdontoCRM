@@ -2,6 +2,7 @@ import {
   type AcceptConsentInput,
   type AmendClinicalSessionInput,
   type AnnulPrescriptionInput,
+  type AppointmentNotificationItem,
   type AppointmentStatus,
   type AppointmentSummary,
   type AssignAppointmentInput,
@@ -27,6 +28,7 @@ import {
   type ClinicalSessionDetail,
   type ClinicalSessionList,
   type CloseClinicalSessionInput,
+  type ConfirmAppointmentInput,
   type ConsultationState,
   type CreateAmendmentInput,
   type CreateClinicalSessionInput,
@@ -629,6 +631,13 @@ export const appointmentsApi = {
   cancel: (id: string, input: CancelAppointmentInput): Promise<AppointmentSummary> =>
     api.post<AppointmentSummary>(`/appointments/${id}/cancel`, input),
 
+  /**
+   * Confirmación telefónica (ADR 0052): la secretaría llamó al paciente y deja
+   * constancia. La del bot va por su propio canal, no por aquí.
+   */
+  confirm: (id: string, input: ConfirmAppointmentInput): Promise<AppointmentSummary> =>
+    api.post<AppointmentSummary>(`/appointments/${id}/confirm`, input),
+
   reschedule: (id: string, input: RescheduleAppointmentInput): Promise<AppointmentSummary> =>
     api.post<AppointmentSummary>(`/appointments/${id}/reschedule`, input),
 };
@@ -670,6 +679,21 @@ export interface LinkCodeResponse extends LinkCode {
 }
 
 /**
+ * Filtros de la **sección de citas** de la bandeja (ADR 0052). Son las citas, no
+ * los avisos: por eso hablan de fechas de cita y de si el paciente confirmó.
+ */
+export interface AppointmentsNotificationParams {
+  from?: string;
+  to?: string;
+  status?: AppointmentStatus;
+  /** `true` solo las confirmadas, `false` solo las que no lo están. */
+  confirmed?: boolean;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+/**
  * Bandeja del bot (Fase 4). Ver la bandeja exige `scheduling:read`; reintentar,
  * marcar el contacto, editar plantillas y desvincular exigen
  * `scheduling:notify` (la API lo comprueba igual).
@@ -686,6 +710,19 @@ export const notificationsApi = {
 
   status: (signal?: AbortSignal): Promise<BotStatus> =>
     api.get<BotStatus>('/notifications/status', { signal }),
+
+  /**
+   * **Citas próximas** con su canal, su estado y su último aviso (ADR 0052). El
+   * servicio las compone —agenda + canales + cola— y aquí solo se pintan.
+   */
+  appointments: (
+    params: AppointmentsNotificationParams,
+    signal?: AbortSignal,
+  ): Promise<Paginated<AppointmentNotificationItem>> =>
+    api.get<Paginated<AppointmentNotificationItem>>('/notifications/appointments', {
+      query: { ...params } as QueryParams,
+      signal,
+    }),
 
   retry: (id: string, input: RetryNotificationInput): Promise<NotificationRecord> =>
     api.post<NotificationRecord>(`/notifications/${id}/retry`, input),

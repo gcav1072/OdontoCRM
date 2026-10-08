@@ -114,6 +114,7 @@ export const effectiveRole = (roles: readonly Role[]): Role | null =>
 export type AppointmentAction =
   | 'assign'
   | 'notify'
+  | 'confirm'
   | 'check-in'
   | 'call'
   | 'start'
@@ -129,6 +130,10 @@ export const actionForTransition = (to: AppointmentStatus): AppointmentAction | 
       return 'assign';
     case 'notificada':
       return 'notify';
+    case 'confirmada':
+      // El estado también se mueve por la máquina de estados: la secretaría puede
+      // dejar constancia de la confirmación telefónica (ADR 0052).
+      return 'confirm';
     case 'en_sala_espera':
       return 'check-in';
     case 'llamado':
@@ -151,6 +156,7 @@ export const actionForTransition = (to: AppointmentStatus): AppointmentAction | 
 const ACTION_LABEL_KEYS: Readonly<Record<AppointmentAction, TranslationKey>> = {
   assign: 'programacion.accion.asignar',
   notify: 'programacion.accion.notificar',
+  confirm: 'programacion.accion.confirmar',
   'check-in': 'programacion.accion.checkIn',
   call: 'programacion.accion.llamado',
   start: 'programacion.accion.consulta',
@@ -215,6 +221,9 @@ export const statusBadgeVariant = (
       return 'primary';
     case 'notificada':
       return 'info';
+    case 'confirmada':
+      // Verde suave: el paciente dijo que sí, pero todavía no ha llegado.
+      return 'success';
     case 'en_sala_espera':
     case 'llamado':
     case 'en_consulta':
@@ -235,6 +244,8 @@ export const statusBadgeVariant = (
 const ESTADOS_QUE_OCUPAN: readonly AppointmentStatus[] = [
   'programada',
   'notificada',
+  // Confirmar no libera la franja: la cita sigue en pie (ADR 0052).
+  'confirmada',
   'en_sala_espera',
   'llamado',
   'en_consulta',
@@ -258,6 +269,9 @@ const ajustarContadores = (
       break;
     case 'notificada':
       siguiente.notificadas = Math.max(0, siguiente.notificadas + delta);
+      break;
+    case 'confirmada':
+      siguiente.confirmadas = Math.max(0, siguiente.confirmadas + delta);
       break;
     case 'en_sala_espera':
     case 'llamado':

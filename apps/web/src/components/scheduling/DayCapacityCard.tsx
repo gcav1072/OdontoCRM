@@ -119,9 +119,10 @@ export const DayCapacityCard = ({ day, canWrite, onEdit }: DayCapacityCardProps)
           </Alert>
         )}
 
-        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
           <Contador etiqueta={t('programacion.contador.programadas')} valor={counts.programadas} />
           <Contador etiqueta={t('programacion.contador.notificadas')} valor={counts.notificadas} />
+          <Contador etiqueta={t('programacion.contador.confirmadas')} valor={counts.confirmadas} />
           <Contador etiqueta={t('programacion.contador.enSala')} valor={counts.enSala} />
           <Contador etiqueta={t('programacion.contador.atendidas')} valor={counts.atendidas} />
           <Contador etiqueta={t('programacion.contador.noAsistio')} valor={counts.noAsistio} />

@@ -391,6 +391,14 @@ export const summaryKpis = (summary: ReportSummary): ReportKpi[] => [
     tone: 'neutral',
   },
   {
+    // De las avisadas, cuántas confirmaron: es lo que dice si el recordatorio sirve.
+    label: t('reportes.resumen.confirmadas'),
+    value: summary.appointments.confirmed,
+    unit: null,
+    hint: null,
+    tone: tonoDeCero(summary.appointments.confirmed, 'good'),
+  },
+  {
     label: t('reportes.resumen.atendidas'),
     value: summary.appointments.attended,
     unit: null,

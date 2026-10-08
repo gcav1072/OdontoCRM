@@ -1,4 +1,5 @@
 import { REPORT_KEYS, type ReportSeries, type ReportSeriesKind } from '@odontocrm/contracts';
+import type { ReportSummary } from '@odontocrm/contracts';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -11,10 +12,12 @@ import {
   kpiToneClass,
   reportRangeLabel,
   seriesToChartData,
+  summaryKpis,
   toQueryParams,
   visibleReportKeys,
   type ReportFiltersState,
 } from './reports';
+import { t } from './i18n';
 
 /**
  * Pruebas de la lógica pura del módulo de reportes (entorno node, sin DOM).
@@ -38,6 +41,39 @@ const serie = (parcial: Partial<ReportSeries> = {}): ReportSeries => ({
   yLabel: 'Citas',
   points: [],
   ...parcial,
+});
+
+describe('el resumen del día lee las confirmadas (ADR 0052)', () => {
+  it('pinta la cifra de confirmadas que trae el reporte', () => {
+    const resumen: ReportSummary = {
+      date: '2026-10-07',
+      generatedAt: '2026-10-07T12:00:00.000Z',
+      appointments: {
+        scheduled: 10,
+        confirmed: 4,
+        attended: 3,
+        noShow: 1,
+        pending: 6,
+        cancelled: 0,
+      },
+      capacity: { capacity: 16, assigned: 10, freeSlots: 6 },
+      patients: { active: 20, waiting: 2, newThisMonth: 5 },
+      notifications: { sent: 8, failed: 0 },
+      refreshedAt: null,
+    };
+
+    const kpi = summaryKpis(resumen).find(
+      (item) => item.label === t('reportes.resumen.confirmadas'),
+    );
+    expect(kpi?.value).toBe(4);
+
+    // El tono acompaña: sin confirmaciones no se pinta en verde.
+    const sinConfirmar = summaryKpis({
+      ...resumen,
+      appointments: { ...resumen.appointments, confirmed: 0 },
+    }).find((item) => item.label === t('reportes.resumen.confirmadas'));
+    expect(sinConfirmar?.tone).toBe('neutral');
+  });
 });
 
 describe('los filtros por defecto son la ventana de 30 días del contrato', () => {

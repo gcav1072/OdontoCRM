@@ -32,6 +32,9 @@ const AGENDA = [
   schedulingKeys.appointmentsRoot,
   schedulingKeys.historyRoot,
   schedulingKeys.requestsRoot,
+  // La sección de citas de la bandeja vive de la agenda (ADR 0052): confirmar una
+  // cita tiene que refrescarla sin esperar a que el usuario recargue.
+  notificationKeys.appointmentsRoot,
 ] as const;
 
 /** Historia clínica, odontograma y —lo que se ve en la caja— el borrador que nace. */

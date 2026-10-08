@@ -1,6 +1,6 @@
 import { renderMessage, type NotificationRecord } from '@odontocrm/contracts';
 
-import type { NotificationsListParams } from './endpoints';
+import type { AppointmentsNotificationParams, NotificationsListParams } from './endpoints';
 
 /**
  * Piezas puras de la bandeja de notificaciones (Fase 4): claves de consulta,
@@ -20,6 +20,10 @@ export const notificationKeys = {
   listRoot: ['notificaciones', 'bandeja'] as const,
   /** Estado del bot: modo, contadores y conversaciones activas. */
   status: ['notificaciones', 'bot'] as const,
+  /** Citas próximas de la sección de citas (ADR 0052), con sus filtros y su página. */
+  appointments: (filters: AppointmentsNotificationParams) =>
+    ['notificaciones', 'citas', filters] as const,
+  appointmentsRoot: ['notificaciones', 'citas'] as const,
   /** Plantillas de mensaje editables. */
   templates: ['notificaciones', 'plantillas'] as const,
   /** Canales vinculados (todos, o los de un paciente). */

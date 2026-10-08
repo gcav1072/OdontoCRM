@@ -43,6 +43,8 @@ const cita = (cambios: Partial<AppointmentSummary> = {}): AppointmentSummary => 
   slotKind: 'franja',
   status: 'programada',
   callCount: 0,
+  confirmedAt: null,
+  confirmedChannel: null,
   dentistId: null,
   chairId: null,
   checkedInAt: null,

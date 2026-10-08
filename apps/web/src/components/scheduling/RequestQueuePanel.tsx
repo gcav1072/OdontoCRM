@@ -1,9 +1,10 @@
 import {
-  APPOINTMENT_STATUSES,
   CHANNELS,
+  REQUEST_STATUSES,
   formatTime12h,
   type AppointmentStatus,
   type Channel,
+  type RequestStatus,
   type RequestSummary,
 } from '@odontocrm/contracts';
 import {
@@ -66,7 +67,7 @@ export const RequestQueuePanel = ({
   onCancel,
   onNew,
 }: RequestQueuePanelProps) => {
-  const [estado, setEstado] = useState<'' | AppointmentStatus>('');
+  const [estado, setEstado] = useState<'' | RequestStatus>('');
   const [canal, setCanal] = useState<'' | Channel>('');
   const [soloEspera, setSoloEspera] = useState(false);
   const [busqueda, setBusqueda] = useState('');
@@ -144,10 +145,12 @@ export const RequestQueuePanel = ({
           <Field label={t('programacion.cola.filtro.estado')}>
             <Select
               value={estado}
-              onChange={(event) => setEstado(event.target.value as '' | AppointmentStatus)}
+              onChange={(event) => setEstado(event.target.value as '' | RequestStatus)}
             >
               <option value="">{t('programacion.cola.filtro.todos')}</option>
-              {APPOINTMENT_STATUSES.map((valor) => (
+              {/* Estados de **solicitud**: la lista no incluye «confirmada», que es un
+                  estado de una cita ya agendada (ADR 0052). */}
+              {REQUEST_STATUSES.map((valor) => (
                 <option key={valor} value={valor}>
                   {APPOINTMENT_STATUS_LABELS[valor]}
                 </option>

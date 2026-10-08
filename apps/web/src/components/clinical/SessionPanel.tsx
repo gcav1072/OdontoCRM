@@ -21,6 +21,7 @@ import {
 } from '@odontocrm/ui';
 import {
   CalendarCheck,
+  CalendarPlus,
   ClipboardList,
   PlayCircle,
   ShieldCheck,
@@ -43,6 +44,7 @@ import { t } from '../../lib/i18n';
 import { NoticeBanner } from '../NoticeBanner';
 import { AmendSessionDialog } from './AmendSessionDialog';
 import { CloseSessionDialog } from './CloseSessionDialog';
+import { ScheduleNextAppointmentDialog } from './ScheduleNextAppointmentDialog';
 import { PrescriptionCard } from './PrescriptionCard';
 import { PrescriptionDialog } from './PrescriptionDialog';
 import { SessionAttachments } from './SessionAttachments';
@@ -165,7 +167,7 @@ export const SessionPanel = ({
   const [citaElegida, setCitaElegida] = useState<string>('');
   const [guardado, setGuardado] = useState<SessionSaveState>('limpio');
   const [horaGuardado, setHoraGuardado] = useState<string | null>(null);
-  const [dialogo, setDialogo] = useState<'cerrar' | 'corregir' | 'recipe' | null>(null);
+  const [dialogo, setDialogo] = useState<'cerrar' | 'corregir' | 'recipe' | 'agendar' | null>(null);
   const [aCorregir, setACorregir] = useState<ClinicalSessionSummary | null>(null);
   /** Sesión cerrada que se está **leyendo** (no se edita: se corrige con una enmendada). */
   const [viendo, setViendo] = useState<ClinicalSessionSummary | null>(null);
@@ -670,6 +672,32 @@ export const SessionPanel = ({
             }}
           />
 
+          {/*
+            La «próxima cita sugerida» es solo una nota hasta que se crea de verdad
+            (ADR 0052). El aviso aparece cuando hay fecha y todavía no hay cita
+            enlazada; si el doctor no quiere crearla, la nota se queda como está.
+          */}
+          {canWrite &&
+            !sesionCerrada &&
+            contenido.proximaCitaAppointmentId === null &&
+            contenido.proximaCitaFecha !== null && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-muted px-3 py-2">
+                <p className="text-sm text-ink-muted">{t('clinica.sesion.agendar.texto')}</p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  leadingIcon={<CalendarPlus className="size-4" aria-hidden="true" />}
+                  onClick={() => setDialogo('agendar')}
+                >
+                  {t('clinica.sesion.agendar.crear')}
+                </Button>
+              </div>
+            )}
+
+          {contenido.proximaCitaAppointmentId !== null && (
+            <p className="text-xs text-ink-subtle">{t('clinica.sesion.agendar.yaCreada')}</p>
+          )}
+
           {detalle !== undefined && detalle.procedureCount > 0 && (
             <p className="text-xs text-ink-subtle">
               {t('clinica.sesion.resumen')}:{' '}
@@ -730,6 +758,25 @@ export const SessionPanel = ({
         onClose={() => setDialogo(null)}
         onConfirm={(values) => enmendar.mutate(values)}
       />
+
+      {/* Cuadro de la próxima cita: crea la cita real con lo que ya escribió el doctor. */}
+      {dialogo === 'agendar' && contenido.proximaCitaFecha !== null && (
+        <ScheduleNextAppointmentDialog
+          patientId={patientId}
+          patientName={patientName}
+          fechaSugerida={contenido.proximaCitaFecha}
+          notaSugerida={contenido.proximaCitaNota}
+          onClose={() => setDialogo(null)}
+          onCreated={(appointmentId, fecha, hora) => {
+            setDialogo(null);
+            // El enlace queda en el **borrador** de la sesión y se autoguarda: por eso
+            // el aviso se ofrece mientras la sesión está abierta y no después de cerrar.
+            setContenido((actual) => ({ ...actual, proximaCitaAppointmentId: appointmentId }));
+            setGuardado('pendiente');
+            exito(t('clinica.sesion.agendar.ok', { fecha, hora }));
+          }}
+        />
+      )}
 
       {sesionVisibleId !== null && (
         <PrescriptionDialog

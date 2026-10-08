@@ -15,6 +15,7 @@ import {
 } from '../components/notifications/NotificationsTable';
 import { PatientChannelCard } from '../components/notifications/PatientChannelCard';
 import { RetryNotificationDialog } from '../components/notifications/RetryNotificationDialog';
+import { UpcomingAppointmentsCard } from '../components/notifications/UpcomingAppointmentsCard';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useNotice } from '../hooks/useNotice';
 import { notificationsApi } from '../lib/endpoints';
@@ -34,6 +35,7 @@ const FILTROS_INICIALES: NotificationFiltersState = {
  *
  * - Cabecera de estado con el modo (`real` o `simulado`), la conexión, las
  *   actualizaciones pendientes y los contadores. Se refresca sola cada 15 s.
+ * - **Citas próximas** (ADR 0052): avisarlas y ver quién confirmó.
  * - Bandeja de envíos con filtros, paginación y, por fila, reintento, contacto
  *   manual y detalle del mensaje.
  * - Conversaciones activas del asistente (informativas).
@@ -116,6 +118,12 @@ export const NotificationsPage = () => {
         conversations={estadoQuery.data?.conversations}
         isPending={estadoQuery.isPending}
         error={estadoQuery.error}
+      />
+
+      {/* Citas próximas (ADR 0052): el aviso y su confirmación, cita a cita. */}
+      <UpcomingAppointmentsCard
+        canNotify={puedeNotificar}
+        onNotice={(variant, message) => mostrar({ variant, message })}
       />
 
       <NotificationsTable
