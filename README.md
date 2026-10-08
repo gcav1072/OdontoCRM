@@ -5,13 +5,18 @@ odontograma, récipes, reportes y auditoría — construido como **microservicio
 TypeScript** sobre **PostgreSQL**, pensado para correr en la red local de la clínica y,
 más adelante, fuera de ella por VPN.
 
-> **Estado: Fase 10 completada — el sistema está listo para la clínica** (tag `fase-10`,
-> 2026-10-04). Las diez fases del plan están implementadas y validadas: identidad y sesiones,
-> pacientes, agenda, bot de Telegram, secretaría y pantallas kiosko, historia clínica,
-> odontograma FDI, sesiones y récipes A5 con QR, reportes y auditoría, y —en esta última— el
+> **Estado: Fases 10 y 11 completadas, con las mejoras de resiliencia ya dentro — el sistema
+> está listo para la clínica.** Las diez fases del plan están implementadas y validadas:
+> identidad y sesiones, pacientes, agenda, bot de Telegram, secretaría y pantallas kiosko,
+> historia clínica, odontograma FDI, sesiones y récipes A5 con QR, reportes y auditoría, con el
 > **modo test**, el **seed determinista**, la **observabilidad** (`npm run estado`) y el
-> **despliegue Fedora probado de punta a punta** (systemd, TLS interno, firewall, SELinux,
-> respaldo diario con restauración verificada y prueba de reinicio).
+> **despliegue probado de punta a punta** en Fedora (systemd) y Windows (PM2). La **Fase 11**
+> añadió la **facturación y los pagos** (`services/billing`), y después entraron las mejoras del
+> plan post-Fase 11: los eventos que agotan sus reintentos ya no se pierden en silencio, el
+> personal y las pantallas se enteran de los cambios por un **canal en vivo**, el respaldo se
+> **prueba solo** cada semana y los expedientes van **cifrados en reposo**. El aviso de la cita,
+> además, ahora se **responde**: el paciente confirma por Telegram o WhatsApp y la «próxima
+> cita» del cierre de la sesión se puede crear de verdad en la agenda ([ADR 0052](docs/adr/0052-confirmacion-de-citas-por-el-paciente.md)).
 >
 > **Por dónde empezar según quién seas:**
 >
@@ -22,8 +27,9 @@ más adelante, fuera de ella por VPN.
 > | **Usar el consultorio** (sin terminal) | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) |
 > | **Conectar tablets, móviles y TVs** | [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) |
 > | **Desarrollar** | este README y [`docs/COMANDOS.md`](docs/COMANDOS.md) |
-> | **Entender las decisiones** | [`docs/adr/`](docs/adr/README.md) (50 ADRs) y [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md) |
+> | **Entender las decisiones** | [`docs/adr/`](docs/adr/README.md) (52 ADRs) y [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md) |
 > | **Ver qué se probó y con qué evidencia** | [`infra/fedora/INSTALL.md` §20](infra/fedora/INSTALL.md) y [`docs/REVISION_SEGURIDAD_FASE_10.md`](docs/REVISION_SEGURIDAD_FASE_10.md) |
+> | **Avisar y confirmar citas** | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) §8 y [ADR 0052](docs/adr/0052-confirmacion-de-citas-por-el-paciente.md) |
 
 ---
 

@@ -272,6 +272,42 @@ quedó **pendiente de aviso manual** (pacientes que no usan el bot).
 - El estado del bot está arriba: si dice **«Modo simulado»**, los mensajes **no están
   saliendo** — avisa a quien administra el sistema.
 
+### 8.1 El paciente confirma su cita
+
+El mensaje del aviso lleva un botón **«Confirmar»**, y el propio texto invita a
+responder «confirmar». Da igual cómo lo haga:
+
+- si el paciente **pulsa el botón** o **escribe** «confirmar» (también «confirmo» o
+  «asistiré»), su cita pasa a **Confirmada** y queda anotado **cuándo y por dónde**;
+- si tiene **varias citas próximas**, el bot le pregunta cuál;
+- si responde dos veces, no pasa nada: se le recuerda lo que ya dijo.
+
+**La cita no viaja sola por confirmar.** Aunque el paciente no haya respondido, si llega
+se registra su llegada como siempre: «Confirmada» es un dato más, no un requisito.
+
+### 8.2 La sección «Citas próximas»
+
+Arriba de la bandeja está la sección **Citas próximas**: las citas de los próximos días
+con el canal por el que se le puede escribir a cada paciente (o «sin canal vinculado», que
+es cuando toca llamar por teléfono), su estado y si ya confirmó.
+
+- Se puede filtrar por **rango de fechas**, **estado** y **confirmadas / sin confirmar**
+  (este último es el filtro útil del día antes: a quién hay que llamar).
+- El botón **«Notificar»** de cada fila manda el aviso de **esa** cita, con la vista
+  previa del mensaje: es el mismo aviso del lote, pero de una sola.
+- El botón **«Confirmar (llamada)»** deja constancia de que usted llamó al paciente y
+  dijo que sí. Queda registrado con su nombre y el motivo.
+
+### 8.3 Agendar la próxima cita desde el consultorio
+
+Cuando el odontólogo escribe la **próxima cita sugerida** en una sesión, le aparece un
+aviso para **crearla de verdad en la agenda**: se elige la hora (la fecha ya viene puesta,
+porque la escribió él) y la cita queda como cualquier otra — se avisa, se le manda el
+archivo del calendario y el paciente puede confirmarla.
+
+Si prefiere no crearla, se cierra el aviso y **la nota se queda como estaba**, dentro de
+la sesión: no se crea nada solo.
+
 ---
 
 ## 9. Reportes y auditoría

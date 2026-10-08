@@ -1,11 +1,20 @@
 Fecha: 7 de octubre de 2026
 # Plan de Mejoras Arquitectónicas, Operativas y de Resiliencia: OdontoCRM
 
-Este documento detalla técnica y operativamente las cinco áreas de mejora identificadas para el ecosistema OdontoCRM tras la consolidación de la Fase 10 y la construcción de la Fase 11 (`billing`). El objetivo es maximizar la resiliencia en entornos locales con infraestructura inestable, facilitar auditorías técnicas y acelerar la viabilidad comercial del producto.
+Este documento detalla técnica y operativamente las **seis** áreas de mejora identificadas para el ecosistema OdontoCRM tras la consolidación de la Fase 10 y la construcción de la Fase 11 (`billing`). El objetivo es maximizar la resiliencia en entornos locales con infraestructura inestable, facilitar auditorías técnicas y acelerar la viabilidad comercial del producto.
+
+Cada sección lleva ahora su **estado**: cinco están implementadas y verificadas (el detalle, con lo
+que se probó, está en el [`CHANGELOG.md`](../CHANGELOG.md)) y la del despliegue en contenedores
+sigue pendiente, que es como se decidió dejarla.
 
 ---
 
 ## 1. Observabilidad Unificada y Monitoreo de Eventos
+
+> **Estado: implementado** (2026-10-07). Detalle y verificación en el [`CHANGELOG.md`](../CHANGELOG.md),
+> entrada [Observabilidad]. Queda pendiente solo lo que el propio documento deja abierto: el
+> `dead_letter_events` no se purga por antigüedad (crece sin límite) y el bot de administración
+> es opcional, así que sin token los avisos viven solo en el registro.
 
 ### Diagnóstico Actual
 
@@ -67,6 +76,10 @@ Todas estas mejoras de healtcheck solo las puede ver el rol `admin`
 
 ## 2. Bus de Sincronización en Tiempo Real para la Interfaz (Extensión SSE)
 
+> **Estado: implementado** (2026-10-07). Entrada [Tiempo real] del [`CHANGELOG.md`](../CHANGELOG.md):
+> el reparto del kiosko pasó a ser por **canales** (`lobby`, `consultorio`, `staff`) y
+> `RealtimeSyncProvider` traduce cada aviso en las consultas que quedaron viejas.
+
 ### Diagnóstico Actual
 
 Actualmente, las interfaces de secretaría (`/flujo`), consultorio (`/consultorio`) y pantallas de sala operan de manera desacoplada. Mientras que las pantallas de sala aprovechan Server-Sent Events (SSE) a través de `services/screens`, la actualización del flujo entre la recepción y el sillón dental depende de recargas manuales o de la revalidación reactiva al cerrar modales locales en TanStack Query.
@@ -125,6 +138,11 @@ En `apps/web/src/providers/`, implementar un hook global `useRealtimeSync()` con
 
 ## 3. Estrategia de Despliegue Híbrida: Nativo vs. Docker Compose (Baja Prioridad por los momentos; pero tenerlo en cuenta para un aposible implementación futura.)
 
+> **Estado: pendiente** y sin fecha. Es la única de las mejoras que no se ha hecho, y a propósito:
+> los dos destinos nativos (Fedora con systemd y Windows con PM2) están probados de punta a punta
+> y el Docker solo aporta para demostraciones y VPS. Se queda como está escrito, para retomarlo
+> cuando haya una demo comercial que lo pida.
+
 ### Diagnóstico Actual
 
 El proyecto cuenta con un despliegue nativo muy optimizado para hardware de bajos recursos mediante scripts en Fedora (`systemd`, Nginx, PostgreSQL local). Sin embargo, la fricción para levantar un entorno de demostración rápido o desplegar en un servidor de pruebas en la nube (VPS) es alta debido a las dependencias manuales del sistema operativo.
@@ -166,6 +184,10 @@ Crear un archivo en la raíz que agrupe:
 
 ## 4. Auditoría Criptográfica y Procedimientos de Recuperación de Desastres (DR)
 
+> **Estado: implementado** (2026-10-07). Entrada [Recuperación] del [`CHANGELOG.md`](../CHANGELOG.md):
+> `npm run verify:backup` (simulacro semanal) y el cifrado en reposo `AES-256-GCM` del almacén
+> (`STORAGE_ENCRYPTION_KEY`, `npm run recifrar:almacen`).
+
 ### Diagnóstico Actual
 
 Existen herramientas de respaldo (`backup/odontocrm-backup.sh` y `odontocrm-restore.sh`), pero no existe un mecanismo programático que compruebe periódicamente si los archivos `.dump` son íntegros y restaurables. Asimismo, los archivos clínicos (radiografías, recetas generadas) residen como archivos sin cifrar en el disco del servidor (`packages/storage`).
@@ -205,6 +227,10 @@ En `packages/storage/src/blob-store.ts`:
 ---
 
 ## 5. Consolidación del Expediente Clínico Digital (Dossier Médico Unificado)
+
+> **Estado: implementado** (2026-10-07). Entrada [Expediente] del [`CHANGELOG.md`](../CHANGELOG.md):
+> `GET /api/v1/clinical/patients/:id/dossier` reúne ficha, odontograma, evolución y récipes en
+> **un solo PDF** con QR de verificación.
 
 ### Diagnóstico Actual
 
@@ -257,11 +283,22 @@ Crear en `services/clinical` la ruta interna y pública para generar el expedien
 
 ## 6. Crear, si es posible, un archivo CSS maestro para la identidad de Marca.
 
+> **Estado: implementado.** La paleta y las tipografías viven en
+> [`packages/contracts/src/brand.ts`](../packages/contracts/src/brand.ts) —la **única** fuente—,
+> que genera las variables CSS de `packages/ui/src/styles/marca.css`; los tokens de la interfaz
+> están en `tokens.css`. Cambiar el color de los títulos ahí lo mueve en pantalla y en los
+> imprimibles (odontograma, historia, facturas y récipes). Queda pendiente solo el SVG del logo
+> definitivo: hoy `logoMimeType` acepta el que se ponga.
+
 - De modo que podamos colocar paleta de colores, fuentes título y cuerpo de la UI / título cuerpo de los Reportes: Odontograma, Historia médica, Facturas / título cuerpo de los récipes. Rutas para colocar SVG del logo para usarlo de múltipes formas; membrete, watermark en los imprimibles.
 - De momento, coloquemos en la paleta de colores y las fuentes las que ya estamos usando. Yo estoy haciendo un SVG para que funcione de logo genérico paras las pruebas de momento.
 ---
 
 ## Plan de Ejecución Sugerido
+
+> **Histórico.** Este orden se propuso cuando el documento se escribió. A 2026-10-07: las mejoras
+> 1, 2, 4, 5 y 6 están **hechas** (y probadas: ver el [`CHANGELOG.md`](../CHANGELOG.md)), y la 3
+> —el `docker-compose` para demos— sigue en la lista de largo plazo.
 
 1. **Inmediato:** Fases 1, 2, 4 (Mantenimiento) 5 y 6.
 

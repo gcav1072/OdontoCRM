@@ -4,6 +4,45 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Confirmación] — El aviso de la cita ahora se responde · 2026-10-07
+
+El aviso existía desde la Fase 4, pero era de una sola dirección: el paciente sabía cuándo
+venir y el consultorio no sabía si vendría. Peor: `notificada` se rotulaba «CONFIRMADA Y
+AVISADA», y lo único que había pasado era que el mensaje salió. Y la «próxima cita» que el
+odontólogo escribía al cerrar una sesión —lo más útil del cierre— **no llegaba a la agenda**:
+quedaba como texto dentro del documento clínico, sin franja, sin aviso y sin confirmación.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| Estado `confirmada` | Nuevo estado en `APPOINTMENT_STATUSES`, entre `notificada` y `en_sala_espera`: `notificada` pasa a ser «se le avisó» y `confirmada`, «respondió que sí» (ADR 0052) |
+| Se confirma por el bot | Botón «Confirmar» en el aviso **y** la palabra («confirmo», «asistiré»…): intención y comando nuevos en el catálogo del bot |
+| El aviso, en dos mensajes | El texto con el botón y después el `.ics` con un pie corto: el adaptador de Telegram descarta los botones cuando el mensaje lleva documento |
+| `confirmed_at` · `confirmed_channel` | Cuándo y **por dónde** confirmó, más la fila en `status_history`: el hecho no se borra cuando la cita avanza |
+| `POST /api/v1/appointments/:id/confirm` | La confirmación telefónica de la secretaría: mismo camino, actor con roles y, por tanto, máquina de estados |
+| `POST /internal/v1/appointments/:id/confirm` | El bot confirma con un actor **sin roles**: es la única escritura de la agenda que no pide un usuario |
+| Sección «Citas próximas» | En `/notificaciones`: rango de fechas, estado, confirmadas sí/no y búsqueda, con el canal (tlg/wa) y el último aviso de cada cita |
+| `GET /api/v1/notifications/appointments` | Se compone en el servicio —agenda + canales + avisos— y no en la pantalla: serían tres consultas con tres paginaciones |
+| «¿Agendo la próxima cita?» | El cuadro que convierte la nota de la sesión en una **cita real** con su fecha; si el doctor no quiere, la nota se queda como estaba |
+| `proximaCitaAppointmentId` | El enlace a esa cita, dentro del borrador de la sesión (cerrar es inmutable) |
+| Embudo y tablero | Etapa «confirmadas» en el reporte —columna, serie, CSV y KPI sobre las avisadas— y la cifra en el resumen de `/inicio` |
+
+**Un estado nuevo toca dos sitios de la base, no uno.** El `CHECK` de `chk_appointments_status`
+y el **índice único parcial** `uq_appointments_slot`, que es lo que impide citar a dos pacientes
+a la misma hora: si el índice no incluyera `confirmada`, una cita confirmada dejaría de bloquear
+su franja y el hueco se podría reasignar. La migración lo hace y una prueba de integración lo
+comprueba confirmando una cita y volviendo a intentar ocupar la misma hora.
+
+Confirmar **no** es requisito para llegar: `notificada → en_sala_espera` sigue permitido, porque
+en un consultorio lo normal es que el paciente aparezca sin haber respondido; y desde
+`programada` también se confirma, que es el caso «la llamé yo» de la secretaría. La confirmación
+es **idempotente** —el paciente que pulsa dos veces no mueve la fecha ni ensucia el historial— y
+el asistente comprueba que la cita sea **suya** antes de confirmarla, porque el identificador
+viaja por el chat. Las solicitudes se quedan sin el estado nuevo (`REQUEST_STATUSES`): una
+solicitud no tiene fecha, así que no hay nada que confirmar.
+
+De paso, dos vistas materializadas de reportes se rehacen para aprender el estado nuevo, y
+`reports/capacity.ts` lo cuenta como franja ocupada.
+
 ## [Recuperación] — El respaldo se prueba solo y los expedientes van cifrados · 2026-10-07
 
 Dos huecos que solo se notan el día que se notan. Un respaldo que nunca se ha restaurado es una

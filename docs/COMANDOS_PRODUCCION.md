@@ -47,8 +47,8 @@ inventarse problemas.
 sudo odontocrm estado
 ```
 
-Una pantalla con: los 9 servicios (`/health` y `/ready`), las 9 unidades de systemd
-(activas y sirviendo **su** puerto), las 9 bases con su tamaño, la cola de eventos, los
+Una pantalla con: los 9 servicios (`/health` y `/ready`), las 10 unidades de systemd
+(activas y sirviendo **su** puerto —los 9 servicios y el gateway—), las 9 bases con su tamaño, la cola de eventos, los
 eventos sin publicar, los envíos y los reportes. Al final, **«nada que reportar»** es lo
 que quieres ver.
 
@@ -263,7 +263,7 @@ de trabajo** —la que estás mirando— y se puede forzar con `--rama=<nombre>`
 ## 4. Respaldos y restauración
 
 ```bash
-sudo odontocrm respaldar                  # ahora mismo: 8 bases + /etc/odontocrm
+sudo odontocrm respaldar                  # ahora mismo: todas las bases + /etc/odontocrm
 ls -lh /var/backups/odontocrm/$(date +%Y-%m-%d)/
 cat /var/backups/odontocrm/$(date +%Y-%m-%d)/manifest.txt
 ```

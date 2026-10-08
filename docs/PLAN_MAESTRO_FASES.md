@@ -3,6 +3,14 @@
 > **Estado:** propuesta para aprobación · **Fecha:** 2026-10-02 · **Zona horaria:** America/Caracas (UTC-4, sin DST)
 > **Docs fuente:** [`formato_historia.md`](formato_historia.md) · [`implementation_plan_odontogram_microservice.md`](implementation_plan_odontogram_microservice.md)
 > **Regla de oro:** una fase = una sesión agéntica = commits atómicos al cierre + tag. No se avanza de fase sin cumplir sus criterios de aceptación.
+>
+> **Estado (2026-10-07):** las fases 0–10 están cerradas y la **Fase 11** (facturación y pagos,
+> `services/billing`) también, con las mejoras del [`mejoras_resiliencia_postfase11.md`](mejoras_resiliencia_postfase11.md)
+> ya implementadas (observabilidad y cola de descarte, canal en vivo del personal, simulacro de
+> respaldo y cifrado en reposo) y la **confirmación de citas por el paciente**
+> ([ADR 0052](adr/0052-confirmacion-de-citas-por-el-paciente.md)). Este documento sigue siendo el
+> plan aprobado de las fases 0–10; lo que llegó después se cuenta en el [`CHANGELOG.md`](../CHANGELOG.md)
+> y en las ADR.
 
 ---
 
@@ -36,13 +44,13 @@ Todas fueron confirmadas contigo en la sesión de planificación del 2026-10-02.
 | 1 | Infraestructura | **Nativo, sin Docker.** Windows = desarrollo/pruebas. **Fedora = producción** (documentación + scripts de instalación incluidos en la Fase 10). |
 | 2 | Base de datos | **PostgreSQL 18** (ya instalado y corriendo en la máquina de desarrollo), **una base de datos por servicio** en la misma instancia, con usuario/rol propio por servicio. |
 | 3 | Mensajería | **Transactional outbox + `pg-boss` sobre PostgreSQL**. Cero infraestructura extra; la interfaz `EventBus` permite migrar a RabbitMQ sin tocar dominios. |
-| 4 | Granularidad | **9 servicios** (ver §2.2). |
+| 4 | Granularidad | **9 servicios** + el gateway (ver §2.2). |
 | 5 | Autenticación | **JWT de acceso (15 min, EdDSA) + refresh rotativo en cookie `httpOnly`**; RBAC por módulo; **pantallas con token de dispositivo** (rol `pantalla`), no con usuario. |
 | 6 | Personal | **Un odontólogo y un sillón.** Roles: `admin`, `secretario`, `odontologo` (+ rol técnico `pantalla`). El modelo guarda `dentist_id`/`chair_id` con un único registro por defecto para no migrar después. |
 | 7 | Identificación | **V, E y P** + **menores sin cédula** con marcador temporal `SC-<código>`. Normalización a `V-12345678`; único por `(tipo, número)`. |
 | 8 | Telegram | **Un único bot para siempre** (BotFather), **long polling** (funciona 100 % en LAN, sin exponer nada a internet), asistente paso a paso, **vinculación por deep link** `t.me/<bot>?start=<ticket>` y estado `notificación manual pendiente` si el paciente no tiene Telegram. |
 | 9 | Programación | **Cupo diario editable** + **plantilla de franjas horarias** (duración, pausas) + **edición manual de la hora** por paciente. |
-| 10 | Confirmaciones | Asignar deja la cita en `PROGRAMADA` y el aviso sale **solo** al formalizarla; el botón **«Notificar»** de la jornada **asegura** el aviso del lote (no repite el que ya salió, recupera el que quedó pendiente o fallido) y la casilla «reenviar también los ya notificados» **sí** vuelve a enviar. |
+| 10 | Confirmaciones | Asignar deja la cita en `PROGRAMADA` y el aviso sale **solo** al formalizarla; el botón **«Notificar»** de la jornada **asegura** el aviso del lote (no repite el que ya salió, recupera el que quedó pendiente o fallido) y la casilla «reenviar también los ya notificados» **sí** vuelve a enviar. El paciente puede **confirmar** su asistencia desde el aviso —botón o palabra— y la cita pasa a `CONFIRMADA` ([ADR 0052](adr/0052-confirmacion-de-citas-por-el-paciente.md)). |
 | 11 | Ticket | `#000123` con **secuencia global de PostgreSQL**; al superar 999999 salta a `A-000001` (y luego `B-…`). |
 | 12 | Estados | Máquina de estados de §5 **aprobada**. |
 | 13 | Frontend | **Vite + React + TS + Tailwind + shadcn/ui + TanStack Query/Table + React Hook Form + Zod**. |
@@ -99,21 +107,28 @@ Todas fueron confirmadas contigo en la sesión de planificación del 2026-10-02.
 
 **Regla de consistencia:** cada servicio es dueño exclusivo de su BD. Ningún servicio lee tablas de otro: se comunica por **REST interno** (lecturas/escrituras puntuales) o por **eventos** (propagación, read models, auditoría, KPIs).
 
-### 2.2 Los 9 servicios
+### 2.2 Los servicios
+
+> **Cómo leer esta tabla.** La primera columna numera los **procesos**, y ahí entra el gateway
+> aunque no sea un servicio de dominio ni tenga base propia. Con la Fase 11 son **9 servicios**
+> (los que figuran como `services/*`) **más el gateway: 10 unidades** —y 9 bases de servicio más
+> `odonto_events`—. La fuente única de la lista es [`tools/lib/servicios.mjs`](../tools/lib/servicios.mjs),
+> que **descubre** los servicios del repositorio en vez de tenerlos copiados a mano.
 
 | # | Servicio | Responsabilidad | BD | Puerto dev |
 | :-: | :--- | :--- | :--- | :-: |
 | 1 | `apps/gateway` | Punto único de entrada, proxy por recurso, verificación de JWT/token de dispositivo, rate limit, CORS, correlación de peticiones. | — | 8090 |
 | 2 | `services/identity` | Usuarios, roles/permisos, login, refresh rotativo, cambio/restablecimiento de contraseña, bloqueo por intentos, **auditoría** (eventos + consulta con diff). | `odonto_identity` | 4001 |
 | 3 | `services/patients` | Paciente único (cédula V/E/P/SC), datos de contacto, representante de menores, estado (`en_espera_cita`, `activo`, `inactivo`), búsqueda/duplicados, **almacenamiento de archivos** (abstracción S3-ready sobre disco). | `odonto_patients` | 4002 |
-| 4 | `services/scheduling` | Solicitudes (**ticket**), cola «en espera de cita», cupo diario editable, plantilla de franjas, asignación/reprogramación/cancelación, estados de la cita, inasistencias. | `odonto_scheduling` | 4003 |
+| 4 | `services/scheduling` | Solicitudes (**ticket**), cola «en espera de cita», cupo diario editable, plantilla de franjas, asignación/reprogramación/cancelación, estados de la cita (incluida la **confirmación del paciente**, ADR 0052), inasistencias. | `odonto_scheduling` | 4003 |
 | 5 | `services/notifications` | Bot de Telegram (long polling), asistente validado, plantillas, cola de envíos con reintentos e idempotencia, vinculación chat↔paciente por deep link, **generación de `.ics`**. | `odonto_notifications` | 4004 |
 | 6 | `services/clinical` | Historia clínica estructurada (según `formato_historia.md`), sesiones clínicas, diagnósticos, **récipes**, adjuntos imagenológicos, **PDF A5** y QR de verificación. | `odonto_clinical` | 4005 |
 | 7 | `services/odontogram` | Odontograma FDI de 2 dígitos, captura por excepción, histórico de hallazgos, eventos. Implementa `implementation_plan_odontogram_microservice.md`. | `odonto_odontogram` | 4006 |
-| 8 | `services/screens` | Estado de las pantallas de sala y consultorio, turnos, llamados (1.º/2.º), **SSE** para actualización en vivo, registro de dispositivos kiosko. | `odonto_screens` | 4007 |
+| 8 | `services/screens` | Estado de las pantallas de sala y consultorio, turnos, llamados (1.º/2.º), **SSE** para actualización en vivo (kiosko y **canal del personal**), registro de dispositivos kiosko. | `odonto_screens` | 4007 |
 | 9 | `services/reporting` | Read model por eventos, vistas materializadas, KPIs, filtros (fecha, rango de edad, sexo, estado), exportación CSV/PDF. | `odonto_reporting` | 4008 |
+| 10 | `services/billing` | **Facturación y pagos** (Fase 11): catálogo de aranceles, tasa BCV histórica, borradores que nacen de la sesión clínica, emisión con formas libres, cobros, notas de crédito y libros. | `odonto_billing` | 4009 |
 
-> **Costo asumido:** 9 procesos + **9 bases** (las 8 de servicio más la cola de eventos) + outbox es más operación que un monolito modular. Se mitiga con un único comando de arranque (`npm run dev`), migraciones y seeds automatizados, health checks y el `ecosystem.config.cjs` de PM2. Si en la práctica resulta pesado, el camino de repliegue es fusionar `odontogram` + `clinical` y `screens` + `reporting` sin tocar contratos públicos.
+> **Costo asumido:** 10 procesos + **10 bases** (las 9 de servicio más la cola de eventos) + outbox es más operación que un monolito modular. Se mitiga con un único comando de arranque (`npm run dev`), migraciones y seeds automatizados, health checks y el `ecosystem.config.cjs` de PM2. Si en la práctica resulta pesado, el camino de repliegue es fusionar `odontogram` + `clinical` y `screens` + `reporting` sin tocar contratos públicos.
 >
 > **La cola de eventos es compartida** (`odonto_events`, [ADR 0026](adr/0026-cola-de-eventos-compartida.md)): pg-boss guarda sus tablas en una sola base, así que una cola por servicio sería invisible para los demás. Cada servicio mantiene su propio `outbox_events` para la garantía transaccional y publica en esa cola común.
 
@@ -249,26 +264,38 @@ Read model propio (nada de consultar BDs ajenas), todo en `odonto_reporting`: `d
         │                                        │
         ▼                                        ▼
   EN_ESPERA_CITA ──asignar fecha+hora──▶ PROGRAMADA ──notificar(lote)──▶ NOTIFICADA
-        │                                    │                              │
-        │ cancelar                           │ reprogramar                  │ check-in en Secretaría
-        ▼                                    ▼                              ▼
-    CANCELADA ◀────────────────────── REPROGRAMADA                   EN_SALA_ESPERA
-                                             │                              │
-                                             │                              ├─ llamar ─▶ LLAMADO (1.º/2.º)
-                                             │                              │                 │
-                                             │                              │                 ▼
-                                             │                              │           EN_CONSULTA
-                                             │                              │                 │
-                                             │                              │                 ▼
-                                             │                              │            ATENDIDO ✅
-                                             │                              │        (exige sesión cerrada;
-                                             │                              │         si no, motivo + auditoría)
-                                             │                              └─ inasistencia ─▶ NO_ASISTIO
-                                             ▼
-                                    (nuevo ticket enlazado)
+        │                                    │              │               │
+        │ cancelar                           │              │               │ confirmar
+        │                                    │              │ confirmar     │ (el paciente responde
+        │                                    │              ▼               │  o lo apunta la secretaría)
+        │                                    │         CONFIRMADA ◀─────────┘
+        │                                    │              │
+        │                                    │              │ check-in en Secretaría
+        │ reprogramar                        ▼              ▼
+        ▼                             REPROGRAMADA    EN_SALA_ESPERA
+    CANCELADA ◀───────────────────────┘                     │
+                                                           ├─ llamar ─▶ LLAMADO (1.º/2.º)
+                                                           │                 │
+                                                           │                 ▼
+                                                           │           EN_CONSULTA
+                                                           │                 │
+                                                           │                 ▼
+                                                           │            ATENDIDO ✅
+                                                           │        (exige sesión cerrada;
+                                                           │         si no, motivo + auditoría)
+                                                           └─ inasistencia ─▶ NO_ASISTIO
+
+  (desde CONFIRMADA salen las mismas transiciones que desde PROGRAMADA y NOTIFICADA:
+   llegar, inasistencia, cancelar y reprogramar)
 ```
 
 Reglas duras:
+- **NOTIFICADA** significa «se le avisó» y **CONFIRMADA**, «el paciente respondió que sí»
+  ([ADR 0052](../docs/adr/0052-confirmacion-de-citas-por-el-paciente.md)). Se confirma desde
+  PROGRAMADA (la secretaría llamó) o desde NOTIFICADA (el paciente respondió al aviso), y la
+  confirmación deja `confirmed_at`, `confirmed_channel` y su fila en `status_history`.
+- **Confirmar no es requisito para llegar**: `NOTIFICADA → EN_SALA_ESPERA` sigue permitido,
+  porque lo normal en un consultorio es que el paciente aparezca sin haber respondido.
 - `ATENDIDO` requiere **sesión clínica `cerrada`** (o historia firmada en primera visita). Si no existe → **advertencia + motivo obligatorio** que va a auditoría (decisión 17).
 - `NO_ASISTIO` solo después de la hora de la cita + tolerancia configurable (por defecto 15 min), con motivo opcional.
 - `LLAMADO` incrementa `call_count`; el 2.º llamado se resalta en rojo en la pantalla.
@@ -602,7 +629,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 
 **Objetivo:** decidir con datos y poder auditar.
 
-**Entregables:** `reporting` con read model alimentado por eventos + refresco nocturno; reportes: **embudo y tasa de inasistencia** (solicitudes → programadas → notificadas → atendidas, por semana/mes), **demografía** (pirámide de edad, sexo, rango de edad editable), **salud bucal desde el odontograma** (prevalencia de caries/obturaciones/ausencias por pieza y paciente), **perfil clínico agregado** (diabéticos, hipertensos, alérgicos, anticoagulados — de tu pedido original), **recetas por medicamento y período**, filtros por fecha, rango de edad, sexo y estado; gráficas con Recharts; **exportación CSV/PDF e impresión** · módulo `/auditoria`: búsqueda por rango de fechas, usuario, tipo de entidad y campo, con **diff antes/después**, motivo y exportación.
+**Entregables:** `reporting` con read model alimentado por eventos + refresco nocturno; reportes: **embudo y tasa de inasistencia** (solicitudes → programadas → notificadas → confirmadas → atendidas, por semana/mes), **demografía** (pirámide de edad, sexo, rango de edad editable), **salud bucal desde el odontograma** (prevalencia de caries/obturaciones/ausencias por pieza y paciente), **perfil clínico agregado** (diabéticos, hipertensos, alérgicos, anticoagulados — de tu pedido original), **recetas por medicamento y período**, filtros por fecha, rango de edad, sexo y estado; gráficas con Recharts; **exportación CSV/PDF e impresión** · módulo `/auditoria`: búsqueda por rango de fechas, usuario, tipo de entidad y campo, con **diff antes/después**, motivo y exportación.
 
 **Criterios de aceptación:** con el seed de prueba cada reporte muestra datos coherentes y verificables contra la BD; los filtros de edad/sexo/estado se combinan correctamente; exportar CSV abre en Excel con acentos correctos; la auditoría encuentra el cambio de un teléfono con su valor anterior, nuevo, autor y motivo; ninguna consulta pesada golpea las BD operativas (< 2 s por reporte con 10.000 citas).
 

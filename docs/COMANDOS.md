@@ -114,7 +114,7 @@ powershell -ExecutionPolicy Bypass -File infra/windows/start-services.ps1
 
 | Comando | Qué hace | Flags |
 | :--- | :--- | :--- |
-| `npm run db:bootstrap` | Crea las 8 bases, un rol por servicio con privilegios solo sobre la suya, las extensiones (`pgcrypto`, `pg_trgm`), la cola compartida `odonto_events` y escribe las credenciales en cada `services/<svc>/.env` | `-- --rotate` (contraseñas nuevas), `-- --only <servicio>` |
+| `npm run db:bootstrap` | Crea las 9 bases, un rol por servicio con privilegios solo sobre la suya, las extensiones (`pgcrypto`, `pg_trgm`), la cola compartida `odonto_events` y escribe las credenciales en cada `services/<svc>/.env` | `-- --rotate` (contraseñas nuevas), `-- --only <servicio>` |
 | `npm run db:migrate` | Aplica las migraciones de todos los servicios implementados | `-- --only <servicio>` |
 | `npm run db:verify-migrations` | Desde cero: crea una base temporal por servicio, migra con el migrador real, comprueba tablas/índices y la borra | `-- --only <servicio>` |
 | `npm run db:generate:<servicio>` | Genera una migración a partir del esquema Drizzle del servicio | `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram`, `reporting` |
@@ -527,7 +527,7 @@ ejecuta `dist/`, no el fuente.
 | `sudo ./infra/fedora/install.sh` | **Simulación** (no cambia nada). Añade `--apply` para aplicarlo |
 | `sudo ./infra/fedora/install.sh --apply --with-firewall --lan-cidr=192.168.1.0/24` | Instalación completa con firewall |
 | `infra/fedora/systemd/odontocrm@.service` | Unidad por servicio (o `ecosystem.config.cjs` para PM2) |
-| `sudo infra/fedora/backup/odontocrm-backup.sh` | Respaldo diario de las 8 bases |
+| `sudo infra/fedora/backup/odontocrm-backup.sh` | Respaldo diario de todas las bases |
 | `sudo infra/fedora/backup/odontocrm-restore.sh` | Restauración (se prueba en la Fase 10) |
 | `infra/fedora/systemd/odontocrm-verificar-respaldo.timer` | **Simulacro semanal** (domingos 04:30): `tools/verify-backup.mjs` restaura el último respaldo en bases temporales y avisa si falla |
 

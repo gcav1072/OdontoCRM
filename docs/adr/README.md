@@ -8,8 +8,9 @@ en la Fase 6, las 0034–0036 en la Fase 7, la 0038 en la Fase 8, las 0039–004
 Fase 9, la 0042 en la Fase 10, la 0043 en la sesión de despliegue y las **0044–0048** al
 abrir la Fase 11 (facturación y pagos); la **0049** se toma dentro de esa misma fase, al decidir el modo
 de facturación por defecto y la regla de tasa, y quedan documentadas por la misma razón. La
-**0050** se toma al portar el instalador a Windows, y la **0051** al cubrir la dentición mixta
-del odontograma.
+**0050** se toma al portar el instalador a Windows, la **0051** al cubrir la dentición mixta
+del odontograma y la **0052** al permitir que el paciente confirme su cita (y que la «próxima
+cita» de la sesión clínica se cree de verdad en la agenda).
 
 > **Numeración de la Fase 11:** el plan de facturación
 > ([`../feat_billing.md`](../feat_billing.md)) numeraba sus cinco ADRs **0043–0047** porque daba por hecho
@@ -70,3 +71,4 @@ del odontograma.
 | [0049](0049-facturar-en-modo-software-y-una-sola-tasa.md) | Facturar en modo `software` por defecto, y una sola regla de tasa | aceptada |
 | [0050](0050-windows-segundo-destino-de-produccion.md) | Windows es un segundo destino de producción soportado (y cómo se instala) | aceptada |
 | [0051](0051-denticion-mixta-en-el-odontograma.md) | El odontograma admite dentición mixta (el paciente que está mudando) | aceptada |
+| [0052](0052-confirmacion-de-citas-por-el-paciente.md) | El paciente confirma su cita: estado `confirmada`, botón en el aviso y la próxima cita de la sesión se crea en la agenda | aceptada |

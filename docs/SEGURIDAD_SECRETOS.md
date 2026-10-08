@@ -40,7 +40,7 @@ Este documento responde a la pregunta «¿cómo te paso el token del bot con la 
    ```
    (la contraseña es la que definiste al instalar PostgreSQL 18; en un password con caracteres especiales como `@`, `:` o `/` hay que *codificarlos* — si te da error, dime y lo resolvemos con `PGPASSWORD` en lugar de la URL).
 2. Yo ejecuto `npm run db:bootstrap`. Ese script:
-   - crea las 8 bases y los 8 roles con **contraseñas aleatorias de 32 bytes** generadas en el momento;
+   - crea las 9 bases y los 9 roles con **contraseñas aleatorias de 32 bytes** generadas en el momento;
    - escribe `services/<servicio>/.env` con la cadena de conexión de **ese** servicio (archivo ignorado por Git);
    - **no imprime** ninguna contraseña en pantalla ni en los logs.
 3. La contraseña del superusuario solo se usa una vez, para el bootstrap. El día a día usa los roles por servicio, cada uno con privilegios **solo** sobre su propia base.
