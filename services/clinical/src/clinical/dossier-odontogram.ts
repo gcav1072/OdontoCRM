@@ -24,6 +24,12 @@ import {
  * salen de `@odontocrm/contracts`, los mismos que usa la pantalla—; lo que se escribe
  * aquí es solo el pintado, para que el papel y la pantalla no se separen nunca.
  *
+ * El **énfasis** del dibujo (separadores de caras, contorno y número) sale de la
+ * **marca** (`--brand-*`), para que el dossier y el odontograma del navegador casen.
+ * Los colores **clínicos** (rojo `pendiente`, azul `completado`, de `CLINICAL_STATE_COLORS`)
+ * son del dominio y no cambian con la paleta. En SVG, `var()` no vale como atributo:
+ * las variables de marca entran por `style`.
+ *
  * **Lo que sí cambia respecto a la pantalla:** los símbolos de las condiciones que
  * afectan a la **pieza completa** (extracción, corona, endodoncia…) no se dibujan. Son
  * una docena de formas con su propio trazado y viven en un componente de la web; en su
@@ -72,16 +78,16 @@ const toothSvg = (tooth: ToothPlacement, findings: ToothFindings): string => {
       // el centro del diente, para que la pieza no salga limpia en el papel.
       const finding =
         findings.bySurface[surface] ?? (surface === 'occlusal' ? findings.whole[0] : undefined);
-      return `<polygon points="${SURFACE_POLYGONS[surface]}" fill="${colorOf(finding)}" stroke="#94a3b8" stroke-width="1"/>`;
+      return `<polygon points="${SURFACE_POLYGONS[surface]}" fill="${colorOf(finding)}" style="stroke:var(--brand-line)" stroke-width="1"/>`;
     })
     .join('');
 
   return (
     `<g${grupo}>${caras}` +
-    `<polygon points="${TOOTH_OUTLINE_POINTS}" fill="none" stroke="#334155" stroke-width="4" stroke-linejoin="round"/>` +
+    `<polygon points="${TOOTH_OUTLINE_POINTS}" fill="none" style="stroke:var(--brand-ink-strong)" stroke-width="4" stroke-linejoin="round"/>` +
     '</g>' +
     // El número va fuera del grupo volteado: dentro saldría espejado («8t» en vez de «48»).
-    `<text x="${String(TOOTH_CANVAS / 2)}" y="${String(TOOTH_LABEL_BASELINE)}" text-anchor="middle" font-size="30" font-weight="600" fill="#0f172a">${String(tooth.toothNumber)}</text>`
+    `<text x="${String(TOOTH_CANVAS / 2)}" y="${String(TOOTH_LABEL_BASELINE)}" text-anchor="middle" font-size="30" font-weight="600" style="fill:var(--brand-ink)">${String(tooth.toothNumber)}</text>`
   );
 };
 

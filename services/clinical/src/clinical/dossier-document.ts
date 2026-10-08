@@ -1,9 +1,12 @@
 import {
+  BRAND,
   CLINICAL_ALERT_LABELS,
   CLINICAL_STATE_LABELS,
   CLINIC,
   CONDITION_LABELS,
   brandStyles,
+  brandWatermarkCss,
+  brandWatermarkHtml,
   clinicContactLine,
   clinicFullAddress,
   formatSessionNumber,
@@ -17,8 +20,7 @@ import {
   type PrescriptionSummary,
   type ToothFindingRecord,
 } from '@odontocrm/contracts';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { readImageDataUri } from '@odontocrm/kernel';
 
 import { odontogramSection } from './dossier-odontogram.js';
 import { qrSvg } from '../prescriptions/qr.js';
@@ -99,26 +101,9 @@ const dateTime = (value: Date | string): string => {
   return `${val('day')}/${val('month')}/${val('year')} ${val('hour')}:${val('minute')}`;
 };
 
-/** El logo, en data URI: el PDF no depende de rutas al abrirse (y funciona igual sin archivo). */
-const logoDataUri = async (logoPath: string | null): Promise<string | null> => {
-  if (logoPath === null) return null;
-  try {
-    const data = await readFile(resolve(logoPath));
-    const extension = /\.(?<ext>[A-Za-z0-9]{2,5})$/.exec(logoPath)?.groups?.['ext'] ?? 'png';
-    const mime =
-      extension.toLowerCase() === 'svg'
-        ? 'image/svg+xml'
-        : extension.toLowerCase() === 'jpg' || extension.toLowerCase() === 'jpeg'
-          ? 'image/jpeg'
-          : 'image/png';
-    return `data:${mime};base64,${data.toString('base64')}`;
-  } catch {
-    return null;
-  }
-};
-
 const estilos = `
   ${brandStyles()}
+  ${brandWatermarkCss()}
   @page { size: A4; }
   * { box-sizing: border-box; }
   /* Los márgenes del papel los fija el PDF (page.pdf → marginMm): tienen que dejar
@@ -231,7 +216,9 @@ const tablaHallazgos = (findings: Record<string, readonly ToothFindingRecord[]>)
  * servicio lo archiva con su huella.
  */
 export const dossierHtml = async (input: DossierDocumentInput): Promise<string> => {
-  const logo = await logoDataUri(input.logoPath);
+  const logo = await readImageDataUri(input.logoPath);
+  // La marca de agua sale del mismo logo del membrete (`BRAND.watermarkPath`).
+  const marcaDeAgua = brandWatermarkHtml(await readImageDataUri(BRAND.watermarkPath));
   const paciente = input.patient;
   const odontograma = odontogramSection(input.odontogram);
 
@@ -303,6 +290,8 @@ export const dossierHtml = async (input: DossierDocumentInput): Promise<string> 
 <html lang="es">
 <head><meta charset="utf-8"><title>Expediente ${escapeHtml(input.number)}</title><style>${estilos}</style></head>
 <body>
+  ${marcaDeAgua}
+  <div class="brand-doc">
   <header class="letterhead">
     <div class="letterhead-brand">
       ${logo === null ? '' : `<img class="logo" src="${logo}" alt="Logo del consultorio">`}
@@ -365,6 +354,7 @@ export const dossierHtml = async (input: DossierDocumentInput): Promise<string> 
       <p class="firma-detail">${firmaDetalle}</p>
     </div>
   </section>
+  </div>
 </body>
 </html>`;
 };

@@ -1,14 +1,14 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-
 import {
+  BRAND,
   CLINIC,
   brandStyles,
+  brandWatermarkCss,
+  brandWatermarkHtml,
   clinicContactLine,
   clinicFullAddress,
-  logoMimeType,
   type ClinicDentist,
 } from '@odontocrm/contracts';
+import { readImageDataUri } from '@odontocrm/kernel';
 
 import { qrSvg } from './qr.js';
 
@@ -92,22 +92,9 @@ const longDate = (value: Date): string =>
     timeZone: 'America/Caracas',
   }).format(value);
 
-/** El logo se incrusta como data URI: el PDF no depende de rutas al abrirse. */
-const logoDataUri = async (logoPath: string | null): Promise<string | null> => {
-  if (logoPath === null) return null;
-  try {
-    const data = await readFile(resolve(logoPath));
-    // El tipo MIME sale de la marca (`logoMimeType`), que reconoce el SVG además de
-    // PNG y JPG: el logo por defecto del consultorio es un vector.
-    return `data:${logoMimeType(logoPath)};base64,${data.toString('base64')}`;
-  } catch {
-    // Sin archivo no hay logo: el membrete sale igual (y `letterheadMissingFields` avisa).
-    return null;
-  }
-};
-
 const styles = `
   ${brandStyles()}
+  ${brandWatermarkCss()}
   @page { size: A5; margin: 8mm 10mm; }
   * { box-sizing: border-box; }
   /* El cuerpo (fuente y tinta) lo pone brandStyles(), la marca compartida con el
@@ -145,7 +132,10 @@ const styles = `
  * navegador lo recibe con `page.setContent` y de ahí sale el PDF.
  */
 export const prescriptionHtml = async (input: PrescriptionDocumentInput): Promise<string> => {
-  const logo = await logoDataUri(input.logoPath);
+  const logo = await readImageDataUri(input.logoPath);
+  // La marca de agua sale del mismo logo del membrete (`BRAND.watermarkPath`); si no
+  // hay archivo, `brandWatermarkHtml` devuelve cadena vacía y el récipe sale sin velo.
+  const marcaDeAgua = brandWatermarkHtml(await readImageDataUri(BRAND.watermarkPath));
   const telefono = clinicContactLine(CLINIC);
 
   const lineasMembrete = [
@@ -213,6 +203,8 @@ export const prescriptionHtml = async (input: PrescriptionDocumentInput): Promis
 <html lang="es">
 <head><meta charset="utf-8"><title>Récipe ${escapeHtml(input.number)}</title><style>${styles}</style></head>
 <body>
+  ${marcaDeAgua}
+  <div class="brand-doc">
   <header class="letterhead">
     ${logo === null ? '' : `<img class="logo" src="${logo}" alt="Logo del consultorio">`}
     <div class="letterhead-text">
@@ -258,6 +250,7 @@ export const prescriptionHtml = async (input: PrescriptionDocumentInput): Promis
     Documento emitido por el sistema del consultorio. Conserva este récipe: el código del recuadro
     permite comprobar su autenticidad.
   </p>
+  </div>
 </body>
 </html>`;
 };

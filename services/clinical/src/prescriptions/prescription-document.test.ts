@@ -74,6 +74,11 @@ describe('la línea del paciente', () => {
 });
 
 describe('el récipe impreso', () => {
+  it('lleva la marca de agua del consultorio, con el contenido por encima', async () => {
+    const html = await prescriptionHtml(base);
+    expect(html).toContain('class="brand-watermark"');
+    expect(html).toContain('class="brand-doc"');
+  });
   it('la paciente sale con su edad y su nacimiento concordados', async () => {
     const html = await prescriptionHtml(base);
     expect(html).toContain('Paciente:');

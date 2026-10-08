@@ -123,6 +123,12 @@ const base = (): DossierDocumentInput => ({
 });
 
 describe('el dossier del expediente', () => {
+  it('lleva la marca de agua del consultorio, con el contenido por encima', async () => {
+    const html = await dossierHtml(base());
+    expect(html).toContain('class="brand-watermark"');
+    expect(html).toContain('class="brand-doc"');
+  });
+
   it('reúne las cuatro secciones con el correlativo y la fecha del consultorio', async () => {
     const html = await dossierHtml(base());
     expect(html).toContain('EXP-000003');
