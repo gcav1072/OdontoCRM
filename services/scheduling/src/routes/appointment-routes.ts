@@ -3,6 +3,7 @@ import {
   assignAppointmentSchema,
   attendAppointmentSchema,
   cancelAppointmentSchema,
+  confirmAppointmentSchema,
   noShowAppointmentSchema,
   rescheduleAppointmentSchema,
 } from '@odontocrm/contracts';
@@ -12,6 +13,7 @@ import { z } from 'zod';
 
 import {
   assignAppointment,
+  confirmAppointment,
   getAppointment,
   getHistory,
   listAppointments,
@@ -143,5 +145,22 @@ export const registerAppointmentRoutes = (
     const { id } = parseOrThrow(idParamsSchema, request.params);
     const input = parseOrThrow(rescheduleAppointmentSchema, request.body);
     return reply.status(200).send(await rescheduleAppointment(db, id, input, actor, { config }));
+  });
+
+  /**
+   * **Confirmación telefónica** (ADR 0052): la secretaría llamó al paciente y deja
+   * constancia de que dijo que sí. Es la misma vía que la del bot, pero con un actor
+   * con roles, así que aquí sí se aplica la máquina de estados.
+   *
+   * Exige `scheduling:write` —la tiene la secretaría y el admin— y no
+   * `scheduling:notify`: confirmar no es avisar, es anotar la respuesta.
+   */
+  app.post('/api/v1/appointments/:id/confirm', { preHandler: write }, async (request, reply) => {
+    const actor = actorFrom(request);
+    const { id } = parseOrThrow(idParamsSchema, request.params);
+    const input = parseOrThrow(confirmAppointmentSchema, request.body ?? {});
+    const result = await confirmAppointment(db, id, input, actor);
+    publicarYa();
+    return reply.status(200).send(result);
   });
 };

@@ -119,6 +119,7 @@ export const getDayView = async (
     counts: {
       programadas: counts['programada'] ?? 0,
       notificadas: counts['notificada'] ?? 0,
+      confirmadas: counts['confirmada'] ?? 0,
       enSala:
         (counts['en_sala_espera'] ?? 0) + (counts['llamado'] ?? 0) + (counts['en_consulta'] ?? 0),
       atendidas: counts['atendido'] ?? 0,

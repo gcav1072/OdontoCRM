@@ -6,13 +6,14 @@ import {
   type AppointmentStatus,
   type AppointmentSummary,
   type AssignAppointmentInput,
+  type Channel,
   type Paginated,
   type RescheduleAppointmentInput,
   type StatusHistoryEntry,
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS, type EventTopic } from '@odontocrm/events';
 import { AppError, ConflictError, NotFoundError } from '@odontocrm/kernel';
-import { and, asc, count, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 
 import type { SchedulingConfig } from '../config.js';
 import type { SchedulingDb } from '../db/client.js';
@@ -172,6 +173,11 @@ export const listAppointments = async (
   if (filters.to !== undefined)
     conditions.push(sql`${appointments.appointmentDate} <= ${filters.to}`);
   if (filters.status !== undefined) conditions.push(eq(appointments.status, filters.status));
+  if (filters.confirmed !== undefined) {
+    conditions.push(
+      filters.confirmed ? isNotNull(appointments.confirmedAt) : isNull(appointments.confirmedAt),
+    );
+  }
   if (filters.patientId !== undefined) {
     conditions.push(eq(appointments.patientId, filters.patientId));
   }
@@ -742,6 +748,138 @@ export const transitionAppointment = async (
         },
       });
     }
+  });
+
+  return getAppointment(db, id);
+};
+
+/* ── Confirmación del paciente (ADR 0052) ──────────────────────────────────── */
+
+/**
+ * Estados desde los que se espera una confirmación: los dos en los que la cita está
+ * en pie y el paciente todavía no ha respondido. `en_sala_espera` y siguientes ya no
+ * la esperan —el paciente está ahí—, y los terminales tampoco.
+ */
+const CONFIRMABLE_STATUSES: readonly AppointmentStatus[] = ['programada', 'notificada'];
+
+/** Cómo se nombra cada canal en el rastro de la auditoría y del historial. */
+const CONFIRM_CHANNEL_LABEL: Readonly<Record<string, string>> = {
+  telegram: 'Telegram',
+  whatsapp: 'WhatsApp',
+  telefono: 'teléfono',
+  presencial: 'el mostrador',
+  registro: 'el registro',
+};
+
+const channelLabel = (channel: string): string => CONFIRM_CHANNEL_LABEL[channel] ?? channel;
+
+export interface ConfirmOptions {
+  /** Por dónde confirmó el paciente: `telegram`/`whatsapp` por el bot, `telefono` por la secretaría. */
+  channel: Channel;
+  note?: string | null;
+  now?: Date;
+}
+
+/**
+ * Deja constancia de que el paciente **confirmó** su asistencia (ADR 0052).
+ *
+ * No es una transición cualquiera: las de `transitionAppointment` mueven el flujo del
+ * día y las pide el personal; esta la puede disparar **el propio paciente** desde el
+ * bot, y por eso el actor de sistema va **sin roles**. La comprobación se reparte así:
+ *
+ *  - el **estado** tiene que ser confirmable siempre (`programada` o `notificada`): una
+ *    cita ya atendida o cancelada no se confirma;
+ *  - la **máquina de estados** solo se consulta cuando el actor trae roles (la
+ *    secretaría confirmando por teléfono). Con el bot, `systemActor` va con `roles: []`
+ *    y `assertCanTransition` no tendría nada que comprobar.
+ *
+ * Es **idempotente**: si ya estaba confirmada se devuelve tal cual, sin escribir
+ * historial ni mover la fecha de la confirmación. El paciente que pulsa dos veces, o
+ * cuyo botón se reenvía, no ensucia el rastro.
+ */
+export const confirmAppointment = async (
+  db: SchedulingDb,
+  id: string,
+  options: ConfirmOptions,
+  actor: ActorContext,
+): Promise<AppointmentSummary> => {
+  const current = await getAppointmentRow(db, id);
+  const from = current.status as AppointmentStatus;
+
+  if (from === 'confirmada') return getAppointment(db, id);
+
+  if (!CONFIRMABLE_STATUSES.includes(from)) {
+    throw new ConflictError(
+      `No se puede confirmar una cita en «${from}»: solo se confirman las que están programadas o notificadas.`,
+      { extensions: { status: from } },
+    );
+  }
+  if (actor.roles.length > 0) assertCanTransition(from, 'confirmada', actor);
+
+  const now = options.now ?? new Date();
+  const note = (options.note ?? '').trim();
+  const reason =
+    note.length > 0
+      ? `confirmó por ${channelLabel(options.channel)}: ${note}`
+      : `confirmó por ${channelLabel(options.channel)}`;
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(appointments)
+      .set({
+        status: 'confirmada',
+        confirmedAt: now,
+        confirmedChannel: options.channel,
+        updatedAt: now,
+      })
+      .where(eq(appointments.id, id));
+
+    await writeHistory(tx, {
+      entityType: 'appointment',
+      entityId: id,
+      fromStatus: from,
+      toStatus: 'confirmada',
+      // El historial guarda **quién confirmó y por dónde**: es lo que se consulta
+      // cuando alguien pregunta «¿y esto quién lo confirmó?».
+      reason,
+      actor,
+    });
+
+    await publish(tx, {
+      topic: EVENT_TOPICS.appointmentConfirmed,
+      aggregateId: id,
+      actor,
+      payload: {
+        ...auditPayload({
+          entityType: 'appointment',
+          entityId: id,
+          action: 'appointment_confirmed',
+          summary: `${current.patientName}: confirmó su cita del ${current.appointmentDate} a las ${toHm(current.startTime)} por ${channelLabel(options.channel)}`,
+          changedFields: ['status', 'confirmedAt', 'confirmedChannel'],
+          before: { status: from },
+          after: {
+            status: 'confirmada',
+            confirmedAt: now.toISOString(),
+            confirmedChannel: options.channel,
+          },
+          reason,
+          actor,
+        }),
+        appointment: {
+          id,
+          date: current.appointmentDate,
+          startTime: toHm(current.startTime),
+          endTime: toHm(current.endTime),
+          status: 'confirmada',
+          requestId: current.requestId,
+        },
+        /**
+         * **A propósito** no va el bloque `notification`: confirmar es la respuesta
+         * del paciente, no un aviso hacia él. Si lo llevara, el servicio de
+         * notificaciones mandaría un mensaje por cada confirmación.
+         */
+      },
+    });
   });
 
   return getAppointment(db, id);

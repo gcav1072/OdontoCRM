@@ -28,6 +28,7 @@ import { createSchedulingDatabase } from './db/client.js';
 import { appointmentRequests, appointments } from './db/schema.js';
 import {
   assignAppointment,
+  confirmAppointment,
   getAppointment,
   getHistory,
   listAppointments,
@@ -752,6 +753,97 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     const again = await notifyPreview(schedulingHandle.db, { date: day }, config, { force: false });
     expect(again.willSendCount).toBe(0);
     expect(again.items.every((item) => !item.willSend)).toBe(true);
+  }, 60_000);
+
+  it('el paciente confirma su cita y la franja sigue ocupada (ADR 0052)', async () => {
+    // Horas al final del día: fuera de la plantilla del consultorio y lejos de los
+    // datos de la demo, que es lo que hace que la prueba no dependa de lo sembrado.
+    const request = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
+    const cita = await assignAppointment(
+      schedulingHandle.db,
+      anAssignment(request.id, { date: otherDay, startTime: '20:00', slotKind: 'manual' }),
+      admin,
+      { config },
+    );
+
+    // Desde `programada`: es el caso «la llamé yo», la secretaría lo deja apuntado
+    // sin que haya salido ningún aviso.
+    const confirmada = await confirmAppointment(
+      schedulingHandle.db,
+      cita.id,
+      { channel: 'telefono', note: 'dijo que sí a las 10' },
+      secretary,
+    );
+    expect(confirmada.status).toBe('confirmada');
+    expect(confirmada.confirmedAt).not.toBeNull();
+    expect(confirmada.confirmedChannel).toBe('telefono');
+
+    // Idempotente, y da igual quién lo repita: el botón reenviado y el paciente que
+    // pulsa dos veces no mueven la confirmación ni ensucian el historial.
+    const bot = { ...admin, roles: [] as const };
+    const otraVez = await confirmAppointment(
+      schedulingHandle.db,
+      cita.id,
+      { channel: 'telegram' },
+      bot,
+    );
+    expect(otraVez.confirmedAt).toBe(confirmada.confirmedAt);
+    expect(otraVez.confirmedChannel).toBe('telefono');
+
+    const historial = await getHistory(schedulingHandle.db, 'appointment', cita.id);
+    const confirmaciones = historial.filter((entrada) => entrada.toStatus === 'confirmada');
+    expect(confirmaciones).toHaveLength(1);
+    expect(confirmaciones[0]?.reason).toContain('teléfono');
+    expect(confirmaciones[0]?.actorUsername).toBe(MARKER);
+
+    // La franja **sigue bloqueada**: confirmar no libera el hueco (si lo hiciera,
+    // se podría citar a dos pacientes a la misma hora).
+    const otra = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
+    await expect(
+      assignAppointment(
+        schedulingHandle.db,
+        anAssignment(otra.id, { date: otherDay, startTime: '20:00', slotKind: 'manual' }),
+        admin,
+        { config },
+      ),
+    ).rejects.toThrow();
+
+    // Y desde `notificada` también se confirma: es el botón del aviso.
+    const conAviso = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
+    const avisada = await assignAppointment(
+      schedulingHandle.db,
+      anAssignment(conAviso.id, { date: otherDay, startTime: '20:30', slotKind: 'manual' }),
+      admin,
+      { config },
+    );
+    await transitionAppointment(schedulingHandle.db, avisada.id, 'notificada', secretary, {
+      config,
+    });
+    const porElBot = await confirmAppointment(
+      schedulingHandle.db,
+      avisada.id,
+      { channel: 'whatsapp' },
+      bot,
+    );
+    expect(porElBot.status).toBe('confirmada');
+    expect(porElBot.confirmedChannel).toBe('whatsapp');
+
+    // En un estado terminal no se confirma: la cita ya ocurrió (o se cayó).
+    const atendida = await assignAppointment(
+      schedulingHandle.db,
+      anAssignment(
+        (await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin)).id,
+        { date: otherDay, startTime: '21:00', slotKind: 'manual' },
+      ),
+      admin,
+      { config },
+    );
+    await transitionAppointment(schedulingHandle.db, atendida.id, 'cancelada', secretary, {
+      config,
+    });
+    await expect(
+      confirmAppointment(schedulingHandle.db, atendida.id, { channel: 'telegram' }, bot),
+    ).rejects.toThrow(/No se puede confirmar/);
   }, 60_000);
 
   it('las plantillas por defecto son la jornada del consultorio', async () => {

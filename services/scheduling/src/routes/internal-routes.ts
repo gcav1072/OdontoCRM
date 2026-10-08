@@ -1,10 +1,18 @@
-import { createRequestSchema } from '@odontocrm/contracts';
-import { ForbiddenError, NotFoundError, parseOrThrow } from '@odontocrm/kernel';
+import {
+  appointmentFiltersSchema,
+  confirmAppointmentSchema,
+  createRequestSchema,
+} from '@odontocrm/contracts';
+import { ForbiddenError, NotFoundError, parseOrThrow, parseQuery } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
-import { getAppointment } from '../appointments/appointment-service.js';
+import {
+  confirmAppointment,
+  getAppointment,
+  listAppointments,
+} from '../appointments/appointment-service.js';
 import { cancelRequest, createRequest, findRequestByTicket } from '../requests/request-service.js';
 import type { SchedulingServices } from '../services.js';
 import { systemActor } from '../shared/context.js';
@@ -87,5 +95,37 @@ export const registerInternalRoutes = (
   app.get('/internal/v1/appointments/:id', async (request, reply) => {
     const { id } = parseOrThrow(idParamsSchema, request.params);
     return reply.status(200).send(await getAppointment(db, id));
+  });
+
+  /**
+   * Citas para el bot y para la sección de la bandeja (ADR 0052). Se reutilizan los
+   * filtros públicos —fecha, estado, `confirmed`, paciente, búsqueda y página— porque
+   * son los mismos que necesita la interfaz; el servicio de notificaciones los pasa
+   * tal cual y después cruza el canal vinculado y el último aviso de cada cita.
+   */
+  app.get('/internal/v1/appointments', async (request, reply) => {
+    const filters = parseQuery(appointmentFiltersSchema, request.query);
+    return reply.status(200).send(await listAppointments(db, filters));
+  });
+
+  /**
+   * El **paciente confirma** su cita desde el bot (ADR 0052).
+   *
+   * Es la única escritura de la agenda que no pide un usuario: la hace el propio
+   * paciente por Telegram o WhatsApp, así que el actor es de sistema y va **sin
+   * roles**. `confirmAppointment` sabe tratarlo —comprueba el estado pero no la
+   * máquina de estados por rol— y es idempotente, que es lo que hace segura la
+   * pulsación repetida del botón.
+   */
+  app.post('/internal/v1/appointments/:id/confirm', async (request, reply) => {
+    const { id } = parseOrThrow(idParamsSchema, request.params);
+    const input = parseOrThrow(confirmAppointmentSchema, request.body ?? {});
+    const summary = await confirmAppointment(
+      db,
+      id,
+      input,
+      systemActor(`servicio:${input.channel}`),
+    );
+    return reply.status(200).send(summary);
   });
 };

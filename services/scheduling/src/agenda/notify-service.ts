@@ -30,11 +30,14 @@ const selectionConditions = (
   } else {
     conditions.push(eq(appointments.appointmentDate, date));
   }
-  // Las citas canceladas o ya atendidas no se avisan.
+  // Las citas canceladas o ya atendidas no se avisan. `confirmada` **sí** entra: la
+  // vista previa tiene que encontrarla para poder decir «esta ya la confirmó el
+  // paciente» en vez de no listarla siquiera.
   conditions.push(
     inArray(appointments.status, [
       'programada',
       'notificada',
+      'confirmada',
       'en_sala_espera',
       'llamado',
     ] as const),

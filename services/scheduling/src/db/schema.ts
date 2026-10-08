@@ -1,4 +1,4 @@
-import { APPOINTMENT_STATUSES, CHANNELS, SLOT_KINDS } from '@odontocrm/contracts';
+import { APPOINTMENT_STATUSES, CHANNELS, REQUEST_STATUSES, SLOT_KINDS } from '@odontocrm/contracts';
 import { sql } from 'drizzle-orm';
 import {
   bigint,
@@ -67,7 +67,8 @@ export const appointmentRequests = pgTable(
     index('idx_appointment_requests_patient').on(table.patientId),
     index('idx_appointment_requests_requested').on(table.requestedAt),
     check('chk_requests_channel', sql`${table.channel} in (${sqlLiteralList(CHANNELS)})`),
-    check('chk_requests_status', sql`${table.status} in (${sqlLiteralList(APPOINTMENT_STATUSES)})`),
+    // Las solicitudes no pasan por `confirmada` (ADR 0052): no tienen fecha todavía.
+    check('chk_requests_status', sql`${table.status} in (${sqlLiteralList(REQUEST_STATUSES)})`),
   ],
 );
 
@@ -107,6 +108,14 @@ export const appointments = pgTable(
      * puede saltarse la regla mandando un identificador inventado.
      */
     clinicalSessionId: uuid('clinical_session_id'),
+    /**
+     * Confirmación del paciente (ADR 0052): **cuándo** dijo que sí y **por dónde**.
+     * Van aparte del estado porque el estado dice el último hecho y esto dice el
+     * detalle (un cambio posterior a `en_sala_espera` no borra que confirmó). El
+     * estado en sí también se mueve a `confirmada`.
+     */
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    confirmedChannel: text('confirmed_channel'),
     overbookAuthorized: boolean('overbook_authorized').notNull().default(false),
     overbookReason: text('overbook_reason'),
     rescheduledFromId: uuid('rescheduled_from_id').references((): AnyPgColumn => appointments.id, {
@@ -132,6 +141,9 @@ export const appointments = pgTable(
         sql`${table.status} in (${sqlLiteralList([
           'programada',
           'notificada',
+          // Confirmar mantiene la franja ocupada: si no, el hueco quedaría libre y
+          // se podría citar a dos pacientes a la misma hora.
+          'confirmada',
           'en_sala_espera',
           'llamado',
           'en_consulta',
@@ -144,6 +156,10 @@ export const appointments = pgTable(
     index('idx_appointments_patient').on(table.patientId),
     index('idx_appointments_request').on(table.requestId),
     check('chk_appointments_slot_kind', sql`${table.slotKind} in (${sqlLiteralList(SLOT_KINDS)})`),
+    check(
+      'chk_appointments_channel',
+      sql`${table.confirmedChannel} is null or ${table.confirmedChannel} in (${sqlLiteralList(CHANNELS)})`,
+    ),
     check(
       'chk_appointments_status',
       sql`${table.status} in (${sqlLiteralList(APPOINTMENT_STATUSES)})`,

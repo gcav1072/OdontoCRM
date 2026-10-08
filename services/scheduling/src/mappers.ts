@@ -1,6 +1,7 @@
 import {
   formatTicket,
   type AppointmentStatus,
+  type RequestStatus,
   type RequestSummary,
   type SlotKind,
   type AppointmentSummary,
@@ -35,7 +36,7 @@ export const toRequestSummary = (
     patientDocument: row.patientDocument,
     patientPhone: row.patientPhone,
     reason: row.reason,
-    status: row.status as AppointmentStatus,
+    status: row.status as RequestStatus,
     priority: row.priority,
     requestedAt: row.requestedAt.toISOString(),
     notes: row.notes,
@@ -83,6 +84,8 @@ export const toAppointmentSummary = (
     noShowReason: row.noShowReason,
     forceAttendedReason: row.forceAttendedReason,
     clinicalSessionId: row.clinicalSessionId,
+    confirmedAt: row.confirmedAt?.toISOString() ?? null,
+    confirmedChannel: (row.confirmedChannel as Channel | null) ?? null,
     rescheduledFromId: row.rescheduledFromId,
     rescheduledToId: options.rescheduledToId ?? null,
     icsSequence: row.icsSequence,
@@ -112,6 +115,8 @@ export const toStatusHistoryEntry = (row: StatusHistoryRow): StatusHistoryEntry 
 export const OCCUPYING_STATUSES: readonly AppointmentStatus[] = [
   'programada',
   'notificada',
+  // Confirmar no libera la franja: la cita sigue en pie (ADR 0052).
+  'confirmada',
   'en_sala_espera',
   'llamado',
   'en_consulta',
