@@ -26,7 +26,17 @@ import { toothGroupTransform } from '@odontocrm/contracts';
  * Se separa del componente interactivo a propósito: la vista de impresión la usa
  * también la secretaría (solo lectura) y el papel no debe llevar ni teclado, ni
  * estados de foco, ni manejadores de eventos.
+ *
+ * El **énfasis** del dibujo —separadores de caras, contorno y número de pieza— sale de
+ * la **marca** (`--brand-*`), para que el papel del navegador case con el dossier que
+ * compone el servidor. Los colores **clínicos** (rojo `pendiente`, azul `completado`)
+ * son del dominio y no cambian con la paleta.
  */
+
+/** En SVG, `var()` no vale como atributo: la marca entra por `style`. */
+const TRAZO_CARA = { stroke: 'var(--brand-line)' } as const;
+const TRAZO_PIEZA = { stroke: 'var(--brand-ink-strong)' } as const;
+const TINTA_NUMERO = { fill: 'var(--brand-ink)' } as const;
 
 /** Relleno de una cara: rojo pendiente, azul completado, sano sin relleno. */
 const fillOf = (findings: readonly ToothFindingRecord[], surface: ToothSurface): string => {
@@ -60,16 +70,16 @@ const StaticTooth = ({ toothNumber, findings, size, flipped, mirrorX }: StaticTo
             key={surface}
             points={SURFACE_POLYGONS[surface]}
             fill={fillOf(findings, surface)}
-            stroke="#94a3b8"
             strokeWidth={1}
+            style={TRAZO_CARA}
           />
         ))}
         <polygon
           points={TOOTH_OUTLINE_POINTS}
           fill="none"
-          stroke="#334155"
           strokeWidth={4}
           strokeLinejoin="round"
+          style={TRAZO_PIEZA}
         />
         {/* Uno o varios tratamientos: en el papel también conviven (ADR 0032). */}
         {marcadores.map((slot) => (
@@ -99,7 +109,7 @@ const StaticTooth = ({ toothNumber, findings, size, flipped, mirrorX }: StaticTo
         textAnchor="middle"
         fontSize={30}
         fontWeight={600}
-        fill="#0f172a"
+        style={TINTA_NUMERO}
       >
         {toothNumber}
       </text>
@@ -145,7 +155,9 @@ const Arch = ({
 }) => {
   return (
     <figure className="m-0">
-      <figcaption className="mb-0.5 text-[11px] text-ink-subtle">{caption}</figcaption>
+      <figcaption className="mb-0.5 text-[11px] text-[color:var(--brand-ink-subtle)]">
+        {caption}
+      </figcaption>
       <svg viewBox={`0 0 ${String(width)} ${String(ARCH_HEIGHT)}`} className="w-full" role="img">
         {teeth.map((tooth) => (
           <g key={tooth.toothNumber} transform={`translate(${String(tooth.x)},0)`}>
@@ -172,11 +184,11 @@ const Arch = ({
  * lo que ya está hecho.
  */
 const OdontogramLegend = () => (
-  <div className="space-y-1.5 text-xs text-ink-muted">
+  <div className="space-y-1.5 text-xs text-[color:var(--brand-ink-muted)]">
     <ul className="flex flex-wrap gap-x-5 gap-y-1">
       <li className="flex items-center gap-1.5">
         <span
-          className="inline-block size-3 rounded-sm border border-border"
+          className="inline-block size-3 rounded-sm border border-[color:var(--brand-line)]"
           style={{ backgroundColor: CLINICAL_STATE_COLORS.pendiente }}
           aria-hidden
         />
@@ -184,7 +196,7 @@ const OdontogramLegend = () => (
       </li>
       <li className="flex items-center gap-1.5">
         <span
-          className="inline-block size-3 rounded-sm border border-border"
+          className="inline-block size-3 rounded-sm border border-[color:var(--brand-line)]"
           style={{ backgroundColor: CLINICAL_STATE_COLORS.completado }}
           aria-hidden
         />
@@ -192,7 +204,7 @@ const OdontogramLegend = () => (
       </li>
       <li className="flex items-center gap-1.5">
         <span
-          className="inline-block size-3 rounded-sm border border-border bg-white"
+          className="inline-block size-3 rounded-sm border border-[color:var(--brand-line)] bg-white"
           aria-hidden
         />
         {t('odonto.leyenda.sano')}

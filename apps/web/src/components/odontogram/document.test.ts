@@ -123,6 +123,16 @@ describe('documento imprimible del odontograma', () => {
     expect(html).toContain('Odontograma');
   });
 
+  it('lleva el membrete del consultorio (el mismo dato del récipe y el reporte)', () => {
+    const html = documento(detalle({ '16': [hallazgo({ toothNumber: 16 })] }));
+    // El nombre y la dirección salen de `CLINIC` (packages/contracts/src/clinic.ts).
+    expect(html).toContain('Consultorio - Od. Erika Gómez');
+    expect(html).toContain('Av. Luis del Valle García');
+    // El logo (BRAND.logoPath) se resuelve con Vite: si el glob no lo encontrara, el
+    // membrete saldría sin imagen y esta clase no estaría.
+    expect(html).toContain('h-[var(--brand-logo-height-mm)]');
+  });
+
   it('sin hallazgos lo dice en vez de fingir una boca explorada', () => {
     expect(documento(detalle({}))).toContain('Todavía no hay hallazgos');
   });

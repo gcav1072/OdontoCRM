@@ -16,6 +16,8 @@ import {
   type ClinicalFieldSpec,
 } from '../../lib/clinical';
 import { t } from '../../lib/i18n';
+import { MarcaDeAgua } from '../print/MarcaDeAgua';
+import { MembreteDocumento } from '../print/MembreteDocumento';
 
 const asText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
@@ -81,6 +83,20 @@ const hasAnyValue = (
   });
 
 /**
+ * Tinta del papel: las variables de la **marca** (`packages/contracts/src/brand.ts`),
+ * las mismas que usan el récipe, el dossier y el reporte que compone el servidor. La
+ * historia clínica impresa desde el navegador no puede salir con colores distintos a
+ * los de su propio récipe.
+ */
+const TINTA = { color: 'var(--brand-ink)' } as const;
+const TINTA_MUTED = { color: 'var(--brand-ink-muted)' } as const;
+const TINTA_STRONG = { color: 'var(--brand-ink-strong)' } as const;
+const TINTA_BAD = { color: 'var(--brand-bad)' } as const;
+const TITULO = { color: 'var(--brand-primary)' } as const;
+const LINEA = { borderColor: 'var(--brand-line)' } as const;
+const LINEA_SUAVE = { borderColor: 'var(--brand-line-soft)' } as const;
+
+/**
  * Historia clínica en formato de documento (A4): la misma vista sirve para la
  * impresión que para leer el historial en pantalla. No lleva controles: los
  * pone quien la use.
@@ -92,142 +108,161 @@ export const MedicalRecordDocument = ({ record }: { record: ClinicalRecordDetail
   });
 
   return (
-    <article className="mx-auto w-full max-w-[21cm] bg-white px-8 py-10 text-slate-900 print:max-w-none print:px-0 print:py-0">
-      <header className="border-b border-slate-300 pb-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold">{t('clinica.documento.titulo')}</h1>
-            <p className="text-sm text-slate-600">{t('app.nombre')}</p>
-          </div>
-          <div className="text-right text-sm">
-            <Badge variant={record.status === 'firmada' ? 'success' : 'info'}>
-              {clinicalStatusLabel(record.status)}
-            </Badge>
-            <p className="mt-1 text-slate-600">
-              {t('clinica.documento.abierta', { fecha: formatDate(record.openedAt) })}
-            </p>
-            {record.signedAt && (
-              <p className="text-slate-600">
-                {t('clinica.documento.firmada', {
-                  fecha: formatDate(record.signedAt),
-                  usuario: record.signedByUsername ?? '',
-                })}
-              </p>
-            )}
-          </div>
-        </div>
+    <article
+      className="relative mx-auto w-full max-w-[21cm] bg-white px-8 py-10 print:max-w-none print:px-0 print:py-0"
+      style={TINTA}
+    >
+      <MarcaDeAgua />
+      {/* Todo lo que va sobre el velo de la marca de agua queda por encima (`z-[1]`). */}
+      <div className="relative z-[1]">
+        <MembreteDocumento title={t('clinica.documento.titulo')} />
 
-        <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
-          <div>
-            <dt className="text-slate-500">{t('clinica.documento.paciente')}</dt>
-            <dd className="font-medium">{record.patient?.fullName ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">{t('pacientes.campo.docNumber')}</dt>
-            <dd className="font-medium">{record.patient?.document ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">{t('clinica.documento.edad')}</dt>
-            <dd className="font-medium">
-              {record.patient === null ? '—' : `${record.patient.age}`}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">{t('pacientes.campo.phone')}</dt>
-            <dd className="font-medium">{record.patient?.phone ?? '—'}</dd>
-          </div>
-          <div className="col-span-2">
-            <dt className="text-slate-500">{t('pacientes.campo.address')}</dt>
-            <dd className="font-medium">{record.patient?.address ?? '—'}</dd>
-          </div>
-        </dl>
-      </header>
-
-      {record.alerts.length > 0 && (
-        <p className="mt-3 text-sm font-semibold text-red-700">
-          {t('clinica.alertas.titulo')}: {record.alerts.map(clinicalAlertLabel).join(' · ')}
-        </p>
-      )}
-
-      <div className="mt-6 space-y-6">
-        {sections.map((key: ClinicalSectionKey) => (
-          <section key={key} className="break-inside-avoid">
-            <h2 className="border-b border-slate-200 pb-1 text-base font-semibold">
-              {clinicalSectionLabel(key)}
-            </h2>
-            <dl className="mt-2 space-y-1 text-sm">
-              {CLINICAL_SECTION_FIELDS[key].map((field) => {
-                const value = formatFieldValue(field, record.sections[key]?.[field.name]);
-                return (
-                  <div key={field.name} className="grid grid-cols-[minmax(8rem,14rem)_1fr] gap-2">
-                    <dt className="text-slate-500">{clinicalFieldLabel(field.labelKey)}</dt>
-                    <dd className="whitespace-pre-wrap">
-                      {field.kind === 'catalog' && value !== t('comun.sinDato')
-                        ? `${clinicalCatalogTitle(field.group)}: ${value}`
-                        : value}
-                    </dd>
-                  </div>
-                );
-              })}
+        <header className="mt-4 border-b pb-4" style={LINEA}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+              <div>
+                <dt style={TINTA_MUTED}>{t('clinica.documento.paciente')}</dt>
+                <dd className="font-medium">{record.patient?.fullName ?? '—'}</dd>
+              </div>
+              <div>
+                <dt style={TINTA_MUTED}>{t('pacientes.campo.docNumber')}</dt>
+                <dd className="font-medium">{record.patient?.document ?? '—'}</dd>
+              </div>
+              <div>
+                <dt style={TINTA_MUTED}>{t('clinica.documento.edad')}</dt>
+                <dd className="font-medium">
+                  {record.patient === null ? '—' : `${record.patient.age}`}
+                </dd>
+              </div>
+              <div>
+                <dt style={TINTA_MUTED}>{t('pacientes.campo.phone')}</dt>
+                <dd className="font-medium">{record.patient?.phone ?? '—'}</dd>
+              </div>
+              <div className="col-span-2">
+                <dt style={TINTA_MUTED}>{t('pacientes.campo.address')}</dt>
+                <dd className="font-medium">{record.patient?.address ?? '—'}</dd>
+              </div>
             </dl>
-          </section>
-        ))}
-      </div>
-
-      {record.consent && (
-        <section className="mt-6 break-inside-avoid">
-          <h2 className="border-b border-slate-200 pb-1 text-base font-semibold">
-            {t('clinica.consentimiento.titulo')}
-          </h2>
-          <p className="mt-2 text-sm">
-            {t('clinica.consentimiento.aceptadoPor', {
-              nombre: record.consent.acceptedByName ?? '',
-              relacion: record.consent.relationship ?? '',
-            })}
-            {record.consent.acceptedAt && ` · ${formatDate(record.consent.acceptedAt)}`}
-            {record.consent.witnessName
-              ? ` · ${t('clinica.consentimiento.testigo')}: ${record.consent.witnessName}`
-              : ''}
-          </p>
-        </section>
-      )}
-
-      {record.amendments.length > 0 && (
-        <section className="mt-6 break-inside-avoid">
-          <h2 className="border-b border-slate-200 pb-1 text-base font-semibold">
-            {t('clinica.adenda.titulo')}
-          </h2>
-          <ul className="mt-2 space-y-2 text-sm">
-            {record.amendments.map((amendment) => (
-              <li key={amendment.id}>
-                <p className="font-medium">
-                  {formatDate(amendment.createdAt)} ·{' '}
-                  {amendment.sectionKey === null
-                    ? t('clinica.adenda.general')
-                    : clinicalSectionLabel(amendment.sectionKey)}
+            <div className="text-right text-sm">
+              <Badge variant={record.status === 'firmada' ? 'success' : 'info'}>
+                {clinicalStatusLabel(record.status)}
+              </Badge>
+              <p className="mt-1" style={TINTA_MUTED}>
+                {t('clinica.documento.abierta', { fecha: formatDate(record.openedAt) })}
+              </p>
+              {record.signedAt && (
+                <p style={TINTA_MUTED}>
+                  {t('clinica.documento.firmada', {
+                    fecha: formatDate(record.signedAt),
+                    usuario: record.signedByUsername ?? '',
+                  })}
                 </p>
-                <p className="text-slate-700">{amendment.content}</p>
-                <p className="text-slate-500">
-                  {t('clinica.adenda.motivo')}: {amendment.reason}
-                  {amendment.authorUsername ? ` · ${amendment.authorUsername}` : ''}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+              )}
+            </div>
+          </div>
+        </header>
 
-      <footer className="mt-10 border-t border-slate-300 pt-6 text-xs text-slate-500">
-        <p>{t('clinica.documento.pie')}</p>
-        <div className="mt-10 grid grid-cols-2 gap-10">
-          <p className="border-t border-slate-400 pt-1 text-center">
-            {t('clinica.documento.firmaPaciente')}
+        {record.alerts.length > 0 && (
+          <p className="mt-3 text-sm font-semibold" style={TINTA_BAD}>
+            {t('clinica.alertas.titulo')}: {record.alerts.map(clinicalAlertLabel).join(' · ')}
           </p>
-          <p className="border-t border-slate-400 pt-1 text-center">
-            {t('clinica.documento.firmaOdontologo')}
-          </p>
+        )}
+
+        <div className="mt-6 space-y-6">
+          {sections.map((key: ClinicalSectionKey) => (
+            <section key={key} className="break-inside-avoid">
+              <h2
+                className="border-b pb-1 text-base font-semibold"
+                style={{ ...TITULO, ...LINEA_SUAVE }}
+              >
+                {clinicalSectionLabel(key)}
+              </h2>
+              <dl className="mt-2 space-y-1 text-sm">
+                {CLINICAL_SECTION_FIELDS[key].map((field) => {
+                  const value = formatFieldValue(field, record.sections[key]?.[field.name]);
+                  return (
+                    <div key={field.name} className="grid grid-cols-[minmax(8rem,14rem)_1fr] gap-2">
+                      <dt style={TINTA_MUTED}>{clinicalFieldLabel(field.labelKey)}</dt>
+                      <dd className="whitespace-pre-wrap">
+                        {field.kind === 'catalog' && value !== t('comun.sinDato')
+                          ? `${clinicalCatalogTitle(field.group)}: ${value}`
+                          : value}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            </section>
+          ))}
         </div>
-      </footer>
+
+        {record.consent && (
+          <section className="mt-6 break-inside-avoid">
+            <h2
+              className="border-b pb-1 text-base font-semibold"
+              style={{ ...TITULO, ...LINEA_SUAVE }}
+            >
+              {t('clinica.consentimiento.titulo')}
+            </h2>
+            <p className="mt-2 text-sm">
+              {t('clinica.consentimiento.aceptadoPor', {
+                nombre: record.consent.acceptedByName ?? '',
+                relacion: record.consent.relationship ?? '',
+              })}
+              {record.consent.acceptedAt && ` · ${formatDate(record.consent.acceptedAt)}`}
+              {record.consent.witnessName
+                ? ` · ${t('clinica.consentimiento.testigo')}: ${record.consent.witnessName}`
+                : ''}
+            </p>
+          </section>
+        )}
+
+        {record.amendments.length > 0 && (
+          <section className="mt-6 break-inside-avoid">
+            <h2
+              className="border-b pb-1 text-base font-semibold"
+              style={{ ...TITULO, ...LINEA_SUAVE }}
+            >
+              {t('clinica.adenda.titulo')}
+            </h2>
+            <ul className="mt-2 space-y-2 text-sm">
+              {record.amendments.map((amendment) => (
+                <li key={amendment.id}>
+                  <p className="font-medium">
+                    {formatDate(amendment.createdAt)} ·{' '}
+                    {amendment.sectionKey === null
+                      ? t('clinica.adenda.general')
+                      : clinicalSectionLabel(amendment.sectionKey)}
+                  </p>
+                  <p style={TINTA_STRONG}>{amendment.content}</p>
+                  <p style={TINTA_MUTED}>
+                    {t('clinica.adenda.motivo')}: {amendment.reason}
+                    {amendment.authorUsername ? ` · ${amendment.authorUsername}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <footer className="mt-10 border-t pt-6 text-xs" style={{ ...LINEA, ...TINTA_MUTED }}>
+          <p>{t('clinica.documento.pie')}</p>
+          <div className="mt-10 grid grid-cols-2 gap-10">
+            <p
+              className="border-t pt-1 text-center"
+              style={{ borderColor: 'var(--brand-ink-muted)' }}
+            >
+              {t('clinica.documento.firmaPaciente')}
+            </p>
+            <p
+              className="border-t pt-1 text-center"
+              style={{ borderColor: 'var(--brand-ink-muted)' }}
+            >
+              {t('clinica.documento.firmaOdontologo')}
+            </p>
+          </div>
+        </footer>
+      </div>
     </article>
   );
 };
