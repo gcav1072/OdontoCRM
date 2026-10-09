@@ -430,7 +430,7 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     subject: null,
     body:
       '{paciente}: como ya nos confirmaste que vendrías, tu cita del {fecha} ya no se puede cancelar por aquí ' +
-      '(nos avisan con menos de {dias} días).\n' +
+      '(no es posible cancelar citas por aquí con un lapso menor a {dias} día (s)).\n' +
       'Llama al consultorio, por favor, y lo vemos juntos.',
     placeholders: ['paciente', 'fecha', 'dias'],
   },
