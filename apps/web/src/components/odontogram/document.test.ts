@@ -37,10 +37,13 @@ const hallazgo = (parcial: Partial<ToothFindingRecord>): ToothFindingRecord => (
   ...parcial,
 });
 
-const detalle = (findings: Record<string, ToothFindingRecord[]>): OdontogramDetail => ({
+const detalle = (
+  findings: Record<string, ToothFindingRecord[]>,
+  dentition: OdontogramDetail['dentition'] = 'permanente',
+): OdontogramDetail => ({
   id: '11111111-1111-4111-8111-111111111111',
   patientId: '22222222-2222-4222-8222-222222222222',
-  dentition: 'permanente',
+  dentition,
   findings,
   affectedTeeth: Object.keys(findings).map(Number),
   empty: Object.keys(findings).length === 0,
@@ -363,5 +366,38 @@ describe('el historial de cambios en el informe (casilla de la impresión)', () 
     expect(conHistorial(dos, 2)).toContain('se muestran los 2 más recientes');
     // Si no se llegó al tope, no hay nada que avisar.
     expect(conHistorial(dos, 500)).not.toContain('se muestran los');
+  });
+});
+
+describe('la banda de piezas temporales solo sale si hay cambios en ellas', () => {
+  const CAPTION = 'Arcada superior · temporal';
+
+  it('en una boca permanente no se dibuja la banda temporal', () => {
+    const boca = documento(detalle({ '16': [hallazgo({ toothNumber: 16 })] }));
+    expect(boca).not.toContain(CAPTION);
+  });
+
+  it('una boca mixta sin hallazgos en piezas de leche no imprime la banda temporal', () => {
+    // Puede pasar al corregir la captura: quedan permanentes y una temporal superada.
+    const boca = documento(detalle({ '16': [hallazgo({ toothNumber: 16 })] }, 'mixta'));
+    expect(boca).not.toContain(CAPTION);
+    // La arcada permanente sí está: el informe no se queda sin diagrama.
+    expect(boca).toContain('Maxilar · vestibular arriba');
+  });
+
+  it('un hallazgo en una pieza de leche hace salir la banda temporal', () => {
+    const boca = documento(
+      detalle(
+        {
+          '16': [hallazgo({ toothNumber: 16 })],
+          '55': [hallazgo({ toothNumber: 55, surface: 'occlusal', condition: 'caries' })],
+        },
+        'mixta',
+      ),
+    );
+    expect(boca).toContain(CAPTION);
+    expect(boca).toContain('Arcada inferior · temporal');
+    // Y la pieza de leche con su número, en su banda.
+    expect(boca).toContain('>55</text>');
   });
 });

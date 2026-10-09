@@ -1,10 +1,12 @@
 import {
   CONDITION_LABELS,
   initialQuickEntryState,
+  isPrimaryTooth,
   odontogramSummary,
   surfaceLabelFor,
 } from '@odontocrm/contracts';
 import type {
+  Dentition,
   OdontogramDetail,
   OdontogramLookup,
   OdontogramMutationResult,
@@ -21,6 +23,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Checkbox,
   Spinner,
   buttonClasses,
 } from '@odontocrm/ui';
@@ -100,6 +103,12 @@ export const OdontogramPanel = ({
   const [foco, setFoco] = useState(0);
   /** Pieza cuya hoja de botones está abierta (táctil o ratón sin teclado). */
   const [hoja, setHoja] = useState<number | null>(null);
+  /**
+   * Casilla «Activar dentición temporal»: `null` = automático (la pone la boca),
+   * `true`/`false` = la decisión explícita de quien la pulsa. No se persiste: al
+   * cambiar de paciente vuelve al automático.
+   */
+  const [temporalManual, setTemporalManual] = useState<boolean | null>(null);
 
   const queryKey = odontogramQueryKey(patientId);
 
@@ -115,6 +124,7 @@ export const OdontogramPanel = ({
     setPila([]);
     setPendientes(0);
     setHoja(null);
+    setTemporalManual(null);
     limpiar();
   }, [patientId, limpiar]);
 
@@ -281,6 +291,24 @@ export const OdontogramPanel = ({
     exito(t('odonto.exito.cambiado', { accion: cambio.descripcion }));
   };
 
+  /**
+   * Muestra u oculta las piezas de leche (51–85) del gráfico.
+   *
+   * Al ocultarlas con una pieza temporal elegida se **suelta** esa selección: dejar
+   * la barra de carga rápida apuntando a una pieza que ya no se ve daría un cambio
+   * sobre una pieza invisible.
+   */
+  const alternarTemporal = (activar: boolean): void => {
+    setTemporalManual(activar);
+    if (activar) return;
+    setQuick((actual) =>
+      actual.toothNumber !== null && isPrimaryTooth(actual.toothNumber)
+        ? { ...actual, toothNumber: null, pendingDigits: '', surfaces: [] }
+        : actual,
+    );
+    setHoja((actual) => (actual !== null && isPrimaryTooth(actual) ? null : actual));
+  };
+
   const marcarCara = (toothNumber: number, surface: ToothSurface): void => {
     setQuick((actual) => {
       const caras = actual.toothNumber === toothNumber ? actual.surfaces : [];
@@ -319,6 +347,17 @@ export const OdontogramPanel = ({
   const resumen = odontogramSummary(detail ?? BOCA_VACIA);
   const ultima = pila[pila.length - 1];
   const puedeDeshacer = canWrite && ultima !== undefined && pendientes === 0 && !deshaciendo;
+
+  /** Dentición de la boca según los hallazgos; sin odontograma, permanente. */
+  const denticionBoca: Dentition = detail?.dentition ?? BOCA_VACIA.dentition;
+  /** La casilla manda; sin decisión explícita, la boca decide (mixta ⇒ marcada). */
+  const mostrarTemporal = temporalManual ?? denticionBoca === 'mixta';
+  /**
+   * La dentición que **dibuja** el gráfico: activar la casilla fuerza `mixta`
+   * (permanente + bandas temporales); no se toca cuando la boca ya es `temporal`.
+   */
+  const denticionGrafico: Dentition =
+    mostrarTemporal && denticionBoca !== 'temporal' ? 'mixta' : denticionBoca;
 
   return (
     <Card>
@@ -388,7 +427,7 @@ export const OdontogramPanel = ({
           </Alert>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <Badge variant="neutral">{t('odonto.afectadas', { total: resumen.affectedTeeth })}</Badge>
           <Badge variant="danger" dot>
             {t('odonto.pendientes', { total: resumen.pendingCount })}
@@ -396,7 +435,24 @@ export const OdontogramPanel = ({
           <Badge variant="info" dot>
             {t('odonto.completadas', { total: resumen.completedCount })}
           </Badge>
-          <Badge variant="primary">{dentitionLabel(detail?.dentition ?? 'permanente')}</Badge>
+          <Badge variant="primary">{dentitionLabel(denticionGrafico)}</Badge>
+          {/*
+            La dentición temporal se activa a mano: en la captura por excepción no se
+            sabe si el paciente de leche conserva sus piezas (la sana no tiene fila),
+            así que quien explora decide cuándo enseñarlas. Visible también para la
+            secretaría: consultar la boca mixta es leer. No aparece si la boca **ya**
+            es temporal, donde no habría nada que alternar.
+          */}
+          {denticionBoca !== 'temporal' && (
+            <div className="ml-auto">
+              <Checkbox
+                checked={mostrarTemporal}
+                onChange={(event) => alternarTemporal(event.target.checked)}
+                label={t('odonto.temporal.activar')}
+                description={t('odonto.temporal.ayuda')}
+              />
+            </div>
+          )}
         </div>
 
         {canWrite ? (
@@ -406,6 +462,7 @@ export const OdontogramPanel = ({
                 quedó elegida. */}
             <OdontogramChart
               detail={detail}
+              dentition={denticionGrafico}
               activeTooth={quick.toothNumber ?? hoja}
               activeSurfaces={quick.surfaces}
               tapTargets={punteroGrueso ? 'tooth' : 'surfaces'}
@@ -451,7 +508,7 @@ export const OdontogramPanel = ({
           </>
         ) : (
           <>
-            <OdontogramChart detail={detail} readOnly />
+            <OdontogramChart detail={detail} dentition={denticionGrafico} readOnly />
             <p className="rounded-control border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink-muted">
               {t('odonto.soloLectura')}
             </p>

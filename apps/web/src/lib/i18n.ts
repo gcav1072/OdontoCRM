@@ -2647,6 +2647,9 @@ const DICCIONARIO = {
   'odonto.denticion.permanente': 'Dentición permanente',
   'odonto.denticion.temporal': 'Dentición temporal',
   'odonto.denticion.mixta': 'Dentición mixta',
+  /** Casilla que revela las piezas de leche (51–85) en la boca permanente o mixta. */
+  'odonto.temporal.activar': 'Activar dentición temporal',
+  'odonto.temporal.ayuda': 'Muestra las piezas de leche (51–85) para registrar la boca mixta.',
 
   // La boca sin odontograma no es un error: el patrón por excepción la lee sana.
   'odonto.sana.titulo': 'Boca sana por defecto',

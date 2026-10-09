@@ -236,6 +236,12 @@ export interface OdontogramStaticChartProps {
   dentition?: Dentition;
   /** Alto del lienzo de cada pieza, en unidades del `viewBox`. */
   toothSize?: number;
+  /**
+   * Dibujar las bandas de piezas de leche cuando la dentición es `mixta` (por
+   * defecto sí). El informe lo pone en `false` cuando no hay ningún hallazgo
+   * temporal: una banda vacía haría dudar de si faltó capturarla.
+   */
+  showPrimary?: boolean;
 }
 
 /**
@@ -246,6 +252,7 @@ export const OdontogramStaticChart = ({
   detail,
   dentition,
   toothSize = 100,
+  showPrimary = true,
 }: OdontogramStaticChartProps) => {
   const boca = detail ?? { findings: {}, dentition: 'permanente' as Dentition };
   const layout = archLayout(dentition ?? boca.dentition);
@@ -267,8 +274,9 @@ export const OdontogramStaticChart = ({
         caption={t('odonto.arcada.inferior.orientacion')}
       />
       {/* Dentición mixta (ADR 0051): las piezas de leche, en su banda y en la ranura
-          de la que las va a sustituir. Solo existen si `archLayout` las trae. */}
-      {layout.upperPrimary.length > 0 && (
+          de la que las va a sustituir. Solo existen si `archLayout` las trae y, en el
+          informe, si hay algún hallazgo temporal que las haga relevantes. */}
+      {showPrimary && layout.upperPrimary.length > 0 && (
         <Arch
           teeth={layout.upperPrimary}
           detail={boca}
@@ -277,7 +285,7 @@ export const OdontogramStaticChart = ({
           caption={`${t('odonto.arcada.superior.temporal')} · ${t('odonto.arcada.superior.orientacion')}`}
         />
       )}
-      {layout.lowerPrimary.length > 0 && (
+      {showPrimary && layout.lowerPrimary.length > 0 && (
         <Arch
           teeth={layout.lowerPrimary}
           detail={boca}

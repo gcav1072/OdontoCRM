@@ -2,6 +2,7 @@ import {
   CLINICAL_STATE_COLORS,
   CLINICAL_STATE_LABELS,
   CONDITION_LABELS,
+  hasPrimaryFindings,
   surfaceLabelFor,
   supersedesSurfaces,
 } from '@odontocrm/contracts';
@@ -215,7 +216,11 @@ export const OdontogramDocument = ({
         </header>
 
         <section className="mt-5">
-          <OdontogramStaticChart detail={detail} dentition={detail.dentition} />
+          <OdontogramStaticChart
+            detail={detail}
+            dentition={detail.dentition}
+            showPrimary={hasPrimaryFindings(detail.findings)}
+          />
         </section>
 
         <section className="mt-5">
