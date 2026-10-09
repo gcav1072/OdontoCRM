@@ -142,3 +142,74 @@ Al marcar `corona`, el gráfico **no** debe seguir mostrando la obturación o la
 Implementación: `corona.supersedesSurfaces = true` (no `excludesSurfaces`), y dentro de un lote las
 caras se aplican **antes** que la condición que las cubre, para que el resultado no dependa del orden
 en que la interfaz mande el lote.
+
+## Blindaje (2026-10-09): estados válidos, transiciones y CHECK en la base
+
+Una auditoría del odontograma encontró una **pieza imposible** registrada: la pieza 13 con
+`extraccion_indicada` **completada** y `implante` **completado** a la vez. El fallo no era del
+dibujo: el modelo admitía combinaciones que **clínicamente no existen**. Se cierra el hueco en las
+tres capas que pueden dejar pasar un dato —el contrato, el servicio y la base— y el conjunto de
+reglas queda documentado en [`docs/ODONTOGRAMA_REGLAS.md`](../ODONTOGRAMA_REGLAS.md).
+
+### 1. Cada condición declara sus estados válidos
+
+`WHOLE_TOOTH_RULES` gana `allowedStates`, y las condiciones de cara lo tienen en
+`SURFACE_CONDITION_RULES`. No todas admiten `pendiente` y `completado`:
+
+| Condición | Estados válidos | Por qué |
+| :--- | :--- | :--- |
+| `caries` | `pendiente` | No se «completa»: se trata y pasa a obturación. |
+| `restauracion` | `pendiente`, `completado` | Indicada o ya hecha. |
+| `ausente` | `completado` | Hecho consumado: no hay «ausente pendiente». |
+| `extraccion_indicada` | `pendiente` | Es un plan; al cumplirse se transiciona a `ausente`. |
+| `corona`, `endodoncia`, `implante` | `pendiente`, `completado` | Por hacer (rojo) o hechas (azul). |
+
+`isStateAllowed(condition, state)` lo consultan la máquina de la carga rápida (que **clampea** la
+caja a un estado válido), el `superRefine` del contrato, el servicio (`assertStateAllowed`) y un
+`CHECK` de la base.
+
+### 2. `implante` supera y excluye las caras
+
+Un implante de titanio no tiene esmalte ni dentina: al registrarlo **supera** las caras que hubiera
+(quedan con `resolved_at`, no se borran) y **las excluye** (no se admite una caries sobre él). Pasa a
+`supersedesSurfaces: true`, `excludesSurfaces: true`.
+
+### 3. La pareja imposible de la pieza 13
+
+`implante` y `extraccion_indicada` **no conviven**: un diente natural no se extrae para conservarlo;
+si hay tornillo, no hay extracción que indicar. Se añade a las dos listas de `incompatibleWith`.
+
+### 4. Transiciones de ciclo de vida (`completeProcedure`)
+
+Los estados **evolucionan** con las citas, y eso ya no es «borrar y volver a marcar»: un comando
+`POST /api/v1/odontogram/patients/:patientId/procedures` cumple el procedimiento en **una
+transacción** (resuelve el origen e inserta el destino), con su entrada `resuelto` en el histórico.
+
+| Procedimiento | Origen → destino |
+| :--- | :--- |
+| `obturar` | `caries` → `restauracion` (completado), en la misma cara |
+| `extraer` | `extraccion_indicada` → `ausente` (completado) |
+| `rehabilitar` | `ausente` → `corona` (completado), **exige un `implante` vigente** |
+
+Es la regla que pidió el odontólogo: **al cumplirse una extracción indicada, la pieza queda ausente**.
+
+### 5. El dibujo, por capas
+
+Los marcadores de pieza completa dejan de dibujarse **en fila** (encogiéndose según cuántos haya) y
+se componen **por capas** (`WHOLE_TOOTH_MARKER_STYLES`): el círculo de la corona en la **periferia**,
+el tornillo del implante o el triángulo del conducto en el **centro** —encogidos solo si comparten la
+pieza con la corona—, la extracción indicada como **overlay** translúcido por encima, y el aspa de
+`ausente` a tamaño completo (que cede ante el implante). Así la corona rodea la casilla y el tornillo
+queda dentro, sin deformarse.
+
+La **geometría** del símbolo vive en el contrato (`WHOLE_TOOTH_SYMBOLS`): la web la pasa a React y el
+**dossier del expediente** —que se compone en el servidor, sin DOM— a una cadena de SVG. El papel y la
+pantalla dibujan las **mismas** formas, no una versión resumida del papel.
+
+### 6. Reparación y blindaje en la base
+
+La migración `0002` repara los datos antes de blindarlos: convierte las extracciones indicadas
+cumplidas en `ausente`, las caries completadas en obturaciones, resuelve las parejas imposibles y
+clampea los estados, dejando cada cambio en `tooth_finding_history` con el motivo «saneado por
+reglas clínicas». Solo entonces añade `chk_tooth_findings_state_allowed`, que ata el estado a la
+condición. `tools/reparar-odontograma.mjs` queda como red de seguridad (simulación / `--apply`).
