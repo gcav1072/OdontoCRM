@@ -1879,7 +1879,8 @@ const DICCIONARIO = {
   'flujo.atajo.buscarAyuda': 'Abre el buscador de pacientes',
   'flujo.atajo.llamarAyuda': 'Llama al paciente en curso (sale en la pantalla de la sala)',
   'flujo.atajo.cerrarAyuda': 'Cierra la sesión clínica de la visita',
-  'flujo.atajos.ayuda': '{buscar} · {llamar} · {cerrar}',
+  /** Recordatorio compacto de las teclas, junto a los botones de atajo. */
+  'flujo.atajos.teclas': 'Atajos: {teclas}',
   // Nombre del grupo de atajos para lectores de pantalla (y para las pruebas, que
   // necesitan distinguir estos botones del que ofrece la pantalla vacía).
   'flujo.atajos.grupo': 'Atajos del día',

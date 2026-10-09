@@ -21,7 +21,7 @@ import {
   type AccionSecretaria,
 } from '../secretaria/acciones';
 import { DayCounters } from '../secretaria/DayCounters';
-import { ayudaDeAtajo, type AccionFlujo } from './flujo';
+import { ATAJOS_FLUJO, ayudaDeAtajo, type AccionFlujo } from './flujo';
 
 export interface FlowTopBarProps {
   date: string;
@@ -82,8 +82,8 @@ export const FlowTopBar = ({
 
   return (
     <Card className="lg:sticky lg:top-4 lg:z-20">
-      <div className="space-y-4 p-4 sm:p-5">
-        {/* Fecha de la jornada y contadores del día. */}
+      <div className="space-y-3 p-4 sm:p-5">
+        {/* Bloque del día: fecha, navegación y contadores, en una sola franja. */}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <h1 className="flex items-center gap-2 text-lg font-semibold text-ink">
@@ -142,113 +142,121 @@ export const FlowTopBar = ({
 
         {day !== undefined && <DayCounters counts={day.counts} dense />}
 
-        {/* Paciente en curso y sus acciones del flujo. */}
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-muted/60 px-3 py-2.5">
-          <div className="flex min-w-0 items-center gap-2">
-            <UserRound className="size-4 shrink-0 text-primary" aria-hidden />
-            {appointment === null ? (
-              <p className="text-sm text-ink-muted">{t('flujo.sinPaciente')}</p>
-            ) : (
-              <p className="min-w-0 truncate text-sm text-ink">
-                <span className="font-medium">{appointment.patientName}</span>
-                <span className="text-ink-muted">
-                  {' · '}
-                  {t('programacion.accion.hora', {
-                    inicio: formatTime12h(appointment.startTime),
-                    fin: formatTime12h(appointment.endTime),
-                  })}
-                  {appointment.patientDocument !== null ? ` · ${appointment.patientDocument}` : ''}
-                </span>
-              </p>
+        {/*
+          Bloque del paciente: quién está en curso con sus acciones del flujo y, debajo,
+          los atajos. Van en el mismo recuadro para que la barra no crezca en cuatro
+          pisos: en la tableta del consultorio la pantalla es lo que hay.
+        */}
+        <div className="space-y-2.5 rounded-control border border-border bg-surface-muted/60 px-3 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <UserRound className="size-4 shrink-0 text-primary" aria-hidden />
+              {appointment === null ? (
+                <p className="text-sm text-ink-muted">{t('flujo.sinPaciente')}</p>
+              ) : (
+                <p className="min-w-0 truncate text-sm text-ink">
+                  <span className="font-medium">{appointment.patientName}</span>
+                  <span className="text-ink-muted">
+                    {' · '}
+                    {t('programacion.accion.hora', {
+                      inicio: formatTime12h(appointment.startTime),
+                      fin: formatTime12h(appointment.endTime),
+                    })}
+                    {appointment.patientDocument !== null
+                      ? ` · ${appointment.patientDocument}`
+                      : ''}
+                  </span>
+                </p>
+              )}
+              {appointment !== null && <AppointmentStatusBadge status={appointment.status} />}
+            </div>
+
+            {appointment !== null && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {acciones.map((accion, indice) => (
+                  <Button
+                    key={accion}
+                    size="lg"
+                    variant={
+                      accion === 'no-show' ? 'ghost' : indice === 0 ? 'primary' : 'secondary'
+                    }
+                    disabled={busy}
+                    aria-label={`${etiquetaDeAccion(accion, appointment)}: ${appointment.patientName}`}
+                    onClick={() => onAction(accion, appointment)}
+                  >
+                    {etiquetaDeAccion(accion, appointment)}
+                  </Button>
+                ))}
+
+                {fueraDeOrden && (
+                  <Button
+                    size="lg"
+                    variant="secondary"
+                    disabled={busy}
+                    aria-label={`${t('secretaria.acciones.fueraDeOrden')}: ${appointment.patientName}`}
+                    onClick={() => onEmergencyCall(appointment)}
+                  >
+                    {t('secretaria.acciones.fueraDeOrden')}
+                  </Button>
+                )}
+
+                {acciones.length === 0 && !fueraDeOrden && (
+                  <span className="text-xs text-ink-subtle">
+                    {t('programacion.accion.sinAcciones')}
+                  </span>
+                )}
+
+                <Button
+                  size="lg"
+                  variant="ghost"
+                  aria-label={`${t('secretaria.acciones.detalle')}: ${appointment.patientName}`}
+                  onClick={() => onHistory(appointment)}
+                  leadingIcon={<History className="size-4" aria-hidden />}
+                >
+                  {t('secretaria.acciones.detalle')}
+                </Button>
+              </div>
             )}
-            {appointment !== null && <AppointmentStatusBadge status={appointment.status} />}
           </div>
 
-          {appointment !== null && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {acciones.map((accion, indice) => (
-                <Button
-                  key={accion}
-                  size="lg"
-                  variant={accion === 'no-show' ? 'ghost' : indice === 0 ? 'primary' : 'secondary'}
-                  disabled={busy}
-                  aria-label={`${etiquetaDeAccion(accion, appointment)}: ${appointment.patientName}`}
-                  onClick={() => onAction(accion, appointment)}
-                >
-                  {etiquetaDeAccion(accion, appointment)}
-                </Button>
-              ))}
-
-              {fueraDeOrden && (
-                <Button
-                  size="lg"
-                  variant="secondary"
-                  disabled={busy}
-                  aria-label={`${t('secretaria.acciones.fueraDeOrden')}: ${appointment.patientName}`}
-                  onClick={() => onEmergencyCall(appointment)}
-                >
-                  {t('secretaria.acciones.fueraDeOrden')}
-                </Button>
-              )}
-
-              {acciones.length === 0 && !fueraDeOrden && (
-                <span className="text-xs text-ink-subtle">
-                  {t('programacion.accion.sinAcciones')}
-                </span>
-              )}
-
-              <Button
-                size="lg"
-                variant="ghost"
-                aria-label={`${t('secretaria.acciones.detalle')}: ${appointment.patientName}`}
-                onClick={() => onHistory(appointment)}
-                leadingIcon={<History className="size-4" aria-hidden />}
-              >
-                {t('secretaria.acciones.detalle')}
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Atajos: teclas en el puesto de trabajo, botones en la tableta. El grupo
+          {/* Atajos: teclas en el puesto de trabajo, botones en la tableta. El grupo
             lleva nombre accesible para que se anuncie como un conjunto y para poder
             distinguirlo del botón que ofrece la pantalla vacía («Sin paciente»). */}
-        <div
-          role="group"
-          aria-label={t('flujo.atajos.grupo')}
-          className="flex flex-wrap items-center gap-2"
-        >
-          <Button
-            variant="secondary"
-            onClick={() => onShortcut('buscar')}
-            leadingIcon={<Search className="size-4" aria-hidden />}
+          <div
+            role="group"
+            aria-label={t('flujo.atajos.grupo')}
+            className="flex flex-wrap items-center gap-2"
           >
-            {t('flujo.atajo.buscar')}
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={appointment === null || busy}
-            onClick={() => onShortcut('llamar')}
-            title={ayudaDeAtajo('llamar')}
-          >
-            {t('flujo.atajo.llamar')}
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={appointment === null}
-            onClick={() => onShortcut('cerrar-sesion')}
-            title={ayudaDeAtajo('cerrar-sesion')}
-          >
-            {t('flujo.atajo.cerrar')}
-          </Button>
+            <Button
+              variant="secondary"
+              onClick={() => onShortcut('buscar')}
+              leadingIcon={<Search className="size-4" aria-hidden />}
+            >
+              {t('flujo.atajo.buscar')}
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={appointment === null || busy}
+              onClick={() => onShortcut('llamar')}
+              title={ayudaDeAtajo('llamar')}
+            >
+              {t('flujo.atajo.llamar')}
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={appointment === null}
+              onClick={() => onShortcut('cerrar-sesion')}
+              title={ayudaDeAtajo('cerrar-sesion')}
+            >
+              {t('flujo.atajo.cerrar')}
+            </Button>
 
-          <p className="text-xs text-ink-subtle">
-            {t('flujo.atajos.ayuda', {
-              buscar: ayudaDeAtajo('buscar'),
-              llamar: ayudaDeAtajo('llamar'),
-              cerrar: ayudaDeAtajo('cerrar-sesion'),
-            })}
-          </p>
+            <p className="ml-auto text-xs text-ink-subtle">
+              {t('flujo.atajos.teclas', {
+                teclas: ATAJOS_FLUJO.map((atajo) => atajo.tecla).join(' · '),
+              })}
+            </p>
+          </div>
         </div>
       </div>
     </Card>
