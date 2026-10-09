@@ -25,8 +25,16 @@ const codeParamsSchema = z.object({ code: z.string().trim().min(4).max(40) });
  * tenga el papel en la mano y que no devuelve ningún dato clínico.
  */
 export const registerDossierRoutes = (app: FastifyInstance, services: ClinicalServices): void => {
-  const { db, blobStore, pdfRenderer, patientLookup, odontogramLookup, config, kickOutbox } =
-    services;
+  const {
+    db,
+    blobStore,
+    pdfRenderer,
+    patientLookup,
+    odontogramLookup,
+    letterheadLookup,
+    config,
+    kickOutbox,
+  } = services;
   const read = requirePermission('clinical:read');
 
   /**
@@ -48,7 +56,7 @@ export const registerDossierRoutes = (app: FastifyInstance, services: ClinicalSe
         { db, blobStore, pdfRenderer, patientLookup, odontogramLookup },
         patientId,
         actor,
-        { publicAppUrl: config.PUBLIC_APP_URL, logoPath: CLINIC.logoPath },
+        { publicAppUrl: config.PUBLIC_APP_URL, logoPath: CLINIC.logoPath, letterheadLookup },
       );
 
       kickOutbox?.();

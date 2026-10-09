@@ -9,6 +9,7 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS } from '@odontocrm/events';
 import { ConflictError, NotFoundError, ServiceUnavailableError } from '@odontocrm/kernel';
+import type { LetterheadLookup } from '@odontocrm/kernel';
 import { buildStorageKey, type BlobStore } from '@odontocrm/storage';
 import { desc, eq, sql } from 'drizzle-orm';
 
@@ -54,6 +55,8 @@ export interface IssueDossierOptions {
   publicAppUrl: string;
   /** Ruta del logo del membrete (relativa a la raíz del repositorio). */
   logoPath: string | null;
+  /** Lectura de la identidad del consultorio (ADR 0056); sin ella, se usa `CLINIC`. */
+  letterheadLookup?: LetterheadLookup | undefined;
 }
 
 export interface IssuedDossier {
@@ -155,6 +158,10 @@ export const issueDossier = async (
   const verifyCode = buildVerifyCode();
   const issuedAt = new Date();
   const verificationUrl = `${options.publicAppUrl.replace(/\/+$/, '')}/verificar-expediente/${verifyCode}`;
+  const identidad =
+    options.letterheadLookup === undefined
+      ? null
+      : await options.letterheadLookup(actor.actorUsername);
 
   const html = await dossierHtml({
     number: formatted,
@@ -168,9 +175,11 @@ export const issueDossier = async (
       content: session.content,
     })),
     prescriptions,
-    dentist: clinicDentistFor(actor.actorUsername),
+    clinic: identidad?.clinic ?? null,
+    dentist: identidad?.dentist ?? clinicDentistFor(actor.actorUsername),
     verificationUrl,
     logoPath: options.logoPath,
+    logoDataUri: identidad?.logoDataUri ?? null,
   });
 
   const pdf = await deps.pdfRenderer.render(html, {

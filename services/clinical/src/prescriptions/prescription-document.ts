@@ -7,8 +7,9 @@ import {
   clinicContactLine,
   clinicFullAddress,
   type ClinicDentist,
+  type ClinicIdentity,
 } from '@odontocrm/contracts';
-import { readImageDataUri } from '@odontocrm/kernel';
+import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
 import { qrSvg } from './qr.js';
 
@@ -48,8 +49,15 @@ export interface PrescriptionDocumentInput {
   generalInstructions: string | null;
   /** URL que abre el QR; si falta, el récipe sale sin QR (no se inventa). */
   verificationUrl: string | null;
-  /** Ruta del logo relativa a la raíz del repositorio. */
+  /** Ruta del logo relativa a la raíz del repositorio (respaldo si no hay `logoDataUri`). */
   logoPath: string | null;
+  /**
+   * La identidad del consultorio tal como la leyó el servicio (la de la base o el
+   * respaldo del código). Si falta, se usa `CLINIC`.
+   */
+  clinic?: ClinicIdentity | null;
+  /** Logo ya incrustado como `data:` URI; si falta, se lee `logoPath`. */
+  logoDataUri?: string | null;
 }
 
 /** Fecha como se lee en el papel: `1988-04-12` → `12/04/1988`. */
@@ -92,7 +100,8 @@ const longDate = (value: Date): string =>
     timeZone: 'America/Caracas',
   }).format(value);
 
-const styles = `
+const styles = (fontFaces: string): string => `
+  ${fontFaces}
   ${brandStyles()}
   ${brandWatermarkCss()}
   @page { size: A5; margin: 8mm 10mm; }
@@ -102,10 +111,10 @@ const styles = `
   .letterhead { display: flex; align-items: flex-start; gap: 6mm; border-bottom: 0.6mm solid var(--brand-accent); padding-bottom: 3mm; }
   .logo { height: var(--brand-logo-height-mm); width: auto; }
   .letterhead-text { flex: 1; }
-  .clinic-name { font-size: var(--brand-doc-title-pt); font-weight: 700; color: var(--brand-primary); margin: 0; }
+  .clinic-name { font-family: var(--brand-font-doc-title); font-size: var(--brand-doc-title-pt); font-weight: 700; color: var(--brand-primary); margin: 0; }
   .clinic-line { font-size: 8pt; color: var(--brand-ink-muted); margin: 0.6mm 0 0; }
   .rx { display: flex; justify-content: space-between; align-items: baseline; margin-top: 3mm; }
-  .rx-title { font-size: 12pt; font-weight: 700; letter-spacing: 0.4mm; margin: 0; }
+  .rx-title { font-family: var(--brand-font-doc-title); font-size: 12pt; font-weight: 700; letter-spacing: 0.4mm; margin: 0; }
   .rx-number { font-size: 9pt; color: var(--brand-ink-muted); }
   .patient { margin-top: 2mm; font-size: 9pt; }
   .patient strong { font-weight: 600; }
@@ -115,7 +124,7 @@ const styles = `
   .med { font-weight: 600; }
   .detail { color: var(--brand-ink-strong); font-size: 8pt; }
   .instructions { margin-top: 3mm; font-size: 8.5pt; }
-  .instructions h2 { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.2mm; color: var(--brand-primary); margin: 0 0 1mm; }
+  .instructions h2 { font-family: var(--brand-font-doc-title); font-size: 8pt; text-transform: uppercase; letter-spacing: 0.2mm; color: var(--brand-primary); margin: 0 0 1mm; }
   .footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 6mm; margin-top: 10mm; }
   .signature { text-align: center; font-size: 8.5pt; min-width: 62mm; }
   .signature-line { border-top: 0.3mm solid var(--brand-ink); margin-bottom: 1.5mm; }
@@ -132,17 +141,18 @@ const styles = `
  * navegador lo recibe con `page.setContent` y de ahí sale el PDF.
  */
 export const prescriptionHtml = async (input: PrescriptionDocumentInput): Promise<string> => {
-  const logo = await readImageDataUri(input.logoPath);
-  // La marca de agua sale del mismo logo del membrete (`BRAND.watermarkPath`); si no
-  // hay archivo, `brandWatermarkHtml` devuelve cadena vacía y el récipe sale sin velo.
-  const marcaDeAgua = brandWatermarkHtml(await readImageDataUri(BRAND.watermarkPath));
-  const telefono = clinicContactLine(CLINIC);
+  const consultorio = input.clinic ?? CLINIC;
+  const logo = input.logoDataUri ?? (await readImageDataUri(input.logoPath));
+  // La marca de agua usa el **logo efectivo** (el subido o el del repositorio): si no
+  // hay ninguno, `brandWatermarkHtml` devuelve cadena vacía y el récipe sale sin velo.
+  const marcaDeAgua = brandWatermarkHtml(logo ?? (await readImageDataUri(BRAND.watermarkPath)));
+  const telefono = clinicContactLine(consultorio);
 
   const lineasMembrete = [
-    clinicFullAddress(CLINIC),
-    CLINIC.rif === null ? null : `RIF ${CLINIC.rif}`,
+    clinicFullAddress(consultorio),
+    consultorio.rif === null ? null : `RIF ${consultorio.rif}`,
     telefono === '' ? null : telefono,
-    CLINIC.website,
+    consultorio.website,
   ]
     .filter((line): line is string => line !== null && line.trim() !== '')
     .map((line) => `<p class="clinic-line">${escapeHtml(line)}</p>`)
@@ -201,15 +211,15 @@ export const prescriptionHtml = async (input: PrescriptionDocumentInput): Promis
 
   return `<!doctype html>
 <html lang="es">
-<head><meta charset="utf-8"><title>Récipe ${escapeHtml(input.number)}</title><style>${styles}</style></head>
+<head><meta charset="utf-8"><title>Récipe ${escapeHtml(input.number)}</title><style>${styles(await brandFontFaceCss())}</style></head>
 <body>
   ${marcaDeAgua}
   <div class="brand-doc">
   <header class="letterhead">
     ${logo === null ? '' : `<img class="logo" src="${logo}" alt="Logo del consultorio">`}
     <div class="letterhead-text">
-      <p class="clinic-name">${escapeHtml(CLINIC.name)}</p>
-      ${CLINIC.legalName === null ? '' : `<p class="clinic-line">${escapeHtml(CLINIC.legalName)}</p>`}
+      <p class="clinic-name">${escapeHtml(consultorio.name)}</p>
+      ${consultorio.legalName === null ? '' : `<p class="clinic-line">${escapeHtml(consultorio.legalName)}</p>`}
       ${lineasMembrete}
     </div>
   </header>

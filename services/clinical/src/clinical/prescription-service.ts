@@ -16,6 +16,7 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS } from '@odontocrm/events';
 import { ConflictError, NotFoundError, ServiceUnavailableError } from '@odontocrm/kernel';
+import type { LetterheadLookup } from '@odontocrm/kernel';
 import type { BlobStore } from '@odontocrm/storage';
 import { buildStorageKey } from '@odontocrm/storage';
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
@@ -302,6 +303,11 @@ export interface IssueOptions {
   /** Ruta del logo del membrete (relativa a la raíz del repositorio). */
   logoPath: string | null;
   patientLookup: PatientSnapshotLookup;
+  /**
+   * Lectura de la identidad del consultorio (ADR 0056). Si no se pasa —o si identity
+   * no responde—, el membrete sale con `CLINIC` (el respaldo del código).
+   */
+  letterheadLookup?: LetterheadLookup | undefined;
 }
 
 const nextPrescriptionNumber = async (db: ClinicalDb): Promise<number> => {
@@ -375,6 +381,10 @@ export const issuePrescription = async (
   const verifyCode = buildVerifyCode();
   const issuedAt = new Date();
   const verificationUrl = `${options.publicAppUrl.replace(/\/+$/, '')}/verificar/${verifyCode}`;
+  const identidad =
+    options.letterheadLookup === undefined
+      ? null
+      : await options.letterheadLookup(actor.actorUsername);
 
   const html = await prescriptionHtml({
     number,
@@ -385,11 +395,15 @@ export const issuePrescription = async (
     // El sexo decide la concordancia de «nacido / nacida» en el papel.
     patientSex: patient.sex === '' ? null : patient.sex,
     patientAge: patient.age,
-    dentist: clinicDentistFor(actor.actorUsername),
+    // La identidad del consultorio se lee una sola vez por emisión (con caché y
+    // respaldo): de aquí salen quién firma, el membrete y el logo.
+    clinic: identidad?.clinic ?? null,
+    dentist: identidad?.dentist ?? clinicDentistFor(actor.actorUsername),
     items,
     generalInstructions: row.generalInstructions,
     verificationUrl,
     logoPath: options.logoPath,
+    logoDataUri: identidad?.logoDataUri ?? null,
   } satisfies PrescriptionDocumentInput);
 
   const pdf = await renderPrescriptionPdf(pdfRenderer, html);

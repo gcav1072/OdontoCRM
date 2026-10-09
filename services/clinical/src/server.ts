@@ -1,5 +1,5 @@
 import { createOutboxCheck, createPoolCheck } from '@odontocrm/db';
-import { buildServer, isProduction } from '@odontocrm/kernel';
+import { buildServer, isProduction, type LetterheadLookup } from '@odontocrm/kernel';
 import type { BlobStore } from '@odontocrm/storage';
 import multipart from '@fastify/multipart';
 import type { FastifyInstance } from 'fastify';
@@ -21,6 +21,8 @@ export interface CreateClinicalServerOptions {
   patientLookup: PatientSnapshotLookup;
   /** La boca del paciente (del servicio de odontograma), para el dossier. */
   odontogramLookup: OdontogramChartLookup;
+  /** La identidad del consultorio (del servicio de identidad), para el membrete. */
+  letterheadLookup: LetterheadLookup;
   /** Almacén de adjuntos y PDF de récipes. */
   blobStore: BlobStore;
   /** Renderizador del PDF A5 (Chromium). */
@@ -74,6 +76,7 @@ export const createClinicalServer = async (
     pool: database.pool,
     patientLookup: options.patientLookup,
     odontogramLookup: options.odontogramLookup,
+    letterheadLookup: options.letterheadLookup,
     blobStore: options.blobStore,
     pdfRenderer: options.pdfRenderer,
     ...(options.kickOutbox === undefined ? {} : { kickOutbox: options.kickOutbox }),

@@ -21,6 +21,13 @@ export const clinicalEnvSchema = baseEnvSchema.extend({
   PATIENTS_URL: z.string().min(1).default('http://127.0.0.1:4002'),
 
   /**
+   * Servicio de identidad: de ahí se lee la **identidad del consultorio** (nombre, RIF,
+   * teléfonos, odontólogos y logo) para el membrete (ADR 0056). Si no responde —o no hay
+   * secreto interno— se usa el respaldo del código (`CLINIC`): el papel sale igual.
+   */
+  IDENTITY_URL: z.string().min(1).default('http://127.0.0.1:4001'),
+
+  /**
    * Servicio de odontograma: el **dossier** del expediente lee ahí la boca del paciente
    * para dibujarla en el PDF. Si no responde, el dossier sale igual, sin el dibujo.
    */

@@ -16,11 +16,12 @@ import {
   type ClinicalPatientSnapshot,
   type ClinicalSessionContent,
   type ClinicDentist,
+  type ClinicIdentity,
   type Dentition,
   type PrescriptionSummary,
   type ToothFindingRecord,
 } from '@odontocrm/contracts';
-import { readImageDataUri } from '@odontocrm/kernel';
+import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
 import { odontogramSection } from './dossier-odontogram.js';
 import { qrSvg } from '../prescriptions/qr.js';
@@ -56,8 +57,12 @@ export interface DossierDocumentInput {
   dentist: ClinicDentist | null;
   /** URL que abre el QR de verificación; si falta, el dossier sale sin QR. */
   verificationUrl: string | null;
-  /** Ruta del logo relativa a la raíz del repositorio. */
+  /** Ruta del logo relativa a la raíz del repositorio (respaldo si no hay `logoDataUri`). */
   logoPath: string | null;
+  /** La identidad del consultorio leída por el servicio; si falta, se usa `CLINIC`. */
+  clinic?: ClinicIdentity | null;
+  /** Logo ya incrustado como `data:` URI; si falta, se lee `logoPath`. */
+  logoDataUri?: string | null;
 }
 
 export interface DossierSessionEntry {
@@ -101,7 +106,8 @@ const dateTime = (value: Date | string): string => {
   return `${val('day')}/${val('month')}/${val('year')} ${val('hour')}:${val('minute')}`;
 };
 
-const estilos = `
+const estilos = (fontFaces: string): string => `
+  ${fontFaces}
   ${brandStyles()}
   ${brandWatermarkCss()}
   @page { size: A4; }
@@ -111,13 +117,13 @@ const estilos = `
   .letterhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; border-bottom: 0.6mm solid var(--brand-accent); padding-bottom: 3mm; }
   .letterhead-brand { display: flex; align-items: flex-start; gap: 6mm; }
   .logo { height: var(--brand-logo-height-mm); width: auto; }
-  .clinic-name { font-size: 14pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
+  .clinic-name { font-family: var(--brand-font-doc-title); font-size: 14pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
   .clinic-line { font-size: 8pt; color: var(--brand-ink-muted); margin: 0.6mm 0 0; }
   .doc-meta { text-align: right; font-size: 8pt; color: var(--brand-ink-muted); min-width: 55mm; }
-  .doc-number { font-size: 12pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
-  h1 { font-size: 13pt; margin: 4mm 0 0; color: var(--brand-primary); }
+  .doc-number { font-family: var(--brand-font-doc-title); font-size: 12pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
+  h1 { font-family: var(--brand-font-doc-title); font-size: 13pt; margin: 4mm 0 0; color: var(--brand-primary); }
   .subtitle { font-size: 8.5pt; color: var(--brand-ink-muted); margin: 1mm 0 0; }
-  h2 { font-size: 10pt; color: var(--brand-primary); margin: 5mm 0 1.5mm; border-bottom: 0.2mm solid var(--brand-line); padding-bottom: 0.8mm; }
+  h2 { font-family: var(--brand-font-doc-title); font-size: 10pt; color: var(--brand-primary); margin: 5mm 0 1.5mm; border-bottom: 0.2mm solid var(--brand-line); padding-bottom: 0.8mm; }
   .filiacion { display: flex; flex-wrap: wrap; gap: 1mm 8mm; font-size: 8.5pt; margin-top: 2mm; }
   .filiacion dt { color: var(--brand-ink-muted); font-size: 7pt; text-transform: uppercase; letter-spacing: 0.2mm; margin: 0; }
   .filiacion dd { margin: 0.3mm 0 1mm; font-weight: 600; }
@@ -216,9 +222,10 @@ const tablaHallazgos = (findings: Record<string, readonly ToothFindingRecord[]>)
  * servicio lo archiva con su huella.
  */
 export const dossierHtml = async (input: DossierDocumentInput): Promise<string> => {
-  const logo = await readImageDataUri(input.logoPath);
-  // La marca de agua sale del mismo logo del membrete (`BRAND.watermarkPath`).
-  const marcaDeAgua = brandWatermarkHtml(await readImageDataUri(BRAND.watermarkPath));
+  const consultorio = input.clinic ?? CLINIC;
+  const logo = input.logoDataUri ?? (await readImageDataUri(input.logoPath));
+  // La marca de agua usa el **logo efectivo** (el subido o el del repositorio).
+  const marcaDeAgua = brandWatermarkHtml(logo ?? (await readImageDataUri(BRAND.watermarkPath)));
   const paciente = input.patient;
   const odontograma = odontogramSection(input.odontogram);
 
@@ -288,7 +295,7 @@ export const dossierHtml = async (input: DossierDocumentInput): Promise<string> 
 
   return `<!doctype html>
 <html lang="es">
-<head><meta charset="utf-8"><title>Expediente ${escapeHtml(input.number)}</title><style>${estilos}</style></head>
+<head><meta charset="utf-8"><title>Expediente ${escapeHtml(input.number)}</title><style>${estilos(await brandFontFaceCss())}</style></head>
 <body>
   ${marcaDeAgua}
   <div class="brand-doc">
@@ -296,11 +303,11 @@ export const dossierHtml = async (input: DossierDocumentInput): Promise<string> 
     <div class="letterhead-brand">
       ${logo === null ? '' : `<img class="logo" src="${logo}" alt="Logo del consultorio">`}
       <div>
-        <p class="clinic-name">${escapeHtml(CLINIC.name)}</p>
-        ${CLINIC.legalName === null ? '' : `<p class="clinic-line">${escapeHtml(CLINIC.legalName)}</p>`}
-        <p class="clinic-line">${escapeHtml(clinicFullAddress(CLINIC))}</p>
-        ${CLINIC.rif === null ? '' : `<p class="clinic-line">RIF ${escapeHtml(CLINIC.rif)}</p>`}
-        ${clinicContactLine(CLINIC) === '' ? '' : `<p class="clinic-line">${escapeHtml(clinicContactLine(CLINIC))}</p>`}
+        <p class="clinic-name">${escapeHtml(consultorio.name)}</p>
+        ${consultorio.legalName === null ? '' : `<p class="clinic-line">${escapeHtml(consultorio.legalName)}</p>`}
+        <p class="clinic-line">${escapeHtml(clinicFullAddress(consultorio))}</p>
+        ${consultorio.rif === null ? '' : `<p class="clinic-line">RIF ${escapeHtml(consultorio.rif)}</p>`}
+        ${clinicContactLine(consultorio) === '' ? '' : `<p class="clinic-line">${escapeHtml(clinicContactLine(consultorio))}</p>`}
       </div>
     </div>
     <div class="doc-meta">
