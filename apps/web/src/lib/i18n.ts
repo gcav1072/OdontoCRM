@@ -308,6 +308,18 @@ const DICCIONARIO = {
   'inicio.debeCambiar':
     'Estás usando una contraseña temporal. Cámbiala para dejar de ver este aviso.',
   'inicio.cambiarAhora': 'Cambiar la contraseña',
+  // Novedades de citas (ADR 0057): lo que el paciente hace con su cita.
+  'inicio.novedades.titulo': 'Novedades',
+  'inicio.novedades.descripcion':
+    'Lo último que hicieron los pacientes con sus citas por Telegram o WhatsApp.',
+  'inicio.novedades.cargando': 'Cargando las novedades…',
+  'inicio.novedades.error': 'No se pudieron cargar las novedades.',
+  'inicio.novedades.vacio': 'Todavía no hay novedades de citas.',
+  'inicio.novedades.verTodas': 'Ver las {total}',
+  'inicio.novedades.verMenos': 'Ver menos',
+  'inicio.novedades.confirmada': 'dio cita y confirmó',
+  'inicio.novedades.cancelada': 'dio cita y canceló',
+  'inicio.novedades.confirmadaYCancelada': 'confirmó, pero luego se arrepintió y canceló',
 
   // --- Cambio de contraseña ------------------------------------------------
   'contrasena.titulo': 'Cambiar la contraseña',
@@ -933,6 +945,7 @@ const DICCIONARIO = {
   'permiso.scheduling:write': 'Programar la jornada y asignar cupos',
   'permiso.scheduling:notify': 'Enviar notificaciones de citas',
   'permiso.scheduling:overbook': 'Autorizar sobrecupo en un día completo',
+  'permiso.scheduling:cancel_policy': 'Editar la política de cancelación del paciente',
   'permiso.screens:manage': 'Administrar pantallas y dispositivos',
   'permiso.screens:display': 'Ver las pantallas de sala y consultorio',
   'permiso.clinical:read': 'Consultar la historia clínica',
@@ -1744,6 +1757,7 @@ const DICCIONARIO = {
   'notificaciones.plantilla.cita_confirmada_paciente': 'Confirmación (paciente)',
   'notificaciones.plantilla.cita_cancelada_paciente': 'Cancelación (paciente)',
   'notificaciones.plantilla.cita_no_cancelable': 'Cita no cancelable',
+  'notificaciones.plantilla.cita_cancelacion_fuera_de_plazo': 'Cancelación fuera de plazo',
   'notificaciones.plantilla.sin_citas': 'Sin citas próximas',
   'notificaciones.plantilla.estado_solicitud': 'Estado de la solicitud',
   'notificaciones.plantilla.manual_pendiente': 'Aviso manual pendiente',
@@ -1797,6 +1811,23 @@ const DICCIONARIO = {
   'notificaciones.canales.desvinculado': 'Paciente desvinculado.',
   'notificaciones.canales.generado': 'Enlace de vinculación generado para {paciente}.',
   'notificaciones.canales.errorGenerar': 'No se pudo generar el enlace de vinculación.',
+
+  // --- Política de cancelación del paciente (ADR 0057) ---------------------
+  'notificaciones.politica.titulo': 'Cancelación por el paciente',
+  'notificaciones.politica.descripcion':
+    'Días mínimos de antelación con los que un paciente puede cancelar por Telegram o WhatsApp una cita que ya confirmó. En 0, no hay corte.',
+  'notificaciones.politica.campo': 'Días de antelación (0 = sin corte)',
+  'notificaciones.politica.ayuda':
+    'Una cita confirmada no se podrá cancelar por el bot cuando le falten estos días o menos. Las citas sin confirmar siempre se pueden cancelar.',
+  'notificaciones.politica.guardar': 'Guardar',
+  'notificaciones.politica.guardando': 'Guardando…',
+  'notificaciones.politica.guardado': 'Política de cancelación actualizada.',
+  'notificaciones.politica.desactivado':
+    'Sin corte: el paciente puede cancelar en cualquier momento.',
+  'notificaciones.politica.activo':
+    'Un paciente que confirmó solo puede cancelar si faltan más de {dias} día(s) para su cita.',
+  'notificaciones.politica.invalido': 'Escribe un número entero entre 0 y 30.',
+  'notificaciones.politica.error': 'No se pudo cargar la política de cancelación.',
 
   // --- Fase 5: secretaría ---------------------------------------------------
   'secretaria.titulo': 'Secretaría del día',
@@ -2812,6 +2843,7 @@ export const PERMISSION_LABELS: Readonly<Record<Permission, string>> = {
   'scheduling:write': t('permiso.scheduling:write'),
   'scheduling:notify': t('permiso.scheduling:notify'),
   'scheduling:overbook': t('permiso.scheduling:overbook'),
+  'scheduling:cancel_policy': t('permiso.scheduling:cancel_policy'),
   'screens:manage': t('permiso.screens:manage'),
   'screens:display': t('permiso.screens:display'),
   'clinical:read': t('permiso.clinical:read'),
@@ -3076,6 +3108,7 @@ const NOMBRES_PLANTILLA: Readonly<Record<string, string>> = {
   cita_confirmada_paciente: t('notificaciones.plantilla.cita_confirmada_paciente'),
   cita_cancelada_paciente: t('notificaciones.plantilla.cita_cancelada_paciente'),
   cita_no_cancelable: t('notificaciones.plantilla.cita_no_cancelable'),
+  cita_cancelacion_fuera_de_plazo: t('notificaciones.plantilla.cita_cancelacion_fuera_de_plazo'),
   sin_citas: t('notificaciones.plantilla.sin_citas'),
   estado_solicitud: t('notificaciones.plantilla.estado_solicitud'),
   manual_pendiente: t('notificaciones.plantilla.manual_pendiente'),

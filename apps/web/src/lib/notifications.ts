@@ -31,6 +31,8 @@ export const notificationKeys = {
   channelsRoot: ['notificaciones', 'canales'] as const,
   /** Enlace de vinculación generado a partir de un paciente. */
   linkCode: (patientId: string) => ['notificaciones', 'enlace', patientId] as const,
+  /** Política de cancelación del paciente (ADR 0057). */
+  settings: ['notificaciones', 'politica'] as const,
 };
 
 /** Refresco de la cabecera de estado: el bot recibe mensajes a cada rato. */

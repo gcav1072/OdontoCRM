@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CircleCheck, CircleX, Clock, RefreshCw, ShieldCheck } from 'lucide-react';
 
 import { LinkButton } from '../components/LinkButton';
+import { HomeActivityCard } from '../components/inicio/HomeActivityCard';
 import { SystemHealthPanel } from '../components/sistema/SystemHealthPanel';
 import { apiErrorMessage } from '../lib/api';
 import { authApi } from '../lib/endpoints';
@@ -85,6 +86,9 @@ export const HomePage = () => {
           ))}
         </CardContent>
       </Card>
+
+      {/* Novedades de citas (ADR 0057): lo último que hicieron los pacientes por el bot. */}
+      {hasPermission('scheduling:read') && <HomeActivityCard />}
 
       <div className="grid gap-5 lg:grid-cols-3">
         <Card className="lg:col-span-2">

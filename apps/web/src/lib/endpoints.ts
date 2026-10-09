@@ -2,6 +2,7 @@ import {
   type AcceptConsentInput,
   type AmendClinicalSessionInput,
   type AnnulPrescriptionInput,
+  type AppointmentActivityItem,
   type AppointmentNotificationItem,
   type AppointmentStatus,
   type AppointmentSummary,
@@ -59,6 +60,8 @@ import {
   type MessageTemplateInput,
   type NoShowAppointmentInput,
   type NotificationRecord,
+  type NotificationSettings,
+  type NotificationSettingsInput,
   type NotificationStatus,
   type NotifyBatch,
   type NotifyBatchInput,
@@ -597,6 +600,20 @@ export interface AppointmentCancellationsParams {
   pageSize?: number;
 }
 
+/**
+ * Filtros de las **novedades de citas** (ADR 0057): cuántas traer. La tarjeta de
+ * `/inicio` pide 20 y muestra 5.
+ */
+export interface AppointmentActivityParams {
+  limit?: number;
+}
+
+/** Novedades de citas: `{ items }`, ya ordenadas de la más reciente a la más vieja. */
+export interface AppointmentActivityList {
+  items: AppointmentActivityItem[];
+  total: number;
+}
+
 /** Lista de plantillas de franjas: el contrato devuelve `{ items }`, sin paginar. */
 export interface SlotTemplateList {
   items: SlotTemplate[];
@@ -697,6 +714,19 @@ export const appointmentsApi = {
     signal?: AbortSignal,
   ): Promise<Paginated<AppointmentSummary>> =>
     api.get<Paginated<AppointmentSummary>>('/appointments/cancellations', {
+      query: { ...params } as QueryParams,
+      signal,
+    }),
+
+  /**
+   * **Novedades de citas** (ADR 0057): lo último que hicieron los pacientes con sus
+   * citas por el bot. Alimenta la tarjeta de `/inicio`.
+   */
+  activity: (
+    params: AppointmentActivityParams = {},
+    signal?: AbortSignal,
+  ): Promise<AppointmentActivityList> =>
+    api.get<AppointmentActivityList>('/appointments/activity', {
       query: { ...params } as QueryParams,
       signal,
     }),
@@ -804,6 +834,16 @@ export const notificationsApi = {
 
   status: (signal?: AbortSignal): Promise<BotStatus> =>
     api.get<BotStatus>('/notifications/status', { signal }),
+
+  /**
+   * **Política de cancelación del paciente** (ADR 0057). Exige
+   * `scheduling:cancel_policy`: solo el `admin` y el odontólogo la leen y la editan.
+   */
+  settings: (signal?: AbortSignal): Promise<NotificationSettings> =>
+    api.get<NotificationSettings>('/notifications/settings', { signal }),
+
+  updateSettings: (input: NotificationSettingsInput): Promise<NotificationSettings> =>
+    api.patch<NotificationSettings>('/notifications/settings', input),
 
   /**
    * **Citas próximas** con su canal, su estado y su último aviso (ADR 0052). El
