@@ -10,6 +10,7 @@ export * from './domain/alerta-admin.js';
 export * from './domain/auth.js';
 export * from './domain/billing.js';
 export * from './domain/channel.js';
+export * from './domain/clinic-profile.js';
 export * from './domain/clinical.js';
 export * from './domain/clinical-session.js';
 export * from './domain/dossier.js';

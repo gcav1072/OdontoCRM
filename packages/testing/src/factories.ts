@@ -16,6 +16,7 @@ export const aUserSummary = (overrides: Partial<UserSummary> = {}): UserSummary 
     permissions: permissionsForRoles(roles),
     isActive: true,
     mustChangePassword: false,
+    needsProfile: false,
     isLocked: false,
     failedAttempts: 0,
     lastLoginAt: null,

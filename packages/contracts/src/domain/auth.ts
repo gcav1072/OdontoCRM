@@ -18,6 +18,11 @@ export const accessTokenClaimsSchema = z.object({
   roles: z.array(roleSchema),
   permissions: z.array(z.string()),
   mustChangePassword: z.boolean(),
+  /**
+   * Un odontólogo que todavía no completó su perfil profesional. Mientras sea `true`
+   * no tiene permisos (igual que con la contraseña temporal): solo puede completarlo.
+   */
+  needsProfile: z.boolean(),
   /** Identificador de la sesión (familia de tokens de refresco). */
   sid: z.uuid(),
   iss: z.literal('odontocrm'),
@@ -39,6 +44,8 @@ export interface LoginResponse {
     roles: string[];
     permissions: string[];
     mustChangePassword: boolean;
+    /** El odontólogo aún no completó su perfil: solo puede rellenarlo. */
+    needsProfile: boolean;
   };
 }
 
@@ -51,6 +58,7 @@ export interface SessionInfo {
     roles: string[];
     permissions: string[];
     mustChangePassword: boolean;
+    needsProfile: boolean;
   };
   /** Inicio de la sesión (ISO 8601). */
   loginAt: string;
@@ -102,6 +110,8 @@ export const IDENTITY_HEADERS = {
   roles: 'x-user-roles',
   permissions: 'x-user-permissions',
   mustChangePassword: 'x-user-must-change-password',
+  /** Un odontólogo sin perfil completo: el gateway le corta todo salvo el onboarding. */
+  needsProfile: 'x-user-needs-profile',
   /** Sesión (familia de tokens): permite consultar los datos del login actual. */
   sessionId: 'x-session-id',
   deviceId: 'x-device-id',

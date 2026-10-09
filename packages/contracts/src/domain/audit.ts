@@ -21,6 +21,11 @@ export const AUDIT_ACTIONS = [
   'user_deactivated',
   'password_changed',
   'password_reset',
+  // Identidad del consultorio (la completa el titular en el primer acceso, Fase 12)
+  'dentist_profile_completed',
+  'dentist_profile_updated',
+  'clinic_profile_updated',
+  'clinic_logo_updated',
   // Pantallas kiosko
   'device_token_created',
   'device_token_revoked',

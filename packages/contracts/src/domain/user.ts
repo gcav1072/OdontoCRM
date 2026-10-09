@@ -35,6 +35,8 @@ export const userSummarySchema = z.object({
   permissions: z.array(permissionSchema),
   isActive: z.boolean(),
   mustChangePassword: z.boolean(),
+  /** Un odontólogo que todavía no completó su perfil profesional (MPPS, especialidad…). */
+  needsProfile: z.boolean(),
   isLocked: z.boolean(),
   failedAttempts: z.number().int().min(0),
   lastLoginAt: z.string().nullable(),
