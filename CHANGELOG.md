@@ -65,6 +65,14 @@ revisa en el control de versiones.
 - `notifications`, `scheduling` y `screens` refrescan su `CLINIC_NAME` / `CLINIC_ADDRESS` /
   `CLINIC_EMAIL` con lo de la base; **`CLINIC_*` del entorno sigue mandando** si está puesto.
 
+### Corregido
+
+- El aviso **«Al membrete le falta información»** del editor del récipe leía el **respaldo del
+  código** (`CLINIC`), así que seguía saliendo —RIF, teléfono, MPPS del odontólogo— aunque el
+  titular ya hubiera completado la identidad en su primer acceso. Ahora la lista sale de la
+  **identidad efectiva de la base** (`clinicIdentityFromView`), la misma que estampa el PDF, y solo
+  cae a `CLINIC` mientras no haya perfil guardado.
+
 ## [Identidad] — El membrete, el logo y la marca de agua, en todos los imprimibles · 2026-10-08
 
 La identidad del consultorio ya vivía en un solo sitio (`clinic.ts` para los datos, `brand.ts` para
