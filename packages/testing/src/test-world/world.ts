@@ -1,6 +1,7 @@
 import {
   clinicalAlerts,
   CLINICAL_SECTION_KEYS,
+  conditionsConflict,
   formatDocument,
   TEST_MODE_SEED,
   type AppointmentStatus,
@@ -490,6 +491,8 @@ const findingsFor = (
     'lingual',
   ];
   const used = new Set<string>();
+  /** Condiciones vigentes por pieza, para no generar parejas imposibles (spec §3). */
+  const porPieza = new Map<number, ToothCondition[]>();
   const findings: Omit<
     TestWorldFinding,
     'id' | 'odontogramId' | 'patientId' | 'recordedAt' | 'sessionId'
@@ -503,7 +506,14 @@ const findingsFor = (
   ): void => {
     const key = `${String(toothNumber)}|${surface ?? 'completa'}|${condition}`;
     if (used.has(key)) return;
+    // El generador arma la boca como el servicio: sin parejas imposibles. Así no nace
+    // una caries sobre una pieza ausente ni un implante con extracción indicada
+    // (spec anexo ADR 0032 §3), que el servidor rechazaría.
+    const vigentes = porPieza.get(toothNumber) ?? [];
+    if (vigentes.some((otra) => conditionsConflict(otra, condition))) return;
     used.add(key);
+    vigentes.push(condition);
+    porPieza.set(toothNumber, vigentes);
     findings.push({ toothNumber, surface, condition, state });
   };
 
@@ -522,8 +532,10 @@ const findingsFor = (
         push(tooth, rng.pick(surfaces), 'caries', 'pendiente');
       break;
     case 'caries_multiple':
+      // La caries solo existe `pendiente` (spec anexo ADR 0032 §2): lo que se trató es
+      // una obturación, y esa sí puede ir completada.
       for (const tooth of pickTeeth(rng.int(4, 6)))
-        push(tooth, rng.pick(surfaces), 'caries', rng.bool(0.3) ? 'completado' : 'pendiente');
+        push(tooth, rng.pick(surfaces), 'caries', 'pendiente');
       for (const tooth of pickTeeth(rng.int(1, 3)))
         push(tooth, rng.pick(surfaces), 'restauracion', 'completado');
       break;

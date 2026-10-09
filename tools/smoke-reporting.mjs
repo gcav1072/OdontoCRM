@@ -672,7 +672,7 @@ const hallazgos = await call(`/api/v1/odontogram/patients/${patientId}/findings/
     findings: [
       { toothNumber: 36, surface: 'occlusal', condition: 'caries', state: 'pendiente' },
       { toothNumber: 24, surface: 'vestibular', condition: 'restauracion', state: 'completado' },
-      { toothNumber: 48, surface: null, condition: 'ausente', state: 'pendiente' },
+      { toothNumber: 48, surface: null, condition: 'ausente', state: 'completado' },
     ],
   }),
 });

@@ -169,8 +169,8 @@ const lote = await call(`/api/v1/odontogram/patients/${patientId}/findings/batch
       { toothNumber: 16, surface: 'occlusal', condition: 'caries', state: 'pendiente' },
       { toothNumber: 16, surface: 'mesial', condition: 'caries', state: 'pendiente' },
       { toothNumber: 24, surface: 'vestibular', condition: 'restauracion', state: 'completado' },
-      { toothNumber: 36, surface: 'occlusal', condition: 'caries', state: 'completado' },
-      { toothNumber: 48, surface: null, condition: 'ausente', state: 'pendiente' },
+      { toothNumber: 36, surface: 'occlusal', condition: 'caries', state: 'pendiente' },
+      { toothNumber: 48, surface: null, condition: 'ausente', state: 'completado' },
     ],
   }),
 });
@@ -218,17 +218,19 @@ const repetido = await registrar({
 check('repetir el mismo hallazgo responde «sin cambios»', repetido.body?.unchanged === true);
 
 // 6) Cambiar el estado del hallazgo lo actualiza (y queda en la auditoría).
+//    La obturación admite pendiente y completado; la caries, solo pendiente (§2), así
+//    que el cambio de estado se prueba sobre la obturación de la 24.
 const completado = await registrar({
-  toothNumber: 16,
-  surface: 'occlusal',
-  condition: 'caries',
-  state: 'completado',
+  toothNumber: 24,
+  surface: 'vestibular',
+  condition: 'restauracion',
+  state: 'pendiente',
 });
 check(
   'el estado de la cara se actualiza',
   completado.status === 200 &&
-    completado.body?.odontogram?.findings?.['16']?.some(
-      (h) => h.surface === 'occlusal' && h.state === 'completado',
+    completado.body?.odontogram?.findings?.['24']?.some(
+      (h) => h.surface === 'vestibular' && h.state === 'pendiente',
     ) === true,
 );
 const auditoriaActualizado = await esperarAuditoria('tooth_finding_updated', odontogramId);
