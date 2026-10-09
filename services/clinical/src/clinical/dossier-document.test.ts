@@ -3,6 +3,7 @@ import {
   formatPrescriptionNumber,
   formatSessionNumber,
   type ClinicalSessionContent,
+  type ToothFindingRecord,
 } from '@odontocrm/contracts';
 import { describe, expect, it } from 'vitest';
 
@@ -122,6 +123,22 @@ const base = (): DossierDocumentInput => ({
   logoPath: null,
 });
 
+/** Hallazgo en una pieza de leche, para las bocas mixtas del dossier. */
+const hallazgoTemporal = (parcial: Partial<ToothFindingRecord> = {}): ToothFindingRecord => ({
+  id: 'f-leche',
+  toothNumber: 55,
+  surface: 'occlusal',
+  condition: 'caries',
+  state: 'pendiente',
+  notes: null,
+  recordedByUsername: 'egomez',
+  recordedAt: '2026-10-01T10:00:00.000Z',
+  updatedAt: '2026-10-01T10:00:00.000Z',
+  sessionId: null,
+  resolvedAt: null,
+  ...parcial,
+});
+
 describe('el dossier del expediente', () => {
   it('lleva la marca de agua del consultorio, con el contenido por encima', async () => {
     const html = await dossierHtml(base());
@@ -195,13 +212,26 @@ describe('el dossier del expediente', () => {
     expect(html).not.toContain('<svg viewBox');
   });
 
-  it('la dentición mixta dibuja también las bandas temporales', async () => {
+  it('la dentición mixta dibuja las bandas temporales cuando hay piezas de leche capturadas', async () => {
+    const html = await dossierHtml({
+      ...base(),
+      odontogram: {
+        dentition: 'mixta',
+        findings: { ...base().odontogram.findings, '55': [hallazgoTemporal()] },
+      },
+    });
+    expect(html).toContain('Dentición mixta');
+    expect(html).toContain('Dentición temporal · arcada superior');
+  });
+
+  it('una dentición mixta sin hallazgos de leche no dibuja bandas temporales vacías', async () => {
     const html = await dossierHtml({
       ...base(),
       odontogram: { dentition: 'mixta', findings: base().odontogram.findings },
     });
+    // Sigue diciendo que la boca es mixta, pero no pinta una banda que nadie capturó.
     expect(html).toContain('Dentición mixta');
-    expect(html).toContain('Dentición temporal · arcada superior');
+    expect(html).not.toContain('Dentición temporal · arcada superior');
   });
 
   it('escapa lo que viene de los datos (nombres que podrían traer HTML)', async () => {

@@ -5,6 +5,7 @@ import {
   TOOTH_LABEL_BASELINE,
   TOOTH_OUTLINE_POINTS,
   archLayout,
+  hasPrimaryFindings,
   odontogramSummary,
   toothGroupTransform,
   type Dentition,
@@ -160,20 +161,26 @@ export const odontogramSection = (input: {
   const bandas = [
     archSvg(layout.upper, layout.width, input.findings, 'Arcada superior · vestibular arriba'),
     archSvg(layout.lower, layout.width, input.findings, 'Arcada inferior · vestibular abajo'),
-    // Las bandas primarias solo existen en la dentición mixta; van debajo de la principal,
-    // cada pieza de leche en la ranura de su sucesor (ADR 0051).
-    archSvg(
-      layout.upperPrimary,
-      layout.width,
-      input.findings,
-      'Dentición temporal · arcada superior',
-    ),
-    archSvg(
-      layout.lowerPrimary,
-      layout.width,
-      input.findings,
-      'Dentición temporal · arcada inferior',
-    ),
+    // Las bandas primarias solo existen en la dentición mixta y, como en el imprimible
+    // del navegador, solo se dibujan si hay algún hallazgo en piezas de leche: una
+    // banda vacía haría dudar de si faltó capturarla. Van debajo de la principal, cada
+    // pieza de leche en la ranura de su sucesor (ADR 0051).
+    ...(hasPrimaryFindings(input.findings)
+      ? [
+          archSvg(
+            layout.upperPrimary,
+            layout.width,
+            input.findings,
+            'Dentición temporal · arcada superior',
+          ),
+          archSvg(
+            layout.lowerPrimary,
+            layout.width,
+            input.findings,
+            'Dentición temporal · arcada inferior',
+          ),
+        ]
+      : []),
   ].join('');
 
   return {
