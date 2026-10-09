@@ -39,6 +39,11 @@ export interface AuthContextValue {
   roles: readonly Role[];
   permissions: readonly Permission[];
   mustChangePassword: boolean;
+  /**
+   * Un odontólogo que aún no completó su perfil profesional: no puede usar el sistema
+   * hasta rellenarlo (el servidor le corta todo salvo el onboarding).
+   */
+  needsProfile: boolean;
   sessionInfo: SessionInfo | null;
   /** La sesión se cayó estando dentro: se avisa en el login. */
   sessionExpired: boolean;
@@ -201,6 +206,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       roles,
       permissions,
       mustChangePassword: user?.mustChangePassword ?? false,
+      needsProfile: user?.needsProfile ?? false,
       sessionInfo,
       sessionExpired,
       login,

@@ -18,6 +18,8 @@ import {
   type ChangePasswordInput,
   type ChangePatientStatusInput,
   type Channel,
+  type ClinicIdentityView,
+  type ClinicProfile,
   type ClinicalAttachment,
   type ClinicalAttachmentKind,
   type ClinicalAttachmentList,
@@ -28,6 +30,7 @@ import {
   type ClinicalSessionDetail,
   type ClinicalSessionList,
   type CloseClinicalSessionInput,
+  type CompleteOnboardingInput,
   type ConfirmAppointmentInput,
   type ConsultationState,
   type CreateAmendmentInput,
@@ -40,6 +43,7 @@ import {
   type DayCapacity,
   type DayView,
   type DeletePatientInput,
+  type DentistProfile,
   type DeviceLoginResponse,
   type DeviceTokenCreated,
   type DeviceTokenInput,
@@ -94,6 +98,8 @@ import {
   type SlotTemplateInput,
   type StatusHistoryEntry,
   type UpdatePatientInput,
+  type UpdateClinicProfileInput,
+  type UpdateDentistProfileInput,
   type UpdateUserInput,
   type UserSummary,
   type BillingInvoiceIssued,
@@ -276,6 +282,72 @@ export const usersApi = {
   roles: (signal?: AbortSignal): Promise<RoleCatalogResponse> =>
     api.get<RoleCatalogResponse>('/users/roles', { signal }),
 };
+
+/**
+ * Identidad del consultorio (ADR 0056): el perfil del consultorio y el perfil
+ * profesional del odontólogo. La **primera vez** se completa en el onboarding (el
+ * titular manda también los datos del consultorio); después se edita en Mi perfil
+ * (lo propio) o desde `/usuarios` (el administrador, a cualquiera).
+ */
+export const identityApi = {
+  /** La identidad efectiva: lo guardado o el respaldo del código. */
+  clinic: (signal?: AbortSignal): Promise<ClinicIdentityView> =>
+    api.get<ClinicIdentityView>('/identity/clinic', { signal }),
+
+  /** Editar los datos del consultorio (titular o administrador). */
+  updateClinic: (input: UpdateClinicProfileInput): Promise<void> =>
+    api.put<void>('/identity/clinic', input),
+
+  /**
+   * Subir el logo (SVG) en `multipart/form-data`. El navegador pone el `boundary`,
+   * así que no se fija `Content-Type`.
+   */
+  uploadLogo: (file: File): Promise<void> => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', file);
+    return api.request<void>('POST', '/identity/clinic/logo', { rawBody: cuerpo });
+  },
+
+  /** El perfil profesional propio (para Mi perfil y para el onboarding ya hecho). */
+  myDentistProfile: (
+    signal?: AbortSignal,
+  ): Promise<{ username: string; profile: DentistProfile | null; needsProfile: boolean }> =>
+    api.get<{ username: string; profile: DentistProfile | null; needsProfile: boolean }>(
+      '/identity/users/me/dentist-profile',
+      { signal },
+    ),
+
+  /** Completar el perfil la primera vez (el titular incluye `clinic`). */
+  completeOnboarding: (input: CompleteOnboardingInput): Promise<void> =>
+    api.post<void>('/identity/onboarding', input),
+
+  /** Editar el perfil propio (motivo obligatorio: queda en auditoría). */
+  updateMyDentistProfile: (input: UpdateDentistProfileInput): Promise<void> =>
+    api.put<void>('/identity/users/me/dentist-profile', input),
+
+  /** Un administrador edita el perfil de cualquier odontólogo. */
+  updateDentistProfile: (userId: string, input: UpdateDentistProfileInput): Promise<void> =>
+    api.put<void>(`/identity/users/${userId}/dentist-profile`, input),
+
+  /** Un administrador lee el perfil de un odontólogo para editarlo. */
+  dentistProfile: (
+    userId: string,
+    signal?: AbortSignal,
+  ): Promise<{ profile: DentistProfile | null; needsProfile: boolean }> =>
+    api.get<{ profile: DentistProfile | null; needsProfile: boolean }>(
+      `/identity/users/${userId}/dentist-profile`,
+      { signal },
+    ),
+};
+
+/** Tipos de los formularios del onboarding y de Mi perfil. */
+export interface MyDentistProfileResponse {
+  username: string;
+  profile: DentistProfile | null;
+  needsProfile: boolean;
+}
+
+export type { ClinicProfile };
 
 /**
  * Consulta de auditoría (Fase 9: la pantalla; el transporte ya estaba desde la

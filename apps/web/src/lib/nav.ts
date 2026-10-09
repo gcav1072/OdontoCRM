@@ -11,6 +11,7 @@ import {
   Receipt,
   ScrollText,
   Stethoscope,
+  UserRoundCog,
   Users,
   Workflow,
 } from 'lucide-react';
@@ -40,6 +41,7 @@ export type ModuleId =
   | 'reportes'
   | 'auditoria'
   | 'usuarios'
+  | 'miPerfil'
   | 'pantallas';
 
 export interface ModuleDefinition {
@@ -59,6 +61,15 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     labelKey: 'modulo.inicio.titulo',
     descriptionKey: 'modulo.inicio.descripcion',
     icon: House,
+    permission: null,
+  },
+  miPerfil: {
+    id: 'miPerfil',
+    path: '/mi-perfil',
+    labelKey: 'modulo.miPerfil.titulo',
+    descriptionKey: 'modulo.miPerfil.descripcion',
+    icon: UserRoundCog,
+    // Basta con la sesión: cada quien edita lo suyo (y el titular, el consultorio).
     permission: null,
   },
   registro: {

@@ -1,5 +1,7 @@
 import { CLINIC, clinicContactLine, clinicFullAddress } from '@odontocrm/contracts';
+import type { ClinicIdentity } from '@odontocrm/contracts';
 
+import { useClinicIdentity } from '../../providers/ClinicIdentityProvider';
 import { clinicLogoUrl } from '../../lib/marca';
 
 /**
@@ -8,11 +10,10 @@ import { clinicLogoUrl } from '../../lib/marca';
  * que el servidor estampa en el récipe, el dossier, el reporte y los documentos de
  * cobro.
  *
- * Sale de la **sección editable del consultorio** (`packages/contracts/src/clinic.ts`):
- * lo que esté en `null` simplemente no se imprime, así que el membrete se ve completo
- * en cuanto se rellenan los datos. Los colores son los de la marca impresa
- * (`--brand-*`), que es lo que hace que el papel del navegador y los PDF del servidor
- * no salgan cada uno de un color.
+ * Los datos salen de la **identidad del consultorio** (ADR 0056): el perfil que
+ * completa el titular y, mientras no exista, el respaldo del código (`CLINIC`). El
+ * logo, igual: el subido o el del repositorio. Así el papel del navegador y el PDF del
+ * servidor no pueden separarse. Los colores son los de la marca impresa (`--brand-*`).
  */
 export interface MembreteDocumentoProps {
   /** Título del documento, a la derecha del membrete («Historia clínica», «Odontograma»). */
@@ -20,13 +21,22 @@ export interface MembreteDocumentoProps {
 }
 
 export const MembreteDocumento = ({ title }: MembreteDocumentoProps) => {
-  const logo = clinicLogoUrl();
-  const contacto = clinicContactLine();
+  const identidad = useClinicIdentity();
+  // La vista trae los campos del perfil; el resto de `ClinicIdentity` no se usa aquí.
+  const clinic: ClinicIdentity = {
+    ...(identidad?.clinic ?? CLINIC),
+    logoPath: null,
+    dentists: [],
+  };
+  // El logo efectivo: el subido (viene ya como `data:` URI) o el del repositorio.
+  const logo = identidad?.logoDataUri ?? clinicLogoUrl();
+
+  const contacto = clinicContactLine(clinic);
   const lineas = [
-    clinicFullAddress(),
-    CLINIC.rif === null ? null : `RIF ${CLINIC.rif}`,
+    clinicFullAddress(clinic),
+    clinic.rif === null ? null : `RIF ${clinic.rif}`,
     contacto === '' ? null : contacto,
-    CLINIC.website,
+    clinic.website,
   ].filter((linea): linea is string => linea !== null && linea.trim() !== '');
 
   return (
@@ -45,8 +55,11 @@ export const MembreteDocumento = ({ title }: MembreteDocumentoProps) => {
           />
         )}
         <div>
-          <p className="text-lg font-bold" style={{ color: 'var(--brand-primary)' }}>
-            {CLINIC.name}
+          <p
+            className="text-lg font-bold"
+            style={{ color: 'var(--brand-primary)', fontFamily: 'var(--brand-font-doc-title)' }}
+          >
+            {clinic.name}
           </p>
           {lineas.map((linea) => (
             <p key={linea} className="text-xs" style={{ color: 'var(--brand-ink-muted)' }}>
@@ -57,7 +70,7 @@ export const MembreteDocumento = ({ title }: MembreteDocumentoProps) => {
       </div>
       <p
         className="text-sm font-semibold tracking-wide uppercase"
-        style={{ color: 'var(--brand-primary)' }}
+        style={{ color: 'var(--brand-primary)', fontFamily: 'var(--brand-font-doc-title)' }}
       >
         {title}
       </p>

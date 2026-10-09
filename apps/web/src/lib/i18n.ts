@@ -324,6 +324,66 @@ const DICCIONARIO = {
   'contrasena.politica':
     'La contraseña se guarda cifrada con scrypt; nunca se almacena en texto plano.',
 
+  // --- Identidad del consultorio: primer acceso y Mi perfil (ADR 0056) ------
+  'perfil.completar.titulo': 'Completa tu perfil profesional',
+  'perfil.completar.texto':
+    'Estos datos firman tus documentos: el MPPS y la especialidad salen impresos en el récipe.',
+  'perfil.completar.avisoTitulo': 'Es tu primer acceso',
+  'perfil.completar.avisoTexto':
+    'Hasta que completes el perfil, el sistema no te deja usar los módulos. Se pide una sola vez.',
+  'perfil.completar.enviar': 'Guardar y entrar',
+  'perfil.completar.pie':
+    'Podrás editarlo después en «Mi perfil». Cada cambio queda registrado en la auditoría.',
+  'perfil.profesional.titulo': 'Tus datos profesionales',
+  'perfil.campo.mpps': 'MPPS',
+  'perfil.campo.mppsAyuda': 'Número del Ministerio del Poder Popular para la Salud.',
+  'perfil.campo.especialidad': 'Especialidad',
+  'perfil.campo.especialidadPlaceholder': 'Odontología general, Endodoncia…',
+  'perfil.campo.colegiatura': 'Colegiatura o cédula profesional',
+  'perfil.campo.correo': 'Correo de contacto',
+  'perfil.consultorio.titulo': 'Datos del consultorio',
+  'perfil.consultorio.ayuda':
+    'Eres el titular: estos datos encabezan todos los documentos del consultorio.',
+  'perfil.consultorio.nombre': 'Nombre del consultorio',
+  'perfil.consultorio.direccion': 'Dirección',
+  'perfil.consultorio.ciudad': 'Ciudad y estado',
+  'perfil.consultorio.rif': 'RIF',
+  'perfil.consultorio.telefono': 'Teléfono',
+  'perfil.consultorio.telefonoAyuda': 'Como debe leerse en el papel.',
+  'perfil.consultorio.correo': 'Correo',
+  'perfil.consultorio.logo': 'Logo',
+  'perfil.consultorio.logoAyuda': 'Un SVG. Sale en el membrete y como marca de agua.',
+  'perfil.mio.titulo': 'Mi perfil profesional',
+  'perfil.mio.descripcion':
+    'El MPPS y la especialidad que firman tus récipes y tu expediente. Los cambios quedan auditados.',
+  'perfil.mio.editarConsultorio': 'Editar los datos del consultorio',
+  'perfil.mio.motivo': 'Motivo del cambio',
+  'perfil.mio.motivoAyuda': 'Queda registrado en la auditoría.',
+  'perfil.mio.guardar': 'Guardar cambios',
+  'perfil.mio.ok': 'Perfil actualizado.',
+  'perfil.mio.consultorioOk': 'Datos del consultorio actualizados.',
+  'perfil.mio.logoOk': 'Logo actualizado.',
+  'perfil.mio.sinPerfil': 'Todavía no has completado tu perfil profesional.',
+  'perfil.mio.error': 'No se pudo cargar tu perfil.',
+  'perfil.mio.faltantes': 'Faltan datos del membrete:',
+
+  // --- Módulo Mi perfil ----------------------------------------------------
+  'modulo.miPerfil.titulo': 'Mi perfil',
+  'modulo.miPerfil.descripcion':
+    'Tus datos profesionales (MPPS, especialidad) y, si eres el titular, los del consultorio.',
+
+  // --- Perfil profesional visto desde /usuarios (el administrador) ----------
+  'usuarios.perfil.titulo': 'Perfil profesional',
+  'usuarios.perfil.ayuda':
+    'El MPPS y la especialidad que firman sus documentos. Cada cambio queda auditado.',
+  'usuarios.perfil.cargando': 'Cargando el perfil…',
+  'usuarios.perfil.pendienteTitulo': 'Todavía no lo ha completado',
+  'usuarios.perfil.pendienteTexto':
+    'El odontólogo aún no ha entrado a completar su perfil. Puedes rellenarlo aquí.',
+  'usuarios.perfil.guardar': 'Guardar perfil profesional',
+  'usuarios.perfil.ok': 'Perfil profesional actualizado.',
+  'usuarios.perfil.error': 'Revisa los datos del perfil.',
+
   // --- Usuarios ------------------------------------------------------------
   'usuarios.titulo': 'Usuarios',
   'usuarios.descripcion': 'Cuentas del consultorio, roles, contraseñas y bloqueos.',
@@ -901,6 +961,26 @@ const DICCIONARIO = {
   'auditoria.user_deactivated': 'Usuario desactivado',
   'auditoria.password_changed': 'Contraseña cambiada',
   'auditoria.password_reset': 'Contraseña restablecida',
+  // Identidad del consultorio: la completa el titular en el primer acceso
+  'auditoria.dentist_profile_completed': 'Perfil profesional completado',
+  'auditoria.dentist_profile_updated': 'Perfil profesional editado',
+  'auditoria.clinic_profile_updated': 'Datos del consultorio editados',
+  'auditoria.clinic_logo_updated': 'Logo del consultorio actualizado',
+  // Identidad del consultorio: entidades y campos del diff
+  'auditoria.entidad.dentist_profile': 'Perfil del odontólogo',
+  'auditoria.entidad.clinic_profile': 'Identidad del consultorio',
+  'auditoria.campo.mpps': 'MPPS',
+  'auditoria.campo.specialty': 'Especialidad',
+  'auditoria.campo.licenseNumber': 'Colegiatura',
+  'auditoria.campo.contactEmail': 'Correo de contacto',
+  'auditoria.campo.name': 'Nombre del consultorio',
+  'auditoria.campo.legalName': 'Razón social',
+  'auditoria.campo.address': 'Dirección',
+  'auditoria.campo.city': 'Ciudad',
+  'auditoria.campo.phones': 'Teléfonos',
+  'auditoria.campo.rif': 'RIF',
+  'auditoria.campo.website': 'Sitio web',
+  'auditoria.campo.logo': 'Logo',
   'auditoria.device_token_created': 'Token de pantalla creado',
   'auditoria.device_token_revoked': 'Token de pantalla revocado',
   'auditoria.medical_record_created': 'Historia clínica abierta',
@@ -2748,6 +2828,10 @@ const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   user_deactivated: t('auditoria.user_deactivated'),
   password_changed: t('auditoria.password_changed'),
   password_reset: t('auditoria.password_reset'),
+  dentist_profile_completed: t('auditoria.dentist_profile_completed'),
+  dentist_profile_updated: t('auditoria.dentist_profile_updated'),
+  clinic_profile_updated: t('auditoria.clinic_profile_updated'),
+  clinic_logo_updated: t('auditoria.clinic_logo_updated'),
   device_token_created: t('auditoria.device_token_created'),
   device_token_revoked: t('auditoria.device_token_revoked'),
   medical_record_created: t('auditoria.medical_record_created'),

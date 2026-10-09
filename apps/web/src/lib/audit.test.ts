@@ -147,6 +147,8 @@ describe('catálogos', () => {
       'odontogram',
       'refresh_token',
       'session',
+      'dentist_profile',
+      'clinic_profile',
     ]);
     expect(opciones.every((opcion) => opcion.label !== '' && opcion.label !== opcion.value)).toBe(
       true,

@@ -6,8 +6,10 @@ import { z } from 'zod';
 
 import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { aplicarFuentesDocumento } from './lib/fuentes';
 import { queryClient } from './lib/queryClient';
 import { AuthProvider } from './providers/AuthProvider';
+import { ClinicIdentityProvider } from './providers/ClinicIdentityProvider';
 import { RealtimeSyncProvider } from './providers/RealtimeSyncProvider';
 import { ThemeProvider, aplicarTemaGuardado } from './providers/ThemeProvider';
 
@@ -90,21 +92,28 @@ try {
 
   // El aviso de reserva desaparece en cuanto React toma el contenedor.
   aplicarTemaGuardado();
+  // Las fuentes del consultorio (los mismos .woff2 que el servidor mete en los PDF),
+  // antes del primer render para que el membrete impreso ya salga con su tipografía.
+  aplicarFuentesDocumento();
   createRoot(contenedor).render(
     <StrictMode>
       <ErrorBoundary>
         <ThemeProvider>
           <QueryClientProvider client={queryClient}>
-            <BrowserRouter>
-              <AuthProvider>
-                {/* Dentro de AuthProvider (necesita saber si hay sesión) y de
-                    QueryClientProvider (invalida consultas): es el canal en vivo del
-                    personal, y sin sesión no abre nada. */}
-                <RealtimeSyncProvider>
-                  <App />
-                </RealtimeSyncProvider>
-              </AuthProvider>
-            </BrowserRouter>
+            {/* La identidad del consultorio (ADR 0056): la lee una vez y la reparten el
+                miembrete y la marca de agua de los imprimibles del navegador. */}
+            <ClinicIdentityProvider>
+              <BrowserRouter>
+                <AuthProvider>
+                  {/* Dentro de AuthProvider (necesita saber si hay sesión) y de
+                      QueryClientProvider (invalida consultas): es el canal en vivo del
+                      personal, y sin sesión no abre nada. */}
+                  <RealtimeSyncProvider>
+                    <App />
+                  </RealtimeSyncProvider>
+                </AuthProvider>
+              </BrowserRouter>
+            </ClinicIdentityProvider>
           </QueryClientProvider>
         </ThemeProvider>
       </ErrorBoundary>

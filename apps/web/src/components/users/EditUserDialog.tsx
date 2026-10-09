@@ -10,6 +10,7 @@ import { apiErrorMessage } from '../../lib/api';
 import { usersApi } from '../../lib/endpoints';
 import { applyApiFieldErrors } from '../../lib/forms';
 import { t } from '../../lib/i18n';
+import { EditUserProfileSection } from './EditUserProfileSection';
 import { RolePicker, type RoleOption } from './RolePicker';
 
 type ValoresFormulario = z.input<typeof updateUserSchema>;
@@ -167,6 +168,15 @@ export const EditUserDialog = ({
             />
           </Field>
         </form>
+
+        {/* El perfil profesional del odontólogo (MPPS, especialidad…): el dato que firma
+            sus documentos. Lo edita el administrador aquí y esa cuenta en «Mi perfil». */}
+        {usuario !== null && (
+          <EditUserProfileSection
+            userId={usuario.id}
+            esOdontologo={rolesSeleccionados.includes('odontologo')}
+          />
+        )}
       </div>
     </Dialog>
   );

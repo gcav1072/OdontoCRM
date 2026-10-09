@@ -1,3 +1,4 @@
+import { useClinicIdentity } from '../../providers/ClinicIdentityProvider';
 import { clinicLogoUrl } from '../../lib/marca';
 
 /**
@@ -6,15 +7,21 @@ import { clinicLogoUrl } from '../../lib/marca';
  * odontograma), con las mismas medidas que los PDF que compone el servidor
  * (`--brand-watermark-width-mm` y `--brand-watermark-opacity`).
  *
+ * El logo es el **efectivo** (ADR 0056): el que subió el titular —que sirve a la vez de
+ * membrete y de velo— o, si no hay, el del repositorio. La **opacidad y el ancho** sí
+ * son de la marca impresa (`brand.ts`, solo-código): el titular cambia el logo, no el
+ * velo.
+ *
  * Solo se ve **al imprimir** (`hidden print:block`): en pantalla la vista se lee
- * limpia, pero el papel sale con el velo de la marca. Si no hay logo, no pinta nada
- * y el documento sale igual.
+ * limpia, pero el papel sale con el velo de la marca. Si no hay logo, no pinta nada y
+ * el documento sale igual.
  *
  * El contenido del documento va en un contenedor con `relative z-[1]` para quedar
  * **por encima** del velo (si no, la marca de agua taparía el texto).
  */
 export const MarcaDeAgua = () => {
-  const logo = clinicLogoUrl();
+  const identidad = useClinicIdentity();
+  const logo = identidad?.logoDataUri ?? clinicLogoUrl();
   if (logo === null) return null;
   return (
     <img

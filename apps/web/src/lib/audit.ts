@@ -144,7 +144,25 @@ const ENTIDADES: readonly EntidadConocida[] = [
   { value: 'odontogram', key: 'auditoria.entidad.odontogram' },
   { value: 'refresh_token', key: 'auditoria.entidad.refresh_token' },
   { value: 'session', key: 'auditoria.entidad.session' },
+  { value: 'dentist_profile', key: 'auditoria.entidad.dentist_profile' },
+  { value: 'clinic_profile', key: 'auditoria.entidad.clinic_profile' },
 ];
+
+/** Campos de la identidad del consultorio, con su nombre en español. */
+const IDENTITY_FIELD_LABELS: Readonly<Record<string, string>> = {
+  mpps: t('auditoria.campo.mpps'),
+  specialty: t('auditoria.campo.specialty'),
+  licenseNumber: t('auditoria.campo.licenseNumber'),
+  contactEmail: t('auditoria.campo.contactEmail'),
+  name: t('auditoria.campo.name'),
+  legalName: t('auditoria.campo.legalName'),
+  address: t('auditoria.campo.address'),
+  city: t('auditoria.campo.city'),
+  phones: t('auditoria.campo.phones'),
+  rif: t('auditoria.campo.rif'),
+  website: t('auditoria.campo.website'),
+  logo: t('auditoria.campo.logo'),
+};
 
 export interface AuditEntityTypeOption {
   value: string;
@@ -169,6 +187,9 @@ export const entityTypeLabel = (entityType: string): string => {
  */
 export const fieldLabel = (field: string, entityType?: string): string => {
   if (entityType === 'patient') return PATIENT_FIELD_LABELS[field] ?? field;
+  if (entityType === 'dentist_profile' || entityType === 'clinic_profile') {
+    return IDENTITY_FIELD_LABELS[field] ?? field;
+  }
   return field;
 };
 

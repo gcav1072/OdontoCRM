@@ -2,11 +2,13 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AppShell } from './components/shell/AppShell';
 import { MustChangePasswordGate } from './components/shell/MustChangePasswordGate';
+import { NeedsProfileGate } from './components/shell/NeedsProfileGate';
 import { RequireAuth } from './components/shell/RequireAuth';
 import { RequirePermission } from './components/shell/RequirePermission';
 import { TestModeBannerLive } from './components/shell/TestModeBanner';
 import { MODULES } from './lib/nav';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
+import { CompleteProfilePage } from './pages/CompleteProfilePage';
 import { ConsultorioPage } from './pages/ConsultorioPage';
 import { FlujoPage } from './pages/FlujoPage';
 import { HomePage } from './pages/HomePage';
@@ -18,6 +20,7 @@ import { NotificationsPage } from './pages/NotificationsPage';
 import { OdontogramHistoryPage } from './pages/OdontogramHistoryPage';
 import { OdontogramPrintPage } from './pages/OdontogramPrintPage';
 import { PatientDetailPage } from './pages/PatientDetailPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { PatientRegistryPage } from './pages/PatientRegistryPage';
 import { PatientsPage } from './pages/PatientsPage';
 import { ReportesPage } from './pages/ReportesPage';
@@ -50,6 +53,7 @@ export const App = () => {
     (modulo) =>
       ![
         'inicio',
+        'miPerfil',
         'usuarios',
         'registro',
         'pacientes',
@@ -98,6 +102,18 @@ export const App = () => {
           }
         />
 
+        {/* El primer acceso de un odontólogo: completa su perfil profesional (y, si es
+          el titular, los datos del consultorio). Fuera del shell porque, mientras
+          falte, el servidor no le deja usar nada más (ADR 0056). */}
+        <Route
+          path="/completar-perfil"
+          element={
+            <RequireAuth>
+              <CompleteProfilePage />
+            </RequireAuth>
+          }
+        />
+
         {/* Vista de impresión de la historia clínica: fuera del shell para que el
           papel no lleve navegación. La secretaría entra con `clinical:read`. */}
         <Route
@@ -129,13 +145,18 @@ export const App = () => {
           element={
             <RequireAuth>
               <MustChangePasswordGate>
-                <AppShell />
+                <NeedsProfileGate>
+                  <AppShell />
+                </NeedsProfileGate>
               </MustChangePasswordGate>
             </RequireAuth>
           }
         >
           <Route index element={<Navigate to="/inicio" replace />} />
           <Route path="inicio" element={<HomePage />} />
+
+          {/* Mi perfil: cada quien edita lo suyo; el titular, también el consultorio. */}
+          <Route path="mi-perfil" element={<ProfilePage />} />
 
           <Route
             path="usuarios"
