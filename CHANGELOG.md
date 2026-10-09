@@ -37,6 +37,7 @@ agua**. `clinic.ts` queda como **semilla y respaldo** ([ADR 0056](docs/adr/0056-
 | **Tablas** `clinic_profiles` y `dentist_profiles` | La identidad del consultorio y el perfil profesional de cada odontólogo (migración `0004_identidad_del_consultorio`) |
 | **Asistente del primer acceso** (`/completar-perfil`) | El titular completa el consultorio **y** lo suyo; los demás odontólogos, solo lo suyo |
 | `needsProfile` en el JWT y en el gateway | El gate **no** es de la interfaz: sin perfil no hay permisos (espeja `mustChangePassword`) |
+| **Rutas públicas** `/api/v1/identity/**` (por el gateway) | `GET /clinic` (identidad efectiva), `POST /onboarding` (primer acceso), `GET/PUT /users/me/dentist-profile`, `PUT /clinic` y `POST /clinic/logo` |
 | `GET /internal/v1/identity/letterhead` | La lectura interna del membrete: identidad, **quién firma ya resuelto** y el logo incrustado. Se degrada a `CLINIC` |
 | `createLetterheadLookup()` (`packages/kernel`) | Lectura con **caché (~60 s)** y **deduplicación en vuelo**; si `CLINIC_*` está en el entorno, ni se llama |
 | **Mi perfil** y el perfil en «Editar usuario» | Cada odontólogo edita lo suyo; el administrador, a cualquiera. **Motivo obligatorio** y queda en auditoría |
