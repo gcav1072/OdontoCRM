@@ -29,12 +29,12 @@ const reset = args.includes('--reset');
 const SEED = 'odontocrm-pacientes-2026';
 
 const NAMES = [
-  'María Pérez',
+  'Ana Torres',
   'José Rodríguez',
   "O'Brien Fernández",
-  'Carmen Gómez',
+  'Carmen Delgado',
   'Luis Hernández',
-  'Erika Blanco',
+  'Gabriela Blanco',
   'Rafael Marcano',
   'Yulimar Salazar',
   'Andrés Rondón',
@@ -68,7 +68,7 @@ const OCCUPATIONS = [
 ] as const;
 
 const ADDRESSES = [
-  'Av. Luis del Valle García, C.E. Nueva Esparta, Planta Baja, Local 1-2',
+  'Av. Principal, Res. Los Jardines, piso 2, apto 2-A',
   'Calle Sucre, casa 12, Porlamar',
   'Sector Los Robles, vereda 3',
   'Urb. Jorge Coll, calle 5 con avenida 2',
