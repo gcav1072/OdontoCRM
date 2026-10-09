@@ -10,11 +10,12 @@ import { userRoles, users } from './db/schema.js';
 /**
  * Crea los usuarios iniciales del sistema (Fase 1):
  *   · `admin`     → administrador, acceso total
- *   · `recepcion` → secretaria (recepción, registro, programación, secretaría)
+ *   · `recepcion` → «Recepción prueba» (recepción, registro, programación, secretaría)
  *   · **un odontólogo por cada uno de `CLINIC.dentists`** (consultorio, historia
- *     clínica, odontograma, sesiones y récipes). El nombre, el usuario y el MPPS de
- *     esa sección son los del consultorio: es lo que hay que editar para poner el
- *     sistema con otro odontólogo (`packages/contracts/src/clinic.ts`).
+ *     clínica, odontograma, sesiones y récipes). Hoy esa lista trae una sola cuenta
+ *     **de prueba** («Odontólogo prueba», usuario `prueba`): los datos de verdad los
+ *     tiene el servidor en la base y cada odontólogo real se da de alta desde la
+ *     aplicación (`/usuarios`).
  *
  *   npm run build:node
  *   npm run seed:users -w @odontocrm/identity              (idempotente)
@@ -45,7 +46,7 @@ interface SeedUser {
 const DEVELOPMENT_PASSWORDS: Readonly<Record<string, string>> = {
   admin: 'admin-odontocrm-2026',
   recepcion: 'recepcion-odontocrm-2026',
-  egomez: 'consultorio-odontocrm-2026',
+  prueba: 'consultorio-odontocrm-2026',
 } as const;
 
 /**
@@ -140,9 +141,9 @@ const claveParaSembrar = (usuario: SeedUser): string => {
 };
 
 /**
- * Los odontólogos salen de `CLINIC.dentists` (`packages/contracts/src/clinic.ts`):
- * para poner el sistema con otro odontólogo se edita esa sección —nombre, usuario y
- * MPPS— y `npm run seed:users` crea su cuenta. Añadir uno más a la lista basta.
+ * Los odontólogos salen de `CLINIC.dentists` (`packages/contracts/src/clinic.ts`), que
+ * hoy trae una sola cuenta **de prueba** («Odontólogo prueba»): sirve para desarrollo y
+ * pruebas de humo. En el servidor los odontólogos reales se crean desde la aplicación.
  */
 const DENTIST_USERS: SeedUser[] = CLINIC.dentists.map((dentist) => ({
   username: dentist.username,
@@ -164,7 +165,7 @@ const TODAS_LAS_CUENTAS: SeedUser[] = [
   },
   {
     username: 'recepcion',
-    fullName: 'María Pérez',
+    fullName: 'Recepción prueba',
     roles: ['secretario'],
     email: null,
     password: resolvePassword('recepcion'),

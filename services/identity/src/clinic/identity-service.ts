@@ -24,8 +24,8 @@ import { clinicProfiles, dentistProfiles, userRoles, users } from '../db/schema.
  *
  * `clinic.ts` dejó de ser el único sitio de la identidad: el **titular** la completa en
  * su primer acceso y a partir de ahí **la base manda**. `CLINIC` (el código) queda como
- * **semilla y respaldo**: si no hay fila —una instalación recién migrada, la base
- * caída—, el membrete sigue saliendo con esos valores, así que nada se rompe.
+ * **respaldo neutro, sin datos personales**: si no hay fila —una instalación recién migrada, la base
+ * caída—, nada se imprime y los avisos que la necesiten se difieren (ADR 0058), así que nada se rompe.
  *
  * Este módulo es el único que sabe leer/escribir esas dos tablas y el que resuelve la
  * identidad **efectiva** (una sola vez, para todos los que la pidan).
@@ -138,20 +138,22 @@ const effectiveClinicProfile = (row: Awaited<ReturnType<typeof readClinicRow>>):
         website: row.website,
       };
 
-/** Los odontólogos con perfil; si no hay ninguno, los del código (respaldo). */
+/**
+ * Los odontólogos con perfil; si no hay ninguno, lista **vacía**. No se rellena con
+ * el odontólogo de prueba del código: eso imprimiría un nombre ficticio en documentos
+ * reales. El respaldo `CLINIC` solo aporta los campos del consultorio (vacíos).
+ */
 const effectiveDentists = (
   rows: Awaited<ReturnType<typeof listDentistRows>>,
 ): readonly ClinicDentist[] =>
-  rows.length === 0
-    ? CLINIC.dentists
-    : rows.map((row) => ({
-        username: row.username,
-        fullName: row.fullName,
-        mpps: row.mpps,
-        specialty: row.specialty,
-        licenseNumber: row.licenseNumber,
-        email: row.contactEmail,
-      }));
+  rows.map((row) => ({
+    username: row.username,
+    fullName: row.fullName,
+    mpps: row.mpps,
+    specialty: row.specialty,
+    licenseNumber: row.licenseNumber,
+    email: row.contactEmail,
+  }));
 
 const toDentistView = (row: Awaited<ReturnType<typeof listDentistRows>>[number]): DentistView => ({
   username: row.username,

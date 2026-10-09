@@ -111,7 +111,7 @@ export const dentistProfiles = pgTable(
 /**
  * Datos del consultorio para el membrete (una **sola fila**, patrón de tabla
  * singleton: `id = 1`). Los llena el **titular** en su primer acceso y a partir de ahí
- * son la fuente del membrete; `clinic.ts` queda como semilla y respaldo.
+ * son la fuente del membrete; `clinic.ts` queda como respaldo neutro, sin datos personales.
  *
  * El logo subido vive en el **almacén** (`logo_blob_key`); aquí solo queda su clave y
  * su tipo MIME. La **marca** (paleta, tipografías, medidas) no está aquí: sigue siendo
