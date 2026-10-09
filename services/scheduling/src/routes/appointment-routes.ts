@@ -1,4 +1,5 @@
 import {
+  appointmentActivityFiltersSchema,
   appointmentCancellationFiltersSchema,
   appointmentFiltersSchema,
   assignAppointmentSchema,
@@ -17,6 +18,7 @@ import {
   confirmAppointment,
   getAppointment,
   getHistory,
+  listAppointmentActivity,
   listAppointments,
   listPatientCancellations,
   rescheduleAppointment,
@@ -64,6 +66,17 @@ export const registerAppointmentRoutes = (
   app.get('/api/v1/appointments/cancellations', { preHandler: read }, async (request, reply) => {
     const filters = parseQuery(appointmentCancellationFiltersSchema, request.query);
     return reply.status(200).send(await listPatientCancellations(db, filters));
+  });
+
+  /**
+   * **Novedades de citas** (feed de `/inicio`, ADR 0057): lo último que hicieron los
+   * pacientes con sus citas por el bot. Ruta **estática** declarada antes de `/:id` por
+   * la misma razón que `cancellations`: que «activity» no se lea como un identificador.
+   */
+  app.get('/api/v1/appointments/activity', { preHandler: read }, async (request, reply) => {
+    const filters = parseQuery(appointmentActivityFiltersSchema, request.query);
+    const items = await listAppointmentActivity(db, filters);
+    return reply.status(200).send({ items, total: items.length });
   });
 
   /** Asignar una solicitud a una franja (o crear una cita directa). */

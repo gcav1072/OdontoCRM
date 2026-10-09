@@ -32,6 +32,7 @@ import {
   confirmAppointment,
   getAppointment,
   getHistory,
+  listAppointmentActivity,
   listAppointments,
   listPatientCancellations,
   rescheduleAppointment,
@@ -86,6 +87,8 @@ const workingDayFrom = (offsetDays: number): string => {
 
 const day = workingDayFrom(40);
 const otherDay = workingDayFrom(47);
+/** Día propio para las novedades (ADR 0057): no comparte franjas con las demás pruebas. */
+const activityDay = workingDayFrom(54);
 
 const admin: ActorContext = {
   actorId: null,
@@ -935,6 +938,77 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     });
     expect(soloPaciente.items.some((item) => item.id === porSecretaria.id)).toBe(false);
     expect(soloPaciente.items.some((item) => item.id === enSala.id)).toBe(false);
+  }, 60_000);
+
+  it('las novedades de citas cuentan lo que hizo el paciente por el bot (ADR 0057)', async () => {
+    const bot = { ...admin, roles: [] as const };
+
+    const crear = async (startTime: string) =>
+      assignAppointment(
+        schedulingHandle.db,
+        anAssignment(
+          (await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin)).id,
+          { date: activityDay, startTime, slotKind: 'manual' },
+        ),
+        admin,
+        { config },
+      );
+
+    // 1) Le dieron cita y **confirmó** por el bot.
+    const confirmada = await crear('09:00');
+    await confirmAppointment(schedulingHandle.db, confirmada.id, { channel: 'telegram' }, bot);
+
+    // 2) Le dieron cita y **canceló** sin haber confirmado.
+    const cancelada = await crear('10:00');
+    await cancelAppointment(
+      schedulingHandle.db,
+      cancelada.id,
+      { channel: 'whatsapp', config },
+      bot,
+    );
+
+    // 3) Confirmó primero y **luego se arrepintió**: el caso propio de la ADR 0057.
+    const arrepentida = await crear('11:00');
+    await confirmAppointment(schedulingHandle.db, arrepentida.id, { channel: 'telegram' }, bot);
+    await cancelAppointment(
+      schedulingHandle.db,
+      arrepentida.id,
+      { channel: 'telegram', config },
+      bot,
+    );
+
+    // 4) Confirmó por **teléfono**: lo apuntó la secretaría, no es novedad del bot.
+    const porTelefono = await crear('12:00');
+    await confirmAppointment(
+      schedulingHandle.db,
+      porTelefono.id,
+      { channel: 'telefono' },
+      secretary,
+    );
+
+    // 5) La canceló la secretaría: tampoco.
+    const porSecretaria = await crear('13:00');
+    await transitionAppointment(schedulingHandle.db, porSecretaria.id, 'cancelada', secretary, {
+      config,
+      reason: 'la anuló la secretaría',
+    });
+
+    const items = await listAppointmentActivity(schedulingHandle.db, { limit: 50 });
+    const kind = (id: string): string | undefined =>
+      items.find((item) => item.appointmentId === id)?.kind;
+
+    expect(kind(confirmada.id)).toBe('confirmada');
+    expect(kind(cancelada.id)).toBe('cancelada');
+    expect(kind(arrepentida.id)).toBe('confirmada_y_cancelada');
+    expect(kind(porTelefono.id)).toBeUndefined();
+    expect(kind(porSecretaria.id)).toBeUndefined();
+
+    // El canal viaja en la novedad: por dónde actuó el paciente.
+    expect(items.find((item) => item.appointmentId === cancelada.id)?.channel).toBe('whatsapp');
+
+    // Orden: de la más reciente a la más vieja.
+    const instantes = items.map((item) => Date.parse(item.occurredAt));
+    expect([...instantes].sort((a, b) => b - a)).toEqual(instantes);
   }, 60_000);
 
   it('las plantillas por defecto son la jornada del consultorio', async () => {

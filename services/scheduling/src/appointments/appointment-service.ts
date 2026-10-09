@@ -3,6 +3,8 @@ import {
   CANCELLABLE_STATUSES,
   hasPermission,
   minutesBetween,
+  type AppointmentActivityFilters,
+  type AppointmentActivityItem,
   type AppointmentCancellationFilters,
   type AppointmentFilters,
   type AppointmentStatus,
@@ -1057,6 +1059,84 @@ export const listPatientCancellations = async (
     pageSize: filters.pageSize,
     totalPages: Math.max(1, Math.ceil(total / filters.pageSize)),
   };
+};
+
+/**
+ * **Novedades de citas** (feed de `/inicio`, ADR 0057): lo que hicieron los pacientes
+ * con sus citas por el bot, de lo más reciente a lo más viejo.
+ *
+ * La fuente es `status_history` —cada confirmación y cada cancelación queda ahí con su
+ * hora— y el comportamiento se clasifica con la **fecha de confirmación** de la cita:
+ * cancelar una cita que estaba confirmada es «se arrepintió», y cancelar una que no lo
+ * estaba es «canceló sin confirmar». Todo se filtra al **canal de paciente**
+ * (`telegram`/`whatsapp`): lo que hizo la secretaría no es una novedad que el paciente
+ * haya generado, y las confirmaciones por teléfono tampoco cuentan como del bot.
+ */
+export const listAppointmentActivity = async (
+  db: SchedulingDb,
+  filters: AppointmentActivityFilters,
+): Promise<AppointmentActivityItem[]> => {
+  const filas = await db
+    .select({
+      id: statusHistory.id,
+      appointmentId: statusHistory.entityId,
+      toStatus: statusHistory.toStatus,
+      occurredAt: statusHistory.occurredAt,
+      patientId: appointments.patientId,
+      patientName: appointments.patientName,
+      patientDocument: appointments.patientDocument,
+      date: appointments.appointmentDate,
+      startTime: appointments.startTime,
+      endTime: appointments.endTime,
+      confirmedAt: appointments.confirmedAt,
+      confirmedChannel: appointments.confirmedChannel,
+      cancelledChannel: appointments.cancelledChannel,
+    })
+    .from(statusHistory)
+    .innerJoin(appointments, eq(appointments.id, statusHistory.entityId))
+    .where(
+      and(
+        eq(statusHistory.entityType, 'appointment'),
+        // El **canal** dice si fue el paciente: confirmar desde el bot y cancelar desde
+        // el bot son los dos hechos que se cuentan; el resto (mostrador, teléfono) no.
+        or(
+          and(
+            eq(statusHistory.toStatus, 'confirmada'),
+            inArray(appointments.confirmedChannel, [...PATIENT_CHANNELS]),
+          ),
+          and(
+            eq(statusHistory.toStatus, 'cancelada'),
+            inArray(appointments.cancelledChannel, [...PATIENT_CHANNELS]),
+          ),
+        ),
+      ),
+    )
+    .orderBy(desc(statusHistory.occurredAt))
+    .limit(filters.limit);
+
+  return filas.map((fila) => {
+    const esConfirmacion = fila.toStatus === 'confirmada';
+    // Canceló después de haber confirmado: el caso «dio cita, aceptó y se arrepintió».
+    const kind = esConfirmacion
+      ? 'confirmada'
+      : fila.confirmedAt === null
+        ? 'cancelada'
+        : 'confirmada_y_cancelada';
+    const channel = (esConfirmacion ? fila.confirmedChannel : fila.cancelledChannel) ?? 'telegram';
+    return {
+      id: fila.id,
+      appointmentId: fila.appointmentId,
+      kind,
+      patientId: fila.patientId,
+      patientName: fila.patientName,
+      patientDocument: fila.patientDocument,
+      date: fila.date,
+      startTime: toHm(fila.startTime),
+      endTime: toHm(fila.endTime),
+      channel: channel as Channel,
+      occurredAt: fila.occurredAt.toISOString(),
+    };
+  });
 };
 
 /**
