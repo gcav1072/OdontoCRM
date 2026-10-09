@@ -77,3 +77,5 @@ en `brand.ts` y sin usar).
 | [0052](0052-confirmacion-de-citas-por-el-paciente.md) | El paciente confirma su cita: estado `confirmada`, botón en el aviso y la próxima cita de la sesión se crea en la agenda | aceptada |
 | [0053](0053-cancelacion-de-citas-por-el-paciente.md) | El paciente cancela su cita: botón y palabra «cancelar», atribución con `cancelled_at`/`cancelled_channel` y el KPI del embudo | aceptada |
 | [0054](0054-membrete-unico-en-los-imprimibles.md) | El membrete, el logo y la marca de agua son los mismos en todos los imprimibles (y la marca de agua, antes declarada y sin usar, se cablea) | aceptada |
+| [0055](0055-dos-tipografias-en-los-imprimibles.md) | Los imprimibles tienen dos tipografías (títulos y cuerpo), auto-hospedadas e incrustadas: el papel no depende del equipo | aceptada |
+| [0056](0056-la-identidad-del-consultorio-vive-en-la-base.md) | La identidad del consultorio vive en la base de datos: el titular la completa en su primer acceso, queda auditada y `clinic.ts` pasa a semilla y respaldo | aceptada |

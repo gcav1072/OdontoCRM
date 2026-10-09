@@ -75,6 +75,13 @@ marca entra por `style` (`style="stroke:var(--brand-line)"` en las cadenas del s
 
 ## Consecuencias
 
+> **Nota (ADR 0056).** Este ADR decidió que la identidad del consultorio (los datos) vivía en el
+> código. El [ADR 0056](0056-la-identidad-del-consultorio-vive-en-la-base.md) la mueve a la **base
+> de `identity`** (el titular la completa en su primer acceso) y deja `clinic.ts` como **semilla y
+> respaldo**. Lo que **sigue vigente** de aquí: el membrete, el logo y la marca de agua salen de un
+> solo sitio, el logo es **el mismo** en todos los imprimibles y la **marca** (paleta, tipografías,
+> medidas) se edita solo en el código.
+
 - **A favor:** un solo archivo (`brand.ts` + `clinic.ts`) cambia la identidad de **pantalla y
   papel** a la vez; el membrete ya no se puede quedar a medias entre documentos; la marca de agua
   que estaba escrita y sin usar pasa a existir; y los imprimibles del navegador dejan de ser un
