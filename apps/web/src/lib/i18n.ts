@@ -1139,6 +1139,11 @@ const DICCIONARIO = {
   'programacion.titulo': 'Programación de la jornada',
   'programacion.descripcion':
     'Cola de solicitudes con ticket, cupo del día, franjas, citas y aviso al paciente.',
+  // Pestañas que reparten los cuadros del día para no apilarlos todos de una vez.
+  'programacion.pestanas.titulo': 'Secciones de la jornada',
+  'programacion.pestana.jornada': 'Jornada',
+  'programacion.pestana.citas': 'Citas',
+  'programacion.pestana.cancelaciones': 'Cancelaciones',
 
   // Estados de la cita (máquina de estados, plan §5.1)
   'programacion.estado.en_espera_cita': 'En espera de cita',

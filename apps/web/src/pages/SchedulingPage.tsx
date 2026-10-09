@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { NoticeBanner } from '../components/NoticeBanner';
+import { PanelTabs, panelPanelId, panelTabId } from '../components/PanelTabs';
 import { AppointmentActionDialog } from '../components/scheduling/AppointmentActionDialog';
 import { AppointmentHistoryDialog } from '../components/scheduling/AppointmentHistoryDialog';
 import { AssignAppointmentDialog } from '../components/scheduling/AssignAppointmentDialog';
@@ -78,6 +79,11 @@ export const SchedulingPage = () => {
   const [reprogramando, setReprogramando] = useState<AppointmentSummary | null>(null);
   const [accion, setAccion] = useState<ActionTarget | null>(null);
   const [notificando, setNotificando] = useState<{ appointmentIds?: string[] } | null>(null);
+  /**
+   * Pestaña de la jornada. Los cuadros del día se reparten aquí para no apilarlos
+   * todos en la misma columna; la cola de solicitudes queda fija a la izquierda.
+   */
+  const [pestana, setPestana] = useState<'jornada' | 'citas' | 'cancelaciones'>('jornada');
 
   const rol = useMemo(() => effectiveRole(roles), [roles]);
   const puedeEscribir = hasPermission('scheduling:write');
@@ -258,52 +264,99 @@ export const SchedulingPage = () => {
                 </Alert>
               )}
 
-              <DayCapacityCard
-                day={dia}
-                canWrite={puedeEscribir}
-                onEdit={() => setEditandoCupo(true)}
+              {/* Los cuadros del día se reparten en pestañas para no apilarlos todos:
+                  la cola de solicitudes (a la izquierda) queda siempre a la vista y aquí
+                  se cambia entre el cupo con las franjas, las citas y las cancelaciones. */}
+              <PanelTabs
+                idPrefix="programacion"
+                label={t('programacion.pestanas.titulo')}
+                tabs={[
+                  { key: 'jornada', label: t('programacion.pestana.jornada') },
+                  {
+                    key: 'citas',
+                    label: t('programacion.pestana.citas'),
+                    hint: (
+                      <span className="text-xs text-ink-subtle">{dia.appointments.length}</span>
+                    ),
+                  },
+                  { key: 'cancelaciones', label: t('programacion.pestana.cancelaciones') },
+                ]}
+                active={pestana}
+                onSelect={setPestana}
               />
 
-              <SlotGrid
-                day={dia}
-                selectedRequest={solicitudElegida}
-                canAssign={puedeEscribir}
-                onRequestTime={alPedirHora}
-                onOpenAppointment={setHistorial}
-              />
-
-              <Card>
-                <CardContent className="pt-5">
-                  <h2 className="flex items-center gap-2 pb-3 text-base font-semibold text-ink">
-                    <CalendarClock className="size-4 text-primary" aria-hidden="true" />
-                    {t('programacion.citas.titulo')}
-                  </h2>
-                  <DayAppointmentsTable
+              {pestana === 'jornada' && (
+                <div
+                  role="tabpanel"
+                  id={panelPanelId('programacion', 'jornada')}
+                  aria-labelledby={panelTabId('programacion', 'jornada')}
+                  className="space-y-5"
+                >
+                  <DayCapacityCard
                     day={dia}
-                    role={rol}
-                    hasPermission={hasPermission}
-                    onAction={alAccionar}
-                    onHistory={setHistorial}
+                    canWrite={puedeEscribir}
+                    onEdit={() => setEditandoCupo(true)}
                   />
-                </CardContent>
-              </Card>
 
-              <Card>
-                <CardContent className="flex items-start gap-2.5 pt-5 text-sm text-ink-muted">
-                  <ClipboardList className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                  <span>
-                    {t('programacion.notificar.envio')}{' '}
-                    <Link
-                      to="/notificaciones"
-                      className="font-medium whitespace-nowrap text-primary underline underline-offset-2"
-                    >
-                      {t('programacion.notificar.verBandeja')}
-                    </Link>
-                  </span>
-                </CardContent>
-              </Card>
+                  <SlotGrid
+                    day={dia}
+                    selectedRequest={solicitudElegida}
+                    canAssign={puedeEscribir}
+                    onRequestTime={alPedirHora}
+                    onOpenAppointment={setHistorial}
+                  />
+                </div>
+              )}
 
-              <PatientCancellationsCard />
+              {pestana === 'citas' && (
+                <div
+                  role="tabpanel"
+                  id={panelPanelId('programacion', 'citas')}
+                  aria-labelledby={panelTabId('programacion', 'citas')}
+                  className="space-y-5"
+                >
+                  <Card>
+                    <CardContent className="pt-5">
+                      <h2 className="flex items-center gap-2 pb-3 text-base font-semibold text-ink">
+                        <CalendarClock className="size-4 text-primary" aria-hidden="true" />
+                        {t('programacion.citas.titulo')}
+                      </h2>
+                      <DayAppointmentsTable
+                        day={dia}
+                        role={rol}
+                        hasPermission={hasPermission}
+                        onAction={alAccionar}
+                        onHistory={setHistorial}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardContent className="flex items-start gap-2.5 pt-5 text-sm text-ink-muted">
+                      <ClipboardList className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                      <span>
+                        {t('programacion.notificar.envio')}{' '}
+                        <Link
+                          to="/notificaciones"
+                          className="font-medium whitespace-nowrap text-primary underline underline-offset-2"
+                        >
+                          {t('programacion.notificar.verBandeja')}
+                        </Link>
+                      </span>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {pestana === 'cancelaciones' && (
+                <div
+                  role="tabpanel"
+                  id={panelPanelId('programacion', 'cancelaciones')}
+                  aria-labelledby={panelTabId('programacion', 'cancelaciones')}
+                >
+                  <PatientCancellationsCard />
+                </div>
+              )}
             </>
           )}
         </div>
