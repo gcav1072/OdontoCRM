@@ -47,6 +47,11 @@ export const buildProxyRoutes = (config: GatewayConfig): ProxyRoute[] => {
   add('/api/v1/users', config.IDENTITY_URL, 'Usuarios, roles y contraseñas');
   add('/api/v1/audit', config.IDENTITY_URL, 'Auditoría de cambios sensibles');
   add('/api/v1/devices', config.IDENTITY_URL, 'Dispositivos de pantalla (kiosko)');
+  add(
+    '/api/v1/identity',
+    config.IDENTITY_URL,
+    'Identidad del consultorio y perfiles profesionales',
+  );
 
   add('/api/v1/patients', config.PATIENTS_URL, 'Pacientes y archivos');
 

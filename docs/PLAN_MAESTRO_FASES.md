@@ -342,6 +342,7 @@ Un solo origen para el frontend: `http(s)://<host>:8090/api/v1/**`.
 | `/api/v1/auth/**` | identity | `POST /login`, `POST /refresh`, `POST /logout`, `POST /password/change` |
 | `/api/v1/users/**` | identity | CRUD de usuarios, roles, reset de contraseña |
 | `/api/v1/audit/**` | identity | `GET /events?from&to&actorId&action&entityType&entityId&field`, `GET /events/export.csv` |
+| `/api/v1/identity/**` | identity | `GET /clinic` (identidad efectiva), `POST /onboarding` (primer acceso), `GET/PUT /users/me/dentist-profile`, `PUT /clinic`, `POST /clinic/logo` (ADR 0056) |
 | `/api/v1/patients/**` | patients | `GET /by-doc?type=V&number=12345678`, `POST /`, `PATCH /:id` (exige `reason`), `GET /search`, `POST /:id/files` |
 | `/api/v1/requests/**` | scheduling | `POST /` (crea ticket), `GET /?status=en_espera_cita`, `GET /tickets/:display` |
 | `/api/v1/agenda/**` | scheduling | `GET /day?date=`, `PUT /capacity`, `GET /slot-templates`, `POST /assign`, `POST /:id/reschedule`, `POST /:id/no-show` |

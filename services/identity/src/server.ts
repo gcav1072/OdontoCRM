@@ -32,8 +32,9 @@ export interface CreateIdentityServerOptions {
  * con refresh rotativo, dispositivos kiosko y auditoría.
  *
  * Todas las rutas cuelgan de su prefijo público (`/api/v1/auth`, `/api/v1/users`,
- * `/api/v1/audit`, `/api/v1/devices`); el gateway reenvía sin recortar la ruta,
- * así que cada servicio es dueño de su prefijo y no hay colisiones.
+ * `/api/v1/audit`, `/api/v1/devices` y `/api/v1/identity` —la identidad del
+ * consultorio y los perfiles profesionales—); el gateway reenvía sin recortar la
+ * ruta, así que cada servicio es dueño de su prefijo y no hay colisiones.
  */
 export const createIdentityServer = async (
   options: CreateIdentityServerOptions,
