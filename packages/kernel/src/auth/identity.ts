@@ -21,6 +21,11 @@ export interface RequestIdentity {
   roles: Role[];
   permissions: Permission[];
   mustChangePassword: boolean;
+  /**
+   * Un odontólogo que todavía no completó su perfil: igual que la contraseña temporal,
+   * no tiene permisos hasta rellenarlo (solo puede usar las rutas de onboarding).
+   */
+  needsProfile: boolean;
   /** Sesión actual (familia de tokens de refresco). */
   sessionId?: string;
   /** Presente cuando la petición viene de una pantalla kiosko. */
@@ -61,6 +66,7 @@ export const parseIdentityHeaders = (
     roles: parseList(readHeader(headers[IDENTITY_HEADERS.roles]), ROLES),
     permissions: parseList(readHeader(headers[IDENTITY_HEADERS.permissions]), PERMISSIONS),
     mustChangePassword: readHeader(headers[IDENTITY_HEADERS.mustChangePassword]) === 'true',
+    needsProfile: readHeader(headers[IDENTITY_HEADERS.needsProfile]) === 'true',
     ...(sessionId === undefined ? {} : { sessionId }),
     ...(deviceId === undefined ? {} : { deviceId }),
   };
@@ -83,6 +89,9 @@ export const hasPermission = (identity: RequestIdentity, permission: Permission)
  * (`mustChangePassword`) **ningún** permiso queda habilitado: la contraseña
  * temporal solo sirve para cambiarla (la ruta de cambio no usa este guardia).
  *
+ * Lo mismo con `needsProfile`: un odontólogo que aún no completó su perfil solo
+ * puede usar las rutas de onboarding; cualquier otra cosa queda fuera.
+ *
  * ⚠️ La guardia es `async` a propósito: Fastify cuelga la petición si un
  * `preHandler` síncrono de un solo parámetro no llama a `done()`. Al devolver una
  * promesa, Fastify espera su resolución. Hay una prueba que lo vigila.
@@ -94,6 +103,9 @@ export const requirePermission =
     if (identity.mustChangePassword) {
       throw new ForbiddenError('Debes cambiar tu contraseña antes de continuar');
     }
+    if (identity.needsProfile) {
+      throw new ForbiddenError('Completa tu perfil profesional antes de continuar');
+    }
     if (!hasPermission(identity, permission)) {
       throw new ForbiddenError('No tienes permiso para realizar esta acción');
     }
@@ -103,6 +115,9 @@ export const requireAnyPermission =
   (permissions: readonly Permission[]) =>
   async (request: FastifyRequest): Promise<void> => {
     const identity = requireIdentity(request);
+    if (identity.needsProfile) {
+      throw new ForbiddenError('Completa tu perfil profesional antes de continuar');
+    }
     if (!permissions.some((permission) => hasPermission(identity, permission))) {
       throw new ForbiddenError('No tienes permiso para realizar esta acción');
     }

@@ -20,6 +20,9 @@ export const requireAdmin = async (request: FastifyRequest): Promise<void> => {
   if (identity.mustChangePassword) {
     throw new ForbiddenError('Debes cambiar tu contraseña antes de continuar');
   }
+  if (identity.needsProfile) {
+    throw new ForbiddenError('Completa tu perfil profesional antes de continuar');
+  }
   if (!identity.roles.includes('admin')) {
     throw new ForbiddenError('Solo el administrador puede ver el estado del sistema');
   }

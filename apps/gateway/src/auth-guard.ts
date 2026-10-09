@@ -5,6 +5,7 @@ import {
 } from '@odontocrm/contracts';
 import {
   UnauthorizedError,
+  ForbiddenError,
   readBearerToken,
   verifyAccessToken,
   type PublicKey,
@@ -50,6 +51,22 @@ export const PUBLIC_PREFIXES: readonly string[] = [
 export const isPublicPath = (path: string): boolean =>
   PUBLIC_PATHS.includes(path) || PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix));
 
+/**
+ * Rutas que puede usar un odontólogo **sin perfil completo** (ADR 0056).
+ *
+ * `needsProfile` se blinda igual que la contraseña temporal: mientras sea `true`, el
+ * usuario solo puede **completar su perfil**. Todo lo demás se corta aquí, en el borde,
+ * además de en el servicio (`requirePermission`), para que ningún otro servicio llegue a
+ * ver una petición suya.
+ */
+export const PROFILE_ONBOARDING_PREFIXES: readonly string[] = [
+  '/api/v1/auth/',
+  '/api/v1/identity/',
+];
+
+export const isProfileOnboardingPath = (path: string): boolean =>
+  PROFILE_ONBOARDING_PREFIXES.some((prefix) => path.startsWith(prefix));
+
 /** Ruta sin la cadena de consulta. */
 export const pathOf = (url: string): string => {
   const index = url.indexOf('?');
@@ -69,6 +86,7 @@ const applyIdentityHeaders = (
   headers[IDENTITY_HEADERS.roles] = claims.roles.join(',');
   headers[IDENTITY_HEADERS.permissions] = claims.permissions.join(',');
   headers[IDENTITY_HEADERS.mustChangePassword] = String(claims.mustChangePassword);
+  headers[IDENTITY_HEADERS.needsProfile] = String(claims.needsProfile);
   headers[IDENTITY_HEADERS.sessionId] = claims.sid;
 };
 
@@ -107,6 +125,17 @@ export const registerAuthGuard = (app: FastifyInstance, publicKey: PublicKey): v
     }
 
     applyIdentityHeaders(request.headers, claims);
+
+    /**
+     * Un odontólogo que aún no completó su perfil queda **blindado en el borde**: solo
+     * puede hablar con auth (cambiar contraseña, refrescar) y con identity (completar el
+     * perfil). El servicio lo vuelve a comprobar (`requirePermission`), pero cortarlo aquí
+     * evita que el resto de servicios lleguen a ver una petición suya.
+     */
+    if (claims.needsProfile && !isProfileOnboardingPath(path)) {
+      throw new ForbiddenError('Completa tu perfil profesional antes de usar el sistema');
+    }
+
     request.log.debug(
       { userId: claims.sub, roles: claims.roles, path },
       'Identidad verificada y publicada al servicio interno',

@@ -116,6 +116,7 @@ describe('gateway: proxy y guardia de autenticación', () => {
       roles: ['admin'] as const,
       permissions: ['users:manage'] as const,
       mustChangePassword: false,
+      needsProfile: false,
       sid,
     };
 
@@ -234,6 +235,7 @@ describe('gateway: proxy y guardia de autenticación', () => {
         roles: ['secretario'],
         permissions: ['scheduling:read'],
         mustChangePassword: false,
+        needsProfile: false,
         sid: globalThis.crypto.randomUUID(),
       },
       { privateKey },
