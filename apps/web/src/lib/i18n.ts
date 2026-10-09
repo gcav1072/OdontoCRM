@@ -2459,7 +2459,7 @@ const DICCIONARIO = {
   'clinica.recipe.anularTitulo': 'Anular el récipe {numero}',
   'clinica.recipe.membrete.titulo': 'Al membrete le falta información',
   'clinica.recipe.membrete.texto':
-    'El récipe va a salir sin: {campos}. Se completan en packages/contracts/src/clinic.ts (sección editable del consultorio).',
+    'El récipe va a salir sin: {campos}. Se completa en «Mi perfil» (el odontólogo, sus datos; el titular, los del consultorio).',
   'clinica.recipe.emitido.titulo': 'Récipe emitido y archivado',
   'clinica.recipe.emitido.texto': 'N.º {numero}, emitido el {fecha}.',
   'clinica.recipe.emitido.codigo': 'Código de verificación: {codigo}',

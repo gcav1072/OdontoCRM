@@ -1,5 +1,7 @@
 import {
+  CLINIC,
   MEDICATION_ROUTES,
+  clinicIdentityFromView,
   letterheadMissingFields,
   medicationRouteLabel,
   prescriptionStatusLabel,
@@ -19,6 +21,7 @@ import { apiErrorMessage } from '../../lib/api';
 import { clinicalApi } from '../../lib/endpoints';
 import { formatDate } from '../../lib/format';
 import { t } from '../../lib/i18n';
+import { useClinicIdentity } from '../../providers/ClinicIdentityProvider';
 import { NoticeBanner } from '../NoticeBanner';
 
 /**
@@ -27,8 +30,9 @@ import { NoticeBanner } from '../NoticeBanner';
  * Se emite una sola vez (número `RX-000001`, PDF A5 archivado y código de
  * verificación) y a partir de ahí es un documento: lo que se corrige es un récipe
  * nuevo, y el anterior se anula con motivo. El editor avisa si al membrete le falta
- * algún dato ([`CLINIC`](../../../../../packages/contracts/src/clinic.ts)) para que
- * nadie imprima un récipe incompleto sin enterarse.
+ * algún dato **de la identidad guardada** ([ADR 0056](../../../../../docs/adr/0056-la-identidad-del-consultorio-vive-en-la-base.md);
+ * el respaldo `CLINIC` solo mientras la base esté vacía) para que nadie imprima un
+ * récipe incompleto sin enterarse.
  */
 
 interface ItemDraft {
@@ -104,6 +108,7 @@ export const PrescriptionDialog = ({
   onChanged,
 }: PrescriptionDialogProps) => {
   const { notice, limpiar, exito, error } = useNotice();
+  const identidad = useClinicIdentity();
   const emitido = prescriptions.find((item) => item.status === 'emitida') ?? null;
   const anulado = prescriptions.find((item) => item.status === 'anulada') ?? null;
   const borradorResumen = prescriptions.find((item) => item.status === 'borrador') ?? null;
@@ -115,7 +120,16 @@ export const PrescriptionDialog = ({
   const [motivoAnulacion, setMotivoAnulacion] = useState('');
   const diferida = useDebouncedValue(busqueda, 300);
 
-  const faltantes = letterheadMissingFields();
+  /**
+   * Lo que le falta al membrete **que de verdad se va a imprimir**: la identidad del
+   * consultorio guardada en la base (ADR 0056), no el respaldo del código. Mientras la
+   * consulta no ha llegado —o no hay proveedor, como en las pruebas— se usa `CLINIC`.
+   */
+  const clinic = useMemo(
+    () => (identidad === null ? CLINIC : clinicIdentityFromView(identidad)),
+    [identidad],
+  );
+  const faltantes = letterheadMissingFields(clinic);
 
   const borradorQuery = useQuery({
     queryKey: ['clinica', 'recipe-borrador', borradorResumen?.id ?? 'ninguno'],
