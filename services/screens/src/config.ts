@@ -22,6 +22,9 @@ export const screensEnvSchema = baseEnvSchema.extend({
   /** Nombre del consultorio que sale en las pantallas (por defecto, el editable). */
   CLINIC_NAME: z.string().min(1).default(CLINIC.name),
 
+  /** Servicio de identidad: de ahí sale el nombre del consultorio (ADR 0056). */
+  IDENTITY_URL: z.string().min(1).default('http://127.0.0.1:4001'),
+
   /** Servicio de pacientes: la pantalla del consultorio pide ahí la ficha. */
   PATIENTS_URL: z.string().min(1).default('http://127.0.0.1:4002'),
   /**

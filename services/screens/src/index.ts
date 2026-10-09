@@ -7,7 +7,7 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
-import { startServer } from '@odontocrm/kernel';
+import { aplicarDatosDelConsultorio, createLetterheadLookup, startServer } from '@odontocrm/kernel';
 import type { DomainEvent } from '@odontocrm/events';
 
 import { loadScreensConfig } from './config.js';
@@ -23,6 +23,16 @@ import type { ScreensServices } from './services.js';
 const main = async (): Promise<void> => {
   const config = loadScreensConfig();
   const database = createScreensDatabase(config);
+
+  // El nombre del consultorio para el encabezado de las pantallas (ADR 0056).
+  // Se refresca cada 5 minutos; `CLINIC_*` del entorno manda si está puesto.
+  const letterheadLookup = createLetterheadLookup(config);
+  await aplicarDatosDelConsultorio(config, letterheadLookup);
+  const refrescoIdentidad = setInterval(
+    () => void aplicarDatosDelConsultorio(config, letterheadLookup),
+    5 * 60_000,
+  );
+  refrescoIdentidad.unref();
   const broadcast = createScreenBroadcaster();
   const patientLookup = createPatientLookup(config);
   /** Datos críticos del paciente en curso (alergias, crónicos) para el consultorio. */

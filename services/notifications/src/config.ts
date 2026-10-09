@@ -73,6 +73,13 @@ export const notificationsEnvSchema = baseEnvSchema.extend({
    * `.env` solo los sustituye si una instalación concreta lo necesita.
    */
   CLINIC_NAME: z.string().min(1).default(CLINIC.name),
+
+  /**
+   * Servicio de identidad: al arrancar (y cada pocos minutos) se lee de ahí el nombre,
+   * la dirección y el correo del consultorio (ADR 0056), con `CLINIC_*` del entorno por
+   * encima. Sin él, se quedan los valores de `CLINIC` (el respaldo del código).
+   */
+  IDENTITY_URL: z.string().min(1).default('http://127.0.0.1:4001'),
   CLINIC_ADDRESS: z.string().min(1).default(clinicFullAddress()),
   CLINIC_EMAIL: z
     .string()

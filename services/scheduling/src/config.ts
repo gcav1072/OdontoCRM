@@ -38,6 +38,13 @@ export const schedulingEnvSchema = baseEnvSchema.extend({
   CLINIC_NAME: z.string().min(1).default(CLINIC.name),
 
   /**
+   * Servicio de identidad: al arrancar (y cada pocos minutos) se lee de ahí el nombre y la
+   * dirección del consultorio para el aviso (ADR 0056), con `CLINIC_*` del entorno por
+   * encima. Sin él, se quedan los de `CLINIC`.
+   */
+  IDENTITY_URL: z.string().min(1).default('http://127.0.0.1:4001'),
+
+  /**
    * Servicio clínico (red interna). La agenda lo consulta para comprobar que la
    * sesión clínica esté **cerrada** antes de dejar marcar «atendido» sin motivo.
    */

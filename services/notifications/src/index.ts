@@ -10,7 +10,7 @@ import {
   stopBoss,
 } from '@odontocrm/db';
 import { EVENT_TOPICS } from '@odontocrm/events';
-import { startServer } from '@odontocrm/kernel';
+import { aplicarDatosDelConsultorio, createLetterheadLookup, startServer } from '@odontocrm/kernel';
 
 import { createAdminAlerter } from './alertas.js';
 import { createChannelAdapters } from './canales/index.js';
@@ -26,6 +26,17 @@ const main = async (): Promise<void> => {
   const config = loadNotificationsConfig();
   const database = createNotificationsDatabase(config);
   const clients = createInternalClients(config);
+
+  // El nombre, la dirección y el correo del consultorio: base de datos > `CLINIC`,
+  // con `CLINIC_*` del entorno por encima. Se refresca cada 5 minutos (sin mantener
+  // el proceso vivo), así un cambio de identidad llega al bot sin reiniciar.
+  const letterheadLookup = createLetterheadLookup(config);
+  await aplicarDatosDelConsultorio(config, letterheadLookup);
+  const refrescoIdentidad = setInterval(
+    () => void aplicarDatosDelConsultorio(config, letterheadLookup),
+    5 * 60_000,
+  );
+  refrescoIdentidad.unref();
 
   // El logger todavía no existe cuando se construyen los adaptadores: el error de
   // entrega se guarda y se registra en cuanto el servidor está en pie.

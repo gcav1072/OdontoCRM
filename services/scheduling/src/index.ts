@@ -5,7 +5,7 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
-import { startServer } from '@odontocrm/kernel';
+import { aplicarDatosDelConsultorio, createLetterheadLookup, startServer } from '@odontocrm/kernel';
 
 import { loadSchedulingConfig } from './config.js';
 import { createSchedulingDatabase } from './db/client.js';
@@ -14,6 +14,16 @@ import { createSchedulingServer } from './server.js';
 const main = async (): Promise<void> => {
   const config = loadSchedulingConfig();
   const database = createSchedulingDatabase(config);
+
+  // Nombre y dirección del consultorio para los avisos: base de datos > `CLINIC`,
+  // con `CLINIC_*` del entorno por encima. Se refresca cada 5 minutos.
+  const letterheadLookup = createLetterheadLookup(config);
+  await aplicarDatosDelConsultorio(config, letterheadLookup);
+  const refrescoIdentidad = setInterval(
+    () => void aplicarDatosDelConsultorio(config, letterheadLookup),
+    5 * 60_000,
+  );
+  refrescoIdentidad.unref();
 
   /**
    * El publicador del outbox se crea más abajo, pero las rutas necesitan poder
