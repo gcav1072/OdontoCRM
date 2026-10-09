@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { BRAND } from '../brand.js';
-import { CLINIC, type ClinicDentist, type ClinicIdentity } from '../clinic.js';
+import type { ClinicDentist, ClinicIdentity } from '../clinic.js';
 
 /**
  * La **identidad del consultorio** cuando vive en la base de datos (ADR 0056).
@@ -9,9 +9,9 @@ import { CLINIC, type ClinicDentist, type ClinicIdentity } from '../clinic.js';
  * Hasta ahora el nombre, el RIF, los teléfonos y los odontólogos que firman vivían en
  * el código (`packages/contracts/src/clinic.ts`) y cambiar el consultorio exigía
  * recompilar. Con el onboarding, el **titular** los escribe la primera vez que entra y
- * a partir de ahí la base manda; `clinic.ts` queda como **semilla y respaldo** (si no
- * hay perfil guardado —una instalación recién migrada, la base caída— el membrete sigue
- * saliendo con esos valores).
+ * a partir de ahí la base manda; `clinic.ts` queda como **respaldo neutro** (sin datos
+ * personales) para cuando todavía no hay perfil guardado —una instalación recién
+ * migrada—, y en ese caso los servicios difieren el `.ics` y los avisos.
  *
  * Aquí no vive nada de la **marca** (paleta, tipografías, medidas del membrete): eso
  * sigue siendo solo-código (`brand.ts`), como el logo por defecto del repositorio.
@@ -185,10 +185,9 @@ void _identidadCubreElContrato;
  * (`clinicFullAddress`, `clinicContactLine`, **`letterheadMissingFields`**…).
  *
  * Compone lo mismo que el servidor para un imprimible (`letterheadSnapshot`): el perfil
- * guardado o, si no hay ninguno, el respaldo del código (`CLINIC`). De ahí que los
- * odontólogos del respaldo entren cuando la base todavía no tiene perfiles —y no una
- * lista vacía—, porque de lo contrario el aviso diría que falta «odontólogo» cuando en
- * realidad se está usando el del código.
+ * guardado o, si no hay ninguno, el respaldo **neutro** del código (`CLINIC`, ya sin
+ * datos personales). Cuando no hay odontólogos con perfil, la lista sale **vacía**: ya no
+ * se rellena con el odontólogo de prueba del código, que solo existe para el seed.
  *
  * El **logo** es lo único que no viaja igual: la vista trae el `data:` URI ya resuelto
  * y aquí solo importa *si hay* logo, así que se deja `BRAND.logoPath` (una ruta del
@@ -196,17 +195,14 @@ void _identidadCubreElContrato;
  */
 export const clinicIdentityFromView = (view: ClinicIdentityView): ClinicIdentity => {
   // `DentistView` llama `contactEmail` al correo del odontólogo; el contrato lo llama `email`.
-  const dentists: readonly ClinicDentist[] =
-    view.dentists.length === 0
-      ? CLINIC.dentists
-      : view.dentists.map((dentist) => ({
-          username: dentist.username,
-          fullName: dentist.fullName,
-          mpps: dentist.mpps,
-          specialty: dentist.specialty,
-          licenseNumber: dentist.licenseNumber,
-          email: dentist.contactEmail,
-        }));
+  const dentists: readonly ClinicDentist[] = view.dentists.map((dentist) => ({
+    username: dentist.username,
+    fullName: dentist.fullName,
+    mpps: dentist.mpps,
+    specialty: dentist.specialty,
+    licenseNumber: dentist.licenseNumber,
+    email: dentist.contactEmail,
+  }));
 
   return {
     name: view.clinic.name,

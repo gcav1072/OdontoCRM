@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CLINIC,
   clinicContactLine,
+  clinicContactReady,
   clinicDentistFor,
   clinicFullAddress,
   clinicLeadDentist,
@@ -32,18 +33,20 @@ const consultorioCompleto: ClinicIdentity = {
   ],
 };
 
-describe('la sección editable del consultorio', () => {
-  it('está completa en lo indispensable para arrancar', () => {
-    expect(CLINIC.name.trim()).not.toBe('');
-    expect(CLINIC.address.trim()).not.toBe('');
-    expect(CLINIC.dentists.length).toBeGreaterThan(0);
+describe('los valores neutros de arranque del consultorio', () => {
+  it('no lleva datos personales: nada que imprimir hasta que el titular lo complete', () => {
+    expect(CLINIC.name.trim()).toBe('');
+    expect(CLINIC.address.trim()).toBe('');
+    expect(CLINIC.rif).toBeNull();
+    expect(CLINIC.email).toBeNull();
+    expect(clinicContactReady(CLINIC)).toBe(false);
   });
 
-  it('cada odontólogo tiene usuario y nombre, y los usuarios no se repiten', () => {
-    const usuarios = CLINIC.dentists.map((dentist) => dentist.username);
-    expect(usuarios.every((usuario) => usuario.trim() !== '')).toBe(true);
-    expect(new Set(usuarios).size).toBe(usuarios.length);
-    expect(CLINIC.dentists.every((dentist) => dentist.fullName.trim() !== '')).toBe(true);
+  it('trae una cuenta de odontólogo de prueba para el seed, con usuario y nombre', () => {
+    expect(CLINIC.dentists).toHaveLength(1);
+    const prueba = CLINIC.dentists[0];
+    expect(prueba?.username.trim()).toBe('prueba');
+    expect(prueba?.fullName.trim()).not.toBe('');
   });
 
   it('el titular es el primero de la lista', () => {
@@ -105,8 +108,11 @@ describe('ayudas de lectura del consultorio', () => {
     expect(sinNada).toContain('odontólogo');
   });
 
-  it('el consultorio de fábrica dice qué le falta para el récipe', () => {
-    // No es un fallo: es el recordatorio de que hay que completar la sección.
-    expect(letterheadMissingFields()).toContain('MPPS del odontólogo');
+  it('el consultorio de fábrica avisa de todo lo que le falta para el récipe', () => {
+    // No es un fallo: es el recordatorio de que hay que completarlo desde la aplicación.
+    const faltantes = letterheadMissingFields();
+    expect(faltantes).toContain('nombre del consultorio');
+    expect(faltantes).toContain('dirección');
+    expect(faltantes).toContain('MPPS del odontólogo');
   });
 });

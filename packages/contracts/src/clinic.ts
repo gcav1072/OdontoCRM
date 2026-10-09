@@ -1,37 +1,29 @@
 /**
- * Datos del consultorio: **el único archivo que hay que editar para poner este
- * sistema con otro odontólogo**.
+ * Forma de los datos del consultorio y **valores neutros de arranque**.
  *
- * Aquí viven el nombre, la dirección, los teléfonos, el RIF, el logo y los
- * odontólogos que firman (con su MPPS y su especialidad). Los leen los ocho
- * servicios y la interfaz: el aviso de la cita del bot, la voz y el membrete de
- * las pantallas, el récipe A5 y la página pública de verificación.
+ * La identidad real (nombre, dirección, teléfonos, RIF, logo y odontólogos que
+ * firman) **no vive aquí**: el odontólogo titular la completa en su primer acceso y
+ * se guarda en la base (`clinic_profiles`, ADR 0056). Este archivo solo declara el
+ * **tipo** (`ClinicIdentity`/`ClinicDentist`), los **ayudantes** que la leen y un
+ * `CLINIC` de relleno **sin datos personales**, que sirve únicamente para dos cosas:
  *
- * **¿Por qué aquí y no en otro sitio?** Porque no hay que mover cableado:
- *  - todos los servicios y la web **ya** importan `@odontocrm/contracts`, así que
- *    leerlo es un `import` que existe; no añade rutas, ni endpoints, ni migración,
- *    ni pantalla de ajustes;
- *  - un `.env` por servicio obligaría a repetir el mismo dato en tres archivos
- *    (agenda, notificaciones y pantallas ya lo hacían) y a reiniciar para cambiarlo;
- *  - una tabla de ajustes traería consultas, permisos y pantalla para un dato que
- *    cambia una vez cada varios años.
+ *  - el **seed** de cuentas crea un odontólogo por cada entrada de `CLINIC.dentists`
+ *    (hoy, «Odontólogo prueba»): es personal de prueba, no del consultorio;
+ *  - el **respaldo** cuando la base todavía no tiene identidad: los campos van vacíos
+ *    o en `null`, así que **nada se imprime** y `clinicContactReady` avisa de que aún
+ *    no hay datos del consultorio con los que componer un documento o un aviso.
  *
- * Cambiar algo aquí exige recompilar (`npm run build`), que es justo lo que se hace
- * al desplegar. Si una instalación concreta necesita otro valor **sin** tocar el
- * código, las variables `CLINIC_NAME`, `CLINIC_ADDRESS` y `CLINIC_EMAIL` del `.env`
- * siguen mandando sobre estos valores por defecto (y quedan documentadas en
- * `.env.example`).
- *
- * Lo que falte se deja en `null` y **no se imprime**: un récipe sin MPPS es un
- * récipe incompleto, así que el membrete avisa de lo que falta en vez de inventarlo
- * (`letterheadMissingFields`).
+ * No hay atajos por entorno: las variables `CLINIC_NAME`, `CLINIC_ADDRESS` y
+ * `CLINIC_EMAIL` **se eliminaron**. La identidad del consultorio se sirve **solo**
+ * desde el registro del titular; lo que falte se deja en `null` y **no se imprime**,
+ * y el membrete avisa de lo que falta en vez de inventarlo (`letterheadMissingFields`).
  */
 
 /** Quién firma los documentos del consultorio. */
 export interface ClinicDentist {
   /** Usuario con el que entra al sistema: `npm run seed:users` crea una cuenta por odontólogo. */
   username: string;
-  /** Nombre como debe salir impreso («Od. Erika Gómez»). */
+  /** Nombre como debe salir impreso («Od. Nombre Apellido»). */
   fullName: string;
   /** Número de MPPS (Ministerio del Poder Popular para la Salud). Obligatorio en el récipe. */
   mpps: string | null;
@@ -69,27 +61,26 @@ export interface ClinicIdentity {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   ▼▼▼  EDITA AQUÍ  ▼▼▼   Lo que esté en `null` no se imprime.
+   ▼▼▼  VALORES NEUTROS DE ARRANQUE  ▼▼▼  Sin datos personales: no editar aquí.
    ══════════════════════════════════════════════════════════════════════════════ */
 
 export const CLINIC: ClinicIdentity = {
-  name: 'Consultorio - Od. Erika Gómez',
+  name: '',
   legalName: null,
-  address: 'Av. Luis del Valle García, C.E. Nueva Esparta, Planta Baja, Local 1-2',
+  address: '',
   city: null,
-  // Teléfonos como se leen en el papel. Ejemplo: ['(+58) 281 123 45 67', '0414-1234567']
   phones: [],
-  email: 'citas@odontocrm.local',
+  email: null,
   rif: null,
   website: null,
-  // Deja el logo en esa ruta y aparece en el récipe; si no está, el membrete sale sin él.
+  // Logo por defecto de la instalación; si el consultorio sube uno, ese manda.
   // La paleta y las tipografías del membrete viven en `brand.ts`.
   logoPath: 'assets/clinic/logo.svg',
 
   dentists: [
     {
-      username: 'egomez',
-      fullName: 'Od. Erika Gómez',
+      username: 'prueba',
+      fullName: 'Odontólogo prueba',
       mpps: null,
       specialty: null,
       licenseNumber: null,
@@ -102,9 +93,20 @@ export const CLINIC: ClinicIdentity = {
    ▲▲▲  FIN DE LA SECCIÓN EDITABLE  ▲▲▲  Debajo solo hay ayudas de lectura.
    ══════════════════════════════════════════════════════════════════════════════ */
 
-/** Dirección completa en una línea: «…, Planta Baja, Local 1-2, Puerto La Cruz». */
+/** Dirección completa en una línea: «…, Planta Baja, Local 1-2, Ciudad». */
 export const clinicFullAddress = (clinic: ClinicIdentity = CLINIC): string =>
   clinic.city === null ? clinic.address : `${clinic.address}, ${clinic.city}`;
+
+/**
+ * ¿Hay datos de consultorio suficientes para componer un documento o un aviso?
+ *
+ * Se exige **nombre y dirección** (lo que aparece en el membrete, el `.ics` y el texto
+ * del aviso). Mientras falte, los servicios que los necesitan **no inventan nada**:
+ * difieren la generación del `.ics` y el envío del aviso hasta que el titular complete
+ * el consultorio en su primer acceso.
+ */
+export const clinicContactReady = (clinic: ClinicIdentity = CLINIC): boolean =>
+  clinic.name.trim() !== '' && clinic.address.trim() !== '';
 
 /** Teléfonos y correo en una línea, sin repetir el que falte. */
 export const clinicContactLine = (clinic: ClinicIdentity = CLINIC): string =>

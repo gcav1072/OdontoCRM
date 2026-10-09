@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { BRAND } from '../brand.js';
-import { CLINIC, letterheadMissingFields } from '../clinic.js';
+import { letterheadMissingFields } from '../clinic.js';
 import { clinicIdentityFromView, clinicIdentityViewSchema } from './clinic-profile.js';
 
 /** Una identidad ya guardada en la base, con el logo subido y el titular con perfil. */
@@ -18,15 +18,15 @@ const identidadCompleta = clinicIdentityViewSchema.parse({
   },
   dentists: [
     {
-      username: 'egomez',
-      fullName: 'Od. Erika Gómez',
+      username: 'prueba',
+      fullName: 'Odontólogo prueba',
       mpps: 'MPPS 12345',
       specialty: 'Endodoncia',
       licenseNumber: null,
-      contactEmail: 'erika@sonrisa.local',
+      contactEmail: 'prueba@sonrisa.local',
     },
   ],
-  titularUsername: 'egomez',
+  titularUsername: 'prueba',
   logoDataUri: 'data:image/svg+xml;base64,PHN2Zy8+',
   fromDatabase: true,
 });
@@ -34,7 +34,7 @@ const identidadCompleta = clinicIdentityViewSchema.parse({
 describe('la identidad de la vista en la forma del contrato', () => {
   it('traduce el correo del odontólogo (`contactEmail` → `email`)', () => {
     const clinic = clinicIdentityFromView(identidadCompleta);
-    expect(clinic.dentists[0]?.email).toBe('erika@sonrisa.local');
+    expect(clinic.dentists[0]?.email).toBe('prueba@sonrisa.local');
     expect(clinic.dentists[0]?.mpps).toBe('MPPS 12345');
   });
 
@@ -55,12 +55,12 @@ describe('la identidad de la vista en la forma del contrato', () => {
     expect(letterheadMissingFields(clinic)).not.toContain('logo');
   });
 
-  it('sin perfiles en la base, cae a los odontólogos del respaldo del código', () => {
-    // La vista trae `dentists: []` aunque el consultorio exista: el servidor compone el
-    // membrete con el respaldo y el aviso de la interfaz tiene que decir lo mismo.
+  it('sin perfiles en la base, la lista de odontólogos queda vacía (no se inventa)', () => {
+    // La vista trae `dentists: []`: el respaldo del código es neutro, así que no aporta
+    // ningún odontólogo de relleno y el aviso del membrete echa en falta uno.
     const sinDentistas = clinicIdentityViewSchema.parse({ ...identidadCompleta, dentists: [] });
     const clinic = clinicIdentityFromView(sinDentistas);
-    expect(clinic.dentists).toEqual(CLINIC.dentists);
-    expect(letterheadMissingFields(clinic)).not.toContain('odontólogo');
+    expect(clinic.dentists).toEqual([]);
+    expect(letterheadMissingFields(clinic)).toContain('odontólogo');
   });
 });

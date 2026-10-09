@@ -383,7 +383,7 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     subject: 'Aviso manual pendiente',
     body:
       'Llamar a {paciente} ({telefono}) para avisar de su cita del {fecha} a las {hora} en {lugar}.\n' +
-      'Guion: «Buenos días, le habla el consultorio de la Dra. Gómez para confirmar su cita…».',
+      'Guion: «Buenos días, le habla el consultorio para confirmar su cita…».',
     placeholders: ['paciente', 'telefono', 'fecha', 'hora', 'lugar'],
   },
   {
