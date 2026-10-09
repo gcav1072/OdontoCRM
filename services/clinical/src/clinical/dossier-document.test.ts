@@ -46,7 +46,7 @@ const base = (): DossierDocumentInput => ({
           condition: 'caries',
           state: 'pendiente',
           notes: null,
-          recordedByUsername: 'egomez',
+          recordedByUsername: 'prueba',
           recordedAt: '2026-10-01T10:00:00.000Z',
           updatedAt: '2026-10-01T10:00:00.000Z',
           sessionId: null,
@@ -59,7 +59,7 @@ const base = (): DossierDocumentInput => ({
           condition: 'endodoncia',
           state: 'completado',
           notes: null,
-          recordedByUsername: 'egomez',
+          recordedByUsername: 'prueba',
           recordedAt: '2026-10-01T10:00:00.000Z',
           updatedAt: '2026-10-01T10:00:00.000Z',
           sessionId: null,
@@ -97,7 +97,7 @@ const base = (): DossierDocumentInput => ({
         patientId: '11111111-1111-4111-8111-111111111111',
         status: 'emitida',
         issuedAt: '2026-10-01T15:05:00.000Z',
-        issuedByUsername: 'egomez',
+        issuedByUsername: 'prueba',
         itemCount: 1,
         verifyCode: 'ABCDE-FGHJK',
         hasPdf: true,
@@ -112,8 +112,8 @@ const base = (): DossierDocumentInput => ({
     },
   ],
   dentist: {
-    username: 'egomez',
-    fullName: 'Od. Erika Gómez',
+    username: 'prueba',
+    fullName: 'Odontólogo prueba',
     mpps: 'MPPS 12345',
     specialty: 'Odontología general',
     licenseNumber: null,
@@ -131,7 +131,7 @@ const hallazgoTemporal = (parcial: Partial<ToothFindingRecord> = {}): ToothFindi
   condition: 'caries',
   state: 'pendiente',
   notes: null,
-  recordedByUsername: 'egomez',
+  recordedByUsername: 'prueba',
   recordedAt: '2026-10-01T10:00:00.000Z',
   updatedAt: '2026-10-01T10:00:00.000Z',
   sessionId: null,
@@ -246,7 +246,7 @@ describe('el dossier del expediente', () => {
   it('el sello lleva el QR de verificación y el profesional que responde', async () => {
     const html = await dossierHtml(base());
     expect(html).toContain('<svg');
-    expect(html).toContain('Od. Erika Gómez');
+    expect(html).toContain('Odontólogo prueba');
     expect(html).toContain('MPPS 12345');
   });
 

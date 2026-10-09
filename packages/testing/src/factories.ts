@@ -41,7 +41,7 @@ export const SAMPLE_FIRST_NAMES = [
   'José',
   'Carmen',
   'Luis',
-  'Erika',
+  'Elena',
   'Rafael',
   'Yulimar',
   'Andrés',

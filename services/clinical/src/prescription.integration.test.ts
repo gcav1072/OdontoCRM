@@ -346,7 +346,7 @@ describeWithDatabases('récipes y adjuntos: número, PDF A5, QR y auditoría', (
     if (verificacion.valid) {
       expect(verificacion.code).toBe(escrito.toUpperCase());
       expect(verificacion.patientReference).toBe('María P.');
-      expect(verificacion.dentistName).toBe('Od. Erika Gómez');
+      expect(verificacion.dentistName).toBe('Odontólogo prueba');
       expect(verificacion.itemCount).toBe(2);
       expect(verificacion.status).toBe('emitida');
       // Ni diagnóstico ni medicamentos: la página pública no los lleva.

@@ -161,7 +161,7 @@ describe('catálogo y adjuntos', () => {
       sha256: 'a'.repeat(64),
       caption: 'Periapical de la 36',
       toothNumber: 36,
-      uploadedByUsername: 'egomez',
+      uploadedByUsername: 'prueba',
       createdAt: '2026-10-04T14:30:00.000Z',
     });
     expect(clinicalAttachmentKindLabel(adjunto.kind)).toBe('Radiografía');

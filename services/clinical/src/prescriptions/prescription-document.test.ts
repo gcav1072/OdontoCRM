@@ -23,8 +23,8 @@ const base: PrescriptionDocumentInput = {
   patientSex: 'F',
   patientAge: 38,
   dentist: {
-    username: 'egomez',
-    fullName: 'Od. Erika Gómez',
+    username: 'prueba',
+    fullName: 'Odontólogo prueba',
     mpps: 'MPPS 12345',
     specialty: 'Odontología general',
     licenseNumber: null,
@@ -107,7 +107,7 @@ describe('el récipe impreso', () => {
     expect(html).toContain('Amoxicilina');
     expect(html).toContain('500 mg');
     expect(html).toContain('cada 8 horas');
-    expect(html).toContain('Od. Erika Gómez');
+    expect(html).toContain('Odontólogo prueba');
     expect(html).toContain('MPPS 12345');
     expect(html).toContain('RX-000007');
     // El QR lleva dentro el enlace de verificación: se compara con el que genera

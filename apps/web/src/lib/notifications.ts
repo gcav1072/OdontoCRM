@@ -160,13 +160,13 @@ export const linkCodeExpired = (expiresAt: string, now: Date = new Date()): bool
  * marcador aún no tenga dato real.
  */
 export const TEMPLATE_SAMPLE_VALUES: Readonly<Record<string, string>> = {
-  clinica: 'Consultorio Dra. Gómez',
+  clinica: 'Consultorio de prueba',
   paciente: 'María Pérez',
   documento: 'V-12345678',
   telefono: '0412-1234567',
   fecha: '15/05/2026',
   hora: '9:30 a. m.',
-  lugar: 'Consultorio Dra. Gómez, Av. Bolívar, Caracas',
+  lugar: 'Consultorio de prueba, Calle de prueba 123',
   ticket: 'A-000123',
   estado: 'En espera de cita',
   resumen:

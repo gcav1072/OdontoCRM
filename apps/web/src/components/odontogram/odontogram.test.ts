@@ -25,7 +25,7 @@ const hallazgo = (parcial: Partial<ToothFindingRecord>): ToothFindingRecord => (
   condition: 'caries',
   state: 'pendiente',
   notes: null,
-  recordedByUsername: 'egomez',
+  recordedByUsername: 'prueba',
   recordedAt: '2026-10-05T14:00:00.000Z',
   updatedAt: '2026-10-05T14:00:00.000Z',
   sessionId: null,

@@ -270,7 +270,7 @@ const NAMES_FEMENINE = [
   'Valentina Rojas',
   'Marisela Quintero',
   'Gabriela Ferrer',
-  'Erika del Carmen Blanco',
+  'Elena del Carmen Blanco',
   'Yohana Coromoto Marcano',
   'Luisa Fernanda Aponte',
   'Norelys Beatriz Narváez',
@@ -320,7 +320,7 @@ const OCCUPATIONS = [
 ] as const;
 
 const ADDRESSES = [
-  'Av. Luis del Valle García, C.E. Nueva Esparta, Planta Baja, Local 1-2',
+  'Av. Principal, Res. Los Jardines, piso 2, apto 2-A',
   'Calle Sucre, casa 12, Porlamar',
   'Sector Los Robles, vereda 3, casa 8',
   'Urb. Jorge Coll, calle 5 con avenida 2',

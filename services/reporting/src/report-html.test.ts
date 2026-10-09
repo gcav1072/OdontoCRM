@@ -1,4 +1,8 @@
-import { reportFiltersSchema, type ReportDocument } from '@odontocrm/contracts';
+import {
+  reportFiltersSchema,
+  type LetterheadSnapshot,
+  type ReportDocument,
+} from '@odontocrm/contracts';
 import { describe, expect, it } from 'vitest';
 
 import { componerEmbudo } from './reports/funnel.js';
@@ -26,6 +30,25 @@ const documentoDePrueba = (): ReportDocument =>
     },
   );
 
+/** Membrete de ejemplo: la identidad que en producción sirve el registro del titular. */
+const membreteDePrueba = (): LetterheadSnapshot => ({
+  clinic: {
+    name: 'Consultorio de prueba',
+    legalName: null,
+    address: 'Calle de prueba 123',
+    city: null,
+    phones: [],
+    email: null,
+    rif: null,
+    website: null,
+    logoPath: null,
+    dentists: [],
+  },
+  dentist: null,
+  logoDataUri: null,
+  version: 'prueba',
+});
+
 /**
  * La plantilla del PDF: es HTML que se le pasa a Chromium, así que lo que hay que
  * probar es que lleva el membrete del consultorio, las cifras y la tabla, y que
@@ -33,9 +56,9 @@ const documentoDePrueba = (): ReportDocument =>
  */
 describe('plantilla HTML del reporte', () => {
   it('lleva el membrete del consultorio, el rango y la fecha de generación', async () => {
-    const html = await reportHtml(documentoDePrueba());
-    expect(html).toContain('Consultorio - Od. Erika Gómez');
-    expect(html).toContain('Av. Luis del Valle García');
+    const html = await reportHtml(documentoDePrueba(), membreteDePrueba());
+    expect(html).toContain('Consultorio de prueba');
+    expect(html).toContain('Calle de prueba 123');
     expect(html).toContain('Del 01/10/2026 al 31/10/2026');
     expect(html).toContain('31/10/2026 08:00');
     expect(html).toContain('Filtros aplicados');

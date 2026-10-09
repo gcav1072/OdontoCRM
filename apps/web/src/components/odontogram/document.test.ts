@@ -29,7 +29,7 @@ const hallazgo = (parcial: Partial<ToothFindingRecord>): ToothFindingRecord => (
   condition: 'caries',
   state: 'pendiente',
   notes: null,
-  recordedByUsername: 'egomez',
+  recordedByUsername: 'prueba',
   recordedAt: '2026-10-05T14:00:00.000Z',
   updatedAt: '2026-10-05T14:00:00.000Z',
   sessionId: null,
@@ -47,7 +47,7 @@ const detalle = (
   findings,
   affectedTeeth: Object.keys(findings).map(Number),
   empty: Object.keys(findings).length === 0,
-  recordedByUsername: 'egomez',
+  recordedByUsername: 'prueba',
   recordedAt: '2026-10-05T13:00:00.000Z',
   updatedAt: '2026-10-05T14:00:00.000Z',
   lastPrintedAt: null,
@@ -78,7 +78,7 @@ const cambio = (parcial: Partial<ToothFindingHistoryEntry>): ToothFindingHistory
   event: 'registrado',
   reason: null,
   notes: null,
-  actorUsername: 'egomez',
+  actorUsername: 'prueba',
   occurredAt: '2026-10-01T09:00:00.000Z',
   ...parcial,
 });
@@ -126,14 +126,14 @@ describe('documento imprimible del odontograma', () => {
     expect(html).toContain('Odontograma');
   });
 
-  it('lleva el membrete del consultorio (el mismo dato del récipe y el reporte)', () => {
+  it('pinta el membrete con el logo del repositorio (sin inventar datos del consultorio)', () => {
     const html = documento(detalle({ '16': [hallazgo({ toothNumber: 16 })] }));
-    // El nombre y la dirección salen de `CLINIC` (packages/contracts/src/clinic.ts).
-    expect(html).toContain('Consultorio - Od. Erika Gómez');
-    expect(html).toContain('Av. Luis del Valle García');
-    // El logo (BRAND.logoPath) se resuelve con Vite: si el glob no lo encontrara, el
-    // membrete saldría sin imagen y esta clase no estaría.
+    // La identidad del consultorio la sirve el registro del titular. Sin ella, el respaldo
+    // `CLINIC` es neutro (sin datos personales): no se imprime ningún nombre ni dirección.
+    // El logo sí sale: es el del repositorio (`BRAND.logoPath`), resuelto por Vite.
     expect(html).toContain('h-[var(--brand-logo-height-mm)]');
+    // Sin identidad no se inventa ningún dato del consultorio (ni siquiera el RIF).
+    expect(html).not.toContain('RIF ');
   });
 
   it('sin hallazgos lo dice en vez de fingir una boca explorada', () => {
@@ -348,7 +348,7 @@ describe('el historial de cambios en el informe (casilla de la impresión)', () 
     // En el papel, el primero es el más viejo: es una evolución, no una bandeja.
     expect(html.indexOf('Registrado')).toBeLessThan(html.indexOf('Superado'));
     // Con su actor y su motivo, que es lo que da valor probatorio al documento.
-    expect(html).toContain('egomez');
+    expect(html).toContain('prueba');
     expect(html).toContain('superado por «corona»');
     expect(html).toContain('Oclusal');
   });

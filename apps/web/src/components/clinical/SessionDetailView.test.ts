@@ -26,8 +26,8 @@ const SESION: ClinicalSessionDetail = {
   openedAt: '2026-09-20T13:00:00.000Z',
   updatedAt: '2026-09-20T13:40:00.000Z',
   closedAt: '2026-09-20T13:40:00.000Z',
-  openedByUsername: 'egomez',
-  closedByUsername: 'egomez',
+  openedByUsername: 'prueba',
+  closedByUsername: 'prueba',
   closureNote: 'Paciente tolera bien el procedimiento.',
   amendedFromId: null,
   amendmentReason: null,
@@ -73,7 +73,7 @@ describe('lectura de una sesión clínica', () => {
   it('dice quién abrió y quién firmó el cierre, con las fechas', () => {
     const html = renderToStaticMarkup(createElement(SessionDetailView, { sesion: SESION }));
 
-    expect(html).toContain('egomez');
+    expect(html).toContain('prueba');
     expect(html).toContain('Nota de cierre');
     expect(html).toContain('Paciente tolera bien el procedimiento.');
   });
