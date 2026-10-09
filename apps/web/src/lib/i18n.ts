@@ -1539,6 +1539,9 @@ const DICCIONARIO = {
   'notificaciones.bot.modoTest.titulo': 'MODO TEST: los envíos están bloqueados',
   'notificaciones.bot.modoTest.texto':
     'Aunque el bot tenga token, en modo test ningún mensaje sale a un paciente: se registran como simulados en la bandeja.',
+  'notificaciones.bot.consultorio.titulo': 'Datos del consultorio en el bot y los canales',
+  'notificaciones.bot.consultorio.texto':
+    'El nombre, la dirección y el correo del consultorio (Mi perfil) llegan solos al bot, a los canales y al archivo del calendario en pocos minutos, sin reiniciar. Si necesitas que se apliquen de inmediato, reinicia el servicio de notificaciones; el token del bot y las credenciales de los canales sí requieren reiniciar siempre.',
   'notificaciones.bot.canales': 'Canales',
   'notificaciones.bot.canal.sinConfigurar': 'sin configurar',
   'notificaciones.bot.conectado': 'Conectado',

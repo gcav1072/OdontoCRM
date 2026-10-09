@@ -271,6 +271,11 @@ quedó **pendiente de aviso manual** (pacientes que no usan el bot).
   bandeja para llamarlo por teléfono.
 - El estado del bot está arriba: si dice **«Modo simulado»**, los mensajes **no están
   saliendo** — avisa a quien administra el sistema.
+- Los **datos del consultorio** (nombre, dirección, correo) que salen en los mensajes y en el
+  archivo del calendario los toma el bot **solo**, en pocos minutos. Si cambió el nombre o la
+  dirección y quieres que se aplique **ya**, pide a quien administra que **reinicie el servicio
+  de notificaciones**; el **token del bot** y las **credenciales de los canales**, en cambio,
+  **siempre** requieren reiniciar.
 
 ### 8.1 El paciente confirma su cita
 

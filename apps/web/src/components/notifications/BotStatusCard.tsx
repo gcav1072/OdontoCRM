@@ -193,6 +193,13 @@ export const BotStatusCard = ({
           </Alert>
         )}
 
+        {/* Los datos del consultorio (Mi perfil) llegan al bot y a los canales solos en
+            pocos minutos; el token y las credenciales de canal sí piden reiniciar. Es
+            la duda operativa típica: «cambié el nombre y el bot sigue con el viejo». */}
+        <Alert variant="info" title={t('notificaciones.bot.consultorio.titulo')}>
+          {t('notificaciones.bot.consultorio.texto')}
+        </Alert>
+
         {/* Los canales activos: desde la Fase 4.1 el asistente no es solo Telegram. */}
         {status.canales.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">

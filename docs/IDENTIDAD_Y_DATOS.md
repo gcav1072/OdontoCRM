@@ -99,6 +99,13 @@ En **ambos** sitios el **motivo es obligatorio** y el cambio queda en la **audit
 (`/auditoria`): acción, campos que cambiaron, el antes y el después, quién y cuándo. El **alta**
 del primer acceso no pide motivo: es un alta, no un cambio.
 
+> **Cuándo se nota el cambio en el bot y los canales.** El nombre, la dirección y el correo llegan
+> **solos** al bot, a los canales y al `.ics` en **pocos minutos** —el servicio de notificaciones los
+> refresca cada 5 minutos, sin reiniciar (ADR 0056)—. Si necesitas que se apliquen **de inmediato**,
+> reinicia el servicio de notificaciones (`sudo odontocrm reiniciar`, o
+> `systemctl restart odontocrm@notifications`). El **token del bot** y las **credenciales de los
+> canales** viven en el archivo de configuración del servidor y **sí requieren** reiniciar.
+
 ### 2.3 `clinic.ts` sigue existiendo: es solo el respaldo **neutro**
 
 `packages/contracts/src/clinic.ts` conserva el tipo `ClinicIdentity`, las ayudas de lectura
