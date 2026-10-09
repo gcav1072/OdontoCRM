@@ -19,9 +19,10 @@ import { readImageDataUri } from './brand-assets.js';
  * críticos se leen): el dato tiene que estar bien **en el momento de usarlo**, y el
  * servicio que lo necesita no tiene por qué saber cuándo cambió el perfil del consultorio.
  *
- * **¿Y si identity no responde?** Se degrada a `CLINIC` (el respaldo del código): el
- * récipe sale con el membrete de siempre en vez de romperse. Un fallo de identity **nunca**
- * bloquea un papel.
+ * **¿Y si identity no responde?** Se degrada a `CLINIC` (respaldo **neutro** del
+ * código, sin datos personales). El documento sale **sin** datos del consultorio y
+ * marcado como incompleto (`letterheadMissingFields`) en vez de romperse: un fallo de
+ * identity **nunca** bloquea un papel, pero tampoco inventa identidad.
  *
  * **Coste.** Una lectura interna por documento sería cara para las pantallas, que refrescan
  * cada pocos segundos. Por eso hay **caché con TTL** y **deduplicación de llamada en
@@ -39,26 +40,6 @@ export interface LetterheadLookupConfig {
   /** Vida de la caché (ms). `0` la desactiva. */
   cacheTtlMs?: number;
 }
-
-/** Overrides de entorno del membrete (`CLINIC_NAME`, `CLINIC_ADDRESS`, `CLINIC_EMAIL`). */
-export interface ClinicOverride {
-  name?: string | undefined;
-  address?: string | undefined;
-  email?: string | undefined;
-}
-
-/** Aplica los overrides del entorno sobre la instantánea (name/address/email). */
-export const applyClinicOverride = (
-  snapshot: LetterheadSnapshot,
-  override: ClinicOverride,
-): LetterheadSnapshot => {
-  const clinic = { ...snapshot.clinic };
-  if (override.name !== undefined && override.name.trim() !== '') clinic.name = override.name;
-  if (override.address !== undefined && override.address.trim() !== '')
-    clinic.address = override.address;
-  if (override.email !== undefined && override.email.trim() !== '') clinic.email = override.email;
-  return { ...snapshot, clinic };
-};
 
 /** El respaldo: el membrete de `CLINIC` (el código), con el logo del repositorio. */
 export const fallbackLetterhead = async (
@@ -148,8 +129,9 @@ export interface ClinicDataConfig {
 
 /**
  * Deja en la **configuración** del servicio el nombre, la dirección y el correo del
- * consultorio con la precedencia acordada: **entorno (`CLINIC_*`) > base de datos >
- * `CLINIC` del código**.
+ * consultorio leídos del **registro** (identity → `clinic_profiles`), con el respaldo
+ * neutro del código. Ya **no** hay variables de entorno `CLINIC_*`: la identidad se
+ * sirve **solo** desde el registro que completa el titular.
  *
  * Es para los servicios que solo usan esos tres datos en textos (el bot, el `.ics` y el
  * encabezado de las pantallas) y los leen de `config` en muchos sitios: en vez de
@@ -157,41 +139,26 @@ export interface ClinicDataConfig {
  * ya ve el dato bueno. **No hay coste por mensaje**: se llama al arrancar y, como mucho,
  * cada pocos minutos.
  *
- * Si la variable de entorno está puesta, **manda**: es el ajuste puntual de siempre y no
- * se pisa con lo de la base.
+ * Si el consultorio **aún no está configurado** (no hay nombre ni dirección), el campo
+ * queda **sin valor**: quien lo necesite difiere la generación o el envío en vez de
+ * componer un documento a medias.
  */
 export const aplicarDatosDelConsultorio = async (
   config: ClinicDataConfig,
   lookup: LetterheadLookup,
-  env: Record<string, string | undefined> = process.env,
 ): Promise<void> => {
   const snapshot = await lookup();
-  const gana = (
-    envValue: string | undefined,
-    deBase: string,
-    actual: string | undefined,
-  ): string =>
-    envValue !== undefined && envValue.trim() !== ''
-      ? envValue
-      : deBase.trim() !== ''
-        ? deBase
-        : (actual ?? '');
+  const nombre = snapshot.clinic.name.trim();
+  const direccion = clinicFullAddress(snapshot.clinic).trim();
+  const correo = (snapshot.clinic.email ?? '').trim();
 
   if (config.CLINIC_NAME !== undefined) {
-    config.CLINIC_NAME = gana(env['CLINIC_NAME'], snapshot.clinic.name, config.CLINIC_NAME);
+    config.CLINIC_NAME = nombre === '' ? undefined : nombre;
   }
   if (config.CLINIC_ADDRESS !== undefined) {
-    config.CLINIC_ADDRESS = gana(
-      env['CLINIC_ADDRESS'],
-      clinicFullAddress(snapshot.clinic),
-      config.CLINIC_ADDRESS,
-    );
+    config.CLINIC_ADDRESS = direccion === '' ? undefined : direccion;
   }
   if (config.CLINIC_EMAIL !== undefined) {
-    config.CLINIC_EMAIL = gana(
-      env['CLINIC_EMAIL'],
-      snapshot.clinic.email ?? '',
-      config.CLINIC_EMAIL,
-    );
+    config.CLINIC_EMAIL = correo === '' ? undefined : correo;
   }
 };
