@@ -5,6 +5,7 @@ import type {
   Role,
   SessionInfo,
 } from '@odontocrm/contracts';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
   useCallback,
@@ -18,6 +19,7 @@ import {
 import { authApi } from '../lib/endpoints';
 import { setAccessToken, setSessionLostHandler } from '../lib/api';
 import { isPermission, isRole } from '../lib/i18n';
+import { CLINIC_IDENTITY_QUERY_KEY } from './ClinicIdentityProvider';
 
 /**
  * Sesión de la SPA.
@@ -77,18 +79,31 @@ const restaurarSesion = (): Promise<LoginResponse> => {
 };
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const consultas = useQueryClient();
   const [status, setStatus] = useState<AuthStatus>('cargando');
   const [user, setUser] = useState<SessionUser | null>(null);
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
 
-  const applyLoginResponse = useCallback((response: LoginResponse) => {
-    setAccessToken(response.accessToken);
-    setUser(response.user);
-    setSessionInfo(null);
-    setStatus('autenticado');
-    setSessionExpired(false);
-  }, []);
+  const applyLoginResponse = useCallback(
+    (response: LoginResponse) => {
+      setAccessToken(response.accessToken);
+      setUser(response.user);
+      setSessionInfo(null);
+      setStatus('autenticado');
+      setSessionExpired(false);
+      /**
+       * La identidad del consultorio se pide al montar la aplicación, **antes** de que haya
+       * sesión: sin token queda en 401 y, con `retry: false`, nadie la volvía a intentar.
+       * El resultado se usaba igual: `titularUsername` en `null` hacía que el titular no
+       * fuera reconocido y no viera el bloque del consultorio (y el membrete caía al
+       * respaldo del código). Aquí, por donde pasa toda sesión —entrar, recuperarla al
+       * recargar y renovarla—, se marca para volver a pedirla.
+       */
+      void consultas.invalidateQueries({ queryKey: CLINIC_IDENTITY_QUERY_KEY });
+    },
+    [consultas],
+  );
 
   const clearSession = useCallback((expirada: boolean) => {
     setAccessToken(null);
