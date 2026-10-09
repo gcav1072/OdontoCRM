@@ -4,6 +4,66 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Identidad] — Dos tipografías en los imprimibles y la identidad del consultorio en la base · 2026-10-08
+
+Dos cambios que van juntos porque se tocó el mismo camino (el membrete de todos los imprimibles).
+
+**Uno: el papel tenía una sola tipografía.** `brand.ts` declaraba `documentSans` y `brandStyles()`
+la aplicaba al `body`, así que el nombre del consultorio, «RÉCIPE», los encabezados de tabla y el
+texto corrido salían con la misma fuente —y **la del equipo**: Chromium compone los PDF y el
+navegador imprime la historia clínica y el odontograma, de modo que el mismo documento podía salir
+con dos tipografías según lo que hubiera instalado. Ahora hay **dos pilas**
+(`documentTitleSans` y `documentBodySans` → `--brand-font-doc-title` y `--brand-font-doc-body`), la
+clase `.brand-title` para los títulos, y las fuentes **auto-hospedadas** en
+`assets/clinic/fonts/` (Montserrat, subconjunto `latin`, con su licencia OFL) que el servidor
+incrusta en el PDF como `@font-face` con `data:` URI y la SPA carga al arrancar. El papel ya no
+depende del equipo ([ADR 0055](docs/adr/0055-dos-tipografias-en-los-imprimibles.md)).
+
+**Dos: los datos del consultorio vivían en el código.** Poner el sistema con otro odontólogo —o
+corregir un RIF— exigía editar `clinic.ts`, recompilar y desplegar, y **nada quedaba trazado**.
+Ahora la identidad vive en la **base de `identity`** (`clinic_profiles` y `dentist_profiles`), el
+**titular** la completa en su **primer acceso** (con un gate bloqueante, igual que la contraseña
+temporal: el JWT lleva `needsProfile`, deja sin permisos y el gateway corta todo salvo el
+onboarding), y después se edita en **Mi perfil** (lo propio) y en **`/usuarios`** (el
+administrador). El **logo** se sube (SVG) al **almacén compartido** y hace también de **marca de
+agua**. `clinic.ts` queda como **semilla y respaldo** ([ADR 0056](docs/adr/0056-la-identidad-del-consultorio-vive-en-la-base.md)).
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `BRAND.typography.documentTitleSans` · `documentBodySans` | Las dos tipografías de los documentos; `--brand-font-doc-title` / `-body` y la clase `.brand-title` |
+| `BRAND.fonts` · `assets/clinic/fonts/` | Las fuentes auto-hospedadas (Montserrat 400/700 + OFL): **el mismo archivo** para el PDF del servidor y para la SPA |
+| `brandFontFaceCss()` (`packages/kernel`) | Incrusta los `.woff2` como `@font-face` con `data:` URI: el papel se explica solo |
+| `apps/web/src/lib/fuentes.ts` | Declara las fuentes en la SPA (`import.meta.glob`), para la historia clínica y el odontograma |
+| **Tablas** `clinic_profiles` y `dentist_profiles` | La identidad del consultorio y el perfil profesional de cada odontólogo (migración `0004_identidad_del_consultorio`) |
+| **Asistente del primer acceso** (`/completar-perfil`) | El titular completa el consultorio **y** lo suyo; los demás odontólogos, solo lo suyo |
+| `needsProfile` en el JWT y en el gateway | El gate **no** es de la interfaz: sin perfil no hay permisos (espeja `mustChangePassword`) |
+| `GET /internal/v1/identity/letterhead` | La lectura interna del membrete: identidad, **quién firma ya resuelto** y el logo incrustado. Se degrada a `CLINIC` |
+| `createLetterheadLookup()` (`packages/kernel`) | Lectura con **caché (~60 s)** y **deduplicación en vuelo**; si `CLINIC_*` está en el entorno, ni se llama |
+| **Mi perfil** y el perfil en «Editar usuario» | Cada odontólogo edita lo suyo; el administrador, a cualquiera. **Motivo obligatorio** y queda en auditoría |
+| Acciones `dentist_profile_completed` · `dentist_profile_updated` · `clinic_profile_updated` · `clinic_logo_updated` | La identidad **auditada**: antes/después, campos, actor y motivo |
+| **Logo** en el almacén compartido | Se sube desde la aplicación (SVG) y persiste igual en desarrollo y en producción |
+| `brand.test.ts` | Comprueba las 23 variables de marca y que los `.woff2` declarados **existen** |
+
+**Lo que sigue solo en el código**, a propósito: la **marca** (paleta, las dos tipografías, medidas
+del membrete y del velo). Los datos los edita quien los conoce; la marca, quien despliega y la
+revisa en el control de versiones.
+
+### Añadido
+
+- **[`docs/IDENTIDAD_Y_DATOS.md`](docs/IDENTIDAD_Y_DATOS.md)** reescrito para el modelo nuevo: las
+  tres capas, el primer acceso, Mi perfil, el logo, las fuentes y las vías de producción.
+- ADRs [0055](docs/adr/0055-dos-tipografias-en-los-imprimibles.md) y
+  [0056](docs/adr/0056-la-identidad-del-consultorio-vive-en-la-base.md).
+- `assets/clinic/fonts/` con Montserrat (woff2) y su licencia OFL.
+
+### Cambiado
+
+- `--brand-font-doc` se parte en `--brand-font-doc-title` y `--brand-font-doc-body`.
+- La identidad del consultorio pasa de `clinic.ts` a la base de `identity`; `clinic.ts` queda como
+  **semilla y respaldo** (mismo `ClinicIdentity`, mismas ayudas).
+- `notifications`, `scheduling` y `screens` refrescan su `CLINIC_NAME` / `CLINIC_ADDRESS` /
+  `CLINIC_EMAIL` con lo de la base; **`CLINIC_*` del entorno sigue mandando** si está puesto.
+
 ## [Identidad] — El membrete, el logo y la marca de agua, en todos los imprimibles · 2026-10-08
 
 La identidad del consultorio ya vivía en un solo sitio (`clinic.ts` para los datos, `brand.ts` para

@@ -401,6 +401,14 @@ services/billing/
 
 ### 2.4 Datos del consultorio y configuración por entorno (`CLINIC_*`)
 
+> **Superado por el [ADR 0056](adr/0056-la-identidad-del-consultorio-vive-en-la-base.md) (2026-10-08).**
+> La decisión de sacar `CLINIC` **solo** al entorno se descartó: un `.env` no es editable desde la
+> aplicación y obliga a reiniciar. La identidad del consultorio vive ahora en la **base de
+> `identity`** (el titular la completa en su primer acceso), y `CLINIC_*` queda como **ajuste
+> puntual** que gana sobre lo guardado, solo para `notifications`, `scheduling` y `screens`. Lo que
+> este apartado describe del RIF, la razón social y el domicilio fiscal **se cumple igual**, pero se
+> editan en la aplicación (Mi perfil / `/usuarios`), no en el `.env`.
+
 **El problema que resuelve:** hoy los datos del consultorio (nombre, razón social, RIF, dirección,
 teléfonos, logo y los odontólogos que firman) viven en
 [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) —una constante de código que hay

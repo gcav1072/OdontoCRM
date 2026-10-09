@@ -159,8 +159,8 @@ Antes de cerrar cualquier fase, `npm run verify` debe pasar en verde, además de
 ```
 apps/gateway          API Gateway: proxy por recurso, CORS, límite de peticiones
 apps/web              SPA de React (Fase 1)
-assets/clinic         Logo del consultorio para el membrete (opcional)
-packages/contracts    Enums, estados, DTOs, utilidades puras y **los datos del consultorio**
+assets/clinic         Logo de respaldo (opcional) y las fuentes (.woff2) de los imprimibles
+packages/contracts    Enums, estados, DTOs, utilidades puras, la marca y la semilla del consultorio
 packages/events       Catálogo de eventos de dominio y sobre validado con Zod
 packages/db           Pool PostgreSQL, Drizzle, migraciones, outbox y pg-boss
 packages/kernel       Config validada, logger censurado, errores RFC 7807, /health y /ready
@@ -175,33 +175,35 @@ docs                  Plan maestro, formato de historia clínica y ADRs
 
 ### Poner el sistema con otro odontólogo
 
-**Un solo archivo:** [`packages/contracts/src/clinic.ts`](packages/contracts/src/clinic.ts). Ahí están el
-nombre del consultorio, la dirección, la ciudad, los teléfonos, el RIF, el correo, el sitio web, el
-logo y **los odontólogos que firman** (usuario, nombre, MPPS, especialidad, colegiatura y correo).
-Lo que se deje en `null` simplemente **no se imprime**.
+**Se hace en la aplicación, sin recompilar.** En el **primer inicio de sesión**, el odontólogo
+completa su **perfil profesional** (MPPS, especialidad, colegiatura, correo) y, si es el **titular**
+(el primer odontólogo creado), también los **datos del consultorio** (nombre, razón social,
+dirección, teléfonos, RIF, correo, sitio web) y sube el **logo** (un SVG). Hasta que lo haga, el
+sistema **no lo deja entrar**: el servidor se lo exige igual que la contraseña temporal.
 
-| Qué cambia | Dónde se nota |
-| :--- | :--- |
-| `name`, `address`, `city` | Avisos del bot, `.ics`, pantallas y membrete del récipe |
-| `phones`, `email`, `rif`, `website` | Membrete del récipe |
-| `logoPath` (por defecto `assets/clinic/logo.svg`) | Logo del membrete; si el archivo no está, sale sin logo |
-| `dentists[]` | Quién firma los récipes (con su MPPS) y **las cuentas que crea `npm run seed:users`** |
+| Qué | Dónde se edita | Dónde se nota |
+| :--- | :--- | :--- |
+| Nombre, dirección, RIF, teléfonos, correo | **Mi perfil** (titular) o `/usuarios` (admin) | Bot, `.ics`, pantallas y el membrete de **todos** los imprimibles |
+| MPPS, especialidad, colegiatura | **Mi perfil** (cada odontólogo) o `/usuarios` (admin) | Quién **firma** el récipe, el dossier y la historia |
+| Logo (y marca de agua) | **Mi perfil** (titular), subiendo un SVG | Membrete y velo, en pantalla y en papel |
+| Colores, **tipografías** y medidas del membrete | **Solo en el código**: `packages/contracts/src/brand.ts` | El énfasis y las fuentes de los imprimibles |
 
-Después: `npm run build` (los servicios y la web lo compilan dentro) y, si se añadió o cambió un
-odontólogo, `npm run seed:users`. El logo se deja en [`assets/clinic/`](assets/clinic/README.md).
-
-- **¿Por qué en el código y no en un `.env` o en una pantalla de ajustes?** Porque el paquete de
-  contratos **ya lo importan los ocho servicios y la interfaz**: leerlo no añade cableado (ni rutas,
-  ni endpoints, ni migración, ni permisos), no hay que repetir el mismo dato en tres `.env` y no se
-  puede olvidar uno. Un dato que cambia una vez cada varios años no justifica una tabla.
-- **¿Y si una instalación concreta necesita otro valor sin recompilar?** Las variables
-  `CLINIC_NAME`, `CLINIC_ADDRESS` y `CLINIC_EMAIL` del `.env` siguen mandando sobre estos valores
-  (están en [`.env.example`](.env.example)).
+- **Todo cambio de identidad queda auditado** (`/auditoria`): quién, cuándo, qué cambió y por qué
+  (el motivo es obligatorio en las ediciones).
+- **`packages/contracts/src/clinic.ts` ya no se edita para esto**: queda como **semilla y
+  respaldo** —si no hay perfil guardado, el membrete sale con esos valores— y como fuente del tipo
+  `ClinicIdentity` y de las ayudas (`clinicFullAddress`, `clinicDentistFor`,
+  `letterheadMissingFields`…).
+- **Las cuentas** (`npm run seed:users`) siguen naciendo de `CLINIC.dentists` en desarrollo; en
+  producción se dan de alta en `/usuarios` y cada uno completa lo suyo.
+- **¿Y si una instalación necesita un valor sin tocar la aplicación?** `CLINIC_NAME`,
+  `CLINIC_ADDRESS` y `CLINIC_EMAIL` del `.env` siguen existiendo y **ganan** sobre lo guardado, pero
+  solo los leen `notifications`, `scheduling` y `screens` (el bot, el `.ics` y las pantallas).
 - Lo que falte para un membrete completo se enumera solo con `letterheadMissingFields()` (por
   ejemplo «MPPS del odontólogo»), así que el récipe avisa en vez de inventar un número.
 
-**El paso a paso completo** —con la identidad de marca (colores, fuentes, logo y marca de agua),
-las cuentas del personal y las tres vías de producción— está en
+**El paso a paso completo** —el primer acceso, Mi perfil, la **marca** (colores, dos tipografías,
+logo de respaldo y marca de agua) y las vías de producción— está en
 [`docs/IDENTIDAD_Y_DATOS.md`](docs/IDENTIDAD_Y_DATOS.md).
 
 ### Puertos (todos en `127.0.0.1`; la red local entra solo por el gateway)
