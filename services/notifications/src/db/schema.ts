@@ -1,4 +1,8 @@
-import { CHANNELS, NOTIFICATION_STATUSES } from '@odontocrm/contracts';
+import {
+  CHANNELS,
+  MAX_PATIENT_CANCEL_CUTOFF_DAYS,
+  NOTIFICATION_STATUSES,
+} from '@odontocrm/contracts';
 import { sql } from 'drizzle-orm';
 import {
   bigint,
@@ -179,8 +183,36 @@ export const processedUpdates = pgTable(
   (table) => [primaryKey({ columns: [table.canal, table.eventoId] })],
 );
 
+/**
+ * Configuración editable de la clínica para el bot (ADR 0057), en **una sola fila**
+ * (`chk_notification_settings_single_row`, igual que `billing_settings`).
+ *
+ * Hoy guarda **una** cosa: el corte de días que se aplica a la cancelación de una cita
+ * ya confirmada por el paciente. Nace del valor por defecto (0 = sin corte) y después
+ * manda la base; la edita el `admin` o el odontólogo (`scheduling:cancel_policy`).
+ */
+export const notificationSettings = pgTable(
+  'notification_settings',
+  {
+    id: integer('id').primaryKey().default(1),
+    /** Días mínimos de antelación para cancelar una cita **confirmada**. 0 = sin corte. */
+    patientCancelCutoffDays: integer('patient_cancel_cutoff_days').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedByUserId: uuid('updated_by_user_id'),
+  },
+  (table) => [
+    check('chk_notification_settings_single_row', sql`${table.id} = 1`),
+    check(
+      'chk_notification_settings_cutoff',
+      // eslint-disable-next-line no-restricted-syntax -- constante del contrato, nunca entrada de usuario
+      sql`${table.patientCancelCutoffDays} between 0 and ${sql.raw(String(MAX_PATIENT_CANCEL_CUTOFF_DAYS))}`,
+    ),
+  ],
+);
+
 export type PatientChannelRow = typeof patientChannels.$inferSelect;
 export type BotConversationRow = typeof botConversations.$inferSelect;
 export type MessageTemplateRow = typeof messageTemplates.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
 export type IcsArtifactRow = typeof icsArtifacts.$inferSelect;
+export type NotificationSettingsRow = typeof notificationSettings.$inferSelect;

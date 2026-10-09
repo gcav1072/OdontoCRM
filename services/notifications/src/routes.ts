@@ -5,6 +5,7 @@ import {
   markContactedSchema,
   messageTemplateInputSchema,
   notificationFiltersSchema,
+  notificationSettingsInputSchema,
   retryNotificationSchema,
   type ChannelStatus,
 } from '@odontocrm/contracts';
@@ -39,6 +40,7 @@ import {
   unlinkPatient,
   updateTemplate,
 } from './messaging.js';
+import { getNotificationSettings, updateNotificationSettings } from './settings.js';
 import type { NotificationsServices } from './services.js';
 
 const idParamsSchema = z.object({ id: z.uuid() });
@@ -91,6 +93,8 @@ export const registerNotificationRoutes = (
   const { db, config, canales } = services;
   const read = requirePermission('scheduling:read');
   const notify = requirePermission('scheduling:notify');
+  /** Política de cancelación (ADR 0057): solo `admin` y odontólogo. */
+  const policy = requirePermission('scheduling:cancel_policy');
 
   app.get('/api/v1/notifications', { preHandler: read }, async (request, reply) => {
     const filters = parseQuery(notificationFiltersSchema, request.query);
@@ -210,6 +214,26 @@ export const registerNotificationRoutes = (
   app.get('/api/v1/notifications/channels', { preHandler: read }, async (request, reply) => {
     const query = parseQuery(channelsQuerySchema, request.query);
     return reply.status(200).send(await channelsInInbox(db, services.clients, query.patientId));
+  });
+
+  /**
+   * **Política de cancelación del paciente** (ADR 0057): el corte de días que se
+   * aplica a una cita confirmada. La ven y la editan **solo el `admin` y el
+   * odontólogo** (`scheduling:cancel_policy`), así que la secretaría recibe 403 y la
+   * tarjeta ni se le pinta.
+   */
+  app.get('/api/v1/notifications/settings', { preHandler: policy }, async (_request, reply) => {
+    return reply.status(200).send(await getNotificationSettings(db));
+  });
+
+  app.patch('/api/v1/notifications/settings', { preHandler: policy }, async (request, reply) => {
+    const input = parseOrThrow(notificationSettingsInputSchema, request.body);
+    const actorId = request.headers['x-user-id'];
+    return reply
+      .status(200)
+      .send(
+        await updateNotificationSettings(db, input, typeof actorId === 'string' ? actorId : null),
+      );
   });
 
   /**

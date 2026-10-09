@@ -40,6 +40,7 @@ import {
 } from '../db/schema.js';
 import type { InternalClients } from '../internal-client.js';
 import { channelByDireccion, linkChat, renderMessageFor, todayInClinic } from '../messaging.js';
+import { getNotificationSettings } from '../settings.js';
 
 export interface AsistenteServices {
   db: NotificationsDb;
@@ -572,7 +573,43 @@ const cancelarYResponder = async (
 };
 
 export type ResultadoCancelar =
-  'cancelada' | 'ya_estaba' | 'elegir' | 'sin_citas' | 'no_es_suya' | 'no_cancelable';
+  | 'cancelada'
+  | 'ya_estaba'
+  | 'elegir'
+  | 'sin_citas'
+  | 'no_es_suya'
+  | 'no_cancelable'
+  /** Confirmó, pero le quedan menos días que el corte de la clínica (ADR 0057). */
+  | 'bloqueada';
+
+/** Días de calendario entre dos fechas `AAAA-MM-DD` (negativo si ya pasó). */
+const diasHasta = (date: string, hoy: string): number =>
+  Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / 86_400_000);
+
+/**
+ * ¿El **corte** de la clínica impide cancelar esta cita por el bot? (ADR 0057)
+ *
+ * Solo aplica a las citas que el paciente **ya confirmó** y cuando la clínica fijó un
+ * corte (`> 0`): con el corte en 0 no hay guardia. Se bloquea cuando a la cita le
+ * faltan **esos días o menos**, para que el consultorio tenga tiempo de reaccionar.
+ * Las citas sin confirmar nunca se bloquean (el paciente no había prometido nada).
+ */
+const bloqueadaPorCorte = (cita: AppointmentSummary, corteDias: number, hoy: string): boolean =>
+  corteDias > 0 && cita.status === 'confirmada' && diasHasta(cita.date, hoy) <= corteDias;
+
+/** Responde que esa cancelación ya no se puede hacer por chat: hay que llamar. */
+const responderFueraDePlazo = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  cita: AppointmentSummary,
+  dias: number,
+): Promise<void> => {
+  await reply(services, conversacion, 'cita_cancelacion_fuera_de_plazo', {
+    paciente: cita.patientName,
+    fecha: fechaVe(cita.date),
+    dias: String(dias),
+  });
+};
 
 /**
  * El paciente dice que no puede asistir. Es la mitad conversacional de la cancelación
@@ -605,6 +642,11 @@ const cancelarCita = async (
     return 'sin_citas';
   };
 
+  // Política de la clínica (ADR 0057): el corte solo frena a las citas **confirmadas**.
+  const ajustes = await getNotificationSettings(services.db);
+  const corteDias = ajustes.patientCancelCutoffDays;
+  const hoy = todayInClinic();
+
   // El paciente se identifica por la dirección del canal, no por el `patientId` de la
   // conversación: quien escribió «cancelar» puede tener el chat vinculado hace tiempo.
   const vinculado = await channelByDireccion(
@@ -635,14 +677,28 @@ const cancelarCita = async (
       });
       return 'no_cancelable';
     }
+    // Ya confirmó y le quedan pocos días: por chat no se cancela, hay que llamar.
+    if (bloqueadaPorCorte(suya, corteDias, hoy)) {
+      await responderFueraDePlazo(services, conversacion, suya, corteDias);
+      return 'bloqueada';
+    }
     return (await cancelarYResponder(services, conversacion, suya)) ? 'cancelada' : 'ya_estaba';
   }
 
   // Las que el paciente todavía puede cancelar por aquí: las que no han llegado al
   // consultorio. La lista es **la misma** que aplica la agenda (`CANCELLABLE_STATUSES`).
   const cancelables = citas.filter((cita) => CANCELLABLE_STATUSES.includes(cita.status));
+  // Y, de esas, las que el corte de la clínica no bloquea (ADR 0057): las confirmadas
+  // que ya están dentro del plazo mínimo se ofrecen igualmente por chat.
+  const permitidas = cancelables.filter((cita) => !bloqueadaPorCorte(cita, corteDias, hoy));
 
-  if (cancelables.length === 0) {
+  if (permitidas.length === 0) {
+    // Si lo único que había era una cita confirmada dentro del corte, se le dice por qué.
+    const bloqueada = cancelables.find((cita) => bloqueadaPorCorte(cita, corteDias, hoy));
+    if (bloqueada !== undefined) {
+      await responderFueraDePlazo(services, conversacion, bloqueada, corteDias);
+      return 'bloqueada';
+    }
     const yaCancelada = citas.find((cita) => cita.status === 'cancelada');
     if (yaCancelada !== undefined) {
       await responderCancelada(services, conversacion, yaCancelada);
@@ -651,8 +707,8 @@ const cancelarCita = async (
     return sinNada();
   }
 
-  if (cancelables.length === 1) {
-    const unica = cancelables[0];
+  if (permitidas.length === 1) {
+    const unica = permitidas[0];
     if (unica !== undefined) {
       return (await cancelarYResponder(services, conversacion, unica)) ? 'cancelada' : 'ya_estaba';
     }
@@ -662,7 +718,7 @@ const cancelarCita = async (
     services,
     conversacion,
     'Tienes varias citas próximas. Dime cuál quieres cancelar.',
-    cancelables.map((cita) => ({
+    permitidas.map((cita) => ({
       etiqueta: `${fechaVe(cita.date)} · ${formatTime12h(cita.startTime)}`,
       accion: `cancelar_cita:${cita.id}`,
     })),

@@ -43,6 +43,13 @@
       "when": 1791248000000,
       "tag": "0005_cita_invita_cancelar",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791564019727,
+      "tag": "0006_politica_cancelacion",
+      "breakpoints": true
     }
   ]
 }

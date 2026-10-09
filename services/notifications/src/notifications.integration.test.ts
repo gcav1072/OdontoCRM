@@ -47,6 +47,7 @@ import {
   renderMessageFor,
   retryNotification,
 } from './messaging.js';
+import { updateNotificationSettings } from './settings.js';
 
 /**
  * Pruebas de integración de la Fase 4.1 contra PostgreSQL real:
@@ -229,6 +230,10 @@ const unPaciente = (id: string, fullName: string): PatientSummary => ({
   createdAt: new Date().toISOString(),
 });
 
+/** Fecha `AAAA-MM-DD` a N días de hoy (calendario UTC, como el bot). */
+const enDias = (dias: number): string =>
+  new Date(Date.now() + dias * 86_400_000).toISOString().slice(0, 10);
+
 describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', () => {
   let handle: Awaited<ReturnType<typeof createNotificationsDatabase>>;
   let config: NotificationsConfig;
@@ -403,6 +408,62 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     });
     expect(noCancelable.action).toBe('cancelar_cita_no_cancelable');
     expect(telegram.sent.at(-1)?.texto).toContain('No puedo cancelar');
+
+    await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 60_000);
+
+  it('el corte de cancelación frena al paciente que ya confirmó (ADR 0057)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}K`;
+    await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
+
+    // La clínica fija un corte de 3 días (ADR 0057).
+    await updateNotificationSettings(handle.db, { patientCancelCutoffDays: 3 }, null);
+
+    // **Dentro** del corte y ya confirmada: por chat no se cancela, hay que llamar.
+    const dentro = unaCita({
+      patientId,
+      date: enDias(2),
+      status: 'confirmada',
+      confirmedAt: new Date().toISOString(),
+      confirmedChannel: 'telegram',
+    });
+    clients.citas.push(dentro);
+    const bloqueada = await enviar(telegram, {
+      direccion,
+      accion: `cancelar_cita:${dentro.id}`,
+    });
+    expect(bloqueada.action).toBe('cancelar_cita_bloqueada');
+    expect(clients.canceladas.some((item) => item.id === dentro.id)).toBe(false);
+    expect(telegram.sent.at(-1)?.texto).toContain('no se puede cancelar por aquí');
+
+    // **Fuera** del corte (a 10 días) y confirmada: se cancela con normalidad.
+    const fuera = unaCita({
+      patientId,
+      date: enDias(10),
+      status: 'confirmada',
+      confirmedAt: new Date().toISOString(),
+      confirmedChannel: 'telegram',
+    });
+    clients.citas.push(fuera);
+    const permitida = await enviar(telegram, { direccion, accion: `cancelar_cita:${fuera.id}` });
+    expect(permitida.action).toBe('cancelar_cita_cancelada');
+    expect(clients.canceladas.some((item) => item.id === fuera.id)).toBe(true);
+
+    // **Sin confirmar** y dentro del corte: el paciente no había prometido nada,
+    // así que se cancela igual (la guardia es solo para lo confirmado).
+    const sinConfirmar = unaCita({ patientId, date: enDias(1), status: 'programada' });
+    clients.citas.push(sinConfirmar);
+    const libre = await enviar(telegram, {
+      direccion,
+      accion: `cancelar_cita:${sinConfirmar.id}`,
+    });
+    expect(libre.action).toBe('cancelar_cita_cancelada');
+    expect(clients.canceladas.some((item) => item.id === sinConfirmar.id)).toBe(true);
+
+    // Con el corte en 0 la regla queda apagada: la próxima confirmada se cancela.
+    await updateNotificationSettings(handle.db, { patientCancelCutoffDays: 0 }, null);
 
     await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
