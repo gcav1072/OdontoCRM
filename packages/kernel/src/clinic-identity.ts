@@ -129,9 +129,9 @@ export interface ClinicDataConfig {
 
 /**
  * Deja en la **configuración** del servicio el nombre, la dirección y el correo del
- * consultorio leídos del **registro** (identity → `clinic_profiles`), con el respaldo
- * neutro del código. Ya **no** hay variables de entorno `CLINIC_*`: la identidad se
- * sirve **solo** desde el registro que completa el titular.
+ * consultorio leídos del **registro** (identity → `clinic_profiles`). Ya **no** hay
+ * variables de entorno `CLINIC_*`: la identidad se sirve **solo** desde el registro que
+ * completa el titular.
  *
  * Es para los servicios que solo usan esos tres datos en textos (el bot, el `.ics` y el
  * encabezado de las pantallas) y los leen de `config` en muchos sitios: en vez de
@@ -142,6 +142,13 @@ export interface ClinicDataConfig {
  * Si el consultorio **aún no está configurado** (no hay nombre ni dirección), el campo
  * queda **sin valor**: quien lo necesite difiere la generación o el envío en vez de
  * componer un documento a medias.
+ *
+ * **Los tres campos se escriben siempre, sin condición.** Antes el guard era
+ * `if (config.CAMPO !== undefined)`, que funcionaba mientras el esquema traía un valor
+ * por defecto (nunca `undefined`); ahora los campos son **opcionales** y zod **omite** la
+ * clave cuando falta, así que ese guard dejaba de entrar y el dato nunca se escribía. Un
+ * servicio que no declare uno de los tres (screens solo usa `CLINIC_NAME`) simplemente
+ * lleva la propiedad de más: no la lee.
  */
 export const aplicarDatosDelConsultorio = async (
   config: ClinicDataConfig,
@@ -152,13 +159,7 @@ export const aplicarDatosDelConsultorio = async (
   const direccion = clinicFullAddress(snapshot.clinic).trim();
   const correo = (snapshot.clinic.email ?? '').trim();
 
-  if (config.CLINIC_NAME !== undefined) {
-    config.CLINIC_NAME = nombre === '' ? undefined : nombre;
-  }
-  if (config.CLINIC_ADDRESS !== undefined) {
-    config.CLINIC_ADDRESS = direccion === '' ? undefined : direccion;
-  }
-  if (config.CLINIC_EMAIL !== undefined) {
-    config.CLINIC_EMAIL = correo === '' ? undefined : correo;
-  }
+  config.CLINIC_NAME = nombre === '' ? undefined : nombre;
+  config.CLINIC_ADDRESS = direccion === '' ? undefined : direccion;
+  config.CLINIC_EMAIL = correo === '' ? undefined : correo;
 };
