@@ -332,6 +332,8 @@ const DICCIONARIO = {
   'perfil.completar.avisoTexto':
     'Hasta que completes el perfil, el sistema no te deja usar los módulos. Se pide una sola vez.',
   'perfil.completar.enviar': 'Guardar y entrar',
+  'perfil.completar.errorValidacion':
+    'Revisa los datos: falta algún campo obligatorio por completar.',
   'perfil.completar.pie':
     'Podrás editarlo después en «Mi perfil». Cada cambio queda registrado en la auditoría.',
   'perfil.profesional.titulo': 'Tus datos profesionales',

@@ -13,7 +13,7 @@ import {
   Input,
 } from '@odontocrm/ui';
 import { Stethoscope } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import type { z } from 'zod';
@@ -56,8 +56,19 @@ export const CompleteProfilePage = () => {
     identidad.titularUsername !== null &&
     identidad.titularUsername === user?.username;
 
+  /**
+   * Los datos del consultorio se validan **solo cuando sus campos están en pantalla** (el
+   * titular). A los demás les queda el hueco `clinic` de los valores por defecto, vacío, y
+   * el esquema completo lo rechazaría por unos campos que no existen: `handleSubmit` no
+   * llamaría a `enviar` y el botón parecería muerto, sin ningún error que lo explique.
+   */
+  const esquema = useMemo(
+    () => (esTitular ? completeOnboardingSchema : completeOnboardingSchema.pick({ dentist: true })),
+    [esTitular],
+  );
+
   const formulario = useForm<ValoresFormulario, unknown, ValoresEnviados>({
-    resolver: zodResolver(completeOnboardingSchema),
+    resolver: zodResolver(esquema),
     defaultValues: {
       dentist: { mpps: '', specialty: '', licenseNumber: '', contactEmail: '' },
       clinic: {
@@ -88,6 +99,14 @@ export const CompleteProfilePage = () => {
     } catch (fallo) {
       if (!applyApiFieldErrors(formulario.setError, fallo)) error(apiErrorMessage(fallo));
     }
+  };
+
+  /**
+   * `handleSubmit` sin `onInvalid` no hace **nada** cuando la validación falla: se pulsa el
+   * botón, no pasa nada y no hay error que mirar. Aquí se avisa siempre.
+   */
+  const alFallar = () => {
+    error(t('perfil.completar.errorValidacion'));
   };
 
   const { errors, isSubmitting } = formulario.formState;
@@ -122,7 +141,7 @@ export const CompleteProfilePage = () => {
             noValidate
             className="space-y-4"
             onSubmit={(event) => {
-              void formulario.handleSubmit(enviar)(event);
+              void formulario.handleSubmit(enviar, alFallar)(event);
             }}
           >
             <h2 className="text-sm font-semibold text-ink">{t('perfil.profesional.titulo')}</h2>
