@@ -1,16 +1,21 @@
 import {
   CLINICAL_STATE_LABELS,
   CONDITION_LABELS,
+  PROCEDURE_LABELS,
+  PROCEDURE_TRANSITIONS,
   SURFACE_FORM_ORDER,
   SURFACE_LABELS,
+  allowedStatesFor,
   conditionsConflict,
   dentitionOfTooth,
+  isStateAllowed,
   odontogramSummary,
   recordingConflicts,
   supersedesSurfaces,
   type AuditAction,
   type ClinicalState,
   type ClearSurfaceInput,
+  type CompleteProcedureInput,
   type DeleteFindingInput,
   type Dentition,
   type OdontogramDetail,
@@ -57,6 +62,10 @@ import { auditPayload, publish } from '../shared/events.js';
  *    misma transacción, sin borrarlas (el histórico las conserva).
  *  - Una cara no se puede registrar si la pieza tiene una condición completa
  *    vigente: 409 con un mensaje que dice qué quitar primero.
+ *  - El **estado** de un hallazgo tiene que ser válido para su condición (spec anexo
+ *    ADR 0032 §2): no hay «caries completada» ni «extracción indicada completada».
+ *  - Los **procedimientos** (`completeProcedure`) mutan un hallazgo en otro en una
+ *    sola transacción (extracción cumplida → ausente, caries tratada → obturación).
  */
 
 /* ── Tipos y constantes ────────────────────────────────────────────────────── */
@@ -515,6 +524,24 @@ const assertNoConflictingCondition = async (
   );
 };
 
+/**
+ * El **estado** tiene que ser válido para la condición (spec anexo ADR 0032 §2). El
+ * contrato lo comprueba al parsear, pero el servicio no se fía: sin este guardián,
+ * `extraccion_indicada` completada se colaba y dejaba la pieza imposible del informe
+ * de fallo («extracción completada + implante»).
+ */
+export const assertStateAllowed = (condition: ToothCondition, state: ClinicalState): void => {
+  if (isStateAllowed(condition, state)) return;
+  throw new ConflictError(
+    `La condición «${conditionLabel(condition)}» no admite el estado «${state}»: ${allowedStatesFor(
+      condition,
+    )
+      .map((valor) => CLINICAL_STATE_LABELS[valor].toLowerCase())
+      .join(' o ')}`,
+    { extensions: { condition, state, allowedStates: allowedStatesFor(condition) } },
+  );
+};
+
 const writeHistory = async (
   db: OdontogramDb,
   input: {
@@ -700,6 +727,78 @@ const removeFinding = async (
   await db.delete(toothFindings).where(eq(toothFindings.id, row.id));
 };
 
+/**
+ * **Resuelve** un hallazgo vigente porque un procedimiento lo ha cumplido: no se
+ * edita ni se borra, se da por terminado con su motivo. `resolved_at`, una entrada
+ * `resuelto` en el histórico y un evento que reporting lee como retirada de la fila.
+ *
+ * Es distinto de `supersedeSurfaces` (superar por una condición de pieza completa):
+ * aquí el origen no lo tapa otro hallazgo, lo **cierra** el procedimiento (la caries
+ * obturada, la extracción hecha).
+ */
+const resolveFinding = async (
+  db: OdontogramDb,
+  context: FindingEventContext,
+  row: ToothFindingRow,
+  options: { reason: string; at: Date },
+): Promise<void> => {
+  const snapshot = snapshotOf(row);
+
+  await db
+    .update(toothFindings)
+    .set({ resolvedAt: options.at, updatedAt: options.at })
+    .where(eq(toothFindings.id, row.id));
+
+  await writeHistory(db, {
+    context,
+    findingId: row.id,
+    snapshot,
+    event: 'resuelto',
+    reason: options.reason,
+    notes: row.notes,
+    sessionId: row.recordedInSessionId,
+    occurredAt: options.at,
+  });
+
+  await publishFindingEvent(db, context, snapshot, {
+    // El hallazgo sale del modelo vigente: reporting lo trata como una retirada
+    // (`action === 'tooth_finding_superseded'`), igual que una cara superada.
+    topic: EVENT_TOPICS.toothFindingRemoved,
+    action: 'tooth_finding_superseded',
+    summary: `${describeFinding(snapshot)} · ${options.reason}`,
+    changedFields: changedFieldsFor(snapshot),
+    before: snapshot,
+    after: null,
+    resolved: true,
+    reason: options.reason,
+  });
+};
+
+/** Hallazgos vigentes de una condición en una pieza, con filtro opcional de cara. */
+const findActiveByCondition = async (
+  db: OdontogramDb,
+  odontogramId: string,
+  toothNumber: number,
+  condition: ToothCondition,
+  /** `null` = pieza completa; `'any'` = cualquier cara; una cara concreta. */
+  surface: ToothSurface | null | 'any',
+): Promise<ToothFindingRow[]> => {
+  const filtros = [
+    eq(toothFindings.odontogramId, odontogramId),
+    eq(toothFindings.toothNumber, toothNumber),
+    eq(toothFindings.condition, condition),
+    isNull(toothFindings.resolvedAt),
+  ];
+  if (surface === null) filtros.push(isNull(toothFindings.surface));
+  else if (surface !== 'any') filtros.push(eq(toothFindings.surface, surface));
+
+  return db
+    .select()
+    .from(toothFindings)
+    .where(and(...filtros))
+    .orderBy(asc(toothFindings.surface));
+};
+
 /* ── Registro de hallazgos ─────────────────────────────────────────────────── */
 
 interface ApplyOutcome {
@@ -739,6 +838,7 @@ const applyFinding = async (
   //    ya tiene la pieza (ADR 0032). `ausente` manda sobre todo; `implante` y
   //    `endodoncia` no conviven entre sí; el resto de tratamientos sí conviven con
   //    las caras.
+  assertStateAllowed(input.condition, input.state);
   await assertNoConflictingCondition(db, odontogram.id, input.toothNumber, input.condition);
 
   const snapshot: FindingSnapshot = {
@@ -1000,6 +1100,150 @@ export const recordFindingsBatch = async (
     return {
       odontogram: unchanged ? odontogram : await syncDentition(tx, odontogram),
       unchanged,
+      resolvedSurfaces: [...resueltas].sort(byFormOrder),
+    };
+  });
+
+  return toMutationResult(db, outcome);
+};
+
+/**
+ * **Cumple un procedimiento** del plan (spec anexo ADR 0032 §5). No es un cambio de
+ * estado: es una **mutación** que resuelve el hallazgo de origen y deja vigente el
+ * destino, todo en una sola transacción (o todo o nada).
+ *
+ *  - `obturar`: resuelve la `caries` y deja una `restauracion` (completado) en la
+ *    misma cara. Sin cara = **todas** las caries de la pieza.
+ *  - `extraer`: resuelve la `extraccion_indicada` y deja la pieza `ausente`
+ *    (completado). Es la regla «al cumplirse una extracción indicada, la pieza queda
+ *    ausente». La corona y el conducto que hubiera caen con el diente.
+ *  - `rehabilitar`: exige un `implante` vigente, resuelve la `ausente` y deja una
+ *    `corona` (completado): fase quirúrgica → rehabilitada.
+ *
+ * El origen se marca `resolved_at` con su entrada `resuelto` en el histórico (no se
+ * borra: es la prueba de que existió) y el destino se aplica con `applyFinding`, así
+ * que hereda la convivencia y la validez de estado de cualquier hallazgo.
+ */
+export const completeProcedure = async (
+  db: OdontogramDb,
+  patientId: string,
+  input: CompleteProcedureInput,
+  actor: ActorContext,
+): Promise<OdontogramMutationResult> => {
+  const transicion = PROCEDURE_TRANSITIONS[input.procedure];
+
+  const outcome = await db.transaction(async (tx): Promise<ApplyOutcome> => {
+    const odontogram = await findOdontogramByPatient(tx, patientId);
+    if (odontogram === null) throw new NotFoundError('El paciente todavía no tiene odontograma');
+
+    const context = eventContext(odontogram, patientId, actor);
+    const at = new Date();
+    const motivo = `${PROCEDURE_LABELS[input.procedure].toLowerCase()}: ${conditionLabel(transicion.from)} → ${conditionLabel(transicion.to)}`;
+
+    // 0) Rehabilitar sin implante no existe: una corona sobre implante necesita el
+    //    tornillo que la sostiene (spec §5).
+    if (transicion.requiresImplante) {
+      const implantes = await findActiveByCondition(
+        tx,
+        odontogram.id,
+        input.toothNumber,
+        'implante',
+        null,
+      );
+      if (implantes.length === 0) {
+        throw new ConflictError(
+          `La pieza ${input.toothNumber} no tiene un implante vigente: la corona sobre implante lo exige`,
+          {
+            extensions: {
+              toothNumber: input.toothNumber,
+              procedure: input.procedure,
+              requires: 'implante',
+            },
+          },
+        );
+      }
+    }
+
+    // 1) Origen del procedimiento: por cara (`obturar`, o todas si no se indica) o de
+    //    pieza completa (`extraer`, `rehabilitar`).
+    const origenes =
+      transicion.scope === 'whole'
+        ? await findActiveByCondition(tx, odontogram.id, input.toothNumber, transicion.from, null)
+        : await findActiveByCondition(
+            tx,
+            odontogram.id,
+            input.toothNumber,
+            transicion.from,
+            input.surface ?? 'any',
+          );
+
+    if (origenes.length === 0) {
+      throw new ConflictError(
+        `La pieza ${input.toothNumber} no tiene «${conditionLabel(transicion.from)}» que cumplir`,
+        {
+          extensions: {
+            toothNumber: input.toothNumber,
+            procedure: input.procedure,
+            from: transicion.from,
+          },
+        },
+      );
+    }
+
+    // 2) Al **extraer**, la corona y el conducto caen con el diente: se resuelven para
+    //    que no queden vigentes contra el `ausente` que entra (serían incompatibles).
+    if (input.procedure === 'extraer') {
+      for (const condition of ['corona', 'endodoncia'] as const) {
+        const caen = await findActiveByCondition(
+          tx,
+          odontogram.id,
+          input.toothNumber,
+          condition,
+          null,
+        );
+        for (const row of caen) {
+          if (origenes.some((origen) => origen.id === row.id)) continue;
+          await resolveFinding(tx, context, row, {
+            reason: 'la extracción deja la pieza ausente',
+            at,
+          });
+        }
+      }
+    }
+
+    // 3) Se resuelven los orígenes…
+    for (const row of origenes) {
+      await resolveFinding(tx, context, row, { reason: motivo, at });
+    }
+
+    // 4) …y se aplica el destino: una fila por cara de origen, o una de pieza completa.
+    const caras: (ToothSurface | null)[] =
+      transicion.scope === 'whole' ? [null] : origenes.map((row) => row.surface as ToothSurface);
+
+    let actual = odontogram;
+    const resueltas = new Set<ToothSurface>();
+    for (const surface of caras) {
+      const applied = await applyFinding(
+        tx,
+        actual,
+        patientId,
+        {
+          toothNumber: input.toothNumber,
+          surface,
+          condition: transicion.to,
+          state: transicion.toState,
+          notes: input.notes,
+          sessionId: input.sessionId,
+        },
+        actor,
+      );
+      actual = applied.odontogram;
+      for (const cara of applied.resolvedSurfaces) resueltas.add(cara);
+    }
+
+    return {
+      odontogram: await syncDentition(tx, actual),
+      unchanged: false,
       resolvedSurfaces: [...resueltas].sort(byFormOrder),
     };
   });

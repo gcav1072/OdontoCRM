@@ -1,5 +1,6 @@
 import {
   clearSurfaceSchema,
+  completeProcedureSchema,
   deleteFindingSchema,
   recordFindingSchema,
   recordFindingsBatchSchema,
@@ -14,6 +15,7 @@ import {
   DEFAULT_HISTORY_LIMIT,
   MAX_HISTORY_LIMIT,
   clearSurface,
+  completeProcedure,
   deleteFinding,
   getHistory,
   getOdontogramByPatient,
@@ -112,6 +114,25 @@ export const registerOdontogramRoutes = (
       const { patientId } = parseOrThrow(patientParamsSchema, request.params);
       const input = parseOrThrow(recordFindingsBatchSchema, request.body ?? {});
       const result = await recordFindingsBatch(db, patientId, input, actor);
+      if (!result.unchanged) publicarYa();
+      return reply.status(200).send(result);
+    },
+  );
+
+  /**
+   * Cumple un **procedimiento** del plan (spec anexo ADR 0032 §5): extracción
+   * realizada, caries obturada o corona sobre implante. El servicio resuelve el
+   * origen e inserta el destino en una sola transacción, así que el estado imposible
+   * «extracción completada + implante» no puede quedar a medias.
+   */
+  app.post(
+    '/api/v1/odontogram/patients/:patientId/procedures',
+    { preHandler: write },
+    async (request, reply) => {
+      const actor = actorFrom(request);
+      const { patientId } = parseOrThrow(patientParamsSchema, request.params);
+      const input = parseOrThrow(completeProcedureSchema, request.body ?? {});
+      const result = await completeProcedure(db, patientId, input, actor);
       if (!result.unchanged) publicarYa();
       return reply.status(200).send(result);
     },

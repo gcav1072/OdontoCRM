@@ -6,6 +6,7 @@ import {
   DEFAULT_HISTORY_LIMIT,
   MAX_HISTORY_LIMIT,
   assertNoScopeConflict,
+  assertStateAllowed,
   changedFieldsFor,
   describeFinding,
   describeTransition,
@@ -176,6 +177,24 @@ describe('lote de carga rápida: las condiciones que no conviven se rechazan ent
     ).toThrow(/pieza 36/);
   });
 
+  it('rechaza la pareja imposible de la pieza 13: extracción indicada + implante', () => {
+    // Un diente natural no se extrae para conservarlo: si hay tornillo, no hay
+    // extracción que indicar (spec anexo ADR 0032 §3).
+    expect(() =>
+      assertNoScopeConflict([
+        { ...ausente, toothNumber: 13, surface: null, condition: 'extraccion_indicada' },
+        { ...ausente, toothNumber: 13, surface: null, condition: 'implante' },
+      ]),
+    ).toThrow(/pieza 13/);
+    // El implante tampoco convive con una cara: no tiene esmalte ni dentina.
+    expect(() =>
+      assertNoScopeConflict([
+        { ...ausente, toothNumber: 13, surface: null, condition: 'implante' },
+        { ...cara, toothNumber: 13, surface: 'occlusal', condition: 'caries' },
+      ]),
+    ).toThrow(/pieza 13/);
+  });
+
   it('admite varias piezas, varias caras y un tratamiento con sus caras (ADR 0032)', () => {
     expect(() =>
       assertNoScopeConflict([
@@ -200,6 +219,27 @@ describe('lote de carga rápida: las condiciones que no conviven se rechazan ent
         { ...ausente, toothNumber: 47, surface: null, condition: 'corona' },
       ]),
     ).not.toThrow();
+  });
+});
+
+describe('estados clínicos válidos (spec anexo ADR 0032 §2)', () => {
+  it('rechaza un estado imposible y dice cuáles valen', () => {
+    expect(() => assertStateAllowed('extraccion_indicada', 'completado')).toThrow(ConflictError);
+    // La extracción indicada solo existe `pendiente`: el día que se hace, la pieza
+    // pasa a `ausente` (no se queda «extracción completada»).
+    expect(() => assertStateAllowed('extraccion_indicada', 'completado')).toThrow(/pendiente/);
+    expect(() => assertStateAllowed('caries', 'completado')).toThrow(/pendiente/);
+    expect(() => assertStateAllowed('ausente', 'pendiente')).toThrow(/completado/);
+  });
+
+  it('admite los estados válidos de cada condición', () => {
+    expect(() => assertStateAllowed('caries', 'pendiente')).not.toThrow();
+    expect(() => assertStateAllowed('ausente', 'completado')).not.toThrow();
+    expect(() => assertStateAllowed('restauracion', 'completado')).not.toThrow();
+    expect(() => assertStateAllowed('corona', 'pendiente')).not.toThrow();
+    expect(() => assertStateAllowed('corona', 'completado')).not.toThrow();
+    expect(() => assertStateAllowed('implante', 'pendiente')).not.toThrow();
+    expect(() => assertStateAllowed('endodoncia', 'completado')).not.toThrow();
   });
 });
 
