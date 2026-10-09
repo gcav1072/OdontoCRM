@@ -1,4 +1,5 @@
 import {
+  allowedStatesFor,
   archLayout,
   CLINICAL_STATE_COLORS,
   CONDITION_LABELS,
@@ -81,11 +82,13 @@ const StaticTooth = ({ toothNumber, findings, size, flipped, mirrorX }: StaticTo
           strokeLinejoin="round"
           style={TRAZO_PIEZA}
         />
-        {/* Uno o varios tratamientos: en el papel también conviven (ADR 0032). */}
+        {/* Los tratamientos, por capas: en el papel también conviven (ADR 0032). */}
         {marcadores.map((slot) => (
           <g
             key={`${slot.condition}-${slot.id}`}
             data-condicion={slot.condition}
+            data-capa={slot.layer}
+            opacity={slot.layer === 'overlay' ? 0.75 : undefined}
             transform={`translate(${String(slot.cx - 50 * slot.scale)},${String(
               slot.cy - 50 * slot.scale,
             )}) scale(${String(slot.scale)})`}
@@ -221,8 +224,11 @@ const OdontogramLegend = () => (
       {(['extraccion_indicada', 'corona', 'implante', 'endodoncia'] as const).map((condition) => (
         <li key={condition} className="flex items-center gap-1.5">
           <span className="flex items-center gap-0.5">
-            <SymbolPreview condition={condition} state="pendiente" />
-            <SymbolPreview condition={condition} state="completado" />
+            {/* Solo los colores que la condición admite (spec §2): la extracción
+                indicada siempre va roja; los tratamientos, en las dos fases. */}
+            {allowedStatesFor(condition).map((state) => (
+              <SymbolPreview key={state} condition={condition} state={state} />
+            ))}
           </span>
           {t('odonto.leyenda.tratamiento', { condicion: CONDITION_LABELS[condition] })}
         </li>

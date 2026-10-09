@@ -1,5 +1,6 @@
 import type {
   ClearSurfaceInput,
+  CompleteProcedureInput,
   DeleteFindingInput,
   Dentition,
   OdontogramDetail,
@@ -124,6 +125,17 @@ export const odontogramApi = {
     input: RecordFindingsBatchInput,
   ): Promise<OdontogramMutationResult> =>
     api.post<OdontogramMutationResult>(`/odontogram/patients/${patientId}/findings/batch`, input),
+
+  /**
+   * Cumple un **procedimiento** del plan (spec anexo ADR 0032 §5): extracción
+   * realizada, caries obturada o corona sobre implante. El servidor resuelve el origen
+   * e inserta el destino en una sola transacción, así que la pieza no queda a medias.
+   */
+  completeProcedure: (
+    patientId: string,
+    input: CompleteProcedureInput,
+  ): Promise<OdontogramMutationResult> =>
+    api.post<OdontogramMutationResult>(`/odontogram/patients/${patientId}/procedures`, input),
 
   /** Borra esa clave natural: la pieza vuelve a estar sana. */
   removeFinding: (

@@ -223,15 +223,17 @@ describe('el informe impreso se lee como un documento clínico', () => {
     expect([...boca.matchAll(/Sin observaciones/g)]).toHaveLength(2);
   });
 
-  it('la leyenda enseña cada tratamiento en los dos colores (indicado y realizado)', () => {
+  it('la leyenda enseña cada tratamiento en los colores que admite (indicado y realizado)', () => {
     const boca = documento(detalle({}));
 
-    // Cuatro tratamientos × dos estados = ocho símbolos de cada color en la leyenda
-    // (más los del gráfico, que aquí no hay: la boca está sana).
+    // Rojo = indicado/pendiente: los cuatro tratamientos se pueden indicar.
+    // Azul = realizado: la extracción indicada **no** —cuando se hace, la pieza queda
+    // ausente, no «extracción completada» (spec §2)—, así que solo corona, implante y
+    // conducto llevan el azul.
     const enRojo = [...boca.matchAll(/stroke="#ef4444"/g)].length;
     const enAzul = [...boca.matchAll(/stroke="#3b82f6"/g)].length;
     expect(enRojo).toBeGreaterThanOrEqual(4);
-    expect(enAzul).toBeGreaterThanOrEqual(4);
+    expect(enAzul).toBeGreaterThanOrEqual(3);
 
     // Y el texto lo explica, que es lo que pidió el odontólogo.
     expect(boca).toContain('rojo indicado · azul realizado');

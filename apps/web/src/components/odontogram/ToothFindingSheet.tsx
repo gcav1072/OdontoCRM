@@ -2,7 +2,10 @@ import {
   CLINICAL_STATE_COLORS,
   CONDITION_LABELS,
   CLINICAL_STATE_LABELS,
+  PROCEDURE_LABELS,
   SURFACE_FORM_ORDER,
+  allowedStatesFor,
+  isStateAllowed,
   surfaceLabelFor,
   WHOLE_TOOTH_CONDITIONS,
   conflictingCondition,
@@ -14,6 +17,7 @@ import type {
   ClinicalState,
   ToothCondition,
   ToothFindingRecord,
+  ToothProcedure,
   ToothSurface,
 } from '@odontocrm/contracts';
 import { Alert, Badge, Button, Dialog } from '@odontocrm/ui';
@@ -44,6 +48,25 @@ const TEXTAREA_CLASSES =
 
 /** Condiciones de cara que se ofrecen en la hoja, con su acción. */
 const SURFACE_ACTIONS: readonly ToothCondition[] = ['caries', 'restauracion'];
+
+/**
+ * Procedimientos que la pieza admite **ahora mismo** (spec §5), según lo que tiene
+ * vigente: obturar si hay caries, extraer si hay extracción indicada y rehabilitar si
+ * la ausencia va con un implante (fase quirúrgica → rehabilitada).
+ */
+export const procedimientosDisponibles = (
+  findings: readonly ToothFindingRecord[],
+): ToothProcedure[] => {
+  const activas = findings.filter((finding) => finding.resolvedAt === null);
+  const tiene = (condition: ToothCondition): boolean =>
+    activas.some((finding) => finding.condition === condition);
+
+  const procedimientos: ToothProcedure[] = [];
+  if (tiene('caries')) procedimientos.push('obturar');
+  if (tiene('extraccion_indicada')) procedimientos.push('extraer');
+  if (tiene('ausente') && tiene('implante')) procedimientos.push('rehabilitar');
+  return procedimientos;
+};
 
 export interface ToothFindingSheetProps {
   open: boolean;
@@ -154,7 +177,13 @@ export const ToothFindingSheet = ({
   const aplicar = async (condition: ToothCondition): Promise<void> => {
     if (toothNumber === null) return;
 
-    const selection = { toothNumber, surfaces: caras, condition, state: estado };
+    // El estado elegido se ajusta a lo que la condición admite (spec §2): pulsar
+    // «ausente» con «pendiente» seleccionado registra el ausente completado, en vez
+    // de fallar.
+    const estadoValido = isStateAllowed(condition, estado)
+      ? estado
+      : (allowedStatesFor(condition)[0] ?? estado);
+    const selection = { toothNumber, surfaces: caras, condition, state: estadoValido };
     if (!selectionIsApplicable(selection, findings)) {
       const choque = conflictingCondition(findings, condition);
       setErrorLocal(
@@ -228,7 +257,40 @@ export const ToothFindingSheet = ({
     }
   };
 
+  /**
+   * Cumple un **procedimiento** del plan (spec §5): el servidor resuelve el origen e
+   * inserta el destino en una sola transacción. `obturar` afecta a todas las caries de
+   * la pieza; `extraer` deja la pieza ausente; `rehabilitar` exige el implante.
+   */
+  const completar = async (procedure: ToothProcedure): Promise<void> => {
+    if (toothNumber === null) return;
+    setOcupada(true);
+    setErrorLocal(null);
+    try {
+      await odontogramApi.completeProcedure(patientId, {
+        toothNumber,
+        procedure,
+        surface: null,
+        notes: notasNuevas.trim() === '' ? null : notasNuevas.trim(),
+        sessionId,
+      });
+      setCaras([]);
+      setNotasNuevas('');
+      onApplied({
+        toothNumber,
+        anterior: findings,
+        descripcion: PROCEDURE_LABELS[procedure].toLowerCase(),
+      });
+    } catch (fallo) {
+      onError(apiErrorMessage(fallo));
+    } finally {
+      setOcupada(false);
+    }
+  };
+
   if (toothNumber === null || !isToothNumber(toothNumber)) return null;
+
+  const procedimientos = procedimientosDisponibles(findings);
 
   return (
     <Dialog
@@ -269,37 +331,40 @@ export const ToothFindingSheet = ({
 
                     {canWrite && (
                       <span className="flex flex-wrap items-center gap-1">
-                        {/* El estado se corrige con un toque: es el error de dedo más
-                            común (marcar «pendiente» lo que ya estaba hecho). */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={ocupada}
-                          onClick={() =>
-                            void actualizar(finding, {
-                              state: finding.state === 'pendiente' ? 'completado' : 'pendiente',
-                              notes: finding.notes,
-                            })
-                          }
-                          leadingIcon={
-                            <span
-                              className="inline-block size-3 rounded-full"
-                              style={{
-                                backgroundColor:
-                                  CLINICAL_STATE_COLORS[
-                                    finding.state === 'pendiente' ? 'completado' : 'pendiente'
-                                  ],
-                              }}
-                              aria-hidden
-                            />
-                          }
-                        >
-                          {t(
-                            finding.state === 'pendiente'
-                              ? 'odonto.sheet.marcarCompletado'
-                              : 'odonto.sheet.marcarPendiente',
-                          )}
-                        </Button>
+                        {/* El estado se corrige con un toque, pero solo si la condición
+                            admite los dos (spec §2): la caries siempre va pendiente y la
+                            ausencia siempre completada, así que no hay nada que corregir. */}
+                        {allowedStatesFor(finding.condition).length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={ocupada}
+                            onClick={() =>
+                              void actualizar(finding, {
+                                state: finding.state === 'pendiente' ? 'completado' : 'pendiente',
+                                notes: finding.notes,
+                              })
+                            }
+                            leadingIcon={
+                              <span
+                                className="inline-block size-3 rounded-full"
+                                style={{
+                                  backgroundColor:
+                                    CLINICAL_STATE_COLORS[
+                                      finding.state === 'pendiente' ? 'completado' : 'pendiente'
+                                    ],
+                                }}
+                                aria-hidden
+                              />
+                            }
+                          >
+                            {t(
+                              finding.state === 'pendiente'
+                                ? 'odonto.sheet.marcarCompletado'
+                                : 'odonto.sheet.marcarPendiente',
+                            )}
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -375,6 +440,31 @@ export const ToothFindingSheet = ({
 
         {canWrite && (
           <>
+            {/* Procedimientos: el «ya está hecho» de un plan (spec §5). Aparecen solo
+                cuando la pieza los admite, para no ofrecer acciones imposibles. */}
+            {procedimientos.length > 0 && (
+              <section>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+                  {t('odonto.sheet.procedimiento')}
+                </h4>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {procedimientos.map((procedure) => (
+                    <Button
+                      key={procedure}
+                      variant="secondary"
+                      disabled={ocupada}
+                      onClick={() => void completar(procedure)}
+                    >
+                      {PROCEDURE_LABELS[procedure]}
+                    </Button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-xs text-ink-subtle">
+                  {t('odonto.sheet.procedimientoAyuda')}
+                </p>
+              </section>
+            )}
+
             {/* Caras: botones de 44 px, que es lo que un dedo acierta. */}
             <section>
               <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">

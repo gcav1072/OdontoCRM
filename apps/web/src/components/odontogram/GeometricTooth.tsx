@@ -6,9 +6,12 @@ import {
   SURFACE_LABELS,
   SURFACE_POLYGONS,
   TOOTH_LABEL_BASELINE,
+  WHOLE_TOOTH_SYMBOLS,
   surfaceLabelFor,
   toothGroupTransform,
   unscreenPoint,
+  wholeToothMarkerTone,
+  wholeToothMarkers,
   TOOTH_OUTLINE_POINTS,
   surfaceAtPoint,
 } from '@odontocrm/contracts';
@@ -16,6 +19,7 @@ import type {
   ClinicalState,
   ToothCondition,
   ToothFindingRecord,
+  ToothMarker,
   ToothSurface,
   WholeToothCondition,
 } from '@odontocrm/contracts';
@@ -128,67 +132,21 @@ export interface ToothConditionSymbolProps {
   state: ClinicalState;
 }
 
-/**
- * Orden de **pintado** de los marcadores de pieza completa, de más a menos
- * relevante: si una pieza acumula varios tratamientos (una corona con su conducto,
- * un implante con su corona) hay que decidir cuál se ve primero y más grande.
- */
-export const WHOLE_TOOTH_RENDER_ORDER: readonly WholeToothCondition[] = [
-  'ausente',
-  'extraccion_indicada',
-  'implante',
-  'corona',
-  'endodoncia',
-];
-
-export interface MarkerSlot {
-  id: string;
-  condition: WholeToothCondition;
-  state: ClinicalState;
-  /** Centro del símbolo, en el lienzo de 100×100. */
-  cx: number;
-  cy: number;
-  /** Escala del símbolo: 1 = ocupa la pieza entera. */
-  scale: number;
-}
+/** Marcador ya colocado: la política (capas y geometría) vive en el contrato. */
+export type MarkerSlot = ToothMarker;
 
 /**
- * Coloca los marcadores de una pieza en una fila centrada, encogiéndolos cuando
- * hay más de uno: un solo tratamiento se dibuja a tamaño completo y dos o tres
- * comparten el hueco sin taparse (ADR 0032 permite varias a la vez).
+ * Coloca los marcadores de pieza completa **por capas** (spec anexo ADR 0032 §6): la
+ * corona en la **periferia**, el implante o el conducto en el **centro**, la extracción
+ * indicada por encima (**overlay**) y el aspa de `ausente` a tamaño completo —que cede
+ * si hay implante—.
  *
- * El aspa de `ausente` **cede ante el implante**: si la pieza lleva implante, el
- * tornillo ya dice que no hay diente natural y dibujar las dos cosas es ruido (y
- * además el servidor permite las dos desde la ampliación del ADR 0032: la fase
- * quirúrgica es justo «corona ausente + implante»).
+ * La composición la decide el contrato (`wholeToothMarkers`): así la pantalla, el papel
+ * y el dossier no tienen reglas propias y no pueden divergir. Antes se dibujaban en
+ * fila y se encogían según cuántos hubiera, lo que deformaba el tornillo junto al
+ * círculo de la corona.
  */
-export const markerSlots = (findings: readonly ToothFindingRecord[]): MarkerSlot[] => {
-  const enteras = findings.filter((finding) => finding.surface === null);
-  const hayImplante = enteras.some((finding) => finding.condition === 'implante');
-
-  const marcadores = WHOLE_TOOTH_RENDER_ORDER.flatMap((condition) =>
-    enteras
-      .filter((finding) => finding.condition === condition)
-      .filter((finding) => !(hayImplante && finding.condition === 'ausente'))
-      .map((finding) => ({ id: finding.id, condition, state: finding.state })),
-  );
-
-  if (marcadores.length === 0) return [];
-  if (marcadores.length === 1) {
-    const unico = marcadores[0];
-    return unico === undefined ? [] : [{ ...unico, cx: 50, cy: 50, scale: 1 }];
-  }
-
-  const scale = marcadores.length === 2 ? 0.55 : marcadores.length === 3 ? 0.42 : 0.34;
-  const ancho = 100 / marcadores.length;
-
-  return marcadores.map((marcador, indice) => ({
-    ...marcador,
-    cx: ancho * (indice + 0.5),
-    cy: 50,
-    scale,
-  }));
-};
+export const markerSlots = wholeToothMarkers;
 
 /**
  * Símbolo clásico de las condiciones de **pieza completa**: aspa (ausente),
@@ -223,8 +181,15 @@ const marcaDe = (
   condition: WholeToothCondition,
   state: ClinicalState,
 ): { color?: string; colorClass?: string } =>
-  condition === 'ausente' ? { colorClass: 'stroke-ink' } : { color: CLINICAL_STATE_COLORS[state] };
+  wholeToothMarkerTone(condition) === 'ink'
+    ? { colorClass: 'stroke-ink' }
+    : { color: CLINICAL_STATE_COLORS[state] };
 
+/**
+ * El trazo de un símbolo, a partir de las formas del contrato: la **geometría** vive
+ * en `WHOLE_TOOTH_SYMBOLS` (la comparten la pantalla y el dossier del servidor) y
+ * aquí solo se pasa a React. Se dibuja dos veces —halo y marca—, igual que antes.
+ */
 const SymbolMark = ({
   condition,
   color,
@@ -239,46 +204,37 @@ const SymbolMark = ({
   /** Multiplicador del grosor, para el halo. */
   grosor?: number;
 }) => {
-  const grupo = { stroke: color, className: colorClass, pointerEvents: 'none' as const };
-  const ancho = (base: number): number => base * grosor;
+  const simbolo = WHOLE_TOOTH_SYMBOLS[condition];
 
-  switch (condition) {
-    case 'ausente':
-      return (
-        <g {...grupo} strokeWidth={ancho(10)} strokeLinecap="round">
-          <line x1={10} y1={10} x2={90} y2={90} />
-          <line x1={90} y1={10} x2={10} y2={90} />
-        </g>
-      );
-    case 'extraccion_indicada':
-      return (
-        <g {...grupo} strokeWidth={ancho(10)} strokeLinecap="round">
-          <line x1={10} y1={10} x2={90} y2={90} strokeDasharray="16 10" />
-          <line x1={90} y1={10} x2={10} y2={90} strokeDasharray="16 10" />
-        </g>
-      );
-    case 'corona':
-      return <circle {...grupo} cx={50} cy={50} r={34} fill="none" strokeWidth={ancho(9)} />;
-    case 'implante':
-      return (
-        <g {...grupo} strokeWidth={ancho(8)} strokeLinecap="round">
-          <line x1={50} y1={16} x2={50} y2={84} />
-          <line x1={30} y1={38} x2={70} y2={38} />
-          <line x1={30} y1={56} x2={70} y2={56} />
-          <line x1={34} y1={72} x2={66} y2={72} />
-        </g>
-      );
-    case 'endodoncia':
-      return (
-        <polygon
-          {...grupo}
-          points="50,14 88,84 12,84"
-          fill="none"
-          strokeWidth={ancho(9)}
-          strokeLinejoin="round"
-        />
-      );
-  }
+  return (
+    <g
+      stroke={color}
+      className={colorClass}
+      pointerEvents="none"
+      strokeWidth={simbolo.strokeWidth * grosor}
+      strokeLinecap={simbolo.strokeLinecap}
+      strokeLinejoin={simbolo.strokeLinejoin}
+    >
+      {simbolo.shapes.map((shape, indice) => {
+        if (shape.kind === 'line') {
+          return (
+            <line
+              key={indice}
+              x1={shape.x1}
+              y1={shape.y1}
+              x2={shape.x2}
+              y2={shape.y2}
+              strokeDasharray={shape.dash}
+            />
+          );
+        }
+        if (shape.kind === 'circle') {
+          return <circle key={indice} cx={shape.cx} cy={shape.cy} r={shape.r} fill="none" />;
+        }
+        return <polygon key={indice} points={shape.points} fill="none" />;
+      })}
+    </g>
+  );
 };
 
 export interface GeometricToothProps {
@@ -404,11 +360,15 @@ export const GeometricTooth = ({
           strokeLinejoin="round"
         />
 
-        {/* Uno o varios tratamientos, encogidos si comparten la pieza. */}
+        {/* Los tratamientos, por capas: periferia, centro y overlay (spec §6). */}
         {marcadores.map((slot) => (
           <g
             key={`${slot.condition}-${slot.id}`}
             data-condicion={slot.condition}
+            data-capa={slot.layer}
+            // La extracción indicada va por encima con trazo translúcido: deja ver
+            // debajo la corona o el conducto que motivó la exodoncia (spec §6).
+            opacity={slot.layer === 'overlay' ? 0.75 : undefined}
             transform={`translate(${String(slot.cx - 50 * slot.scale)},${String(
               slot.cy - 50 * slot.scale,
             )}) scale(${String(slot.scale)})`}

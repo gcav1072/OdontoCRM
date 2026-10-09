@@ -1,6 +1,6 @@
 import {
+  allowedStatesFor,
   archLayout,
-  CLINICAL_STATES,
   CLINICAL_STATE_COLORS,
   CONDITION_LABELS,
 } from '@odontocrm/contracts';
@@ -144,27 +144,35 @@ const Legend = () => (
     <p className="text-xs font-medium text-ink">{t('odonto.leyenda.titulo')}</p>
 
     <ul className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-ink-muted">
-      {CLINICAL_STATES.map((state) => (
-        <li key={state} className="flex items-center gap-1.5">
-          <span
-            className="inline-block size-3 rounded-sm border border-border"
-            style={{ backgroundColor: CLINICAL_STATE_COLORS[state] }}
-            aria-hidden
-          />
-          {`${CONDITION_LABELS.caries} / ${CONDITION_LABELS.restauracion} · ${t(
-            state === 'pendiente' ? 'odonto.leyenda.pendiente' : 'odonto.leyenda.completado',
-          )}`}
-        </li>
-      ))}
+      {/* El rojo es «por hacer»: una caries y un empaste indicados van así. */}
+      <li className="flex items-center gap-1.5">
+        <span
+          className="inline-block size-3 rounded-sm border border-border"
+          style={{ backgroundColor: CLINICAL_STATE_COLORS.pendiente }}
+          aria-hidden
+        />
+        {`${CONDITION_LABELS.caries} / ${CONDITION_LABELS.restauracion} · ${t(
+          'odonto.leyenda.pendiente',
+        )}`}
+      </li>
+      {/* El azul es «hecho»: la caries no se «completa» —se trata y pasa a
+          obturación—, así que completado solo lo lleva la obturación (spec §2). */}
+      <li className="flex items-center gap-1.5">
+        <span
+          className="inline-block size-3 rounded-sm border border-border"
+          style={{ backgroundColor: CLINICAL_STATE_COLORS.completado }}
+          aria-hidden
+        />
+        {`${CONDITION_LABELS.restauracion} · ${t('odonto.leyenda.completado')}`}
+      </li>
       <li className="flex items-center gap-1.5">
         <span className="inline-block size-3 rounded-sm border border-border-strong" aria-hidden />
         {t('odonto.leyenda.sano')}
       </li>
 
-      {/* El aspa de `ausente` no tiene color de estado: la pieza no está, y ya.
-          Los tratamientos van en la fila de abajo, **en los dos colores**. */}
+      {/* El aspa de `ausente` no tiene color de estado: la pieza no está, y ya. */}
       <li className="flex items-center gap-1.5">
-        <SymbolPreview condition="ausente" state="pendiente" />
+        <SymbolPreview condition="ausente" state="completado" />
         {CONDITION_LABELS.ausente}
       </li>
     </ul>
@@ -173,8 +181,12 @@ const Legend = () => (
       {TREATMENT_CONDITIONS.map((condition) => (
         <li key={condition} className="flex items-center gap-1.5">
           <span className="flex items-center gap-0.5">
-            <SymbolPreview condition={condition} state="pendiente" />
-            <SymbolPreview condition={condition} state="completado" />
+            {/* Solo los colores que la condición admite (spec §2): la extracción
+                indicada siempre va roja; la corona, el conducto y el implante se
+                enseñan en las dos fases. */}
+            {allowedStatesFor(condition).map((state) => (
+              <SymbolPreview key={state} condition={condition} state={state} />
+            ))}
           </span>
           {t('odonto.leyenda.tratamiento', { condicion: CONDITION_LABELS[condition] })}
         </li>

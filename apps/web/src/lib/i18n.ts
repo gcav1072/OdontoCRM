@@ -2680,6 +2680,8 @@ const DICCIONARIO = {
   'odontograma.historial.evento.actualizado': 'Actualizado',
   'odontograma.historial.evento.eliminado': 'Eliminado',
   'odontograma.historial.evento.superado': 'Superado',
+  /** Un procedimiento cumplido (extracción hecha, caries obturada) cierra el origen. */
+  'odontograma.historial.evento.resuelto': 'Resuelto (el procedimiento lo terminó)',
   // ── Fase 6B · odontograma (gráfico y carga rápida) ─────────────────────────
   'odonto.soloLectura': 'Solo lectura: necesitas permiso para modificar el odontograma.',
   'odonto.actualizado': 'Actualizado el {fecha}',
@@ -2737,7 +2739,7 @@ const DICCIONARIO = {
   // Carga rápida por teclado.
   'odonto.rapida.titulo': 'Carga rápida por teclado',
   'odonto.rapida.ayuda':
-    'Pulsa una pieza (o escribe su número) y marca el hallazgo con una tecla: la minúscula queda pendiente y la MAYÚSCULA, completado.',
+    'Pulsa una pieza (o escribe su número) y marca el hallazgo con una tecla: la minúscula queda pendiente y la MAYÚSCULA, completado. La caries y la extracción indicada registran su único estado válido aunque pulses la otra caja.',
   'odonto.rapida.placeholder': 'Haz clic aquí o en una pieza y escribe su número (p. ej. 16)',
   'odonto.rapida.condiciones': 'Condición',
   'odonto.rapida.caras': 'Caras de la pieza activa',
@@ -2793,6 +2795,9 @@ const DICCIONARIO = {
   'odonto.sheet.invalida': 'Esa pieza no admite el cambio.',
   'odonto.sheet.choca': 'No se puede: la pieza ya tiene «{condicion}» y no convive con «{nueva}».',
   'odonto.sheet.abrir': 'Marcar con botones',
+  'odonto.sheet.procedimiento': 'Procedimiento',
+  'odonto.sheet.procedimientoAyuda':
+    'Cumple el plan en un toque: «Obturar» convierte la caries en obturación, «Extraer» deja la pieza ausente y «Poner corona» la rehabilitada sobre el implante. Todo queda en la historia clínica.',
   'odonto.activa.ninguna': 'Ninguna pieza elegida: pulsa una en el diagrama.',
   'odonto.activa.pieza': 'Pieza {pieza} elegida.',
   'odonto.tactil.ayuda':

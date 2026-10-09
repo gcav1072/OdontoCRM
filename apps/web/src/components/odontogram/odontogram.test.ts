@@ -174,7 +174,7 @@ describe('etiqueta accesible de la pieza', () => {
   });
 });
 
-describe('marcadores de pieza completa en el dibujo', () => {
+describe('marcadores de pieza completa en el dibujo (capas, spec §6)', () => {
   const corona = hallazgo({
     id: 'corona-1',
     surface: null,
@@ -190,35 +190,53 @@ describe('marcadores de pieza completa en el dibujo', () => {
 
   it('con un solo tratamiento ocupa la pieza entera', () => {
     const [slot] = markerSlots([corona]);
-    expect(slot).toMatchObject({ condition: 'corona', cx: 50, cy: 50, scale: 1 });
+    expect(slot).toMatchObject({
+      condition: 'corona',
+      layer: 'periferia',
+      cx: 50,
+      cy: 50,
+      scale: 1,
+    });
   });
 
-  it('con dos tratamientos se reparten el hueco sin taparse (ADR 0032)', () => {
+  /**
+   * La composición es por **capas**, no en fila: la corona rodea la casilla y el
+   * conducto va en el centro, encogido para caber dentro del círculo. Antes se
+   * repartían el hueco en horizontal y el triángulo quedaba deformado.
+   */
+  it('corona y conducto conviven: el círculo rodea y el triángulo va al centro', () => {
     const slots = markerSlots([corona, conducto]);
-    expect(slots).toHaveLength(2);
     expect(slots.map((slot) => slot.condition)).toEqual(['corona', 'endodoncia']);
-    expect(slots.map((slot) => slot.scale)).toEqual([0.55, 0.55]);
-    expect(slots.map((slot) => slot.cx)).toEqual([25, 75]);
+    expect(slots.map((slot) => slot.layer)).toEqual(['periferia', 'centro']);
+    expect(slots.map((slot) => slot.cx)).toEqual([50, 50]);
+    expect(slots.map((slot) => slot.scale)).toEqual([1, 0.62]);
   });
 
-  it('los marcadores se ordenan por relevancia, no por orden de llegada', () => {
+  it('los marcadores se ordenan por capa, no por orden de llegada', () => {
     const slots = markerSlots([
       conducto,
       corona,
       hallazgo({ id: 'ausente-1', surface: null, condition: 'ausente' }),
     ]);
     expect(slots.map((slot) => slot.condition)).toEqual(['ausente', 'corona', 'endodoncia']);
+    expect(slots.map((slot) => slot.layer)).toEqual(['aspa', 'periferia', 'centro']);
   });
 
-  it('a partir de cuatro se encogen un poco más para que quepan', () => {
+  it('la extracción indicada va en la capa overlay, por encima de todo', () => {
     const slots = markerSlots([
-      corona,
-      conducto,
-      hallazgo({ id: 'implante-1', surface: null, condition: 'implante' }),
       hallazgo({ id: 'extraccion-1', surface: null, condition: 'extraccion_indicada' }),
+      corona,
     ]);
-    expect(slots).toHaveLength(4);
-    expect(slots.every((slot) => slot.scale === 0.34)).toBe(true);
+    expect(slots.map((slot) => slot.layer)).toEqual(['periferia', 'overlay']);
+    expect(slots[slots.length - 1]?.condition).toBe('extraccion_indicada');
+  });
+
+  it('el implante comparte el centro con su corona sin deformarse', () => {
+    const implante = hallazgo({ id: 'implante-1', surface: null, condition: 'implante' });
+    const slots = markerSlots([corona, implante]);
+    expect(slots.map((slot) => slot.layer)).toEqual(['periferia', 'centro']);
+    // El tornillo se encoge para caber dentro del círculo de la corona.
+    expect(slots.map((slot) => slot.scale)).toEqual([1, 0.62]);
   });
 
   /**

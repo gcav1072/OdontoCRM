@@ -194,12 +194,13 @@ export const parseToothFilter = (raw: string): ToothFilterParse => {
   return isToothNumber(numero) ? { value: numero, invalid: false } : { value: null, invalid: true };
 };
 
-/** Etiqueta legible del tipo de cambio; el contrato ya nombra los cuatro eventos. */
+/** Etiqueta legible del tipo de cambio; el contrato ya nombra los cinco eventos. */
 const EVENT_LABELS: Readonly<Record<ToothFindingHistoryEvent, string>> = {
   registrado: t('odontograma.historial.evento.registrado'),
   actualizado: t('odontograma.historial.evento.actualizado'),
   eliminado: t('odontograma.historial.evento.eliminado'),
   superado: t('odontograma.historial.evento.superado'),
+  resuelto: t('odontograma.historial.evento.resuelto'),
 };
 
 export const historyEventLabel = (event: ToothFindingHistoryEvent): string => EVENT_LABELS[event];
