@@ -7,6 +7,7 @@ import {
   conflictingCondition,
   dentitionOfTooth,
   findingsFromSelection,
+  hasPrimaryFindings,
   isToothNumber,
   MIDLINE_GAP,
   neighborTooth,
@@ -74,6 +75,25 @@ describe('dominio FDI', () => {
     expect(dentitionOfTooth(48)).toBe('permanente');
     expect(dentitionOfTooth(55)).toBe('temporal');
     expect(dentitionOfTooth(85)).toBe('temporal');
+  });
+
+  it('`hasPrimaryFindings` distingue una boca con piezas de leche de una sin ellas', () => {
+    // Sin odontograma o sin hallazgos: no hay nada temporal que imprimir.
+    expect(hasPrimaryFindings(null)).toBe(false);
+    expect(hasPrimaryFindings(undefined)).toBe(false);
+    expect(hasPrimaryFindings({})).toBe(false);
+
+    // Solo permanentes: la banda temporal no se dibuja (boca permanente al día).
+    expect(hasPrimaryFindings({ '16': [hallazgo({ toothNumber: 16 })] })).toBe(false);
+
+    // Una sola pieza de leche ya justifica la banda temporal.
+    expect(
+      hasPrimaryFindings({
+        '16': [hallazgo({ toothNumber: 16 })],
+        '55': [hallazgo({ toothNumber: 55, condition: 'caries' })],
+      }),
+    ).toBe(true);
+    expect(hasPrimaryFindings({ '85': [hallazgo({ toothNumber: 85 })] })).toBe(true);
   });
 
   it('el esquema de pieza rechaza un número que no existe', () => {

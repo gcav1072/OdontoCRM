@@ -360,6 +360,27 @@ export const dentitionOfTooth = (toothNumber: number): Dentition =>
   isPrimaryTooth(toothNumber) ? 'temporal' : 'permanente';
 
 /**
+ * `true` si **algún hallazgo vigente** cae en una pieza temporal (cuadrantes 5–8).
+ *
+ * Es la condición que decide si un imprimible lleva la banda de piezas de leche: la
+ * dentición `mixta` solo se declara cuando hay hallazgos en las dos denticiones, pero
+ * el papel se queda con lo que **de verdad** se registró. Un odontograma mixto sin
+ * hallazgos temporales —posible si se corrigen capturas— imprime solo la arcada
+ * permanente, sin una banda vacía que haría dudar de si faltó capturarla.
+ *
+ * Pura y sin dependencias: la usan el documento del navegador y el dossier del
+ * servidor, que tienen que decidir lo mismo.
+ */
+export const hasPrimaryFindings = (
+  findings: Record<string, readonly { toothNumber: number }[]> | null | undefined,
+): boolean => {
+  if (findings === null || findings === undefined) return false;
+  return Object.values(findings).some((list) =>
+    list.some((finding) => isPrimaryTooth(finding.toothNumber)),
+  );
+};
+
+/**
  * La pieza **permanente que sustituye** a una temporal (mismo cuadrante menos 4 y
  * misma posición): `51 → 11`, `54 → 14`, `55 → 15`, `85 → 45`.
  *
