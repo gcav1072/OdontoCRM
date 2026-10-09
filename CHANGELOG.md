@@ -4,6 +4,40 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Cancelación] — El paciente cancela con plazo y el inicio cuenta las novedades · 2026-10-09
+
+Tres arreglos que salieron de usar el bot con pacientes de verdad.
+
+**Uno: la tabla de canales no decía quién era el paciente.** Al vincular un chat salía el usuario de
+Telegram y la dirección, pero «Paciente» quedaba en «Sin dato»: la ruta de canales **fijaba
+`patientName: null`**. Ahora el servicio de notificaciones **compone** la tabla —como ya hacía con las
+citas— y resuelve los nombres en un solo lote contra una ruta interna nueva de pacientes
+(`GET /internal/v1/patients/summaries`). De paso arregla lo que ya estaba vinculado: no depende de
+guardar nada al vincular.
+
+**Dos: `notification_settings`, el corte de cancelación.** Quien **ya confirmó** su cita no debería
+poder soltarla por chat la víspera. La clínica fija cuántos días de antelación hacen falta para
+cancelar una cita confirmada (0 = sin corte, valor por defecto); las citas **sin confirmar** se
+cancelan siempre, y la secretaría sigue cancelando sin límite desde el mostrador. La configuración la
+ven y la editan **solo el admin y el odontólogo**, con el permiso nuevo `scheduling:cancel_policy`.
+
+**Tres: novedades en el inicio.** `GET /api/v1/appointments/activity` clasifica lo que hizo el
+paciente —«dio cita y confirmó», «dio cita y canceló», «confirmó y luego se arrepintió»— a partir de
+`status_history` y la fecha de confirmación, y lo pinta una tarjeta en `/inicio` que muestra 5 de las
+últimas 20.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `channelsInInbox` (`services/notifications`) | Compone los canales vinculados y les pone el nombre del paciente |
+| `GET /internal/v1/patients/summaries` | Resúmenes de pacientes por id en lote, para otros servicios |
+| `notification_settings` + migración `0006` | El corte configurable (`patient_cancel_cutoff_days`, 0–30) |
+| Permiso `scheduling:cancel_policy` | Solo `admin` y odontólogo ven y editan la política |
+| Plantilla `cita_cancelacion_fuera_de_plazo` | La respuesta al paciente que ya no puede cancelar por chat |
+| `GET/PATCH /api/v1/notifications/settings` y `CancellationPolicyCard` | Leer y guardar el corte |
+| `listAppointmentActivity` + `GET /api/v1/appointments/activity` y `HomeActivityCard` | Las novedades de citas del inicio |
+
+Detalle y porqués: [ADR 0057](docs/adr/0057-cancelacion-con-plazo-canales-y-novedades.md).
+
 ## [Interfaz] — La dentición temporal a la vista y la jornada, en pestañas · 2026-10-09
 
 Dos mejoras de pantalla que comparten lo mismo: la interfaz enseñaba de golpe lo que se

@@ -318,6 +318,8 @@ Reglas que aplica el servidor (no solo la interfaz):
 | `POST /api/v1/agenda/notify` | Notifica el lote: **asegura** el aviso (no repite el que ya salió y recupera el que quedó pendiente o fallido); con `force` reenvía también a los ya notificados | `scheduling:notify` |
 | `POST /api/v1/appointments` | Asigna una solicitud a una franja (o cita directa con hora manual) | `scheduling:write` |
 | `GET /api/v1/appointments[/:id[/history]]` | Citas por fecha, estado o paciente, y su historial de estados | `scheduling:read` |
+| `GET /api/v1/appointments/cancellations` | Cancelaciones hechas por el **paciente** por Telegram/WhatsApp (ADR 0053) | `scheduling:read` |
+| `GET /api/v1/appointments/activity` | **Novedades** de citas para el inicio: quién confirmó, quién canceló y quién se arrepintió (ADR 0057) | `scheduling:read` |
 | `POST /api/v1/appointments/:id/(check-in\|call\|start\|attend\|no-show\|cancel)` | Ciclo de vida según la máquina de estados; «atendido» pide motivo mientras no exista historia clínica | `scheduling:write` |
 | `POST /api/v1/appointments/:id/reschedule` | Reprograma: la cita anterior queda trazada y la nueva se enlaza con ella | `scheduling:write` |
 | `POST /internal/v1/requests` | Alta de solicitud desde el bot, con secreto interno | secreto interno |
@@ -346,9 +348,10 @@ de 7 pasos, la cola de envíos, las plantillas y el `.ics` son los mismos para t
 | `POST /api/v1/notifications/:id/retry` | Reintento manual: vuelve a la cola ahora | `scheduling:notify` |
 | `POST /api/v1/notifications/:id/contacted` | Deja constancia de un aviso hecho por teléfono | `scheduling:notify` |
 | `GET/PATCH/POST /api/v1/notifications/templates[/:key[/reset]]` | Plantillas editables del asistente | `scheduling:read` / `scheduling:notify` |
-| `GET /api/v1/notifications/channels` | Canales vinculados (canal + dirección enmascarada) | `scheduling:read` |
+| `GET /api/v1/notifications/channels` | Canales vinculados (canal + dirección enmascarada + **nombre del paciente**) | `scheduling:read` |
 | `POST /api/v1/notifications/channels/link-code` | Enlace `t.me/...` + QR para vincular a un paciente | `scheduling:notify` |
 | `DELETE /api/v1/notifications/channels/:patientId` | Desvincula al paciente | `scheduling:notify` |
+| `GET/PATCH /api/v1/notifications/settings` | **Política de cancelación del paciente**: días de antelación para cancelar una cita ya confirmada (ADR 0057) | `scheduling:cancel_policy` |
 | `GET /api/v1/notifications/ics/:appointmentId` | Descarga el `.ics` archivado | `scheduling:read` |
 | `GET/POST /api/v1/notifications/webhook/:canal` | **Webhook público** de los canales que empujan (WhatsApp Cloud API) | **público** (lo valida la firma) |
 | `POST /internal/v1/notifications/process` | Fuerza un ciclo de la cola (operación y pruebas) | secreto interno |
