@@ -79,3 +79,4 @@ en `brand.ts` y sin usar).
 | [0054](0054-membrete-unico-en-los-imprimibles.md) | El membrete, el logo y la marca de agua son los mismos en todos los imprimibles (y la marca de agua, antes declarada y sin usar, se cablea) | aceptada |
 | [0055](0055-dos-tipografias-en-los-imprimibles.md) | Los imprimibles tienen dos tipografías (títulos y cuerpo), auto-hospedadas e incrustadas: el papel no depende del equipo | aceptada |
 | [0056](0056-la-identidad-del-consultorio-vive-en-la-base.md) | La identidad del consultorio vive en la base de datos: el titular la completa en su primer acceso, queda auditada y `clinic.ts` pasa a semilla y respaldo | aceptada |
+| [0058](0058-sin-datos-personales-en-el-codigo.md) | Sin datos personales en el código: la identidad se sirve solo desde el registro del titular (se elimina el respaldo con datos y los overrides `CLINIC_*`) | aceptada |

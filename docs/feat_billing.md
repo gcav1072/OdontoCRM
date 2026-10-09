@@ -443,6 +443,12 @@ del repositorio no pueden estar: van al **entorno**, como el resto de los datos 
 
 **El bloque del entorno** (genéricos que van al `.env.example` y a la plantilla de Fedora):
 
+> **Nota (2026-10-09).** Esta propuesta de variables `CLINIC_*` quedó **superada**: con el
+> [ADR 0056](adr/0056-la-identidad-del-consultorio-vive-en-la-base.md) y el
+> [ADR 0058](adr/0058-sin-datos-personales-en-el-codigo.md) la identidad del consultorio vive en la
+> base y se sirve **solo** desde ahí; **no hay** `CLINIC_*` por entorno ni `CLINIC_DENTISTS_JSON`. El
+> bloque de abajo se conserva como registro del plan original.
+
 ```dotenv
 # ── Datos del consultorio (los imprimen la factura, el récipe y los reportes) ──
 CLINIC_NAME="Consultorio Odontológico CAMBIAR_NOMBRE"

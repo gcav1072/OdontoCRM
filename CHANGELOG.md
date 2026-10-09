@@ -4,6 +4,26 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Limpieza] — Sin datos personales en el código y la identidad solo desde el registro · 2026-10-09
+
+El repositorio ya no lleva los datos de un consultorio concreto. La identidad —nombre, dirección,
+RIF, teléfonos, logo y odontólogos que firman— se sirve **solo** desde el registro que completa el
+**titular** en su primer acceso ([ADR 0056](docs/adr/0056-la-identidad-del-consultorio-vive-en-la-base.md)),
+y el respaldo del código queda **neutro** ([ADR 0058](docs/adr/0058-sin-datos-personales-en-el-codigo.md)).
+
+- **Se quitaron los datos personales** de `packages/contracts/src/clinic.ts`, `.env.example`,
+  semillas, pruebas, guiones de instalación y documentación (incluido el histórico). El bot de
+  Telegram ya aparece con nombre y `@usuario` genéricos.
+- **Se eliminaron los overrides `CLINIC_NAME` / `CLINIC_ADDRESS` / `CLINIC_EMAIL`** del entorno: hay
+  una sola fuente, el registro del titular.
+- **Si el consultorio aún no está configurado, no se inventa identidad**: el `.ics` y los avisos de
+  cita **se difieren** (quedan en la cola con el motivo «consultorio sin configurar», sin gastar
+  intentos) y el texto se **re-renderiza al enviar**, así que sale correcto en cuanto el titular
+  completa los datos.
+- **Cuentas seed genéricas**: el servidor sigue creando **solo `admin`**; en desarrollo, `recepcion`
+  pasa a «Recepción prueba» y el odontólogo a «Odontólogo prueba» (usuario `prueba`,
+  `SEED_PASSWORD_PRUEBA`). Los datos de pacientes de prueba también se unificaron a una lista neutra.
+
 ## [Cancelación] — El paciente cancela con plazo y el inicio cuenta las novedades · 2026-10-09
 
 Tres arreglos que salieron de usar el bot con pacientes de verdad.
@@ -709,7 +729,7 @@ En la puesta en marcha, el comando que enseñaban el RUNBOOK (§5) y `COMANDOS_P
 (§5) —y el que repetía `40-verificar.sh` cuando no había usuarios— moría en producción:
 
 ```
-Error: En producción define SEED_PASSWORD_EGOMEZ (mínimo 10 caracteres) antes de sembrar usuarios.
+Error: En producción define SEED_PASSWORD_PRUEBA (mínimo 10 caracteres) antes de sembrar usuarios.
 ```
 
 Las tres piezas estaban mal por el mismo motivo: **en producción el seed exige una contraseña
@@ -2145,7 +2165,7 @@ importan, porque **no se ven leyendo el código**:
   inferior; **cambio de contraseña** propio (cierra las demás sesiones); CRUD de **usuarios**
   con motivo obligatorio y auditoría del cambio; **restablecimiento de contraseña** con
   contraseña temporal generada; **dispositivos kiosko** (el token se muestra una sola vez);
-  y **consulta de auditoría** filtrable. Semilla de usuarios (`admin`, `recepcion`, `egomez`)
+  y **consulta de auditoría** filtrable. Semilla de usuarios (`admin`, `recepcion`, `prueba`)
   y generación de claves con `npm run keys:generate`.
 - **`apps/gateway`**: guardia de autenticación — borra las cabeceras `x-user-*` que envíe el
   cliente, deja públicas solo la salud y el ciclo de autenticación, verifica el JWT y publica

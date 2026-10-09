@@ -11,8 +11,9 @@ pueden no tener Telegram. Además, un bot solo puede escribirle a quien le haya 
 
 ## Decisión
 
-- **Un único bot, creado una vez en BotFather**, con nombre visible «Consultorio - Od. Erika
-  Gómez». El `@usuario` y el nombre visible se pueden cambiar después; cambiar el `@usuario`
+- **Un único bot, creado una vez en BotFather**, con nombre visible «Consultorio odontológico»
+  (genérico: cada clínica le pone el suyo). El `@usuario` y el nombre visible se pueden cambiar
+  después; cambiar el `@usuario`
   rompe enlaces ya compartidos, y en ese caso se crea otro bot y se reemplaza el token.
 - **Long polling** con un solo poller (dos `getUpdates` simultáneos dan `409 Conflict`). Si
   hiciera falta escalar, se replican *workers* de envío, no el poller; migrar el mismo bot a

@@ -19,13 +19,14 @@ distintos. Confundirlas es el origen de la mitad de las sorpresas:
 
 | Capa | Qué es | Dónde vive | Se cambia con |
 | :--- | :--- | :--- | :--- |
-| **Datos del consultorio** | Nombre, razón social, dirección, teléfonos, RIF, correo, sitio web, **logo** y **los odontólogos que firman** (MPPS, especialidad, colegiatura) | `services/identity` (base de datos) — `packages/contracts/src/clinic.ts` es **semilla y respaldo** | Desde la aplicación (§2): el **titular** en su primer acceso, luego en **Mi perfil** y en `/usuarios` |
+| **Datos del consultorio** | Nombre, razón social, dirección, teléfonos, RIF, correo, sitio web, **logo** y **los odontólogos que firman** (MPPS, especialidad, colegiatura) | `services/identity` (base de datos) — `packages/contracts/src/clinic.ts` es solo **respaldo neutro** (sin datos personales) | Desde la aplicación (§2): el **titular** en su primer acceso, luego en **Mi perfil** y en `/usuarios` |
 | **Marca de los documentos** | Paleta, **dos tipografías** (títulos y cuerpo) y medidas del membrete de los **imprimibles** (récipe, dossier, reporte, factura, historia clínica, odontograma) | `packages/contracts/src/brand.ts` → genera `packages/ui/src/styles/marca.css` | Editar + `npm run marca:css` + `npm run build` (**solo-código**) |
 | **Tema de la pantalla** | Los colores del **cromo de la aplicación** (fondos, botones, estados, tema claro/oscuro) | `packages/ui/src/styles/tokens.css` | Editar y compilar la web |
 
 - Los **datos** (capa 1) se editan **desde la aplicación** desde el ADR 0056. El código solo
-  guarda la **semilla y el respaldo**: si no hay perfil en la base —una instalación recién
-  migrada, la base caída—, el membrete sale con lo de `clinic.ts` y nada se rompe.
+  guarda un **respaldo neutro** (sin datos personales): si no hay perfil en la base —una
+  instalación recién migrada, la base caída—, el membrete sale **señalando lo que falta** y los
+  avisos y el `.ics` que necesitan el consultorio se **difieren** hasta que el titular lo complete.
 - La **marca** (capa 2) es la identidad **impresa**: siempre va sobre papel blanco, por eso no
   tiene variante oscura. Se edita **solo en el código** (los colores, las dos tipografías y las
   medidas del velo) y se mueve en pantalla y papel a la vez.
@@ -45,7 +46,7 @@ distintos. Confundirlas es el origen de la mitad de las sorpresas:
 | Teléfonos y correo | Perfil del consultorio · `clinic.ts` → `phones`, `email` | Titular · admin | Membrete del récipe y las pantallas |
 | RIF | Perfil del consultorio · `clinic.ts` → `rif` | Titular · admin | Membrete de los imprimibles y el párrafo del `.ics` |
 | Sitio web | Perfil del consultorio · `clinic.ts` → `website` | Titular · admin | Membrete del récipe |
-| **Odontólogos** (MPPS, especialidad, colegiatura, correo) | Perfil profesional (base) · respaldo `clinic.ts` → `dentists[]` | **Cada odontólogo** (Mi perfil) · admin (`/usuarios`) | Quién **firma** el récipe, el dossier y la historia |
+| **Odontólogos** (MPPS, especialidad, colegiatura, correo) | Perfil profesional (base) · respaldo neutro (lista vacía) | **Cada odontólogo** (Mi perfil) · admin (`/usuarios`) | Quién **firma** el récipe, el dossier y la historia |
 | **Logo** (y marca de agua) | **Almacén** (`STORAGE_DIR`) · respaldo `assets/clinic/logo.svg` | **Titular** (Mi perfil) · admin | Membrete y velo en pantalla y papel |
 | Paleta, **tipografías**, medidas del membrete y del velo | `brand.ts` → `palette`, `typography`, `fonts`, `letterhead` | **Solo código** | Colores, fuentes y medidas de los documentos impresos |
 | Archivos de fuente (`.woff2`) | `assets/clinic/fonts/` (`BRAND.fonts`) | **Solo código** | La tipografía de los títulos y del cuerpo en papel y pantalla |
@@ -98,17 +99,21 @@ En **ambos** sitios el **motivo es obligatorio** y el cambio queda en la **audit
 (`/auditoria`): acción, campos que cambiaron, el antes y el después, quién y cuándo. El **alta**
 del primer acceso no pide motivo: es un alta, no un cambio.
 
-### 2.3 `clinic.ts` sigue existiendo: es la semilla y el respaldo
+### 2.3 `clinic.ts` sigue existiendo: es solo el respaldo **neutro**
 
 `packages/contracts/src/clinic.ts` conserva el tipo `ClinicIdentity`, las ayudas de lectura
 (`clinicFullAddress`, `clinicContactLine`, `clinicLeadDentist`, `clinicDentistFor`,
-`letterheadMissingFields`) y **valores de ejemplo** que se usan cuando **no hay perfil guardado**:
+`letterheadMissingFields`, `clinicContactReady`) y **valores neutros de arranque, sin datos
+personales** (nombre y dirección vacíos, `rif`/`email` en `null`, y una única cuenta **de prueba**
+en `dentists[]` para el seed). Se usan cuando **no hay perfil guardado**:
 
 - una instalación recién migrada (nadie ha completado el asistente todavía);
 - una base inaccesible en el momento de componer un documento;
 - las pruebas.
 
-Es decir: **la aplicación manda**; el código solo evita que falte el papel. No hace falta
+Es decir: **la aplicación manda** y el código no imprime identidad inventada. Mientras falte el
+consultorio, `clinicContactReady()` es `false` y los servicios que lo necesitan **difieren** la
+entrega (el `.ics` y los avisos de cita) en vez de componer un documento a medias. No hace falta
 editarlo para poner el sistema con otro odontólogo.
 
 **Lo que exige un membrete completo.** `letterheadMissingFields()` devuelve la lista de lo que
@@ -238,9 +243,13 @@ claro/oscuro, declarados dentro de `@theme`. El tema oscuro solo reasigna nombre
 
 ## 6. Las cuentas del personal — `npm run seed:users`
 
-En **desarrollo** se siembran `admin`, `recepcion` y **una cuenta por odontólogo** de
-`CLINIC.dentists` (la semilla del código: usuario, clave y nombre; **ni MPPS ni especialidad**,
-esos los completa cada uno en su primer acceso). Es **idempotente**.
+En **desarrollo** se siembran `admin`, `recepcion` («Recepción prueba») y **una cuenta de
+odontólogo de prueba** («Odontólogo prueba», usuario `prueba`) tomada de la lista de relleno de
+`CLINIC.dentists` (usuario, clave y nombre; **ni MPPS ni especialidad**, esos los completa cada uno
+en su primer acceso). Es **idempotente**.
+
+> Estas cuentas de odontólogo y recepción son **de prueba**: no representan a ninguna persona real.
+> La identidad del consultorio y los odontólogos de verdad se crean en la aplicación (§2).
 
 ```bash
 npm run seed:users                 # siembra todas las cuentas (desarrollo)
@@ -257,28 +266,19 @@ npm run seed:users -- --reset      # las devuelve a la temporal (limpia bloqueos
 
 ---
 
-## 7. Sobrescritura por entorno (sin tocar la aplicación)
+## 7. Sin sobrescritura por entorno
 
-Tres variables siguen existiendo, pero **cambian de papel**: ahora son el **ajuste puntual** que
-**gana** sobre lo guardado (precedencia **entorno > base de datos > `CLINIC`**):
+La identidad del consultorio **no** se puede cambiar por variables de entorno: `CLINIC_NAME`,
+`CLINIC_ADDRESS` y `CLINIC_EMAIL` **se eliminaron**. La única fuente es el **registro que completa
+el titular** (ADR 0056). `IDENTITY_URL` (por defecto `http://127.0.0.1:4001`) es la lectura interna
+del membrete para los servicios que componen documentos y para los avisos; en loopback ya funciona
+sin configurar nada.
 
-```bash
-CLINIC_NAME=Consultorio - Od. Erika Gómez
-CLINIC_ADDRESS=Av. Luis del Valle García, C.E. Nueva Esparta, Planta Baja, Local 1-2
-CLINIC_EMAIL=citas@odontocrm.local
-```
-
-Están en [`.env.example`](../.env.example) y en el `.env` de cada servicio.
-
-> **Ojo con su alcance.** Estas tres variables **solo** las leen `notifications`, `scheduling` y
-> `screens` —los que componen el texto del bot, el `.ics` y el encabezado de las pantallas—, que
-> refrescan sus valores con lo de la base al arrancar (y cada pocos minutos) salvo que la variable
-> esté puesta. **No** afectan al récipe, el dossier, el reporte, la factura ni a la interfaz: esos
-> leen la identidad de la base. Los **odontólogos y su MPPS** y el **logo** no se pueden cambiar
-> por entorno: se editan en la aplicación (§2).
-
-`IDENTITY_URL` (por defecto `http://127.0.0.1:4001`) es la lectura interna del membrete para los
-servicios que componen documentos y para los avisos; en loopback ya funciona sin configurar nada.
+> **Antes de que el titular complete el consultorio**, los servicios que necesitan el nombre o la
+> dirección **no inventan datos**: el `.ics` y los avisos de cita **se difieren** (quedan en la cola
+> con el motivo «consultorio sin configurar» y se reintentan solos) y el membrete sale señalando lo
+> que falta (`letterheadMissingFields`). `packages/contracts/src/clinic.ts` es solo el **respaldo
+> neutro** (sin datos personales) para el seed y para no romper un documento.
 
 ---
 
@@ -327,12 +327,12 @@ curl http://127.0.0.1:8090/health    # el gateway responde
 
 No hay que tocar el repositorio, ni recompilar, ni reiniciar.
 
-> Si prefieres sembrar la cuenta del titular desde la línea de comandos (el servidor en producción
-> exige la clave por variable y no admite las de desarrollo):
+> En **desarrollo** puedes sembrar la cuenta de odontólogo de prueba desde la línea de comandos (el
+> servidor en producción exige la clave por variable y no admite las de desarrollo):
 >
 > ```bash
-> sudo SEED_PASSWORD_EGOMEZ='una-clave-de-10-o-mas' \
->   odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset --usuarios=egomez
+> sudo SEED_PASSWORD_PRUEBA='una-clave-de-10-o-mas' \
+>   odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset --usuarios=prueba
 > ```
 
 ### 9.1 Cambiar la **marca** (colores, tipografías, medidas): sigue siendo código
@@ -357,24 +357,15 @@ sudo odontocrm actualizar        # trae el código, compila, migra y reinicia
 > que quede en el control de versiones, revisada y con vuelta atrás. La **identidad** (los datos)
 > no: esa cambia por motivos de consultorio y la edita quien los conoce.
 
-### 9.2 Ajuste puntual por entorno (sin compilar)
+### 9.2 Sin ajuste por entorno
 
-Solo el **nombre, la dirección y el correo**, y solo para el bot, el `.ics` y las pantallas (§7).
-Se añaden al entorno del servicio, no al del sistema:
+La identidad del consultorio **no** se ajusta por variables de entorno: `CLINIC_NAME`,
+`CLINIC_ADDRESS` y `CLINIC_EMAIL` **se eliminaron** ([ADR 0058](adr/0058-sin-datos-personales-en-el-codigo.md)).
+La única vía es la aplicación (§2).
 
-```bash
-# Fedora: /etc/odontocrm/odontocrm.env  (común a todos los servicios)
-CLINIC_NAME=Consultorio - Od. Fulano de Tal
-CLINIC_ADDRESS=Calle Real, Local 3, Puerto La Cruz
-
-sudo systemctl restart 'odontocrm@*' odontocrm-gateway    # que lo lean
-```
-
-```powershell
-# Windows: C:\ProgramData\OdontoCRM\env\odontocrm.env
-# y reiniciar los servicios
-odontocrm reiniciar
-```
+> Recuerda: hasta que el titular complete el consultorio, el `.ics` y los avisos de cita que lo
+> necesitan **se difieren** (quedan en la cola con el motivo «consultorio sin configurar»); no salen
+> con un lugar vacío ni con datos de otro consultorio.
 
 ### 9.3 Los papeles que ya salieron
 
@@ -435,6 +426,7 @@ no duplicados de la paleta.
 | El odontólogo no puede entrar a ningún módulo | Es lo esperado: `needsProfile` blinda el sistema igual que la contraseña temporal | Completar el perfil (§2.1) |
 | El membrete sale con los datos viejos tras editarlos | La caché del membrete (60 s) o la del navegador | Esperar un minuto y recargar; en los PDF sale en la siguiente emisión |
 | El récipe sale con el membrete del **código** y no el de la aplicación | No hay perfil guardado (nadie completó el asistente), o identity no respondió | Completar el perfil; revisar que `identity` esté arriba |
+| Los avisos de cita quedan en la cola con «consultorio sin configurar» | El titular todavía no completó los datos del consultorio | Completarlos en Mi perfil: la cola los envía sola al reintentar |
 | El récipe sale sin MPPS o sin especialidad | El titular no completó su perfil profesional | Completarlo en Mi perfil (`letterheadMissingFields` lo enumera) |
 | El logo subido no aparece | Se subió antes de guardar los datos del consultorio, o no es un SVG | Volver a subirlo desde Mi perfil (solo SVG) |
 | El membrete de la **pantalla** cambió de color pero el **papel** no (o al revés) | Tocaste `tokens.css` y no `brand.ts` (o al revés) | Son dos capas distintas: cambia la que corresponda (§0) |

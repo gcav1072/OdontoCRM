@@ -315,7 +315,7 @@ sudo SEED_PASSWORD_ADMIN='la-que-quieras-poner' \
 # `CLINIC.dentists`); si falta alguna dice cuáles son y no escribe nada.
 sudo SEED_PASSWORD_ADMIN='la-que-quieras-poner' \
      SEED_PASSWORD_RECEPCION='la-que-quieras-poner' \
-     SEED_PASSWORD_EGOMEZ='la-que-quieras-poner' \
+     SEED_PASSWORD_PRUEBA='la-que-quieras-poner' \
   odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset
 
 # Ver quién existe y con qué rol (no imprime contraseñas)

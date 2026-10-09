@@ -62,7 +62,7 @@ es del día del consultorio y qué parte es del mostrador».
     15 min). Está dicho en el runbook de la fase 10.
   - La prueba de la Fase 1 que aseguraba lo contrario (`odontologo escribe lo clínico y no toca la
     agenda`) se reescribió: ahora fija **qué** escribe y qué no.
-- **Cómo se comprueba:** `npm run e2e:flujo` con el usuario `egomez` (rol `odontologo`): entra,
+- **Cómo se comprueba:** `npm run e2e:flujo` con el usuario `prueba` (rol `odontologo`): entra,
   registra el paciente, crea la solicitud y la cita, amplía el cupo del día si está lleno, y hace
   el flujo completo. La suite de integración de scheduling añade el caso «el odontólogo solo lleva
   el flujo del día completo» con las tres transiciones que le siguen respondiendo 409.

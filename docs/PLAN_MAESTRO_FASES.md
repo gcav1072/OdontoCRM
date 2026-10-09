@@ -415,7 +415,7 @@ UID:cita-000123@odontocrm.local      DTSTAMP:20261002T220000Z
 DTSTART;TZID=America/Caracas:20261015T090000
 DTEND;TZID=America/Caracas:20261015T093000
 SUMMARY:Consulta odontológica — Ticket #000123
-LOCATION:Av. Luis del Valle García, C.E. Nueva Esparta, Planta Baja, Local 1-2
+LOCATION:<dirección del consultorio>
 DESCRIPTION:Motivo: <motivo> | Ticket: #000123
 STATUS:CONFIRMED   SEQUENCE:0   (+VALARM 2 h antes)
 END:VEVENT / END:VCALENDAR
@@ -703,7 +703,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 2. Zona horaria fija **America/Caracas**; fechas en la UI `dd/mm/aaaa` y **horas en formato de 12 h con `a. m.` / `p. m.`** (ajuste tuyo del 2026-10-02). En base de datos, logs e `.ics` se guarda **24 h** (`14:30`, RFC 5545) y la conversión a 12 h ocurre solo al mostrar.
 3. Uso concurrente pequeño (**2–5 usuarios** + 2 pantallas): no requiere balanceo ni caché distribuida.
 4. UI en **español (es-VE)**; código, tablas y columnas en **inglés**.
-5. El sistema se llamará **OdontoCRM**; la dirección de la clínica es `Av. Luis del Valle García, C.E. Nueva Esparta, Planta Baja, Local 1-2` (configurable).
+5. El sistema se llamará **OdontoCRM**; la dirección de la clínica la completa el **titular** en la aplicación (configurable; no va en el código).
 6. Presupuestos, facturación, seguros, ortodoncia avanzada y WhatsApp **no** están en este plan (quedan como fases futuras).
 7. Datos de prueba: rango de cédulas **90.000.000+** reservado y reservado también el prefijo `SC-` para menores ficticios.
 
@@ -717,8 +717,8 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | Impresión | Récipe en **A5**; historia clínica y consentimiento en **A4**. |
 | Copia del récipe al paciente | Descarga/impresión desde el historial; envío por Telegram queda para fase posterior. |
 | Numeración de historia | `HC-000001` por paciente, secuencia global. |
-| Membrete | Genérico hasta que envíes logo, RIF, teléfonos y datos del odontólogo (MPPS, especialidad): se editan en **una sola sección del código**, [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts), que ya leen todos los servicios y la interfaz (decisión del 2026-10-04, al empezar la sesión B). Lo que falte no se imprime y `letterheadMissingFields()` lo enumera. |
-| Nombre del bot | Nombre visible «Consultorio - Od. Erika Gómez» (se cambia cuando quieras). El `@usuario` es único: cambiarlo rompe los enlaces `t.me/...` ya compartidos. El token se entrega por `.env`, nunca por chat ni en el repo. |
+| Membrete | Lo completa el **titular** en la aplicación (ADR 0056): nombre, RIF, teléfonos, dirección y datos del odontólogo (MPPS, especialidad). `packages/contracts/src/clinic.ts` queda solo como **respaldo neutro** (sin datos personales). Lo que falte no se imprime y `letterheadMissingFields()` lo enumera. |
+| Nombre del bot | Nombre visible genérico «Consultorio odontológico» (cada clínica le pone el suyo). El `@usuario` es único: cambiarlo rompe los enlaces `t.me/...` ya compartidos. El token se entrega por `.env`, nunca por chat ni en el repo. |
 | Aviso al formalizar la cita | **Al quedar formalizada la cita** (no solo como recordatorio), el bot envía al paciente la notificación con **fecha, hora y lugar**, e **incrusta el `.ics`** para que la agregue a su calendario. Es un envío disparado por el evento `scheduling.appointment.scheduled`, con reintentos e idempotencia; la plantilla y el `.ics` se construyen en la Fase 4. |
 | Tema claro/oscuro/sistema | Preferencia **por equipo** (clave `odontocrm:tema`), no por usuario: en un consultorio con puestos compartidos el tema es del puesto y la pantalla de login ya lo respeta. |
 | Cola de eventos | Se mantiene la **cola compartida** en la base `odonto_events` ([ADR 0026](adr/0026-cola-de-eventos-compartida.md)); cada servicio conserva su outbox. |
@@ -762,7 +762,7 @@ npm run keys:generate           # claves EdDSA del JWT (una sola vez; .keys/ est
 npm run db:migrate              # migraciones de todos los servicios
 npm run db:reset -- --yes       # borra TODO (9 bases + storage/) y lo deja migrado y sembrado
 npm run db:verify-migrations    # comprueba que migran desde cero en una base limpia
-npm run seed:users              # admin, recepcion y egomez con contraseña temporal
+npm run seed:users              # admin, recepcion y una cuenta de odontólogo de prueba (`prueba`)
 npm run seed:demo -- --count 5000   # pacientes ficticios deterministas (--reset los borra)
 npm run seed:agenda             # solicitudes y citas de ejemplo para la jornada (--reset las borra)
 npm run dev                     # compilación vigilada + gateway + identity + patients + scheduling + notifications + screens + clinical + odontogram + interfaz (5173)

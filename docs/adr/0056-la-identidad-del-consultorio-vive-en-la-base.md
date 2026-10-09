@@ -45,11 +45,13 @@ reiniciar el servicio; no resuelve ni (1) ni (2).
    lleva `needsProfile` —igual que hoy lleva `mustChangePassword`—, `requirePermission`
    deja **sin permisos** al usuario y el **gateway** corta todo lo que no sea `auth` o
    `identity`. Así el bloqueo no se puede esquivar llamando a la API a mano.
-4. **`clinic.ts` no desaparece: pasa a ser semilla y respaldo.** Si no hay fila —una
-   instalación recién migrada, la base caída, una prueba— el membrete sale con esos
-   valores, así que **nada cambia de golpe** y nadie pierde el papel. Además sigue siendo
-   la fuente de `ClinicIdentity` (el tipo) y de las ayudas de lectura
-   (`clinicFullAddress`, `clinicDentistFor`, `letterheadMissingFields`…).
+4. **`clinic.ts` no desaparece: pasa a ser respaldo.** Si no hay fila —una instalación
+   recién migrada, la base caída, una prueba— se usa su respaldo, así que **nada cambia de
+   golpe** y nadie pierde el papel. Hoy ese respaldo es **neutro, sin datos personales**
+   ([ADR 0058](0058-sin-datos-personales-en-el-codigo.md)): los campos vacíos **no se
+   imprimen** y los avisos que necesitan el consultorio se difieren. Sigue siendo la fuente
+   de `ClinicIdentity` (el tipo) y de las ayudas de lectura (`clinicFullAddress`,
+   `clinicDentistFor`, `clinicContactReady`, `letterheadMissingFields`…).
 5. **Los que componen documentos leen la identidad por la red interna** (ADR 0035): una
    sola ruta, `GET /internal/v1/identity/letterhead?dentist=<usuario>`, que devuelve la
    identidad en la forma de `ClinicIdentity`, **el odontólogo que firma ya resuelto** y el
@@ -60,8 +62,9 @@ reiniciar el servicio; no resuelve ni (1) ni (2).
    - **El logo subido hace también de marca de agua**: es el logo efectivo. La **opacidad
      y el ancho** del velo siguen en `brand.ts` (la marca se edita solo en el código).
    - `notifications`, `scheduling` y `screens` refrescan al arrancar su `CLINIC_NAME` /
-     `CLINIC_ADDRESS` / `CLINIC_EMAIL` con lo de la base, y **`CLINIC_*` del entorno sigue
-     mandando** si está puesto: el ajuste puntual de una instalación no se pisa.
+     `CLINIC_ADDRESS` / `CLINIC_EMAIL` con lo de la base. **Los overrides `CLINIC_*` del
+     entorno se eliminaron** ([ADR 0058](0058-sin-datos-personales-en-el-codigo.md)): la
+     base es la única fuente.
 6. **Todo cambio de identidad queda auditado.** Acciones nuevas en `AUDIT_ACTIONS`
    (`dentist_profile_completed`, `dentist_profile_updated`, `clinic_profile_updated`,
    `clinic_logo_updated`) con `before`/`after`, campos cambiados, actor y —en las
@@ -78,8 +81,8 @@ reiniciar el servicio; no resuelve ni (1) ni (2).
 
 Una lectura interna por documento sería cara y, en las pantallas, insostenible. Por eso:
 
-- **Si `CLINIC_*` está en el entorno, no se pregunta a identity**: el override gana y no
-  hay llamada.
+- **Una sola lectura del registro**: sin overrides por entorno
+  ([ADR 0058](0058-sin-datos-personales-en-el-codigo.md)), la identidad sale siempre de identity.
 - **Caché con TTL corto (~60 s) y deduplicación de llamada en vuelo** en el cliente
   interno (`createLetterheadLookup`, kernel): varias peticiones simultáneas comparten una
   sola lectura, y durante el TTL no se vuelve a preguntar. La identidad cambia rarísimas

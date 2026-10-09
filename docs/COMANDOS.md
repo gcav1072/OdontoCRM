@@ -70,7 +70,7 @@ npm run build
 npm run db:migrate
 
 # 6. Datos mínimos para poder entrar
-npm run seed:users            # admin, recepcion, egomez (contraseña temporal)
+npm run seed:users            # admin, recepcion y una cuenta de odontólogo de prueba (`prueba`)
 npm run seed:demo -- --count 500
 npm run seed:agenda
 
@@ -86,7 +86,7 @@ powershell -ExecutionPolicy Bypass -File infra/windows/start-services.ps1
 
 **Contraseñas sembradas** (temporales, el sistema obliga a cambiarlas al entrar):
 `admin` → `admin-odontocrm-2026` · `recepcion` → `recepcion-odontocrm-2026` ·
-`egomez` → `consultorio-odontocrm-2026`.
+`prueba` → `consultorio-odontocrm-2026`.
 
 ---
 
@@ -296,20 +296,21 @@ a la que se desbloquea).
 | :--- | :--- | :--- |
 | `admin` | `admin-odontocrm-2026` | administrador (acceso total) |
 | `recepcion` | `recepcion-odontocrm-2026` | secretaria |
-| `egomez` | `consultorio-odontocrm-2026` | odontóloga |
+| `prueba` | `consultorio-odontocrm-2026` | odontólogo (cuenta de prueba) |
 
-> **Otro odontólogo:** las cuentas de odontólogo salen de `CLINIC.dentists` en
-> [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) —nombre, usuario y MPPS—;
-> cambia esa sección (o añade otra entrada a la lista) y `npm run seed:users` crea su cuenta con la
-> misma contraseña temporal. Ver «Poner el sistema con otro odontólogo» en el
-> [`README`](../README.md#poner-el-sistema-con-otro-odontólogo).
+> **Otro odontólogo:** las cuentas de odontólogo que siembra el desarrollo salen de la lista de
+> prueba de [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) (hoy
+> «Odontólogo prueba», usuario `prueba`). **En producción cada odontólogo real se da de alta desde
+> `/usuarios`** y completa su perfil (MPPS y especialidad) en el primer acceso: el consultorio no se
+> edita en el código. Ver «Las cuentas del personal» en
+> [`docs/IDENTIDAD_Y_DATOS.md`](./IDENTIDAD_Y_DATOS.md).
 
 - Nacen como **temporales**: el sistema obliga a cambiarlas en el primer acceso.
 - **Las pruebas de humo cambian la del `admin`** a `prueba-e2e-odontocrm-2026`; después,
   `npm run seed:users -- --reset` la devuelve a la temporal (y limpia bloqueos e intentos).
 - 5 intentos fallidos bloquean la cuenta 15 minutos. `--reset` también lo limpia.
 - En producción (`NODE_ENV=production`) estas claves **no existen**: hay que indicarlas en
-  `SEED_PASSWORD_ADMIN`, `SEED_PASSWORD_RECEPCION` y `SEED_PASSWORD_EGOMEZ`.
+  `SEED_PASSWORD_ADMIN`, `SEED_PASSWORD_RECEPCION` y `SEED_PASSWORD_PRUEBA`.
 
 Detalles que conviene saber:
 
@@ -475,7 +476,7 @@ base de datos). Necesitan los servicios arrancados y datos sembrados.
 > dice con claridad.
 >
 > `e2e:flujo` necesita además la **interfaz** levantada (5173) y Chromium. Cambia la contraseña del
-> odontólogo sembrado (`egomez`); al terminar, `npm run seed:users -- --reset`.
+> odontólogo sembrado (`prueba`); al terminar, `npm run seed:users -- --reset`.
 
 Variables opcionales (mismas en todas):
 
@@ -487,7 +488,7 @@ Variables opcionales (mismas en todas):
 | `SMOKE_TELEGRAM_CHAT_ID` | Enviar de verdad por Telegram en el humo de avisos | vacío (modo simulado) |
 | `SMOKE_PATIENT_DOCUMENT` | Fijar el paciente en el humo de pacientes | aleatorio |
 | `E2E_WEB_URL` / `E2E_GATEWAY_URL` | Apuntar la prueba de `/flujo` a otra interfaz o gateway | `http://127.0.0.1:5173` / `http://127.0.0.1:8090` |
-| `E2E_USERNAME` / `E2E_PASSWORD` / `E2E_NEW_PASSWORD` | Usuario de la prueba de `/flujo` (tiene que ser `odontologo`) | `egomez` / `consultorio-odontocrm-2026` / `flujo-odontocrm-2026` |
+| `E2E_USERNAME` / `E2E_PASSWORD` / `E2E_NEW_PASSWORD` | Usuario de la prueba de `/flujo` (tiene que ser `odontologo`) | `prueba` / `consultorio-odontocrm-2026` / `flujo-odontocrm-2026` |
 
 ```powershell
 # Ejemplo: humo de pantallas contra un gateway en otro puerto

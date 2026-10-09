@@ -87,7 +87,7 @@ npm run db:bootstrap
 npm run build
 npm run keys:generate          # claves EdDSA del JWT (una sola vez; .keys/ está ignorado)
 npm run db:migrate
-npm run seed:users             # admin, recepcion y egomez con contraseña temporal
+npm run seed:users             # admin, recepcion y una cuenta de odontólogo de prueba (`prueba`) con contraseña temporal
 
 # 5. Arranca (una sola pila a la vez: mira quién corre antes de arrancar)
 npm run stack:status           # ¿hay algo corriendo? ¿quién, en qué puerto y desde cuándo?
@@ -100,7 +100,7 @@ La primera vez que entres, el sistema te pedirá cambiar la contraseña temporal
 hagas, ningún módulo queda habilitado (es una regla del servidor, no solo de la interfaz).
 
 Credenciales sembradas (`admin` → `admin-odontocrm-2026`, `recepcion` → `recepcion-odontocrm-2026`,
-`egomez` → `consultorio-odontocrm-2026`). ¿Se te olvidó alguna, o no sabes si sigue valiendo?
+`prueba` → `consultorio-odontocrm-2026`). ¿Se te olvidó alguna, o no sabes si sigue valiendo?
 
 ```powershell
 npm run seed:users -- --print    # las recuerda y dice si sirven, si las cambiaron o si está bloqueada
@@ -190,15 +190,16 @@ sistema **no lo deja entrar**: el servidor se lo exige igual que la contraseña 
 
 - **Todo cambio de identidad queda auditado** (`/auditoria`): quién, cuándo, qué cambió y por qué
   (el motivo es obligatorio en las ediciones).
-- **`packages/contracts/src/clinic.ts` ya no se edita para esto**: queda como **semilla y
-  respaldo** —si no hay perfil guardado, el membrete sale con esos valores— y como fuente del tipo
-  `ClinicIdentity` y de las ayudas (`clinicFullAddress`, `clinicDentistFor`,
-  `letterheadMissingFields`…).
-- **Las cuentas** (`npm run seed:users`) siguen naciendo de `CLINIC.dentists` en desarrollo; en
-  producción se dan de alta en `/usuarios` y cada uno completa lo suyo.
-- **¿Y si una instalación necesita un valor sin tocar la aplicación?** `CLINIC_NAME`,
-  `CLINIC_ADDRESS` y `CLINIC_EMAIL` del `.env` siguen existiendo y **ganan** sobre lo guardado, pero
-  solo los leen `notifications`, `scheduling` y `screens` (el bot, el `.ics` y las pantallas).
+- **`packages/contracts/src/clinic.ts` ya no se edita para esto**: queda como **respaldo neutro**
+  (sin datos personales) —si no hay perfil guardado, los campos van vacíos y **no se imprime**— y como
+  fuente del tipo `ClinicIdentity` y de las ayudas (`clinicFullAddress`, `clinicDentistFor`,
+  `clinicContactReady`, `letterheadMissingFields`…).
+- **Las cuentas** (`npm run seed:users`) siguen naciendo de `CLINIC.dentists` en desarrollo, pero son
+  **cuentas de prueba** («Odontólogo prueba»); en producción se dan de alta en `/usuarios` y cada uno
+  completa lo suyo.
+- **¿Y si falta configurar el consultorio?** No se inventa identidad: el `.ics` y los avisos de cita se
+  **difieren** (quedan en la cola con el motivo «consultorio sin configurar») hasta que el titular
+  complete el registro. **No hay** ajuste por entorno: se configura una vez en la aplicación.
 - Lo que falte para un membrete completo se enumera solo con `letterheadMissingFields()` (por
   ejemplo «MPPS del odontólogo»), así que el récipe avisa en vez de inventar un número.
 

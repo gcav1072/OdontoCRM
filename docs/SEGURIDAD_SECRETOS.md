@@ -21,13 +21,13 @@ Este documento responde a la pregunta «¿cómo te paso el token del bot con la 
 ### Procedimiento exacto para el bot de Telegram
 
 1. Abre Telegram y busca **@BotFather**.
-2. `/newbot` → nombre visible: `Consultorio - Od. Erika Gómez` (este nombre **sí se cambia después** cuando quieras con `/setname`).
-3. Te pedirá un **usuario** terminado en `bot`, por ejemplo `ConsultorioErikaGomezBot`. El `@usuario` también se puede cambiar con `/setusername`, pero **cambiar el `@usuario` rompe los enlaces `t.me/...` que ya hayas compartido**. Si eso llegara a pasar, se crea otro bot y se reemplaza el token: nada más se pierde.
+2. `/newbot` → nombre visible: `Consultorio odontológico` (genérico; este nombre **sí se cambia después** con `/setname`).
+3. Te pedirá un **usuario** terminado en `bot`, por ejemplo `OdontoCrmConsultorioBot`. El `@usuario` también se puede cambiar con `/setusername`, pero **cambiar el `@usuario` rompe los enlaces `t.me/...` que ya hayas compartido**. Si eso llegara a pasar, se crea otro bot y se reemplaza el token: nada más se pierde.
 4. BotFather responde con una línea tipo `123456789:AA...` — **ese es el token**. Cópialo.
 5. En tu equipo: abre `C:\Users\Admin\Documents\OdontoCRM\services\notifications\.env` y pega:
    ```
    TELEGRAM_BOT_TOKEN=123456789:AA...
-   TELEGRAM_BOT_USERNAME=ConsultorioErikaGomezBot
+   TELEGRAM_BOT_USERNAME=OdontoCrmConsultorioBot
    ```
 6. Aviso: el bot **solo puede escribirle a quien le haya escrito primero** (`/start`). De ahí el *deep link* `t.me/<usuario>?start=<codigo>` para vincular pacientes registrados en recepción.
 7. `/setprivacy` se deja en el valor por defecto; no necesitamos leer mensajes de grupo.
