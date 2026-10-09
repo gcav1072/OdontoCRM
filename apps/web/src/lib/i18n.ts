@@ -319,7 +319,7 @@ const DICCIONARIO = {
   'inicio.novedades.verMenos': 'Ver menos',
   'inicio.novedades.confirmada': 'dio cita y confirmó',
   'inicio.novedades.cancelada': 'dio cita y canceló',
-  'inicio.novedades.confirmadaYCancelada': 'confirmó, pero luego se arrepintió y canceló',
+  'inicio.novedades.confirmadaYCancelada': 'confirmó primero, pero luego canceló.',
 
   // --- Cambio de contraseña ------------------------------------------------
   'contrasena.titulo': 'Cambiar la contraseña',
