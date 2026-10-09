@@ -139,6 +139,7 @@ const estilos = (fontFaces: string): string => `
   .odo-legend li { display: flex; align-items: center; gap: 1.2mm; }
   .swatch { display: inline-block; width: 3mm; height: 3mm; border-radius: 0.6mm; border: 0.2mm solid var(--brand-line); }
   .swatch.empty { background: transparent; }
+  .odo-simbolo { width: 3.4mm; height: 3.4mm; }
   .vacio { font-size: 8.5pt; color: var(--brand-ink-subtle); }
   .hallazgos { margin-top: 2mm; }
   table { width: 100%; border-collapse: collapse; font-size: 8pt; }

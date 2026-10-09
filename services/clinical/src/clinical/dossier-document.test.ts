@@ -139,6 +139,22 @@ const hallazgoTemporal = (parcial: Partial<ToothFindingRecord> = {}): ToothFindi
   ...parcial,
 });
 
+/** Un hallazgo cualquiera del odontograma, para armar bocas en las pruebas. */
+const hallazgo = (parcial: Partial<ToothFindingRecord> = {}): ToothFindingRecord => ({
+  id: 'f-hallazgo',
+  toothNumber: 26,
+  surface: 'occlusal',
+  condition: 'caries',
+  state: 'pendiente',
+  notes: null,
+  recordedByUsername: 'prueba',
+  recordedAt: '2026-10-01T10:00:00.000Z',
+  updatedAt: '2026-10-01T10:00:00.000Z',
+  sessionId: null,
+  resolvedAt: null,
+  ...parcial,
+});
+
 describe('el dossier del expediente', () => {
   it('lleva la marca de agua del consultorio, con el contenido por encima', async () => {
     const html = await dossierHtml(base());
@@ -201,6 +217,81 @@ describe('el dossier del expediente', () => {
     expect(html).toContain('Pieza completa');
     expect(html).toContain('Caries');
     expect(html).toContain('Endodoncia');
+  });
+
+  it('dibuja los símbolos de pieza completa con la geometría del contrato, no solo en la tabla', async () => {
+    const html = await dossierHtml(base());
+    // La endodoncia de la 26 se dibuja como triángulo, el mismo trazado que la pantalla.
+    expect(html).toContain('points="50,14 88,84 12,84"');
+    // Y la leyenda explica los símbolos con su propia miniatura.
+    expect(html).toContain('class="odo-simbolo"');
+  });
+
+  it('compone los símbolos por capas: círculo de corona y aspa de ausente, con halo', async () => {
+    const html = await dossierHtml({
+      ...base(),
+      odontogram: {
+        dentition: 'permanente',
+        findings: {
+          '36': [
+            hallazgo({
+              id: 'corona',
+              toothNumber: 36,
+              surface: null,
+              condition: 'corona',
+              state: 'completado',
+            }),
+          ],
+          '46': [
+            hallazgo({
+              id: 'ausente',
+              toothNumber: 46,
+              surface: null,
+              condition: 'ausente',
+              state: 'completado',
+            }),
+          ],
+        },
+      },
+    });
+    // Corona: el círculo del contrato. Ausente: el aspa completa.
+    expect(html).toContain('<circle cx="50" cy="50" r="34"');
+    expect(html).toContain('<line x1="10" y1="10" x2="90" y2="90"');
+  });
+
+  it('el implante suprime el aspa de ausente en el papel (fase quirúrgica)', async () => {
+    /** Cuenta el aspa sólida de `ausente` (sin dash, para no contar la de extracción). */
+    const aspas = (html: string): number =>
+      (html.match(/<line x1="10" y1="10" x2="90" y2="90"\/>/g) ?? []).length;
+
+    const boca = (findings: Record<string, ToothFindingRecord[]>): DossierDocumentInput => ({
+      ...base(),
+      odontogram: { dentition: 'permanente', findings },
+    });
+    const implante = hallazgo({
+      id: 'implante',
+      toothNumber: 46,
+      surface: null,
+      condition: 'implante',
+      state: 'completado',
+    });
+    const ausente = hallazgo({
+      id: 'ausente',
+      toothNumber: 46,
+      surface: null,
+      condition: 'ausente',
+      state: 'completado',
+    });
+
+    const conImplante = await dossierHtml(boca({ '46': [implante, ausente] }));
+    const sinImplante = await dossierHtml(boca({ '46': [ausente] }));
+
+    // El tornillo se dibuja siempre…
+    expect(conImplante).toContain('<line x1="50" y1="16" x2="50" y2="84"');
+    // …y con implante el aspa de ausente solo sale en la leyenda (1); sin él, también
+    // en el dibujo, con su halo y su marca (1 de la leyenda + 2 de la pieza = 3).
+    expect(aspas(conImplante)).toBe(1);
+    expect(aspas(sinImplante)).toBe(3);
   });
 
   it('sin odontograma el hueco se explica y no se dibuja nada', async () => {
