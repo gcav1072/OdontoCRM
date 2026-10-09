@@ -186,15 +186,35 @@ const auditarHttp = () => {
 
   /**
    * Rutas que la puerta sirve **por sí misma**, declaradas en su propio código con `app.get(...)`:
-   * hoy `/api/v1/meta` (estado del sistema y banner de modo test, Fase 10). Antes solo se miraban
-   * los `add(...)` de `routes.ts`, así que una ruta propia salía como «la interfaz llama y el
-   * gateway no la enruta» aunque la sirviera y tuviera prueba (`proxy.test.ts`).
+   * `/api/v1/meta` (estado del sistema y banner de modo test, Fase 10) y
+   * `/api/v1/system/health/detailed` (el panel del administrador). Antes solo se miraban los
+   * `add(...)` de `routes.ts`, así que una ruta propia salía como «la interfaz llama y el gateway
+   * no la enruta» aunque la sirviera y tuviera prueba (`proxy.test.ts`).
+   *
+   * La ruta puede venir escrita de **dos** formas —literal (`app.get('/api/v1/meta', …)`) o por su
+   * **constante** (`app.get(SYSTEM_HEALTH_PATH, …)`)—: se resuelven antes las constantes de cadena
+   * del propio gateway. Mirando solo los literales, la declarada por constante seguía saliendo como
+   * inalcanzable, que es justo lo que pasaba con la salud del sistema.
    */
-  const propiasDelGateway = archivosDe(join(ROOT, 'apps/gateway/src')).flatMap((archivo) => {
+  const gatewaySrc = archivosDe(join(ROOT, 'apps/gateway/src'));
+  const constantes = new Map();
+  for (const archivo of gatewaySrc) {
+    for (const [, nombre, valor] of readFileSync(archivo, 'utf8').matchAll(
+      /(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*'([^']+)'/g,
+    )) {
+      constantes.set(nombre, valor);
+    }
+  }
+
+  const propiasDelGateway = gatewaySrc.flatMap((archivo) => {
     const fuente = readFileSync(archivo, 'utf8');
-    return [...fuente.matchAll(/app\.(?:get|post|put|patch|delete)\(\s*'([^']+)'/g)].map(
-      (coincidencia) => coincidencia[1],
-    );
+    return [
+      ...fuente.matchAll(
+        /app\.(?:get|post|put|patch|delete)\(\s*(?:'([^']+)'|([A-Za-z_$][\w$]*))/g,
+      ),
+    ]
+      .map(([, literal, identificador]) => literal ?? constantes.get(identificador))
+      .filter((ruta) => ruta !== undefined);
   });
 
   const cubierta = (ruta) =>
