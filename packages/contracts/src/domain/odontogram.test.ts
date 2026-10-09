@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  allowedStatesFor,
   archLayout,
   CLINICAL_STATE_COLORS,
   conditionsConflict,
@@ -8,6 +9,7 @@ import {
   dentitionOfTooth,
   findingsFromSelection,
   hasPrimaryFindings,
+  isStateAllowed,
   isToothNumber,
   MIDLINE_GAP,
   neighborTooth,
@@ -16,6 +18,7 @@ import {
   PRIMARY_TOOTH_NUMBERS,
   parsePolygonPoints,
   primarySuccessor,
+  PROCEDURE_TRANSITIONS,
   quickEntryKey,
   quickEntryLabel,
   initialQuickEntryState,
@@ -133,16 +136,36 @@ describe('captura por excepción: qué se puede registrar', () => {
   });
 
   it('las condiciones de pieza completa exigen surface null', () => {
+    // Cada condición lleva su estado válido: `ausente` solo existe completado y
+    // `extraccion_indicada` solo pendiente (spec anexo ADR 0032 §2).
+    const estadoValido = {
+      ausente: 'completado',
+      extraccion_indicada: 'pendiente',
+      corona: 'completado',
+      implante: 'completado',
+      endodoncia: 'completado',
+    } as const;
     for (const condition of [
       'ausente',
       'extraccion_indicada',
       'corona',
       'implante',
       'endodoncia',
-    ]) {
-      expect(recordFindingSchema.safeParse({ toothNumber: 36, condition }).success).toBe(true);
+    ] as const) {
       expect(
-        recordFindingSchema.safeParse({ toothNumber: 36, surface: 'occlusal', condition }).success,
+        recordFindingSchema.safeParse({
+          toothNumber: 36,
+          condition,
+          state: estadoValido[condition],
+        }).success,
+      ).toBe(true);
+      expect(
+        recordFindingSchema.safeParse({
+          toothNumber: 36,
+          surface: 'occlusal',
+          condition,
+          state: estadoValido[condition],
+        }).success,
       ).toBe(false);
     }
   });
@@ -366,26 +389,24 @@ describe('geometría del componente SVG', () => {
 });
 
 describe('convivencia de tratamientos con las caras (ADR 0032)', () => {
-  it('`ausente` y `corona` superan las caras; lo que solo hace `ausente` es excluirlas', () => {
+  it('`ausente`, `corona` e `implante` superan las caras; `ausente` e `implante` las excluyen', () => {
     // Superar = al registrarlas, las caras que hubiera quedan cubiertas (con su
-    // histórico). La corona recubre el muñón en 360°: en boca ya no se ve debajo.
+    // histórico). La corona recubre el muñón en 360° y el implante sustituye la raíz:
+    // en boca ya no se ve el esmalte ni la dentina que había.
     expect(supersedesSurfaces('ausente')).toBe(true);
     expect(supersedesSurfaces('corona')).toBe(true);
-    for (const condition of ['extraccion_indicada', 'implante', 'endodoncia'] as const) {
+    expect(supersedesSurfaces('implante')).toBe(true);
+    for (const condition of ['extraccion_indicada', 'endodoncia'] as const) {
       expect(supersedesSurfaces(condition)).toBe(false);
     }
     expect(supersedesSurfaces('caries')).toBe(false);
     expect(supersedesSurfaces('restauracion')).toBe(false);
 
-    // Excluir = no caben juntas de ninguna manera. Solo la pieza que no está.
+    // Excluir = no caben juntas de ninguna manera: la pieza que no está y el titanio,
+    // que no tiene esmalte ni dentina (spec §3).
     expect(excludesSurfaces('ausente')).toBe(true);
-    for (const condition of [
-      'corona',
-      'extraccion_indicada',
-      'implante',
-      'endodoncia',
-      'caries',
-    ] as const) {
+    expect(excludesSurfaces('implante')).toBe(true);
+    for (const condition of ['corona', 'extraccion_indicada', 'endodoncia', 'caries'] as const) {
       expect(excludesSurfaces(condition)).toBe(false);
     }
   });
@@ -394,7 +415,9 @@ describe('convivencia de tratamientos con las caras (ADR 0032)', () => {
     // Un conducto no tapa nada: la restauración que lleva encima sigue viéndose.
     expect(conditionsConflict('endodoncia', 'restauracion')).toBe(false);
     expect(conditionsConflict('extraccion_indicada', 'caries')).toBe(false);
-    expect(conditionsConflict('implante', 'caries')).toBe(false);
+    // El implante **sí** excluye las caras: el titanio no tiene esmalte ni dentina.
+    expect(conditionsConflict('implante', 'caries')).toBe(true);
+    expect(conditionsConflict('implante', 'restauracion')).toBe(true);
   });
 
   it('la caries recurrente sobre una corona se registra; la corona tapa lo anterior', () => {
@@ -456,6 +479,74 @@ describe('convivencia de tratamientos con las caras (ADR 0032)', () => {
     expect(conflictingCondition(tratados, 'endodoncia')).toBeNull();
     expect(conflictingCondition(tratados, 'ausente')).toBe('corona');
     expect(conflictingCondition(tratados, 'caries')).toBeNull();
+  });
+});
+
+describe('estados clínicos válidos (spec anexo ADR 0032 §2)', () => {
+  it('no todas las condiciones admiten los dos estados', () => {
+    // El hecho consumado y el plan: un solo estado cada uno.
+    expect(isStateAllowed('ausente', 'completado')).toBe(true);
+    expect(isStateAllowed('ausente', 'pendiente')).toBe(false);
+    expect(isStateAllowed('extraccion_indicada', 'pendiente')).toBe(true);
+    expect(isStateAllowed('extraccion_indicada', 'completado')).toBe(false);
+    // La patología no se «completa»: se trata.
+    expect(isStateAllowed('caries', 'pendiente')).toBe(true);
+    expect(isStateAllowed('caries', 'completado')).toBe(false);
+    // Los tratamientos sí admiten las dos fases.
+    expect(allowedStatesFor('corona')).toEqual(['pendiente', 'completado']);
+    expect(allowedStatesFor('restauracion')).toEqual(['pendiente', 'completado']);
+    expect(allowedStatesFor('implante')).toEqual(['pendiente', 'completado']);
+  });
+
+  it('el esquema rechaza los estados imposibles que causaron la pieza 13', () => {
+    // La extracción indicada no se completa: se transiciona a `ausente`.
+    expect(
+      recordFindingSchema.safeParse({
+        toothNumber: 13,
+        condition: 'extraccion_indicada',
+        state: 'completado',
+      }).success,
+    ).toBe(false);
+    // La caries tampoco: se convierte en obturación.
+    expect(
+      recordFindingSchema.safeParse({
+        toothNumber: 36,
+        surface: 'occlusal',
+        condition: 'caries',
+        state: 'completado',
+      }).success,
+    ).toBe(false);
+    // Ni hay «ausente pendiente».
+    expect(recordFindingSchema.safeParse({ toothNumber: 36, condition: 'ausente' }).success).toBe(
+      false,
+    );
+  });
+
+  it('`extraccion_indicada` y `implante` no conviven (pareja imposible del informe)', () => {
+    expect(conditionsConflict('extraccion_indicada', 'implante')).toBe(true);
+    expect(conditionsConflict('implante', 'extraccion_indicada')).toBe(true);
+    const implante = [{ condition: 'implante' as const }];
+    expect(conflictingCondition(implante, 'extraccion_indicada')).toBe('implante');
+  });
+
+  it('los procedimientos mutan un hallazgo en otro (spec §5)', () => {
+    // La caries tratada pasa a obturación en la misma cara…
+    expect(PROCEDURE_TRANSITIONS.obturar).toMatchObject({
+      from: 'caries',
+      to: 'restauracion',
+      scope: 'surface',
+    });
+    // …la extracción cumplida deja la pieza ausente…
+    expect(PROCEDURE_TRANSITIONS.extraer).toMatchObject({
+      from: 'extraccion_indicada',
+      to: 'ausente',
+    });
+    // …y rehabilitar exige un implante vigente (fase quirúrgica → rehabilitada).
+    expect(PROCEDURE_TRANSITIONS.rehabilitar).toMatchObject({
+      from: 'ausente',
+      to: 'corona',
+      requiresImplante: true,
+    });
   });
 });
 
@@ -626,12 +717,18 @@ describe('máquina de la carga rápida', () => {
     expect(estado.surfaces).toEqual([]);
   });
 
-  it('la mayúscula marca la misma condición como completada', () => {
-    const pendiente = simular('24nc');
-    const completada = simular('24nC');
+  it('la mayúscula marca la misma condición como completada (si admite los dos estados)', () => {
+    // La obturación admite pendiente y completado.
+    const pendiente = simular('24no');
+    const completada = simular('24nO');
     expect(pendiente.ultimo).toMatchObject({ input: { state: 'pendiente', surface: 'occlusal' } });
     expect(completada.ultimo).toMatchObject({
       input: { state: 'completado', surface: 'occlusal' },
+    });
+
+    // La caries solo existe pendiente: la mayúscula no inventa un estado imposible.
+    expect(simular('24nC').ultimo).toMatchObject({
+      input: { condition: 'caries', state: 'pendiente' },
     });
   });
 
@@ -644,17 +741,25 @@ describe('máquina de la carga rápida', () => {
     expect(estado.surfaces).toEqual([]);
   });
 
-  it('`a` marca la pieza ausente y `x` la extracción indicada', () => {
+  it('`a` marca la pieza ausente y `x` la extracción indicada, cada una con su estado válido', () => {
+    // `ausente` es un hecho consumado (completado); `extraccion_indicada` es un plan
+    // (pendiente). Da igual la caja que se pulse: el estado es el válido (spec §2).
     expect(simular('48a').ultimo).toMatchObject({
-      input: { toothNumber: 48, surface: null, condition: 'ausente', state: 'pendiente' },
+      input: { toothNumber: 48, surface: null, condition: 'ausente', state: 'completado' },
+    });
+    expect(simular('48A').ultimo).toMatchObject({
+      input: { condition: 'ausente', state: 'completado' },
     });
     expect(simular('48X').ultimo).toMatchObject({
       input: {
         toothNumber: 48,
         surface: null,
         condition: 'extraccion_indicada',
-        state: 'completado',
+        state: 'pendiente',
       },
+    });
+    expect(simular('48x').ultimo).toMatchObject({
+      input: { condition: 'extraccion_indicada', state: 'pendiente' },
     });
   });
 
