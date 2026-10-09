@@ -4,6 +4,7 @@ import {
   formatTicket,
   type AppointmentSummary,
   type InboundMessage,
+  type PatientSummary,
   type RequestSummary,
 } from '@odontocrm/contracts';
 import {
@@ -19,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createAdapterRegistry, type AdapterRegistry } from './canales/adaptador.js';
 import { createSimulatedAdapter, type SimulatedAdapter } from './canales/simulado.js';
+import { channelsInInbox } from './channels.js';
 import { avisarFalloAlPaciente, handleInbound, loadConversation } from './core/asistente.js';
 import { handleDomainEvent } from './consumer.js';
 import { loadNotificationsConfig, type NotificationsConfig } from './config.js';
@@ -123,6 +125,9 @@ const fakeClients = (): InternalClients & {
     },
     getAppointment: async () => null,
 
+    // Nombres para la tabla de canales: por defecto ninguno; cada prueba lo ajusta.
+    listPatientSummaries: async () => [],
+
     // Listado y confirmación de citas (ADR 0052): el asistente confirma contra la
     // agenda, así que el doble imita los filtros que de verdad se usan.
     listAppointments: async (filters) => {
@@ -203,6 +208,25 @@ const unaCita = (overrides: Partial<AppointmentSummary> = {}): AppointmentSummar
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   ...overrides,
+});
+
+/** Paciente de mentira: lo justo para que la bandeja resuelva su nombre. */
+const unPaciente = (id: string, fullName: string): PatientSummary => ({
+  id,
+  docType: 'V',
+  docNumber: '12345678',
+  document: 'V-12345678',
+  fullName,
+  birthDate: '1990-05-15',
+  age: 35,
+  isMinor: false,
+  sex: 'F',
+  phone: '+584121234567',
+  phoneAlt: null,
+  status: 'activo',
+  isFictitious: false,
+  hasGuardian: false,
+  createdAt: new Date().toISOString(),
 });
 
 describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', () => {
@@ -383,6 +407,33 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
   }, 60_000);
+
+  it('la tabla de canales muestra el nombre del paciente (no solo su identificador)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}N`;
+    await linkChat(handle.db, {
+      patientId,
+      canal: 'telegram',
+      direccion,
+      usuario: 'maria_perez',
+    });
+
+    // El nombre lo resuelve el servicio de pacientes por id, en lote.
+    const original = clients.listPatientSummaries;
+    clients.listPatientSummaries = async (ids) =>
+      ids.includes(patientId) ? [unPaciente(patientId, `María Pérez ${MARK}`)] : [];
+
+    try {
+      const pagina = await channelsInInbox(handle.db, clients);
+      const fila = pagina.items.find((item) => item.patientId === patientId);
+      expect(fila?.patientName).toBe(`María Pérez ${MARK}`);
+      // La dirección sigue enmascarada: el nombre no la destapa.
+      expect(fila?.direccionMasked).not.toContain(direccion);
+    } finally {
+      clients.listPatientSummaries = original;
+      await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+    }
+  }, 30_000);
 
   it('la cancelación del bot no encola un «cita_cancelada» duplicado (ADR 0053)', async () => {
     // El asistente ya respondió al paciente en el mismo turno; el evento llega marcado

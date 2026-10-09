@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import {
   getPatientDetail,
+  listPatientSummaries,
   lookupByDocumentText,
   upsertPatientByDocument,
 } from '../patients/patient-service.js';
@@ -22,6 +23,19 @@ const documentParamsSchema = z.object({
 });
 
 const idParamsSchema = z.object({ id: z.uuid() });
+
+/**
+ * Identificadores para el resumen en lote. Se corta en 100 para que la consulta no
+ * crezca sin límite: la bandeja de canales pide como mucho eso de una vez.
+ */
+const summariesQuerySchema = z.object({
+  ids: z
+    .string()
+    .trim()
+    .min(1)
+    .transform((value) => value.split(',').map((id) => id.trim()))
+    .pipe(z.array(z.uuid()).min(1).max(100)),
+});
 
 const safeEquals = (left: string, right: string): boolean => {
   const a = Buffer.from(left);
@@ -62,6 +76,17 @@ export const registerInternalRoutes = (app: FastifyInstance, services: PatientsS
       throw new NotFoundError('No hay ningún paciente con ese documento');
     }
     return reply.status(200).send(patient);
+  });
+
+  /**
+   * Resúmenes de varios pacientes por id (para la tabla de canales de la bandeja de
+   * notificaciones). Va **antes** de `/:id` por claridad, aunque Fastify prioriza las
+   * rutas estáticas; los identificadores que no existen simplemente no vuelven.
+   */
+  app.get('/internal/v1/patients/summaries', async (request, reply) => {
+    const { ids } = parseOrThrow(summariesQuerySchema, request.query);
+    const items = await listPatientSummaries(db, ids);
+    return reply.status(200).send({ items, total: items.length });
   });
 
   /**

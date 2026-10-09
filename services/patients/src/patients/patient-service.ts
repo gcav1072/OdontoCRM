@@ -175,6 +175,36 @@ export const getPatientDetail = async (db: PatientsDb, id: string): Promise<Pati
   return toPatientDetail(row, { guardian, fileCount });
 };
 
+/**
+ * Resúmenes de varios pacientes por id, en lote y en **una sola consulta**: lo usa el
+ * servicio de notificaciones para poner el nombre en su tabla de canales vinculados.
+ *
+ * Es tolerante a propósito: los identificadores que no existen (o de pacientes
+ * borrados) simplemente no vuelven, en vez de fallar la lista entera. El orden de
+ * salida no importa, así que no se conserva el de entrada.
+ */
+export const listPatientSummaries = async (
+  db: PatientsDb,
+  ids: readonly string[],
+): Promise<PatientSummary[]> => {
+  const unicos = [...new Set(ids)];
+  if (unicos.length === 0) return [];
+
+  const rows = await db
+    .select()
+    .from(patients)
+    .where(and(inArray(patients.id, unicos), isNull(patients.deletedAt)));
+
+  const ahora = new Date();
+  const flags = await loadGuardianFlags(
+    db,
+    rows.map((row) => row.id),
+  );
+  return rows.map((row) =>
+    toPatientSummary(row, { hasGuardian: flags.get(row.id) ?? false, now: ahora }),
+  );
+};
+
 /** Escapa los comodines de LIKE para que la búsqueda sea literal. */
 const likePattern = (value: string): string =>
   `%${value.trim().replace(/[\\%_]/g, (match) => `\\${match}`)}%`;

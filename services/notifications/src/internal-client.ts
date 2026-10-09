@@ -3,6 +3,7 @@ import type {
   AppointmentSummary,
   Channel,
   Paginated,
+  PatientSummary,
   RequestSummary,
 } from '@odontocrm/contracts';
 
@@ -40,6 +41,13 @@ export interface InternalClients {
     birthDate: string;
     sex: string;
   } | null>;
+
+  /**
+   * Resúmenes de pacientes **por id en lote**. Lo usa la bandeja para poner el
+   * nombre del paciente en la tabla de canales vinculados: el nombre vive en el
+   * servicio de pacientes, no en el de notificaciones.
+   */
+  listPatientSummaries: (ids: readonly string[]) => Promise<PatientSummary[]>;
 
   createRequest: (input: {
     patientId: string;
@@ -278,6 +286,18 @@ export const createInternalClients = (config: NotificationsConfig): InternalClie
         if (error instanceof InternalRequestError && error.status === 404) return null;
         throw error;
       }
+    }, LECTURA),
+
+  listPatientSummaries: async (ids) =>
+    conReintentos(async () => {
+      if (ids.length === 0) return [];
+      const result = await request<{ items: PatientSummary[] }>(
+        config,
+        config.PATIENTS_URL,
+        `/internal/v1/patients/summaries${queryString({ ids: ids.join(',') })}`,
+        { method: 'GET' },
+      );
+      return result.items;
     }, LECTURA),
 
   findRequestByTicket: async (ticket) =>

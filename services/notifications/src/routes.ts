@@ -22,11 +22,11 @@ import { z } from 'zod';
 import { desc } from 'drizzle-orm';
 
 import { appointmentsInInbox } from './appointments.js';
+import { channelsInInbox } from './channels.js';
 import { botConversations } from './db/schema.js';
 import {
   createLinkCode,
   findIcsArtifact,
-  listChannels,
   listNotifications,
   listTemplates,
   markContacted,
@@ -209,19 +209,7 @@ export const registerNotificationRoutes = (
 
   app.get('/api/v1/notifications/channels', { preHandler: read }, async (request, reply) => {
     const query = parseQuery(channelsQuerySchema, request.query);
-    const items = await listChannels(db, query.patientId);
-    return reply.status(200).send({
-      items: items.map((channel) => ({
-        patientId: channel.patientId,
-        patientName: null,
-        channel: channel.canal,
-        direccionMasked: maskDireccion(channel.direccion),
-        usuario: channel.usuario,
-        linkedAt: channel.linkedAt.toISOString(),
-        isBlocked: channel.isBlocked,
-      })),
-      total: items.length,
-    });
+    return reply.status(200).send(await channelsInInbox(db, services.clients, query.patientId));
   });
 
   /**
