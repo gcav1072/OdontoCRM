@@ -79,13 +79,30 @@ export const handleDomainEvent = async (
   event: DomainEvent,
 ): Promise<ConsumeResult> => {
   const templatesByTopic: Partial<
-    Record<string, { key: string; attachIcs: boolean; manual?: boolean }>
+    Record<string, { key: string; attachIcs: boolean; needsClinic: boolean; manual?: boolean }>
   > = {
-    [EVENT_TOPICS.appointmentScheduled]: { key: 'cita_confirmada', attachIcs: true },
-    [EVENT_TOPICS.appointmentRescheduled]: { key: 'cita_reprogramada', attachIcs: true },
-    [EVENT_TOPICS.appointmentCancelled]: { key: 'cita_cancelada', attachIcs: false },
+    [EVENT_TOPICS.appointmentScheduled]: {
+      key: 'cita_confirmada',
+      attachIcs: true,
+      needsClinic: true,
+    },
+    [EVENT_TOPICS.appointmentRescheduled]: {
+      key: 'cita_reprogramada',
+      attachIcs: true,
+      needsClinic: true,
+    },
+    [EVENT_TOPICS.appointmentCancelled]: {
+      key: 'cita_cancelada',
+      attachIcs: false,
+      needsClinic: false,
+    },
     // El botón «Notificar» de /programacion: **asegura** que el aviso salga.
-    [EVENT_TOPICS.appointmentNotified]: { key: 'cita_confirmada', attachIcs: true, manual: true },
+    [EVENT_TOPICS.appointmentNotified]: {
+      key: 'cita_confirmada',
+      attachIcs: true,
+      needsClinic: true,
+      manual: true,
+    },
   };
 
   const template = templatesByTopic[event.eventType];
@@ -108,16 +125,26 @@ export const handleDomainEvent = async (
       ? (event.payload['appointment'] as { status: AppointmentStatus }).status
       : null;
 
+  /**
+   * Variables del aviso **sin el lugar**: el lugar (y el nombre del consultorio) se
+   * re-renderizan al enviar, porque el aviso puede encolarse antes de que el titular
+   * complete el registro —o el consultorio cambiar de dirección— y el texto no debe
+   * quedar con un dato viejo o vacío.
+   */
+  const variables: Record<string, string> = {
+    paciente: payload.patientName,
+    fecha: payload.date.split('-').reverse().join('/'),
+    hora: payload.startTime,
+    ticket: payload.ticket ?? '—',
+  };
+
   const text =
     typeof event.payload['notification'] === 'object' &&
     typeof (event.payload['notification'] as { body?: unknown }).body === 'string'
       ? (event.payload['notification'] as { body: string }).body
       : await renderMessageFor(db, template.key, {
-          paciente: payload.patientName,
-          fecha: payload.date.split('-').reverse().join('/'),
-          hora: payload.startTime,
-          lugar: config.CLINIC_ADDRESS,
-          ticket: payload.ticket ?? '—',
+          ...variables,
+          lugar: config.CLINIC_ADDRESS ?? '',
         });
 
   /**
@@ -141,13 +168,8 @@ export const handleDomainEvent = async (
         ticket: payload.ticket,
         status: status ?? 'programada',
       },
-      variables: {
-        paciente: payload.patientName,
-        fecha: payload.date.split('-').reverse().join('/'),
-        hora: payload.startTime,
-        lugar: config.CLINIC_ADDRESS,
-        ticket: payload.ticket ?? '—',
-      },
+      variables,
+      needsClinic: template.needsClinic,
     },
     // Salvo reenvío, la clave es la de siempre (cita + plantilla + secuencia del
     // `.ics`): así una reprogramación avisa, un reintento de la cola no repite y

@@ -233,8 +233,8 @@ const reply = async (
   opciones: { conMenu?: boolean } = {},
 ): Promise<void> => {
   const texto = await renderMessageFor(services.db, key, {
-    clinica: services.config.CLINIC_NAME,
-    lugar: services.config.CLINIC_ADDRESS,
+    clinica: services.config.CLINIC_NAME ?? '',
+    lugar: services.config.CLINIC_ADDRESS ?? '',
     ...values,
   });
 
@@ -427,7 +427,7 @@ const responderConfirmada = async (
     paciente: cita.patientName,
     fecha: fechaVe(cita.date),
     hora: formatTime12h(cita.startTime),
-    lugar: services.config.CLINIC_ADDRESS,
+    lugar: services.config.CLINIC_ADDRESS ?? '',
   });
 };
 

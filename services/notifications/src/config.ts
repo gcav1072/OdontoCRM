@@ -1,8 +1,6 @@
 import {
   ANTI_FLOOD_MAX_MESSAGES,
   ANTI_FLOOD_WINDOW_SECONDS,
-  CLINIC,
-  clinicFullAddress,
   NOTIFICATION_MAX_ATTEMPTS,
   NOTIFICATION_RETRY_DELAYS_SECONDS,
 } from '@odontocrm/contracts';
@@ -68,23 +66,20 @@ export const notificationsEnvSchema = baseEnvSchema.extend({
   RETRY_DELAYS_SECONDS: z.string().default(NOTIFICATION_RETRY_DELAYS_SECONDS.join(',')),
 
   /**
-   * Datos que aparecen en los mensajes y en el `.ics`. Salen de `CLINIC`
-   * (`packages/contracts/src/clinic.ts`, la sección editable del consultorio) y el
-   * `.env` solo los sustituye si una instalación concreta lo necesita.
+   * Datos del consultorio que aparecen en los mensajes y en el `.ics`. **No vienen del
+   * código** (`CLINIC` es neutro y sin datos personales): los sirve el registro del
+   * titular vía identity (`aplicarDatosDelConsultorio`). Mientras no estén, quedan
+   * **sin valor** y los servicios que los necesitan **difieren** el aviso y el `.ics`.
    */
-  CLINIC_NAME: z.string().min(1).default(CLINIC.name),
+  CLINIC_NAME: z.string().min(1).optional(),
 
   /**
    * Servicio de identidad: al arrancar (y cada pocos minutos) se lee de ahí el nombre,
-   * la dirección y el correo del consultorio (ADR 0056), con `CLINIC_*` del entorno por
-   * encima. Sin él, se quedan los valores de `CLINIC` (el respaldo del código).
+   * la dirección y el correo del consultorio (ADR 0056). No hay fallback con datos.
    */
   IDENTITY_URL: z.string().min(1).default('http://127.0.0.1:4001'),
-  CLINIC_ADDRESS: z.string().min(1).default(clinicFullAddress()),
-  CLINIC_EMAIL: z
-    .string()
-    .min(3)
-    .default(CLINIC.email ?? 'citas@odontocrm.local'),
+  CLINIC_ADDRESS: z.string().min(1).optional(),
+  CLINIC_EMAIL: z.string().min(3).optional(),
 
   /** Servicios internos que usa el bot (altas de paciente y solicitudes). */
   PATIENTS_URL: z.string().min(1).default('http://127.0.0.1:4002'),

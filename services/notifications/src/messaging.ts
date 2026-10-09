@@ -569,6 +569,34 @@ export const notificationCounts = async (
 
 /* ── `.ics` ────────────────────────────────────────────────────────────────── */
 
+/**
+ * El consultorio aún no tiene nombre ni dirección: no se puede componer el `.ics` ni
+ * el texto del aviso. Quien la reciba debe **diferir** la generación, no inventar datos.
+ */
+export class ClinicNotConfiguredError extends Error {
+  constructor() {
+    super('El consultorio aún no está configurado (falta el nombre o la dirección)');
+    this.name = 'ClinicNotConfiguredError';
+  }
+}
+
+/** ¿El consultorio ya tiene nombre y dirección con los que componer avisos y `.ics`? */
+export const clinicReady = (config: {
+  CLINIC_NAME?: string | undefined;
+  CLINIC_ADDRESS?: string | undefined;
+}): boolean => config.CLINIC_NAME !== undefined && config.CLINIC_ADDRESS !== undefined;
+
+/**
+ * ¿Este aviso necesita datos del consultorio para poder salir? Los de cita los llevan
+ * en el texto (`lugar`) y en el `.ics` (`LOCATION`); hasta que el titular los complete,
+ * se quedan en la cola sin gastar intentos.
+ */
+const rowNeedsClinic = (row: NotificationRow): boolean =>
+  row.payload['needsClinic'] === true || row.payload['attachIcs'] === true;
+
+/** Cuánto espera un aviso a que el consultorio esté configurado antes de reintentar. */
+const CLINIC_DEFER_MS = 5 * 60_000;
+
 export interface GeneratedIcs {
   filename: string;
   content: string;
@@ -601,6 +629,10 @@ export const ensureIcsArtifact = async (
     };
   }
 
+  // El `.ics` lleva el nombre y el lugar del consultorio: sin ellos no se compone. El
+  // servidor reintenta solo cuando el titular complete el registro.
+  if (!clinicReady(config)) throw new ClinicNotConfiguredError();
+
   const content = buildIcsEvent({
     uid: appointment.id,
     sequence: appointment.icsSequence,
@@ -611,10 +643,10 @@ export const ensureIcsArtifact = async (
       `Paciente: ${appointment.patientName}\n` +
       `Ticket: ${appointment.ticket ?? '—'}\n` +
       `Motivo: consulta odontológica\n` +
-      `Consultorio: ${config.CLINIC_NAME}`,
-    location: config.CLINIC_ADDRESS,
-    organizerName: config.CLINIC_NAME,
-    organizerEmail: config.CLINIC_EMAIL,
+      `Consultorio: ${config.CLINIC_NAME ?? ''}`,
+    location: config.CLINIC_ADDRESS ?? '',
+    organizerName: config.CLINIC_NAME ?? '',
+    organizerEmail: config.CLINIC_EMAIL ?? 'noreply@odontocrm.local',
     attendeeName: appointment.patientName,
   });
 
@@ -654,10 +686,34 @@ export interface ProcessResult {
   processed: number;
   sent: number;
   failed: number;
+  /** Avisos que esperan a que el consultorio esté configurado (no gastan intentos). */
+  deferred: number;
 }
 
 const textOf = (row: NotificationRow): string =>
   typeof row.payload['text'] === 'string' ? row.payload['text'] : '';
+
+/**
+ * El texto con el que se envía el aviso. Si depende del consultorio, se **re-renderiza
+ * en el momento de enviar** con el nombre y la dirección actuales (el aviso pudo
+ * encolarse antes de que el titular completara el registro, o el consultorio cambió su
+ * dirección entre el encolado y el envío).
+ */
+const textFor = async (
+  db: NotificationsDb,
+  row: NotificationRow,
+  config: NotificationsConfig,
+): Promise<string> => {
+  if (row.payload['needsClinic'] !== true) return textOf(row);
+  const variables =
+    typeof row.payload['variables'] === 'object' && row.payload['variables'] !== null
+      ? (row.payload['variables'] as Record<string, string | null>)
+      : {};
+  return renderMessageFor(db, row.templateKey, {
+    ...variables,
+    lugar: config.CLINIC_ADDRESS ?? '',
+  });
+};
 
 /**
  * Toma los avisos que toca enviar y los manda **por el adaptador de su canal**
@@ -700,8 +756,25 @@ export const processQueue = async (
 
   let sent = 0;
   let failed = 0;
+  let deferred = 0;
 
   for (const row of pending) {
+    // Si el consultorio aún no está configurado, los avisos que lo necesitan esperan en
+    // la cola **sin gastar intentos**: se reintentan solos cuando el titular lo complete.
+    if (rowNeedsClinic(row) && !clinicReady(config)) {
+      await db
+        .update(notifications)
+        .set({
+          status: 'queued',
+          lastError: 'consultorio sin configurar',
+          nextAttemptAt: new Date(now.getTime() + CLINIC_DEFER_MS),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(notifications.id, row.id), eq(notifications.status, 'queued')));
+      deferred += 1;
+      continue;
+    }
+
     const claimed = await db
       .update(notifications)
       .set({ status: 'sending', updatedAt: new Date() })
@@ -727,7 +800,7 @@ export const processQueue = async (
     }
 
     try {
-      const text = textOf(row);
+      const text = await textFor(db, row, config);
       let messageId: string;
 
       const attachIcs = row.payload['attachIcs'] === true && row.appointmentId !== null;
@@ -789,6 +862,9 @@ export const processQueue = async (
           sentAt: new Date(),
           attempts: row.attempts + 1,
           lastError: null,
+          // Se guarda el texto ya re-renderizado: la bandeja y la auditoría muestran
+          // el mismo lugar que recibió el paciente.
+          payload: { ...row.payload, text },
           updatedAt: new Date(),
         })
         .where(eq(notifications.id, row.id));
@@ -835,7 +911,7 @@ export const processQueue = async (
     }
   }
 
-  return { processed: pending.length, sent, failed };
+  return { processed: pending.length, sent, failed, deferred };
 };
 
 export const queueSnapshot = async (db: NotificationsDb): Promise<{ pending: number }> => {

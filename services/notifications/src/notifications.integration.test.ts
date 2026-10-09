@@ -778,7 +778,7 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
       paciente: appointment.patientName,
       fecha: '02/12/2026',
       hora: '8:30 a. m.',
-      lugar: config.CLINIC_ADDRESS,
+      lugar: config.CLINIC_ADDRESS ?? '',
       ticket: '#000123',
     });
 
@@ -866,6 +866,113 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     // Los canales de la bandeja muestran el canal real, no un valor fijo.
     const canales = await listChannels(handle.db, patientId);
     expect(canales[0]).toMatchObject({ canal: 'whatsapp', direccion });
+
+    await handle.db.delete(notifications).where(eq(notifications.patientId, patientId));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+    await handle.db.execute(sql`delete from ics_artifacts where appointment_id = ${appointmentId}`);
+  }, 60_000);
+
+  it('sin consultorio configurado el aviso de cita espera y luego sale con el lugar correcto', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const appointmentId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}8`;
+    await linkChat(handle.db, { patientId, canal: 'whatsapp', direccion, usuario: 'paciente' });
+
+    const appointment: AppointmentSummary = {
+      id: appointmentId,
+      requestId: null,
+      ticket: '#000124',
+      ticketNumber: 124,
+      patientId,
+      patientName: `Paciente ${MARK}`,
+      patientDocument: 'V-12345678',
+      patientPhone: '+584121234567',
+      date: '2026-12-03',
+      startTime: '09:00',
+      endTime: '09:30',
+      durationMinutes: 30,
+      slotKind: 'franja',
+      status: 'programada',
+      callCount: 0,
+      confirmedAt: null,
+      confirmedChannel: null,
+      cancelledAt: null,
+      cancelledChannel: null,
+      dentistId: null,
+      chairId: null,
+      checkedInAt: null,
+      startedAt: null,
+      finishedAt: null,
+      noShowReason: null,
+      forceAttendedReason: null,
+      clinicalSessionId: null,
+      rescheduledFromId: null,
+      rescheduledToId: null,
+      icsSequence: 0,
+      notes: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const record = await enqueue(handle.db, {
+      patientId,
+      patientName: appointment.patientName,
+      appointmentId,
+      templateKey: 'cita_confirmada',
+      payload: {
+        attachIcs: true,
+        needsClinic: true,
+        // Variables sin `lugar`: el lugar lo pone el envío (ADR 0058).
+        variables: {
+          paciente: appointment.patientName,
+          fecha: '03/12/2026',
+          hora: '9:00 a. m.',
+          ticket: '#000124',
+        },
+        text: 'Hola: tu cita quedó lista.',
+      },
+      dedupeKey: `consultorio-prueba:${appointmentId}`,
+    });
+    expect(record).not.toBeNull();
+    if (record === null) return;
+
+    // 1) Sin configurar el consultorio: se difiere, sin gastar intentos.
+    const sinConsultorio = loadNotificationsConfig({
+      DATABASE_URL: databaseUrl,
+      LOG_LEVEL: 'silent',
+      TELEGRAM_MODE: 'simulado',
+    });
+    const primera = await processQueue(handle.db, registry, sinConsultorio, {
+      appointmentLoader: async () => appointment,
+    });
+    expect(primera.deferred).toBeGreaterThanOrEqual(1);
+
+    const [enEspera] = await handle.db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.id, record.id));
+    expect(enEspera?.status).toBe('queued');
+    expect(enEspera?.attempts).toBe(0);
+    expect(enEspera?.lastError).toBe('consultorio sin configurar');
+
+    // 2) Con el consultorio configurado (y vencido el plazo): sale, con el lugar re-renderizado.
+    const segunda = await processQueue(handle.db, registry, config, {
+      appointmentLoader: async () => appointment,
+      now: new Date(Date.now() + 6 * 60_000),
+    });
+    expect(segunda.sent).toBeGreaterThanOrEqual(1);
+
+    const [enviada] = await handle.db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.id, record.id));
+    expect(enviada?.status).toBe('sent');
+    const texto = typeof enviada?.payload['text'] === 'string' ? enviada.payload['text'] : '';
+    expect(texto).toContain('Calle de prueba 123');
+
+    // El `.ics` archivado lleva el `LOCATION` del registro.
+    const ics = await ensureIcsArtifact(handle.db, config, appointment);
+    expect(ics.content).toContain('LOCATION:Calle de prueba 123');
 
     await handle.db.delete(notifications).where(eq(notifications.patientId, patientId));
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
