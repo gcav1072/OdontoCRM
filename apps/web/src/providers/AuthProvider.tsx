@@ -19,7 +19,7 @@ import {
 import { authApi } from '../lib/endpoints';
 import { setAccessToken, setSessionLostHandler } from '../lib/api';
 import { isPermission, isRole } from '../lib/i18n';
-import { CLINIC_IDENTITY_QUERY_KEY } from './ClinicIdentityProvider';
+import { CLINIC_IDENTITY_QUERY_KEY } from '../lib/queryKeys';
 
 /**
  * Sesión de la SPA.

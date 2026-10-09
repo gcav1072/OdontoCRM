@@ -100,20 +100,22 @@ try {
       <ErrorBoundary>
         <ThemeProvider>
           <QueryClientProvider client={queryClient}>
-            {/* La identidad del consultorio (ADR 0056): la lee una vez y la reparten el
-                miembrete y la marca de agua de los imprimibles del navegador. */}
-            <ClinicIdentityProvider>
-              <BrowserRouter>
-                <AuthProvider>
+            <BrowserRouter>
+              <AuthProvider>
+                {/* La identidad del consultorio (ADR 0056): la lee una vez y la
+                    reparten el membrete y la marca de agua de los imprimibles del
+                    navegador. Va dentro de AuthProvider porque solo se pide **con
+                    sesión**: sin ella la consulta daría 401 (ver el proveedor). */}
+                <ClinicIdentityProvider>
                   {/* Dentro de AuthProvider (necesita saber si hay sesión) y de
                       QueryClientProvider (invalida consultas): es el canal en vivo del
                       personal, y sin sesión no abre nada. */}
                   <RealtimeSyncProvider>
                     <App />
                   </RealtimeSyncProvider>
-                </AuthProvider>
-              </BrowserRouter>
-            </ClinicIdentityProvider>
+                </ClinicIdentityProvider>
+              </AuthProvider>
+            </BrowserRouter>
           </QueryClientProvider>
         </ThemeProvider>
       </ErrorBoundary>
