@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-import { type ClinicIdentity } from '../clinic.js';
+import { BRAND } from '../brand.js';
+import { CLINIC, type ClinicDentist, type ClinicIdentity } from '../clinic.js';
 
 /**
  * La **identidad del consultorio** cuando vive en la base de datos (ADR 0056).
@@ -177,3 +178,46 @@ export type LetterheadSnapshot = z.infer<typeof letterheadSchema>;
  */
 const _identidadCubreElContrato = (snapshot: LetterheadSnapshot): ClinicIdentity => snapshot.clinic;
 void _identidadCubreElContrato;
+
+/**
+ * La identidad efectiva que ve la interfaz (`ClinicIdentityView`) en la forma del
+ * contrato `ClinicIdentity`, para reutilizar los ayudantes del membrete
+ * (`clinicFullAddress`, `clinicContactLine`, **`letterheadMissingFields`**…).
+ *
+ * Compone lo mismo que el servidor para un imprimible (`letterheadSnapshot`): el perfil
+ * guardado o, si no hay ninguno, el respaldo del código (`CLINIC`). De ahí que los
+ * odontólogos del respaldo entren cuando la base todavía no tiene perfiles —y no una
+ * lista vacía—, porque de lo contrario el aviso diría que falta «odontólogo» cuando en
+ * realidad se está usando el del código.
+ *
+ * El **logo** es lo único que no viaja igual: la vista trae el `data:` URI ya resuelto
+ * y aquí solo importa *si hay* logo, así que se deja `BRAND.logoPath` (una ruta del
+ * repositorio, nunca una del servidor) como señal cuando existe y `null` cuando no.
+ */
+export const clinicIdentityFromView = (view: ClinicIdentityView): ClinicIdentity => {
+  // `DentistView` llama `contactEmail` al correo del odontólogo; el contrato lo llama `email`.
+  const dentists: readonly ClinicDentist[] =
+    view.dentists.length === 0
+      ? CLINIC.dentists
+      : view.dentists.map((dentist) => ({
+          username: dentist.username,
+          fullName: dentist.fullName,
+          mpps: dentist.mpps,
+          specialty: dentist.specialty,
+          licenseNumber: dentist.licenseNumber,
+          email: dentist.contactEmail,
+        }));
+
+  return {
+    name: view.clinic.name,
+    legalName: view.clinic.legalName,
+    address: view.clinic.address,
+    city: view.clinic.city,
+    phones: [...view.clinic.phones],
+    email: view.clinic.email,
+    rif: view.clinic.rif,
+    website: view.clinic.website,
+    logoPath: view.logoDataUri === null ? null : BRAND.logoPath,
+    dentists,
+  };
+};
