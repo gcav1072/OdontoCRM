@@ -8,7 +8,7 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
-import { startServer } from '@odontocrm/kernel';
+import { createLetterheadLookup, startServer } from '@odontocrm/kernel';
 import { createDiskBlobStore, parseEncryptionKey } from '@odontocrm/storage';
 
 import { loadBillingConfig } from './config.js';
@@ -49,6 +49,7 @@ const main = async (): Promise<void> => {
     patientLookup,
     blobStore,
     pdf,
+    letterheadLookup: createLetterheadLookup(config),
     kickOutbox: () => kick(),
     lastError: null,
   };

@@ -1,3 +1,4 @@
+import type { LetterheadLookup } from '@odontocrm/kernel';
 import type { BlobStore } from '@odontocrm/storage';
 import type pg from 'pg';
 
@@ -17,6 +18,8 @@ export interface BillingServices {
   blobStore: BlobStore;
   /** Chromium del PDF de la factura (un navegador por proceso). */
   pdf: PdfRenderer;
+  /** La identidad del consultorio (ADR 0056), para el miembrete de los documentos de cobro. */
+  letterheadLookup: LetterheadLookup;
   /** Avanza el publicador del outbox para que la auditoría aparezca al instante. */
   kickOutbox?: (() => void) | undefined;
   /** Último error del consumidor, para el diagnóstico. */

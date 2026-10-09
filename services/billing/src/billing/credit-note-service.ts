@@ -6,6 +6,7 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS } from '@odontocrm/events';
 import { ConflictError, NotFoundError } from '@odontocrm/kernel';
+import type { LetterheadLookup } from '@odontocrm/kernel';
 import { buildStorageKey, type BlobStore } from '@odontocrm/storage';
 import { eq, sql } from 'drizzle-orm';
 
@@ -36,6 +37,8 @@ export interface VoidDeps {
   db: BillingDb;
   blobStore: BlobStore;
   pdf: { render: (html: string) => Promise<Buffer> };
+  /** La identidad del consultorio (ADR 0056); sin ella, el miembrete usa `CLINIC`. */
+  letterheadLookup?: LetterheadLookup | undefined;
 }
 
 const SISTEMA = '00000000-0000-0000-0000-000000000000';
@@ -198,8 +201,11 @@ export const voidInvoice = async (
   const creditNoteNumber = await nextCreditNoteNumber(deps.db);
   const creditNoteLabel = formatCreditNoteNumber(creditNoteNumber);
   const issuedAt = new Date();
+  const identidad = deps.letterheadLookup === undefined ? null : await deps.letterheadLookup();
 
   const html = await renderCreditNoteHtml({
+    clinic: identidad?.clinic,
+    logoDataUri: identidad?.logoDataUri ?? null,
     creditNoteLabel,
     issuedAt,
     invoice: { numberLabel, issuedAt: factura.issuedAt, totalCentsUsd: factura.totalCentsUsd },

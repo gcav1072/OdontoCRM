@@ -11,7 +11,7 @@ import {
   type ClinicIdentity,
   type InvoiceTotals,
 } from '@odontocrm/contracts';
-import { readImageDataUri } from '@odontocrm/kernel';
+import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
 /**
  * La **factura** en A4, compuesta una sola vez y archivada (ADR 0048).
@@ -31,6 +31,8 @@ import { readImageDataUri } from '@odontocrm/kernel';
 export interface InvoicePdfInput {
   /** Perfil del consultorio; por defecto, el genérico del contrato (Tarea 0 lo llevará al entorno). */
   clinic?: ClinicIdentity;
+  /** Logo ya incrustado (`data:` URI); si falta, se lee el del repositorio. */
+  logoDataUri?: string | null;
   series: string;
   numberLabel: string;
   controlNumber: string | null;
@@ -108,8 +110,8 @@ const partida = (item: BillingDraftItem, rateMicros: number): string => {
 
 export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string> => {
   const clinic = input.clinic ?? CLINIC;
-  const logo = await readImageDataUri(clinic.logoPath ?? BRAND.logoPath);
-  const marcaDeAgua = brandWatermarkHtml(await readImageDataUri(BRAND.watermarkPath));
+  const logo = input.logoDataUri ?? (await readImageDataUri(clinic.logoPath ?? BRAND.logoPath));
+  const marcaDeAgua = brandWatermarkHtml(logo ?? (await readImageDataUri(BRAND.watermarkPath)));
   const fecha = fechaFiscal(input.issuedAt);
   const enBs = (cents: number): number => vesCentimosFromUsd(cents, input.rateMicros);
 
@@ -131,19 +133,20 @@ export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string>
 <title>${escapar(`Factura ${input.numberLabel}`)}</title>
 <style>
   ${brandRootBlock()}
+  ${await brandFontFaceCss()}
   ${brandWatermarkCss()}
   /* Una factura = una página (Art. 33). Los márgenes se miden sobre la forma física. */
   @page { size: A4 portrait; margin: 14mm 12mm 12mm 12mm; }
   * { box-sizing: border-box; }
-  body { font-family: var(--brand-font-doc); font-size: 9.5pt; color: var(--brand-ink); margin: 0; }
-  h1 { font-size: 13pt; margin: 0; letter-spacing: .04em; color: var(--brand-primary); }
+  body { font-family: var(--brand-font-doc-body); font-size: 9.5pt; color: var(--brand-ink); margin: 0; }
+  h1 { font-family: var(--brand-font-doc-title); font-size: 13pt; margin: 0; letter-spacing: .04em; color: var(--brand-primary); }
   .cabecera { display: flex; justify-content: space-between; gap: 8mm; border-bottom: 1.2pt solid var(--brand-ink); padding-bottom: 3mm; }
   .emisor { display: flex; align-items: flex-start; gap: 5mm; max-width: 95mm; }
   .emisor .logo { height: var(--brand-logo-height-mm); width: auto; }
-  .emisor .nombre { font-weight: 700; font-size: 11pt; color: var(--brand-primary); }
+  .emisor .nombre { font-family: var(--brand-font-doc-title); font-weight: 700; font-size: 11pt; color: var(--brand-primary); }
   .emisor .dato { color: var(--brand-ink-muted); }
   .documento { text-align: right; min-width: 60mm; }
-  .documento .numero { font-size: 12pt; font-weight: 700; color: var(--brand-primary); }
+  .documento .numero { font-family: var(--brand-font-doc-title); font-size: 12pt; font-weight: 700; color: var(--brand-primary); }
   .documento .control { font-weight: 600; }
   .bloque { margin-top: 3mm; display: flex; justify-content: space-between; gap: 8mm; }
   .caja { border: .6pt solid var(--brand-line); padding: 2mm; }

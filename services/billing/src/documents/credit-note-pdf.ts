@@ -7,7 +7,7 @@ import {
   formatRateMicros,
   type ClinicIdentity,
 } from '@odontocrm/contracts';
-import { readImageDataUri } from '@odontocrm/kernel';
+import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
 import { fechaFiscal } from './invoice-pdf.js';
 
@@ -18,6 +18,8 @@ import { fechaFiscal } from './invoice-pdf.js';
  */
 export interface CreditNotePdfInput {
   clinic?: ClinicIdentity;
+  /** Logo ya incrustado (`data:` URI); si falta, se lee el del repositorio. */
+  logoDataUri?: string | null;
   /** `NC-000001`. */
   creditNoteLabel: string;
   issuedAt: Date;
@@ -43,8 +45,8 @@ const dinero = (cents: number): string =>
 
 export const renderCreditNoteHtml = async (input: CreditNotePdfInput): Promise<string> => {
   const clinic = input.clinic ?? CLINIC;
-  const logo = await readImageDataUri(clinic.logoPath ?? BRAND.logoPath);
-  const marcaDeAgua = brandWatermarkHtml(await readImageDataUri(BRAND.watermarkPath));
+  const logo = input.logoDataUri ?? (await readImageDataUri(clinic.logoPath ?? BRAND.logoPath));
+  const marcaDeAgua = brandWatermarkHtml(logo ?? (await readImageDataUri(BRAND.watermarkPath)));
 
   return `<!doctype html>
 <html lang="es">
@@ -53,14 +55,15 @@ export const renderCreditNoteHtml = async (input: CreditNotePdfInput): Promise<s
 <title>${escapar(`Nota de crédito ${input.creditNoteLabel}`)}</title>
 <style>
   ${brandRootBlock()}
+  ${await brandFontFaceCss()}
   ${brandWatermarkCss()}
   @page { size: A4 portrait; margin: 16mm 14mm; }
-  body { font-family: var(--brand-font-doc); font-size: 10pt; color: var(--brand-ink); margin: 0; }
-  h1 { font-size: 14pt; margin: 0 0 1mm; letter-spacing: .04em; color: var(--brand-primary); }
+  body { font-family: var(--brand-font-doc-body); font-size: 10pt; color: var(--brand-ink); margin: 0; }
+  h1 { font-family: var(--brand-font-doc-title); font-size: 14pt; margin: 0 0 1mm; letter-spacing: .04em; color: var(--brand-primary); }
   .cabecera { display: flex; justify-content: space-between; border-bottom: 1.2pt solid var(--brand-ink); padding-bottom: 3mm; }
   .emisor { display: flex; align-items: flex-start; gap: 5mm; }
   .emisor .logo { height: var(--brand-logo-height-mm); width: auto; }
-  .nombre { font-weight: 700; color: var(--brand-primary); }
+  .nombre { font-family: var(--brand-font-doc-title); font-weight: 700; color: var(--brand-primary); }
   .dato { color: var(--brand-ink-muted); }
   table { width: 100%; border-collapse: collapse; margin-top: 5mm; }
   td { padding: 1.6mm 1mm; border-bottom: .5pt solid var(--brand-line-soft); }

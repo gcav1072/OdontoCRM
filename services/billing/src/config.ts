@@ -22,6 +22,13 @@ export const billingEnvSchema = baseEnvSchema.extend({
   PATIENTS_URL: z.string().min(1).default('http://127.0.0.1:4002'),
 
   /**
+   * Servicio de identidad: de ahí se lee la **identidad del consultorio** (razón social, RIF y
+   * domicilio) para el miembrete de la factura, el recibo y la nota de crédito (ADR 0056). Sin ella
+   * —o sin secreto interno— se usa el respaldo del código (`CLINIC`).
+   */
+  IDENTITY_URL: z.string().min(1).default('http://127.0.0.1:4001'),
+
+  /**
    * Almacén de los documentos archivados (la factura, el recibo y la nota de crédito). Una carpeta
    * relativa a la raíz del repositorio, ignorada por Git (ADR 0036/0048).
    */

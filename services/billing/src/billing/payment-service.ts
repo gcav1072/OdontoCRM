@@ -16,6 +16,7 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS } from '@odontocrm/events';
 import { ConflictError, NotFoundError } from '@odontocrm/kernel';
+import type { LetterheadLookup } from '@odontocrm/kernel';
 import { buildStorageKey, type BlobStore } from '@odontocrm/storage';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 
@@ -47,6 +48,8 @@ export interface PaymentDeps {
   db: BillingDb;
   blobStore: BlobStore;
   pdf: { render: (html: string) => Promise<Buffer> };
+  /** La identidad del consultorio (ADR 0056); sin ella, el miembrete usa `CLINIC`. */
+  letterheadLookup?: LetterheadLookup | undefined;
 }
 
 /** El correlativo del recibo: la misma secuencia atómica que el resto. */
@@ -232,8 +235,11 @@ export const collectPayment = async (
   const receiptLabel = formatReceiptNumber(receiptNumber);
   const paidAt = new Date();
   const nuevoSaldo = pendiente - amountCentsUsd;
+  const identidad = deps.letterheadLookup === undefined ? null : await deps.letterheadLookup();
 
   const html = await renderReceiptHtml({
+    clinic: identidad?.clinic,
+    logoDataUri: identidad?.logoDataUri ?? null,
     receiptLabel,
     invoiceLabel:
       factura.invoiceNumber === null

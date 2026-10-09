@@ -1,5 +1,5 @@
 import { createOutboxCheck, createPoolCheck } from '@odontocrm/db';
-import { buildServer, isProduction } from '@odontocrm/kernel';
+import { buildServer, createLetterheadLookup, isProduction } from '@odontocrm/kernel';
 import { createDiskBlobStore, parseEncryptionKey } from '@odontocrm/storage';
 import type { FastifyInstance } from 'fastify';
 
@@ -65,6 +65,7 @@ export const createBillingServer = async (
         timeoutMs: config.PDF_TIMEOUT_MS,
       }),
     kickOutbox: options.services?.kickOutbox,
+    letterheadLookup: options.services?.letterheadLookup ?? createLetterheadLookup(config),
     lastError: options.services?.lastError ?? null,
   };
 
