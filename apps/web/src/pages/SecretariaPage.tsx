@@ -203,7 +203,7 @@ export const SecretariaPage = () => {
               <CardContent className="pt-5">
                 <h2 className="flex items-center gap-2 pb-3 text-base font-semibold text-ink">
                   <CalendarClock className="size-4 text-primary" aria-hidden="true" />
-                  {t('secretaria.titulo')}
+                  {t('secretaria.citas.titulo')}
                 </h2>
                 <SecretariaAppointmentsTable
                   appointments={visibles}

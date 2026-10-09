@@ -1802,6 +1802,9 @@ const DICCIONARIO = {
   'secretaria.titulo': 'Secretaría del día',
   'secretaria.descripcion':
     'La jornada hora por hora: registrar llegada, llamar al paciente, pasarlo a consulta y cerrar la visita.',
+  /** Título de la tarjeta con la tabla de citas: distinto del de la página, o el
+      lector de pantalla (y Playwright) ven dos encabezados iguales. */
+  'secretaria.citas.titulo': 'Citas de la jornada',
   'secretaria.fecha': 'Fecha de la jornada',
   'secretaria.hoy': 'Hoy',
   'secretaria.diaAnterior': 'Día anterior',
