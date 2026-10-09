@@ -18,15 +18,42 @@ import {
   generateTemporaryPassword,
   hashPassword,
 } from '@odontocrm/kernel';
-import { and, count, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, count, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 
 import type { IdentityDb } from '../db/client.js';
-import { userRoles, users, type UserRow } from '../db/schema.js';
+import { dentistProfiles, userRoles, users, type UserRow } from '../db/schema.js';
 
 /** Campos cuyo cambio queda registrado en la auditoría (decisión del usuario). */
 export const SENSITIVE_USER_FIELDS = ['fullName', 'email', 'roles', 'isActive'] as const;
 
-export const toUserSummary = (row: UserRow, roles: Role[], now = new Date()): UserSummary => ({
+/**
+ * Ids (de los que se pasan) que tienen un **perfil profesional completado**. Se resuelve
+ * en lote para que listar usuarios no haga una consulta por fila.
+ */
+const completedProfileIds = async (
+  db: IdentityDb,
+  userIds: readonly string[],
+): Promise<Set<string>> => {
+  if (userIds.length === 0) return new Set();
+  const rows = await db
+    .select({ userId: dentistProfiles.userId })
+    .from(dentistProfiles)
+    .where(
+      and(inArray(dentistProfiles.userId, [...userIds]), isNotNull(dentistProfiles.completedAt)),
+    );
+  return new Set(rows.map((row) => row.userId));
+};
+
+/** Un odontólogo sin perfil completado: el gate del primer acceso. */
+const needsProfileFor = (roles: readonly Role[], userId: string, completed: Set<string>): boolean =>
+  roles.includes('odontologo') && !completed.has(userId);
+
+export const toUserSummary = (
+  row: UserRow,
+  roles: Role[],
+  now = new Date(),
+  completed: Set<string> = new Set(),
+): UserSummary => ({
   id: row.id,
   username: row.username,
   fullName: row.fullName,
@@ -35,6 +62,7 @@ export const toUserSummary = (row: UserRow, roles: Role[], now = new Date()): Us
   permissions: permissionsForRoles(roles),
   isActive: row.isActive,
   mustChangePassword: row.mustChangePassword,
+  needsProfile: needsProfileFor(roles, row.id, completed),
   isLocked: row.lockedUntil !== null && row.lockedUntil.getTime() > now.getTime(),
   failedAttempts: row.failedAttempts,
   lastLoginAt: row.lastLoginAt?.toISOString() ?? null,
@@ -134,10 +162,14 @@ export const listUsers = async (
     db,
     rows.map((row) => row.id),
   );
+  const completed = await completedProfileIds(
+    db,
+    rows.map((row) => row.id),
+  );
   const now = new Date();
 
   return paginate(
-    rows.map((row) => toUserSummary(row, rolesByUser.get(row.id) ?? [], now)),
+    rows.map((row) => toUserSummary(row, rolesByUser.get(row.id) ?? [], now, completed)),
     totals[0]?.value ?? 0,
     { page: options.page, pageSize: options.pageSize },
   );
@@ -146,7 +178,8 @@ export const listUsers = async (
 export const getUserSummary = async (db: IdentityDb, id: string): Promise<UserSummary> => {
   const row = await findUserById(db, id);
   if (row === null) throw new NotFoundError('El usuario no existe');
-  return toUserSummary(row, await loadRoles(db, id));
+  const roles = await loadRoles(db, id);
+  return toUserSummary(row, roles, new Date(), await completedProfileIds(db, [id]));
 };
 
 const replaceRoles = async (
@@ -186,7 +219,7 @@ export const createUser = async (
   if (row === undefined) throw new NotFoundError('No se pudo crear el usuario');
 
   await replaceRoles(db, row.id, input.roles, actorId);
-  return toUserSummary(row, input.roles);
+  return toUserSummary(row, input.roles, new Date(), await completedProfileIds(db, [row.id]));
 };
 
 export interface UpdateUserResult {

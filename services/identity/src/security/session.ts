@@ -39,6 +39,8 @@ export interface SessionUser {
   username: string;
   fullName: string;
   mustChangePassword: boolean;
+  /** Un odontólogo sin perfil completo: se blinda igual que la contraseña temporal. */
+  needsProfile: boolean;
   isActive: boolean;
 }
 
@@ -71,6 +73,7 @@ const signFor = async (
       roles,
       permissions: permissionsForRoles(roles),
       mustChangePassword: user.mustChangePassword,
+      needsProfile: user.needsProfile,
       sid: sessionId,
     },
     { privateKey, ttlSeconds: ACCESS_TOKEN_TTL_SECONDS },

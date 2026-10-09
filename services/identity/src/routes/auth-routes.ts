@@ -22,7 +22,9 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { writeAuditEvent } from '../audit/audit-service.js';
-import { deviceTokens } from '../db/schema.js';
+import { needsDentistProfile } from '../clinic/identity-service.js';
+import type { IdentityDb } from '../db/client.js';
+import { deviceTokens, type UserRow } from '../db/schema.js';
 import type { IdentityServices } from '../services.js';
 import {
   clearRefreshCookie,
@@ -46,6 +48,7 @@ import {
   revokeAllSessions,
   revokeFamily,
   rotateSession,
+  type SessionUser,
   MAX_FAILED_ATTEMPTS,
   LOCK_MINUTES,
 } from '../security/session.js';
@@ -57,6 +60,7 @@ const toLoginResponse = (
     username: string;
     fullName: string;
     mustChangePassword: boolean;
+    needsProfile: boolean;
   },
   roles: Role[],
 ): LoginResponse => ({
@@ -69,7 +73,25 @@ const toLoginResponse = (
     roles,
     permissions: permissionsForRoles(roles),
     mustChangePassword: user.mustChangePassword,
+    needsProfile: user.needsProfile,
   },
+});
+
+/**
+ * La forma de usuario que necesitan `issueSession` y los guardias, con `needsProfile`
+ * ya resuelto contra la base (un odontólogo sin perfil completo).
+ */
+const toSessionUser = async (
+  db: IdentityDb,
+  row: UserRow,
+  roles: Role[],
+): Promise<SessionUser> => ({
+  id: row.id,
+  username: row.username,
+  fullName: row.fullName,
+  mustChangePassword: row.mustChangePassword,
+  needsProfile: await needsDentistProfile(db, row.id, roles),
+  isActive: row.isActive,
 });
 
 const lockedUntilMessage = (lockedUntil: Date): string => {
@@ -176,7 +198,8 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
 
     await registerSuccessfulLogin(db, user.id, now);
     const roles = await loadRoles(db, user.id);
-    const session = await issueSession(db, { user, roles, context, privateKey });
+    const sessionUser = await toSessionUser(db, user, roles);
+    const session = await issueSession(db, { user: sessionUser, roles, context, privateKey });
 
     setRefreshCookie(reply, config, session.refreshToken, session.refreshExpiresAt);
     await writeAuditEvent(db, {
@@ -187,7 +210,7 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
       after: { roles },
     });
 
-    return reply.status(200).send(toLoginResponse(session, user, roles));
+    return reply.status(200).send(toLoginResponse(session, sessionUser, roles));
   });
 
   /**
@@ -240,6 +263,7 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
         roles,
         permissions: permissionsForRoles(roles),
         mustChangePassword: false,
+        needsProfile: false,
         sid: device.id,
       },
       { privateKey },
@@ -271,15 +295,7 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
       privateKey,
       loadUser: async (userId) => {
         const row = await findUserById(db, userId);
-        return row === null
-          ? null
-          : {
-              id: row.id,
-              username: row.username,
-              fullName: row.fullName,
-              mustChangePassword: row.mustChangePassword,
-              isActive: row.isActive,
-            };
+        return row === null ? null : await toSessionUser(db, row, await loadRoles(db, userId));
       },
     });
 
@@ -314,6 +330,7 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
     }
 
     const roles = await loadRoles(db, user.id);
+    const sessionUser = await toSessionUser(db, user, roles);
     setRefreshCookie(reply, config, result.session.refreshToken, result.session.refreshExpiresAt);
     await writeAuditEvent(db, {
       action: 'refresh',
@@ -326,7 +343,7 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
       requestId: context.requestId,
     });
 
-    return reply.status(200).send(toLoginResponse(result.session, user, roles));
+    return reply.status(200).send(toLoginResponse(result.session, sessionUser, roles));
   });
 
   /** Cierra la sesión actual (idempotente: siempre responde 204). */
@@ -374,6 +391,7 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
         roles,
         permissions: permissionsForRoles(roles),
         mustChangePassword: user.mustChangePassword,
+        needsProfile: await needsDentistProfile(db, user.id, roles),
       },
       loginAt: (details.loginAt ?? user.lastLoginAt ?? new Date()).toISOString(),
       expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
@@ -426,9 +444,9 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
     const updated = await findUserById(db, user.id);
     if (updated === null) throw new UnauthorizedError('Tu sesión ya no es válida');
 
-    const session = await issueSession(db, { user: updated, roles, context, privateKey });
+    const sessionUser = await toSessionUser(db, updated, roles);
+    const session = await issueSession(db, { user: sessionUser, roles, context, privateKey });
     setRefreshCookie(reply, config, session.refreshToken, session.refreshExpiresAt);
-
     await writeAuditEvent(db, {
       action: 'password_changed',
       entityType: 'user',
@@ -441,7 +459,7 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
       changedFields: ['passwordHash'],
     });
 
-    return reply.status(200).send(toLoginResponse(session, updated, roles));
+    return reply.status(200).send(toLoginResponse(session, sessionUser, roles));
   });
 
   /** Alias de salud bajo el prefijo público para poder comprobarlo por el gateway. */

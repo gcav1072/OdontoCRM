@@ -64,6 +64,18 @@ export const identityEnvSchema = baseEnvSchema.extend({
 
   /** Secreto compartido con los demás servicios para las rutas internas. */
   INTERNAL_SERVICE_SECRET: z.string().min(16).optional(),
+
+  /**
+   * Raíz del **almacén compartido** (`./storage/patients` en desarrollo,
+   * `/var/lib/odontocrm/storage` en el servidor). Aquí se guarda el **logo** que sube
+   * el titular (ADR 0056): es el mismo almacén que usan patients, clinical y billing.
+   */
+  STORAGE_DIR: z.string().min(1).default('./storage/patients'),
+  /**
+   * Cifra en reposo el logo del consultorio (AES-256-GCM). Opcional: sin ella el
+   * almacén escribe en claro. Es la MISMA clave que patients, clinical y billing.
+   */
+  STORAGE_ENCRYPTION_KEY: z.string().min(1).optional(),
 });
 
 export type IdentityConfig = z.infer<typeof identityEnvSchema>;

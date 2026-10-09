@@ -14,10 +14,12 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
+    "@fastify/multipart": "^9.2.1",
     "@odontocrm/contracts": "*",
     "@odontocrm/db": "*",
     "@odontocrm/events": "*",
     "@odontocrm/kernel": "*",
+    "@odontocrm/storage": "*",
     "fastify": "^5.12.5"
   }
 }

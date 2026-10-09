@@ -82,6 +82,67 @@ export const userRoles = pgTable(
 );
 
 /**
+ * Perfil **profesional** de un odontólogo (ADR 0056): lo que firma sus documentos
+ * (MPPS, especialidad, colegiatura y correo de membrete). Una fila por usuario.
+ *
+ * `completedAt` es la marca del **primer llenado**: mientras sea `null`, el odontólogo
+ * no tiene permisos y solo puede completar su perfil (el gate del primer acceso, igual
+ * que `must_change_password`). El nombre que se imprime es el del usuario
+ * (`users.full_name`), no un campo aparte: una sola fuente para el nombre.
+ */
+export const dentistProfiles = pgTable(
+  'dentist_profiles',
+  {
+    userId: uuid('user_id')
+      .primaryKey()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    mpps: text('mpps').notNull(),
+    specialty: text('specialty').notNull(),
+    licenseNumber: text('license_number'),
+    contactEmail: text('contact_email'),
+    /** Cuándo se completó por primera vez (el gate del primer acceso). */
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('idx_dentist_profiles_completed').on(table.completedAt)],
+);
+
+/**
+ * Datos del consultorio para el membrete (una **sola fila**, patrón de tabla
+ * singleton: `id = 1`). Los llena el **titular** en su primer acceso y a partir de ahí
+ * son la fuente del membrete; `clinic.ts` queda como semilla y respaldo.
+ *
+ * El logo subido vive en el **almacén** (`logo_blob_key`); aquí solo queda su clave y
+ * su tipo MIME. La **marca** (paleta, tipografías, medidas) no está aquí: sigue siendo
+ * solo-código (`brand.ts`).
+ */
+export const clinicProfiles = pgTable(
+  'clinic_profiles',
+  {
+    id: integer('id').primaryKey().default(1),
+    name: text('name').notNull(),
+    legalName: text('legal_name'),
+    address: text('address').notNull(),
+    city: text('city'),
+    phones: text('phones')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    email: text('email'),
+    rif: text('rif'),
+    website: text('website'),
+    /** Clave del objeto en el almacén con el logo subido, o `null`. */
+    logoBlobKey: text('logo_blob_key'),
+    logoMime: text('logo_mime'),
+    /** Cuándo lo completó el titular por primera vez. */
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [check('chk_clinic_profiles_singleton', sql`${table.id} = 1`)],
+);
+
+/**
  * Tokens de refresco. Se guarda **solo el hash**: si alguien lee la base no puede
  * suplantar una sesión. `familyId` agrupa la cadena de rotaciones de una misma
  * sesión, de modo que detectar un reuso revoca toda la familia (ADR 0005).
@@ -189,6 +250,10 @@ export type ProcessedEventRow = typeof processedEvents.$inferSelect;
 export type UserRow = typeof users.$inferSelect;
 export type NewUserRow = typeof users.$inferInsert;
 export type UserRoleRow = typeof userRoles.$inferSelect;
+export type DentistProfileRow = typeof dentistProfiles.$inferSelect;
+export type NewDentistProfileRow = typeof dentistProfiles.$inferInsert;
+export type ClinicProfileRow = typeof clinicProfiles.$inferSelect;
+export type NewClinicProfileRow = typeof clinicProfiles.$inferInsert;
 export type RefreshTokenRow = typeof refreshTokens.$inferSelect;
 export type DeviceTokenRow = typeof deviceTokens.$inferSelect;
 export type AuditEventRow = typeof auditEvents.$inferSelect;

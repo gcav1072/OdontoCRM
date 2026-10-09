@@ -7,7 +7,10 @@ import {
   stopBoss,
 } from '@odontocrm/db';
 import { loadPrivateKey, startServer } from '@odontocrm/kernel';
+import { createDiskBlobStore, parseEncryptionKey } from '@odontocrm/storage';
 import { existsSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 import { handleDomainEvent } from './audit/event-consumer.js';
 import { jwtKeyPaths, loadIdentityConfig } from './config.js';
@@ -28,7 +31,17 @@ const main = async (): Promise<void> => {
 
   const database = createIdentityDatabase(config);
   const privateKey = await loadPrivateKey(privateKeyPath);
-  const app = await createIdentityServer({ config, database, privateKey });
+
+  // El logo que sube el titular va al **almacén compartido** (el mismo de patients,
+  // clinical y billing): no es un dato fiscal ni clínico, pero sí del consultorio.
+  const storageRoot = resolve(config.STORAGE_DIR);
+  await mkdir(storageRoot, { recursive: true });
+  const blobStore = createDiskBlobStore({
+    rootDir: storageRoot,
+    encryptionKey: parseEncryptionKey(config.STORAGE_ENCRYPTION_KEY),
+  });
+
+  const app = await createIdentityServer({ config, database, privateKey, blobStore });
 
   /**
    * Auditoría de otros servicios: identity **consume** los eventos de dominio
