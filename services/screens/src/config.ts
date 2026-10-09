@@ -1,5 +1,4 @@
 import { baseEnvSchema, loadConfig } from '@odontocrm/kernel';
-import { CLINIC } from '@odontocrm/contracts';
 import { z } from 'zod';
 
 export const screensEnvSchema = baseEnvSchema.extend({
@@ -19,8 +18,12 @@ export const screensEnvSchema = baseEnvSchema.extend({
   SCREEN_KEEPALIVE_SECONDS: z.coerce.number().int().min(5).max(120).default(20),
   /** Nombre del sillón que aparece en el llamado (un solo sillón, decisión 6). */
   CHAIR_LABEL: z.string().min(1).max(40).default('Consultorio 1'),
-  /** Nombre del consultorio que sale en las pantallas (por defecto, el editable). */
-  CLINIC_NAME: z.string().min(1).default(CLINIC.name),
+  /**
+   * Nombre del consultorio que sale en las pantallas. **No viene del código** (`CLINIC`
+   * es neutro): lo sirve el registro del titular vía identity
+   * (`aplicarDatosDelConsultorio`). Mientras no esté, la cabecera sale sin nombre.
+   */
+  CLINIC_NAME: z.string().min(1).optional(),
 
   /** Servicio de identidad: de ahí sale el nombre del consultorio (ADR 0056). */
   IDENTITY_URL: z.string().min(1).default('http://127.0.0.1:4001'),
