@@ -32,6 +32,7 @@ import { odontograms, toothFindingHistory, toothFindings } from './db/schema.js'
 import {
   MAX_HISTORY_LIMIT,
   clearSurface,
+  completeProcedure,
   deleteFinding,
   getHistory,
   getInternalSummary,
@@ -80,6 +81,8 @@ const actor = {
 const patientId = globalThis.crypto.randomUUID();
 const pacienteTemporal = globalThis.crypto.randomUUID();
 const pacienteSinBoca = globalThis.crypto.randomUUID();
+/** Boca propia de las pruebas de procedimientos: no altera los conteos de la principal. */
+const pacienteProcedimientos = globalThis.crypto.randomUUID();
 
 const hallazgo = (input: {
   toothNumber: number;
@@ -249,7 +252,7 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
         state: 'completado',
       }),
       hallazgo({ toothNumber: 26, surface: 'occlusal', condition: 'caries' }),
-      hallazgo({ toothNumber: 36, condition: 'ausente' }),
+      hallazgo({ toothNumber: 36, condition: 'ausente', state: 'completado' }),
       hallazgo({ toothNumber: 46, condition: 'corona', state: 'completado' }),
     ];
 
@@ -269,7 +272,7 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
       toothNumber: 36,
       surface: null,
       condition: 'ausente',
-      state: 'pendiente',
+      state: 'completado',
       resolvedAt: null,
     });
 
@@ -283,8 +286,8 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
       hasOdontogram: true,
       affectedTeeth: 4,
       conditionCounts: { caries: 2, restauracion: 1, ausente: 1, corona: 1 },
-      pendingCount: 3,
-      completedCount: 2,
+      pendingCount: 2,
+      completedCount: 3,
     });
 
     const historialInicial = await historial();
@@ -357,29 +360,33 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
   }, 40_000);
 
   it('cambiar el estado de un hallazgo queda como actualizado en el histórico y en la auditoría', async () => {
+    // La obturación admite pendiente y completado (la caries solo pendiente, spec §2):
+    // el cambio de estado se prueba sobre la obturación de la 16.
     const resultado = await recordFinding(
       handle.db,
       patientId,
       hallazgo({
         toothNumber: 16,
-        surface: 'occlusal',
-        condition: 'caries',
-        state: 'completado',
+        surface: 'vestibular',
+        condition: 'restauracion',
+        state: 'pendiente',
       }),
       actor,
     );
 
     expect(resultado.unchanged).toBe(false);
-    const caries = resultado.odontogram.findings['16']?.find((row) => row.condition === 'caries');
-    expect(caries?.state).toBe('completado');
+    const obturacion = resultado.odontogram.findings['16']?.find(
+      (row) => row.condition === 'restauracion',
+    );
+    expect(obturacion?.state).toBe('pendiente');
 
     const filas = (await historial()).filter((row) => row.event === 'actualizado');
     expect(filas).toHaveLength(1);
     expect(filas[0]).toMatchObject({
       toothNumber: 16,
-      surface: 'occlusal',
-      condition: 'caries',
-      state: 'completado',
+      surface: 'vestibular',
+      condition: 'restauracion',
+      state: 'pendiente',
       actorUsername: MARKER,
     });
 
@@ -388,15 +395,15 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
       current.some((row) => row.action === 'tooth_finding_updated'),
     );
     const actualizado = rows.find((row) => row.action === 'tooth_finding_updated');
-    expect(actualizado?.changedFields).toEqual(['pieza 16', 'oclusal']);
-    expect(actualizado?.summary).toContain('caries');
+    expect(actualizado?.changedFields).toEqual(['pieza 16', 'vestibular']);
+    expect(actualizado?.summary).toContain('obturación');
   }, 40_000);
 
   it('`ausente` manda sobre las caras (ADR 0032) sin borrar el dato', async () => {
     const resultado = await recordFinding(
       handle.db,
       patientId,
-      hallazgo({ toothNumber: 16, condition: 'ausente' }),
+      hallazgo({ toothNumber: 16, condition: 'ausente', state: 'completado' }),
       actor,
     );
 
@@ -623,7 +630,7 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
     expect(eliminados.length, await historialResumen()).toBe(2);
     expect(eliminados.map((row) => row.condition).sort()).toEqual(['ausente', 'caries']);
     const ausente = eliminados.find((row) => row.condition === 'ausente');
-    expect(ausente).toMatchObject({ toothNumber: 16, surface: null, state: 'pendiente' });
+    expect(ausente).toMatchObject({ toothNumber: 16, surface: null, state: 'completado' });
     expect(ausente?.reason).toContain('corrección de captura');
 
     await flushOutbox();
@@ -886,5 +893,158 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
       'corona',
     ]);
     expect(carasPrimero.odontogram.findings['43']?.map((row) => row.condition)).toEqual(['corona']);
+  }, 40_000);
+
+  /**
+   * El bug reportado: la pieza 13 quedó «extracción completada + implante», un estado
+   * imposible. El servicio lo rechaza por partida doble —el estado no es válido para la
+   * condición y la pareja no convive— y la base lo impide con su CHECK.
+   */
+  it('la pieza imposible del informe se rechaza: estados inválidos y extracción × implante', async () => {
+    // 1) Estados que la condición no admite (spec §2).
+    const extraccionCompletada = await recordFinding(
+      handle.db,
+      pacienteProcedimientos,
+      hallazgo({ toothNumber: 13, condition: 'extraccion_indicada', state: 'completado' }),
+      actor,
+    ).catch((error: unknown) => error);
+    expect(extraccionCompletada).toBeInstanceOf(ConflictError);
+    expect((extraccionCompletada as ConflictError).extensions['state']).toBe('completado');
+
+    expect(
+      await recordFinding(
+        handle.db,
+        pacienteProcedimientos,
+        hallazgo({
+          toothNumber: 13,
+          surface: 'occlusal',
+          condition: 'caries',
+          state: 'completado',
+        }),
+        actor,
+      ).catch((error: unknown) => error),
+    ).toBeInstanceOf(ConflictError);
+    expect(
+      await recordFinding(
+        handle.db,
+        pacienteProcedimientos,
+        hallazgo({ toothNumber: 13, condition: 'ausente', state: 'pendiente' }),
+        actor,
+      ).catch((error: unknown) => error),
+    ).toBeInstanceOf(ConflictError);
+
+    // 2) La pareja imposible: extracción indicada + implante (spec §3).
+    const extraccion = await recordFinding(
+      handle.db,
+      pacienteProcedimientos,
+      hallazgo({ toothNumber: 13, condition: 'extraccion_indicada', state: 'pendiente' }),
+      actor,
+    );
+    expect(extraccion.odontogram.findings['13']?.map((row) => row.condition)).toEqual([
+      'extraccion_indicada',
+    ]);
+
+    const implante = await recordFinding(
+      handle.db,
+      pacienteProcedimientos,
+      hallazgo({ toothNumber: 13, condition: 'implante', state: 'completado' }),
+      actor,
+    ).catch((error: unknown) => error);
+    expect(implante).toBeInstanceOf(ConflictError);
+    expect((implante as ConflictError).extensions['conflictingCondition']).toBe(
+      'extraccion_indicada',
+    );
+  }, 40_000);
+
+  /**
+   * Los procedimientos del ciclo de vida (spec §5): no cambian un estado, **mutan** el
+   * hallazgo de origen en el de destino, en una sola transacción.
+   */
+  it('los procedimientos mutan el hallazgo: extraer → ausente, obturar → obturación, rehabilitar → corona', async () => {
+    // Extraer: la extracción indicada cumplida deja la pieza **ausente**.
+    await recordFinding(
+      handle.db,
+      pacienteProcedimientos,
+      hallazgo({ toothNumber: 33, condition: 'extraccion_indicada' }),
+      actor,
+    );
+    const extraida = await completeProcedure(
+      handle.db,
+      pacienteProcedimientos,
+      { toothNumber: 33, procedure: 'extraer', surface: null, notes: null, sessionId: null },
+      actor,
+    );
+    expect(extraida.odontogram.findings['33']?.map((row) => [row.condition, row.state])).toEqual([
+      ['ausente', 'completado'],
+    ]);
+    // El origen no se borra: queda **resuelto** con su entrada en el histórico.
+    const origen = (await filasDePieza(33)).find((row) => row.condition === 'extraccion_indicada');
+    expect(origen?.resolvedAt).not.toBeNull();
+    expect(
+      (await historial()).some((row) => row.event === 'resuelto' && row.toothNumber === 33),
+    ).toBe(true);
+
+    // Obturar: la caries tratada pasa a obturación completada en la misma cara.
+    await recordFinding(
+      handle.db,
+      pacienteProcedimientos,
+      hallazgo({ toothNumber: 34, surface: 'occlusal', condition: 'caries' }),
+      actor,
+    );
+    const obturada = await completeProcedure(
+      handle.db,
+      pacienteProcedimientos,
+      { toothNumber: 34, procedure: 'obturar', surface: null, notes: null, sessionId: null },
+      actor,
+    );
+    expect(obturada.odontogram.findings['34']?.map((row) => [row.condition, row.state])).toEqual([
+      ['restauracion', 'completado'],
+    ]);
+
+    // Rehabilitar: exige un implante vigente; resuelve la ausencia y pone la corona.
+    await recordFinding(
+      handle.db,
+      pacienteProcedimientos,
+      hallazgo({ toothNumber: 37, condition: 'ausente', state: 'completado' }),
+      actor,
+    );
+    const sinImplante = await completeProcedure(
+      handle.db,
+      pacienteProcedimientos,
+      { toothNumber: 37, procedure: 'rehabilitar', surface: null, notes: null, sessionId: null },
+      actor,
+    ).catch((error: unknown) => error);
+    expect(sinImplante).toBeInstanceOf(ConflictError);
+    expect((sinImplante as ConflictError).extensions['requires']).toBe('implante');
+
+    await recordFinding(
+      handle.db,
+      pacienteProcedimientos,
+      hallazgo({ toothNumber: 37, condition: 'implante', state: 'completado' }),
+      actor,
+    );
+    const rehabilitada = await completeProcedure(
+      handle.db,
+      pacienteProcedimientos,
+      { toothNumber: 37, procedure: 'rehabilitar', surface: null, notes: null, sessionId: null },
+      actor,
+    );
+    expect(
+      (rehabilitada.odontogram.findings['37'] ?? []).map((row) => row.condition).sort(),
+    ).toEqual(['corona', 'implante']);
+  }, 40_000);
+
+  /**
+   * La base es el último guardián: aunque alguien escriba a mano saltándose el
+   * servicio, el CHECK de estado rechaza la fila imposible.
+   */
+  it('la base rechaza un estado imposible escrito a mano (CHECK)', async () => {
+    await expect(
+      handle.pool.query(
+        `insert into tooth_findings (odontogram_id, patient_id, tooth_number, surface, condition, state)
+         values ($1, $2, 12, null, 'extraccion_indicada', 'completado')`,
+        [odontogramId, patientId],
+      ),
+    ).rejects.toThrow(/chk_tooth_findings_state_allowed/);
   }, 40_000);
 });

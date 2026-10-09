@@ -92,6 +92,7 @@
     "check-secrets": "node tools/check-secrets.mjs",
     "marca:css": "node tools/generar-marca.mjs",
     "recifrar:almacen": "node tools/recifrar-almacen.mjs",
+    "reparar:odontograma": "node tools/reparar-odontograma.mjs",
     "verify:backup": "node tools/verify-backup.mjs",
     "db:bootstrap": "node infra/db/bootstrap.mjs",
     "db:migrate": "node tools/migrate-all.mjs",

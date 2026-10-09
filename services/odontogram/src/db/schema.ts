@@ -116,6 +116,19 @@ export const toothFindings = pgTable(
       sql`${table.condition} in (${sqlLiteralList(TOOTH_CONDITIONS)})`,
     ),
     check('chk_tooth_findings_state', sql`${table.state} in (${sqlLiteralList(CLINICAL_STATES)})`),
+    // El **estado** tiene que ser válido para la condición (spec anexo ADR 0032 §2),
+    // espejo de `isStateAllowed`: la caries y la extracción indicada solo existen
+    // `pendiente`, la pieza ausente solo `completado`, y los tratamientos admiten las
+    // dos. Es el último guardián: aunque el servicio y el contrato fallen, la base no
+    // admite la pieza imposible del informe de fallo («extracción completada + implante»).
+    check(
+      'chk_tooth_findings_state_allowed',
+      sql`(
+        (${table.condition} in ('caries', 'extraccion_indicada') and ${table.state} = 'pendiente')
+        or (${table.condition} = 'ausente' and ${table.state} = 'completado')
+        or ${table.condition} in ('restauracion', 'corona', 'implante', 'endodoncia')
+      )`,
+    ),
     // Una condición de cara no puede guardarse como pieza completa y al revés.
     check(
       'chk_tooth_findings_scope',

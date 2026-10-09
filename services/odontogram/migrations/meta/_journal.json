@@ -15,6 +15,13 @@
       "when": 1791346514231,
       "tag": "0001_ambiguous_mauler",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791585787543,
+      "tag": "0002_youthful_richard_fisk",
+      "breakpoints": true
     }
   ]
 }
