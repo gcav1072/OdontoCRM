@@ -4,6 +4,42 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Interfaz] — La dentición temporal a la vista y la jornada, en pestañas · 2026-10-09
+
+Dos mejoras de pantalla que comparten lo mismo: la interfaz enseñaba de golpe lo que se
+consulta por partes.
+
+**Uno: el odontograma no dejaba registrar la boca mixta.** El gráfico dibuja las piezas de
+leche (51–85) solo cuando la dentición es `mixta`, y la dentición se **deriva de los
+hallazgos** ([ADR 0051](docs/adr/0051-denticion-mixta-en-el-odontograma.md)): para que la
+boca fuera mixta había que haber marcado ya una pieza temporal, que es justo lo que no se
+podía hacer sin verla. La casilla **«Activar dentición temporal»** rompe el círculo —fuerza
+la dentición `mixta` en el gráfico— y arranca marcada sola si la boca ya lo es. No se
+persiste, y la ve también la secretaría, porque consultar la boca mixta es leer. En el
+**papel**, la banda temporal solo se imprime si hay algún hallazgo en piezas de leche, en el
+odontograma del navegador **y** en el dossier del expediente (`hasPrimaryFindings`, del
+contrato): una banda vacía se leería como una captura a medias.
+
+**Dos: `/programacion` apilaba cinco cuadros en una columna.** Ahora sus secciones van en
+**pestañas** —Jornada (cupo + franjas), Citas y Cancelaciones— con la cola de solicitudes
+fija a la izquierda, y la barra superior de `/flujo` baja de cuatro pisos a dos (los atajos
+entran en el recuadro del paciente). El patrón de pestañas vive en un `PanelTabs` genérico
+con el ARIA completo.
+
+De paso, dos arreglos que destapó la prueba de extremo a extremo: la **identidad del
+consultorio** se pedía **sin sesión** (su proveedor estaba montado fuera de `AuthProvider`)
+y ensuciaba el arranque con un 401 —ahora se pide con sesión—, y **`/secretaria`** repetía
+«Secretaría del día» en dos encabezados, que el lector de pantalla anuncia por duplicado.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `hasPrimaryFindings` (`packages/contracts`) | ¿Hay algún hallazgo en una pieza de leche? Lo deciden igual el papel del navegador y el dossier |
+| Casilla «Activar dentición temporal» (`OdontogramPanel`) | Fuerza la dentición `mixta` en el gráfico; no se persiste |
+| `PanelTabs` (`apps/web/src/components`) | Pestañas accesibles (`tablist`/`tab`, roving tabindex, flechas/Inicio/Fin) |
+| Pestañas de `/programacion` | Jornada · Citas · Cancelaciones; la cola, fija a la izquierda |
+| Barra de `/flujo` | Dos bloques: día y paciente (con los atajos dentro) |
+| `lib/queryKeys.ts` | La clave de la identidad, en un módulo hoja para no crear un ciclo de imports |
+
 ## [Identidad] — Dos tipografías en los imprimibles y la identidad del consultorio en la base · 2026-10-08
 
 Dos cambios que van juntos porque se tocó el mismo camino (el membrete de todos los imprimibles).
