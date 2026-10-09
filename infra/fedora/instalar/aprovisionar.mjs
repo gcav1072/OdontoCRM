@@ -480,6 +480,11 @@ const extrasDe = (nombre) => {
         COOKIE_SECURE: 'true',
         JWT_PRIVATE_KEY_PATH: join(CLAVES, 'jwt-private.pem'),
         JWT_PUBLIC_KEY_PATH: join(CLAVES, 'jwt-public.pem'),
+        // El logo que sube el titular va al almacén compartido (ADR 0056): sin
+        // `STORAGE_DIR` el servicio escribiría en `./storage/patients` relativo, que bajo
+        // `ProtectSystem=strict` es de solo lectura y la subida fallaría con «permiso denegado».
+        STORAGE_DIR: `${opciones.dataDir}/storage`,
+        STORAGE_ENCRYPTION_KEY: claves.almacen,
       };
     case 'patients':
       return {

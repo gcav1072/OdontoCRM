@@ -92,7 +92,7 @@ const LOS_PONE_OTRO_PASO = new Set([
  */
 const CRITICAS = {
   '*': ['NODE_ENV', 'TZ', 'TEST_MODE', 'ALLOW_TEST_MODE'],
-  identity: ['WEB_ORIGIN'],
+  identity: ['WEB_ORIGIN', 'STORAGE_DIR'],
   patients: ['DATABASE_URL', 'EVENTS_DATABASE_URL', 'STORAGE_DIR', 'MAX_FILE_BYTES'],
   clinical: [
     'DATABASE_URL',
