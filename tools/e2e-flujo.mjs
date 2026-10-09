@@ -31,7 +31,7 @@ import { chromium } from 'playwright';
 
 const WEB = process.env['E2E_WEB_URL'] ?? 'http://127.0.0.1:5173';
 const GATEWAY = process.env['E2E_GATEWAY_URL'] ?? 'http://127.0.0.1:8090';
-const USERNAME = process.env['E2E_USERNAME'] ?? 'egomez';
+const USERNAME = process.env['E2E_USERNAME'] ?? 'prueba';
 const PASSWORD = process.env['E2E_PASSWORD'] ?? 'consultorio-odontocrm-2026';
 const NEW_PASSWORD = process.env['E2E_NEW_PASSWORD'] ?? 'flujo-odontocrm-2026';
 const MARK = 'PRUEBA E2E FLUJO';

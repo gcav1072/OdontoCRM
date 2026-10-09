@@ -75,7 +75,7 @@ else
       # RUNBOOK, que es donde se mantiene al día la lista de cuentas (un odontólogo nuevo
       # es otra clave).
       detalle 'siémbralos —en producción el seed EXIGE la clave de CADA cuenta en el entorno—:'
-      detalle "    sudo SEED_PASSWORD_ADMIN='…' SEED_PASSWORD_RECEPCION='…' SEED_PASSWORD_EGOMEZ='…' \\"
+      detalle "    sudo SEED_PASSWORD_ADMIN='…' SEED_PASSWORD_RECEPCION='…' SEED_PASSWORD_PRUEBA='…' \\"
       detalle '      odontocrm con-entorno identity -- node services/identity/dist/seed.js'
       detalle "receta completa (una clave por odontólogo de CLINIC.dentists): $CODE_DIR/infra/fedora/RUNBOOK.md §5"
     fi

@@ -77,7 +77,7 @@ npm run env:check        # ¿a algún .env le falta una clave de su plantilla?
 npm run db:bootstrap     # una base y un rol por servicio + la cola de eventos compartida (idempotente)
 npm run keys:generate    # claves EdDSA del JWT (una vez por instalación; .keys/ está ignorado)
 npm run db:migrate       # migraciones de los 9 servicios
-npm run seed:users       # admin, recepcion y egomez con contraseña temporal
+npm run seed:users       # admin, recepcion y una cuenta de odontólogo de prueba (`prueba`) con contraseña temporal
 npm run seed:demo        # 200 pacientes ficticios (cédulas 90.000.000+)
 npm run seed:agenda -- --reset
 

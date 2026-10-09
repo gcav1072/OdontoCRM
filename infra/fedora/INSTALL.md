@@ -1011,42 +1011,29 @@ para que no se olvide nada (`npm run fedora:check`, dentro de `npm run verify`):
 
 ## 8.0 Los datos del consultorio (antes de la primera puesta en marcha)
 
-La identidad de la clínica —nombre, dirección, RIF, teléfonos y **odontólogos con su
-MPPS**— vive en el código versionado:
-
-    packages/contracts/src/clinic.ts
-
-Trae los valores de una clínica concreta. **En otra clínica hay que cambiarlos** y
-recompilar, porque con ellos se generan:
+La identidad de la clínica —nombre, dirección, RIF, teléfonos, logo y **odontólogos con su
+MPPS**— **no vive en el código ni en variables de entorno**: la completa el **odontólogo
+titular** en su primer acceso, desde la aplicación, y se guarda en la base de identity
+(`clinic_profiles`, ADR 0056). Con ella se generan:
 
 - el membrete y los datos del profesional en los **récipes A5** y en la historia clínica,
 - el **QR de verificación** de cada récipe (apunta a `PUBLIC_APP_URL`),
-- los avisos del bot y los encabezados de las pantallas de sala,
-- y el **usuario clínico sembrado** (`npm run seed:users` crea una cuenta por odontólogo de
-  esa lista: hoy `egomez`).
+- los avisos del bot y los encabezados de las pantallas de sala.
 
-```bash
-# 1) Editar los datos reales de la clínica
-$EDITOR packages/contracts/src/clinic.ts
+`packages/contracts/src/clinic.ts` queda como **respaldo neutro, sin datos personales**: mientras
+el consultorio no esté configurado, el `.ics` y los avisos que lo necesiten se **difieren** (no
+salen a medias) y el membrete avisa de lo que falta (`letterheadMissingFields`).
 
-# 2) Recompilar (los servicios leen el paquete compilado)
-npm run build
+**El servidor crea solo la cuenta `admin`** (paso 5 del instalador). Los odontólogos se dan de alta
+desde `/usuarios` y el primero —el **titular**— completa el consultorio en su primer acceso. En
+desarrollo, `npm run seed:users` siembra además `recepcion` y una cuenta **de prueba**
+(«Odontólogo prueba», usuario `prueba`).
 
-# 3) Volver a sembrar los usuarios para que aparezcan los odontólogos nuevos
-npm run seed:users
-```
-
-> Sin recompilar, `clinic.ts` admite sobrescribir el **nombre, la dirección y el correo**
-> con `CLINIC_NAME`, `CLINIC_ADDRESS` y `CLINIC_EMAIL` en el entorno del servicio
-> (`/etc/odontocrm/<servicio>.env`). Los **odontólogos** (y su MPPS) solo se cambian en el
-> código: están en la lista y se siembran como usuarios.
-
-**Apúntalo en la lista de comprobación** (§17.3): una instalación con los datos de otra
-clínica imprime récipes con el membrete equivocado.
+> **Apúntalo en la lista de comprobación** (§17.3): una instalación con el consultorio sin
+> configurar imprime documentos incompletos y **no envía** los avisos de cita.
 
 > El paso a paso completo —marca impresa (colores, fuentes, logo y **marca de agua**), cuentas
-> del personal y las **tres vías** de producción (editar y desplegar · editar en el servidor ·
-> sobrescribir por entorno)— está en [`docs/IDENTIDAD_Y_DATOS.md`](../../docs/IDENTIDAD_Y_DATOS.md).
+> del personal y el flujo del titular— está en [`docs/IDENTIDAD_Y_DATOS.md`](../../docs/IDENTIDAD_Y_DATOS.md).
 
 ---
 
