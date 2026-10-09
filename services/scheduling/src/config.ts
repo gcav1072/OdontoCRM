@@ -1,7 +1,5 @@
 import { baseEnvSchema, loadConfig } from '@odontocrm/kernel';
 import {
-  CLINIC,
-  clinicFullAddress,
   DEFAULT_DAY_CAPACITY,
   DEFAULT_NO_SHOW_GRACE_MINUTES,
   DEFAULT_SLOT_MINUTES,
@@ -33,14 +31,18 @@ export const schedulingEnvSchema = baseEnvSchema.extend({
     .min(0)
     .max(240)
     .default(DEFAULT_NO_SHOW_GRACE_MINUTES),
-  /** Dirección que aparece en el aviso al paciente (por defecto, la del consultorio). */
-  CLINIC_ADDRESS: z.string().min(1).default(clinicFullAddress()),
-  CLINIC_NAME: z.string().min(1).default(CLINIC.name),
+  /**
+   * Nombre y dirección del consultorio para el aviso al paciente. **No vienen del
+   * código** (`CLINIC` es neutro): los sirve el registro del titular vía identity
+   * (`aplicarDatosDelConsultorio`). Mientras no estén, quedan sin valor y el aviso se
+   * **difiere** hasta que el consultorio esté configurado.
+   */
+  CLINIC_ADDRESS: z.string().min(1).optional(),
+  CLINIC_NAME: z.string().min(1).optional(),
 
   /**
-   * Servicio de identidad: al arrancar (y cada pocos minutos) se lee de ahí el nombre y la
-   * dirección del consultorio para el aviso (ADR 0056), con `CLINIC_*` del entorno por
-   * encima. Sin él, se quedan los de `CLINIC`.
+   * Servicio de identidad: al arrancar (y cada pocos minutos) se lee de ahí el nombre y
+   * la dirección del consultorio para el aviso (ADR 0056).
    */
   IDENTITY_URL: z.string().min(1).default('http://127.0.0.1:4001'),
 

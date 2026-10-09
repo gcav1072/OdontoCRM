@@ -57,7 +57,7 @@ export const buildAppointmentMessage = (
     paciente: appointment.patientName,
     fecha: formatDateVe(appointment.appointmentDate),
     hora: formatTime12h(startTime),
-    lugar: config.CLINIC_ADDRESS,
+    lugar: config.CLINIC_ADDRESS ?? '',
     ticket: ticket ?? '—',
   });
 
@@ -70,7 +70,7 @@ export const buildAppointmentMessage = (
     date: appointment.appointmentDate,
     startTime,
     endTime: toHm(appointment.endTime),
-    place: config.CLINIC_ADDRESS,
+    place: config.CLINIC_ADDRESS ?? '',
     subject: APPOINTMENT_CONFIRMATION_TEMPLATE.subject,
     body,
     channel: 'telegram',

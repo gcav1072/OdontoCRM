@@ -157,6 +157,8 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
       DATABASE_URL: schedulingUrl,
       EVENTS_DATABASE_URL: eventsUrl,
       LOG_LEVEL: 'silent',
+      CLINIC_NAME: 'Consultorio de prueba',
+      CLINIC_ADDRESS: 'Calle de prueba 123',
     });
     schedulingHandle = createSchedulingDatabase(config);
     identityHandle = createIdentityDatabase(
