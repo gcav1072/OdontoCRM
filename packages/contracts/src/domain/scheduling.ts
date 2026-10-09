@@ -439,6 +439,50 @@ export const appointmentCancellationFiltersSchema = z.object({
 
 export type AppointmentCancellationFilters = z.infer<typeof appointmentCancellationFiltersSchema>;
 
+/* ── Novedades de citas (feed de /inicio, ADR 0057) ────────────────────────── */
+
+/**
+ * Lo que hace el **paciente** con su cita, que es lo que se cuenta como novedad:
+ *
+ *  - `confirmada`: le dieron cita y confirmó (sigue en pie);
+ *  - `cancelada`: le dieron cita y canceló **sin confirmar antes**;
+ *  - `confirmada_y_cancelada`: confirmó primero y luego se arrepintió.
+ *
+ * El tercero se distingue del segundo por la **fecha de confirmación** de la cita:
+ * es el caso «dio cita, aceptó, me arrepentí» del plan.
+ */
+export const APPOINTMENT_ACTIVITY_KINDS = [
+  'confirmada',
+  'cancelada',
+  'confirmada_y_cancelada',
+] as const;
+export type AppointmentActivityKind = (typeof APPOINTMENT_ACTIVITY_KINDS)[number];
+
+export const appointmentActivityItemSchema = z.object({
+  id: z.uuid(),
+  appointmentId: z.uuid(),
+  kind: z.enum(APPOINTMENT_ACTIVITY_KINDS),
+  patientId: z.uuid(),
+  patientName: z.string(),
+  patientDocument: z.string().nullable(),
+  /** Fecha y hora de la cita (no del evento): es lo que le importa a quien mira). */
+  date: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+  /** Canal por el que actuó el paciente (`telegram`/`whatsapp`). */
+  channel: z.enum(CHANNELS),
+  /** Cuándo ocurrió (confirmación o cancelación). */
+  occurredAt: z.string(),
+});
+
+export type AppointmentActivityItem = z.infer<typeof appointmentActivityItemSchema>;
+
+export const appointmentActivityFiltersSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+export type AppointmentActivityFilters = z.infer<typeof appointmentActivityFiltersSchema>;
+
 /**
  * Confirmación de la cita ([ADR 0052](../../../docs/adr/0052-confirmacion-de-citas-por-el-paciente.md)).
  *

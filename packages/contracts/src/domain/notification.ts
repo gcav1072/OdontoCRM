@@ -203,6 +203,11 @@ export const NOTIFICATION_TEMPLATE_KEYS = [
   'cita_cancelada_paciente',
   /** Cuando intenta cancelar una cita que ya no se puede cancelar por el bot. */
   'cita_no_cancelable',
+  /**
+   * Cuando intenta cancelar una cita **confirmada** dentro del corte de días que fija
+   * la clínica (ADR 0057): por chat ya no se puede, tiene que llamar al consultorio.
+   */
+  'cita_cancelacion_fuera_de_plazo',
   /** Cuando escribe «confirmar» y no tiene ninguna cita próxima que confirmar. */
   'sin_citas',
 ] as const;
@@ -420,6 +425,16 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     placeholders: ['estado'],
   },
   {
+    key: 'cita_cancelacion_fuera_de_plazo',
+    channel: 'telegram',
+    subject: null,
+    body:
+      '{paciente}: como ya nos confirmaste que vendrías, tu cita del {fecha} ya no se puede cancelar por aquí ' +
+      '(nos avisan con menos de {dias} días).\n' +
+      'Llama al consultorio, por favor, y lo vemos juntos.',
+    placeholders: ['paciente', 'fecha', 'dias'],
+  },
+  {
     key: 'sin_citas',
     channel: 'telegram',
     subject: null,
@@ -585,6 +600,42 @@ export const botStatusSchema = z.object({
 });
 
 export type BotStatus = z.infer<typeof botStatusSchema>;
+
+/* ── Política de cancelación del paciente (ADR 0057) ───────────────────────── */
+
+/**
+ * Configuración editable de la clínica sobre la cancelación por el **paciente**
+ * (ADR 0057). Vive en una sola fila de `notification_settings` y la ven y editan
+ * **solo el `admin` y el odontólogo** (`scheduling:cancel_policy`).
+ *
+ * `patientCancelCutoffDays` es el corte: una cita **ya confirmada** no se puede
+ * cancelar por el bot cuando le faltan **esos días o menos**. En `0` la regla queda
+ * **apagada** y el paciente cancela como siempre; es el valor por defecto a
+ * propósito, para que activar la guardia sea una decisión explícita del consultorio.
+ */
+export const MAX_PATIENT_CANCEL_CUTOFF_DAYS = 30;
+
+export const notificationSettingsSchema = z.object({
+  /** Corte en días (0 = sin corte). */
+  patientCancelCutoffDays: z.number().int().min(0).max(MAX_PATIENT_CANCEL_CUTOFF_DAYS),
+  updatedAt: z.string().nullable(),
+  updatedByUserId: z.uuid().nullable(),
+});
+
+export type NotificationSettings = z.infer<typeof notificationSettingsSchema>;
+
+export const notificationSettingsInputSchema = z.object({
+  patientCancelCutoffDays: z
+    .number()
+    .int()
+    .min(0, 'No puede ser negativo')
+    .max(
+      MAX_PATIENT_CANCEL_CUTOFF_DAYS,
+      `Como mucho ${String(MAX_PATIENT_CANCEL_CUTOFF_DAYS)} días`,
+    ),
+});
+
+export type NotificationSettingsInput = z.infer<typeof notificationSettingsInputSchema>;
 
 /* ── Sección de citas de la bandeja (ADR 0052) ─────────────────────────────── */
 

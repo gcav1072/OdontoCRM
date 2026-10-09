@@ -42,6 +42,14 @@ describe('permisos por rol', () => {
     expect(hasPermission(['odontologo'], 'scheduling:overbook')).toBe(false);
   });
 
+  it('la política de cancelación del paciente es del admin y del odontólogo (ADR 0057)', () => {
+    // El corte de días lo deciden quien lleva la clínica; el mostrador no lo cambia.
+    expect(hasPermission(['admin'], 'scheduling:cancel_policy')).toBe(true);
+    expect(hasPermission(['odontologo'], 'scheduling:cancel_policy')).toBe(true);
+    expect(hasPermission(['secretario'], 'scheduling:cancel_policy')).toBe(false);
+    expect(hasPermission(['pantalla'], 'scheduling:cancel_policy')).toBe(false);
+  });
+
   it('odontologo registra y edita pacientes, pero no los borra (2026-10-03)', () => {
     expect(hasPermission(['odontologo'], 'patients:read')).toBe(true);
     expect(hasPermission(['odontologo'], 'patients:write')).toBe(true);

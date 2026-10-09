@@ -20,6 +20,12 @@ export const PERMISSIONS = [
   'scheduling:notify',
   /** Autorizar sobrecupo en un día completo: solo `admin` (plan §13, Fase 3). */
   'scheduling:overbook',
+  /**
+   * Editar la **política de cancelación del paciente** (ADR 0057): el corte de días
+   * que se aplica a una cita ya confirmada. La ven y la editan **solo el `admin` y el
+   * odontólogo**; la secretaría atiende el mostrador y no decide esta regla.
+   */
+  'scheduling:cancel_policy',
   'screens:manage',
   'screens:display',
   'clinical:read',
@@ -98,6 +104,11 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     'patients:edit_sensitive',
     'scheduling:read',
     'scheduling:write',
+    /**
+     * **Política de cancelación del paciente** (ADR 0057): el odontólogo fija el corte
+     * de días igual que el `admin`. La secretaría no: no es una decisión de mostrador.
+     */
+    'scheduling:cancel_policy',
     'screens:display',
     'clinical:read',
     'clinical:write',
