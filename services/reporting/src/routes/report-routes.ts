@@ -47,7 +47,7 @@ const safeEquals = (left: string, right: string): boolean => {
  *    protegidos con el token compartido (el gateway no los publica).
  */
 export const registerReportRoutes = (app: FastifyInstance, services: ReportingServices): void => {
-  const { db, config, pdf } = services;
+  const { db, config, pdf, letterheadLookup } = services;
   const read = requirePermission('reports:read');
   const clinical = requirePermission('reports:clinical');
 
@@ -129,7 +129,7 @@ export const registerReportRoutes = (app: FastifyInstance, services: ReportingSe
 
       let cuerpo: Buffer;
       try {
-        cuerpo = await pdf.render(await reportHtml(documento));
+        cuerpo = await pdf.render(await reportHtml(documento, await letterheadLookup()));
       } catch (error) {
         request.log.error({ err: error, key }, 'No se pudo generar el PDF del reporte');
         throw new ServiceUnavailableError(

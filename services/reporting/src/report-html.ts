@@ -6,9 +6,10 @@ import {
   brandWatermarkHtml,
   clinicContactLine,
   clinicFullAddress,
+  type LetterheadSnapshot,
   type ReportDocument,
 } from '@odontocrm/contracts';
-import { readImageDataUri } from '@odontocrm/kernel';
+import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
 /**
  * Plantilla HTML imprimible del reporte: es lo que Chromium convierte en PDF
@@ -59,7 +60,8 @@ const fechaHora = (iso: string): string => {
   return `${valor('day')}/${valor('month')}/${valor('year')} ${valor('hour')}:${valor('minute')}`;
 };
 
-const estilos = `
+const estilos = (fontFaces: string): string => `
+  ${fontFaces}
   ${brandStyles()}
   ${brandWatermarkCss()}
   @page { size: A4 landscape; margin: 10mm 12mm; }
@@ -69,10 +71,10 @@ const estilos = `
   .letterhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; border-bottom: 0.6mm solid var(--brand-accent); padding-bottom: 3mm; }
   .letterhead-brand { display: flex; align-items: flex-start; gap: 6mm; }
   .logo { height: var(--brand-logo-height-mm); width: auto; }
-  .clinic-name { font-size: 14pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
+  .clinic-name { font-family: var(--brand-font-doc-title); font-size: 14pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
   .clinic-line { font-size: 8pt; color: var(--brand-ink-muted); margin: 0.6mm 0 0; }
   .doc-meta { text-align: right; font-size: 8pt; color: var(--brand-ink-muted); min-width: 60mm; }
-  h1 { font-size: 13pt; margin: 4mm 0 0; color: var(--brand-primary); }
+  h1 { font-family: var(--brand-font-doc-title); font-size: 13pt; margin: 4mm 0 0; color: var(--brand-primary); }
   .subtitle { font-size: 8.5pt; color: var(--brand-ink-muted); margin: 1mm 0 0; }
   .kpis { display: flex; flex-wrap: wrap; gap: 3mm; margin-top: 4mm; }
   .kpi { border: 0.25mm solid var(--brand-line); border-radius: 1.5mm; padding: 2mm 3mm; min-width: 34mm; flex: 1 1 34mm; }
@@ -96,13 +98,18 @@ const estilos = `
  * HTML completo del reporte. Se devuelve como cadena (no se escribe en disco): el
  * navegador lo recibe con `page.setContent` y de ahí sale el PDF.
  */
-export const reportHtml = async (documento: ReportDocument): Promise<string> => {
-  const logo = await readImageDataUri(BRAND.logoPath);
-  const marcaDeAgua = brandWatermarkHtml(await readImageDataUri(BRAND.watermarkPath));
-  const contactos = clinicContactLine(CLINIC);
+export const reportHtml = async (
+  documento: ReportDocument,
+  letterhead?: LetterheadSnapshot | undefined,
+): Promise<string> => {
+  // La identidad del consultorio: la de la base (ADR 0056) o el respaldo del código.
+  const consultorio = letterhead?.clinic ?? CLINIC;
+  const logo = letterhead?.logoDataUri ?? (await readImageDataUri(BRAND.logoPath));
+  const marcaDeAgua = brandWatermarkHtml(logo ?? (await readImageDataUri(BRAND.watermarkPath)));
+  const contactos = clinicContactLine(consultorio);
   const lineasMembrete = [
-    clinicFullAddress(CLINIC),
-    CLINIC.rif === null ? null : `RIF ${CLINIC.rif}`,
+    clinicFullAddress(consultorio),
+    consultorio.rif === null ? null : `RIF ${consultorio.rif}`,
     contactos === '' ? null : contactos,
   ]
     .filter((linea): linea is string => linea !== null)
@@ -159,7 +166,7 @@ export const reportHtml = async (documento: ReportDocument): Promise<string> => 
 <head>
 <meta charset="utf-8">
 <title>${escapeHtml(documento.title)}</title>
-<style>${estilos}</style>
+<style>${estilos(await brandFontFaceCss())}</style>
 </head>
 <body>
   ${marcaDeAgua}
@@ -168,7 +175,7 @@ export const reportHtml = async (documento: ReportDocument): Promise<string> => 
     <div class="letterhead-brand">
       ${logo === null ? '' : `<img class="logo" src="${logo}" alt="Logo del consultorio">`}
       <div>
-        <p class="clinic-name">${escapeHtml(CLINIC.name)}</p>
+        <p class="clinic-name">${escapeHtml(consultorio.name)}</p>
         ${lineasMembrete}
       </div>
     </div>

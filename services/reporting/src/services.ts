@@ -1,3 +1,4 @@
+import type { LetterheadLookup } from '@odontocrm/kernel';
 import type pg from 'pg';
 
 import type { ReportingConfig } from './config.js';
@@ -11,6 +12,8 @@ export interface ReportingServices {
   pool: pg.Pool;
   /** Chromium del PDF del reporte (un navegador por proceso). */
   pdf: PdfRenderer;
+  /** La identidad del consultorio (ADR 0056), para el membrete del reporte. */
+  letterheadLookup: LetterheadLookup;
   /** Último error del consumidor o del refresco, para el diagnóstico. */
   lastError: string | null;
 }

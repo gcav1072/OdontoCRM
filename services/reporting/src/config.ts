@@ -14,6 +14,13 @@ export const reportingEnvSchema = baseEnvSchema.extend({
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
 
   /**
+   * Servicio de identidad: de ahí se lee la **identidad del consultorio** para el
+   * membrete del reporte (ADR 0056). Sin ella (o sin secreto interno) se usa el respaldo
+   * del código (`CLINIC`).
+   */
+  IDENTITY_URL: z.string().min(1).default('http://127.0.0.1:4001'),
+
+  /**
    * Hora local (0–23, zona del consultorio) del **refresco nocturno** de las vistas
    * materializadas. A las 3 de la madrugada no hay nadie mirando el tablero, así
    * que el `REFRESH` no compite con las consultas de la mañana.
