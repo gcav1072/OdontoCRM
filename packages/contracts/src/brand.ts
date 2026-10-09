@@ -1,7 +1,8 @@
 /**
  * Identidad de **marca** del consultorio: la única fuente de la paleta, las
- * tipografías y el logo que comparten la interfaz y los documentos impresos
- * (récipe A5, reporte A4, dossier del expediente, factura y recibo).
+ * tipografías (una para los **títulos** y otra para el **cuerpo** de los documentos)
+ * y el logo que comparten la interfaz y los documentos impresos (récipe A5, reporte
+ * A4, dossier del expediente, factura y recibo).
  *
  * **¿Por qué aquí y no en un CSS suelto?** Porque hay **dos** consumidores que no
  * comparten forma de cargar hojas de estilo:
@@ -30,12 +31,46 @@ export interface BrandTypography {
   uiSans: string;
   /** Pila monoespaciada (códigos, números de documento). */
   uiMono: string;
-  /** Pila de los documentos del servidor (récipe, reporte, dossier, factura). */
-  documentSans: string;
-  /** Cuerpo del documento; «13pt» es el título y «7,5pt» lo menudo (pie, notas). */
+  /**
+   * Pila de los **títulos** de los documentos (nombre del consultorio, «RÉCIPE»,
+   * encabezados de sección): la voz de la marca sobre el papel. Los títulos llevan
+   * la clase `.brand-title`, que es la que la aplica.
+   */
+  documentTitleSans: string;
+  /**
+   * Pila del **cuerpo** de los documentos (párrafos, tablas, notas). Puede ser la
+   * misma que la de los títulos; separarlas permite un titular con carácter y un
+   * texto de alta legibilidad, que es lo que se busca en un documento clínico.
+   */
+  documentBodySans: string;
+  /** Tamaños en pt: «13» el título, «9» el cuerpo y «7,5» lo menudo (pie, notas). */
   documentTitlePt: number;
   documentBodyPt: number;
   documentSmallPt: number;
+}
+
+/** Un archivo de fuente del repositorio que el papel y la pantalla incrustan. */
+export interface BrandFontFile {
+  /** Ruta **relativa a la raíz del repositorio** (`assets/clinic/fonts/…woff2`). */
+  path: string;
+  weight: number;
+  style: 'normal' | 'italic';
+}
+
+/**
+ * Las fuentes que los documentos declaran con `@font-face`.
+ *
+ * Existe por la misma razón que `logoPath`: el servidor (que compone el PDF con
+ * Chromium) y la SPA (que imprime desde el navegador) tienen que leer **los mismos**
+ * archivos. Si la fuente dependiera de estar instalada en cada equipo, el mismo
+ * récipe saldría con dos tipografías distintas según dónde se abriera.
+ *
+ * `family` es el nombre que se declara en `@font-face` y el primero de las pilas
+ * `documentTitleSans`/`documentBodySans`.
+ */
+export interface BrandFonts {
+  family: string;
+  files: readonly BrandFontFile[];
 }
 
 /** Colores de la marca sobre papel (una sola variante: el papel no es oscuro). */
@@ -79,6 +114,8 @@ export interface BrandLetterhead {
 export interface Brand {
   palette: BrandPalette;
   typography: BrandTypography;
+  /** Fuentes auto-hospedadas que los documentos incrustan (mismos archivos en papel y pantalla). */
+  fonts: BrandFonts;
   letterhead: BrandLetterhead;
   /**
    * Logo del membrete: ruta **relativa a la raíz del repositorio**. Si el archivo
@@ -113,10 +150,35 @@ export const BRAND: Brand = {
     uiSans:
       "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif",
     uiMono: "ui-monospace, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace",
-    documentSans: "'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+    /** Títulos de los documentos: la voz de la marca sobre el papel. */
+    documentTitleSans: "'Montserrat', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+    /** Cuerpo de los documentos. Hoy la misma familia; se pueden separar cuando se quiera. */
+    documentBodySans: "'Montserrat', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
     documentTitlePt: 13,
     documentBodyPt: 9,
     documentSmallPt: 7.5,
+  },
+  /**
+   * Fuentes de los documentos, auto-hospedadas en `assets/clinic/fonts/`.
+   *
+   * El subconjunto `latin` de cada peso cubre el español (tildes y eñe incluidas).
+   * Al cambiar de familia: deja los `.woff2` en esa carpeta, ajusta `files`, cambia el
+   * primer nombre de `documentTitleSans`/`documentBodySans` y `family`.
+   */
+  fonts: {
+    family: 'Montserrat',
+    files: [
+      {
+        path: 'assets/clinic/fonts/montserrat-latin-400-normal.woff2',
+        weight: 400,
+        style: 'normal',
+      },
+      {
+        path: 'assets/clinic/fonts/montserrat-latin-700-normal.woff2',
+        weight: 700,
+        style: 'normal',
+      },
+    ],
   },
   letterhead: {
     logoHeightMm: 18,
@@ -180,7 +242,8 @@ export const brandCssVariables = (brand: Brand = BRAND): string => {
     ['bad', palette.bad],
     ['font-ui', typography.uiSans],
     ['font-ui-mono', typography.uiMono],
-    ['font-doc', typography.documentSans],
+    ['font-doc-title', typography.documentTitleSans],
+    ['font-doc-body', typography.documentBodySans],
     ['doc-title-pt', `${String(typography.documentTitlePt)}pt`],
     ['doc-body-pt', `${String(typography.documentBodyPt)}pt`],
     ['doc-small-pt', `${String(typography.documentSmallPt)}pt`],
@@ -209,9 +272,15 @@ export const brandStyles = (brand: Brand = BRAND): string =>
   `${brandRootBlock(brand)}
 
 body {
-  font-family: var(--brand-font-doc);
+  /* El cuerpo del documento. Los títulos llevan la clase .brand-title. */
+  font-family: var(--brand-font-doc-body);
   color: var(--brand-ink);
   margin: 0;
+}
+
+/* La voz de la marca: títulos y encabezados de sección de los documentos. */
+.brand-title {
+  font-family: var(--brand-font-doc-title);
 }
 
 /* Fuente única de las líneas de tabla: th y td comparten separador. */

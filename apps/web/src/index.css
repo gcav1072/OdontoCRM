@@ -86,7 +86,7 @@
      * familias distintas. La tinta también es la de la marca.
      */
     body {
-      font-family: var(--brand-font-doc);
+      font-family: var(--brand-font-doc-body);
     }
   }
 

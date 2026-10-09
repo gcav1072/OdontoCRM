@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -37,12 +37,39 @@ const bloqueRoot = (css: string): string => {
 describe('la marca del consultorio', () => {
   it('declara todas las variables de paleta, tipografía y membrete', () => {
     const variables = brandCssVariables().split('\n');
-    expect(variables).toHaveLength(22);
+    expect(variables).toHaveLength(23);
     expect(variables.every((linea) => linea.startsWith('  --brand-'))).toBe(true);
     expect(brandRootBlock()).toContain(`--brand-primary: ${BRAND.palette.primary};`);
+    // Los documentos tienen DOS tipografías: la de los títulos y la del cuerpo.
+    expect(brandRootBlock()).toContain(
+      `--brand-font-doc-title: ${BRAND.typography.documentTitleSans};`,
+    );
+    expect(brandRootBlock()).toContain(
+      `--brand-font-doc-body: ${BRAND.typography.documentBodySans};`,
+    );
     expect(brandRootBlock()).toContain(
       `--brand-logo-height-mm: ${String(BRAND.letterhead.logoHeightMm)}mm;`,
     );
+  });
+
+  it('declara las dos tipografías y la familia de las fuentes auto-hospedadas', () => {
+    expect(BRAND.typography.documentTitleSans).toContain(`'${BRAND.fonts.family}'`);
+    expect(BRAND.typography.documentBodySans).toContain(`'${BRAND.fonts.family}'`);
+    expect(BRAND.fonts.files.length).toBeGreaterThan(0);
+    expect(BRAND.fonts.files.every((file) => file.path.startsWith('assets/clinic/fonts/'))).toBe(
+      true,
+    );
+    // Los pesos que usan los documentos: 700 para los títulos y 400 para el cuerpo.
+    const pesos = new Set(BRAND.fonts.files.map((file) => file.weight));
+    expect(pesos.has(400)).toBe(true);
+    expect(pesos.has(700)).toBe(true);
+  });
+
+  it('los archivos de fuente declarados existen en el repositorio', () => {
+    const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+    for (const file of BRAND.fonts.files) {
+      expect(existsSync(resolve(raiz, file.path)), `falta ${file.path}`).toBe(true);
+    }
   });
 
   it('el CSS versionado coincide con brand.ts (hay que regenerarlo si cambia)', () => {
@@ -53,8 +80,11 @@ describe('la marca del consultorio', () => {
   it('brandStyles() trae las variables y el cuerpo del documento', () => {
     const estilos = brandStyles();
     expect(estilos).toContain(brandRootBlock());
-    expect(estilos).toContain('font-family: var(--brand-font-doc);');
+    expect(estilos).toContain('font-family: var(--brand-font-doc-body);');
     expect(estilos).toContain('color: var(--brand-ink);');
+    // Los títulos van con su propia familia, aplicada por la clase `.brand-title`.
+    expect(estilos).toContain('.brand-title');
+    expect(estilos).toContain('font-family: var(--brand-font-doc-title);');
   });
 
   it('reconoce el tipo MIME del logo por su extensión', () => {

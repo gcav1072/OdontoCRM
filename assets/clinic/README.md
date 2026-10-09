@@ -1,26 +1,49 @@
-# Logo del consultorio
+# Logo del consultorio y fuentes de los imprimibles
 
-Deja aquí el logo que sale en el membrete del récipe A5, el reporte A4, el dossier
-del expediente y las facturas: `assets/clinic/logo.svg`.
+Esta carpeta tiene **dos** cosas: el logo **de respaldo** y los archivos de las **fuentes** de los
+documentos.
 
-- **SVG monocromo** con el relleno *incrustado* (`fill="#14504d"`, el verde-teal de
-  la marca). No uses `currentColor` ni variables CSS: el servidor mete el logo en el
-  PDF como `data:` URI dentro de un `<img>`, y ahí no hereda nada del documento.
-- **Fondo transparente** y **solo `viewBox`** (sin `width`/`height`): el alto lo fija
-  el CSS (`--brand-logo-height-mm`, 18 mm por defecto).
+## El logo
+
+Deja aquí el logo de respaldo: `assets/clinic/logo.svg`. **Desde el ADR 0056 el logo de verdad se
+sube desde la aplicación** (Mi perfil del titular, o `/usuarios` el administrador) y se guarda en el
+almacén; el de esta carpeta se usa **mientras no se haya subido ninguno** (una instalación recién
+puesta, la base caída).
+
+El logo que se sube y este de respaldo tienen que cumplir lo mismo, porque el logo va sobre papel
+blanco y el servidor lo mete en el PDF como `data:` URI:
+
+- **SVG monocromo** con el relleno *incrustado* (`fill="#14504d"`, el verde-teal de la marca). No
+  uses `currentColor` ni variables CSS: dentro de un `<img>` no hereda nada del documento.
+- **Fondo transparente** y **solo `viewBox`** (sin `width`/`height`): el alto lo fija el CSS
+  (`--brand-logo-height-mm`, 18 mm por defecto).
 - **Texto convertido a trazados**, para que se vea igual en cualquier equipo.
-- El mismo archivo hace de **marca de agua** en los imprimibles: se imprime a un
-  solo color y con la opacidad muy baja (`--brand-watermark-opacity`).
-- Si el archivo no está, el membrete sale **sin logo** (y `letterheadMissingFields`
-  avisa de que falta): no hay que tocar código ni configuración.
+- El mismo logo hace de **marca de agua** en los imprimibles: se imprime a un solo color y con la
+  opacidad muy baja (`--brand-watermark-opacity`). El titular puede cambiar el logo, pero **no** el
+  ancho ni la opacidad del velo: eso es la **marca** y se edita solo en el código.
+- Si no hay logo (ni subido ni aquí), el membrete sale **sin logo** (y `letterheadMissingFields`
+  avisa de que falta).
 
-También sirve un PNG o un JPG (`logo.png` / `logo.jpg`) si prefieres mapa de bits;
-en ese caso conviene que tenga al menos 400 px de ancho y fondo transparente.
+Un PNG o un JPG también sirven como respaldo (`logo.png` / `logo.jpg`), aunque el que se sube desde
+la aplicación es **SVG a propósito**.
 
-La ruta, la paleta y las tipografías se cambian en
-[`packages/contracts/src/brand.ts`](../../packages/contracts/src/brand.ts); lo
-demás del membrete —nombre, RIF, teléfonos y odontólogos con su MPPS— en
-[`packages/contracts/src/clinic.ts`](../../packages/contracts/src/clinic.ts).
+## Las fuentes
+
+`fonts/` guarda los `.woff2` que los imprimibles usan (hoy **Montserrat**, subconjunto `latin`,
+pesos 400 y 700) y su licencia (`OFL.txt`). El servidor los incrusta en el PDF y la SPA los carga
+al arrancar: **el papel no depende de las fuentes instaladas en el equipo** (ADR 0055).
+
+- Se declaran en [`packages/contracts/src/brand.ts`](../../packages/contracts/src/brand.ts)
+  (`BRAND.fonts`), que es también donde se eligen la tipografía de los **títulos**
+  (`documentTitleSans`) y la del **cuerpo** (`documentBodySans`).
+- Cambiar de familia: dejar los `.woff2` aquí, ajustar `BRAND.fonts.files` y los dos primeros
+  nombres de las pilas, y recompilar (los PDF del servidor leen los archivos; la web hay que
+  recompilarla para que Vite copie los nuevos binarios).
+
+La **paleta**, las **tipografías** y las medidas del membrete se cambian en
+[`packages/contracts/src/brand.ts`](../../packages/contracts/src/brand.ts) (solo-código). Los datos
+del membrete —nombre, RIF, teléfonos y odontólogos con su MPPS— se editan **desde la aplicación**
+(Mi perfil o `/usuarios`), no aquí.
 
 El paso a paso (desarrollo y producción) está en
 [`docs/IDENTIDAD_Y_DATOS.md`](../../docs/IDENTIDAD_Y_DATOS.md).

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-import { logoMimeType } from '@odontocrm/contracts';
+import { BRAND, logoMimeType, type BrandFonts } from '@odontocrm/contracts';
 
 /**
  * Lee una imagen del repositorio (el logo o la marca de agua del consultorio) y la
@@ -29,4 +29,49 @@ export const readImageDataUri = async (path: string | null | undefined): Promise
   } catch {
     return null;
   }
+};
+
+/** Tipo MIME de los archivos de fuente que sirve la marca (subconjunto `latin`). */
+const FONT_MIME = 'font/woff2';
+
+/** Un `.woff2` del repositorio como `data:` URI, o `null` si el archivo no está. */
+const readFontDataUri = async (path: string): Promise<string | null> => {
+  try {
+    const data = await readFile(resolve(path));
+    return `data:${FONT_MIME};base64,${data.toString('base64')}`;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Las reglas `@font-face` de las fuentes de la marca, con cada `.woff2` incrustado
+ * como `data:` URI.
+ *
+ * **¿Por qué incrustadas y no un `<link>` o un `@import`?** Porque el HTML se le pasa
+ * a Chromium como **cadena** y el PDF se archiva: una fuente que dependiera de una
+ * ruta del sistema —o de que el equipo la tenga instalada— cambiaría el documento
+ * según dónde se compusiera. Incrustada, el récipe sale igual en cualquier servidor,
+ * y la SPA usa los MISMOS archivos (los `.woff2` de `assets/clinic/fonts/`).
+ *
+ * Un archivo que falte se salta sin romper el documento: el texto cae en la pila de
+ * respaldo de `documentTitleSans`/`documentBodySans`.
+ */
+export const brandFontFaceCss = async (fonts: BrandFonts = BRAND.fonts): Promise<string> => {
+  const reglas = await Promise.all(
+    fonts.files.map(async (file) => {
+      const dataUri = await readFontDataUri(file.path);
+      if (dataUri === null) return '';
+      return (
+        '@font-face {\n' +
+        `  font-family: '${fonts.family}';\n` +
+        `  font-style: ${file.style};\n` +
+        `  font-weight: ${String(file.weight)};\n` +
+        '  font-display: swap;\n' +
+        `  src: url(${dataUri}) format('woff2');\n` +
+        '}'
+      );
+    }),
+  );
+  return reglas.filter((regla) => regla !== '').join('\n');
 };
