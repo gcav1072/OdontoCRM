@@ -45,6 +45,7 @@ const detalle = (
   patientId: '22222222-2222-4222-8222-222222222222',
   dentition,
   findings,
+  prostheses: [],
   affectedTeeth: Object.keys(findings).map(Number),
   empty: Object.keys(findings).length === 0,
   recordedByUsername: 'prueba',
@@ -149,7 +150,7 @@ describe('documento imprimible del odontograma', () => {
     // De la corona no se avisa aquí: no hay ninguna.
     expect(ausente).not.toContain('cubiertas por la corona');
 
-    // Corona y obturación en la misma pieza: las dos salen en la tabla, y el pie
+    // Corona y restauración en la misma pieza: las dos salen en la tabla, y el pie
     // explica que la corona **recubre** el muñón (ADR 0032).
     const tratada = documento(
       detalle({
@@ -165,7 +166,7 @@ describe('documento imprimible del odontograma', () => {
       }),
     );
     expect(tratada).toContain('Corona');
-    expect(tratada).toContain('Obturación');
+    expect(tratada).toContain('Restauración');
     expect(tratada).toContain('cubiertas por la corona');
     expect(tratada).not.toContain('quedan sin efecto');
 
@@ -238,7 +239,7 @@ describe('el informe impreso se lee como un documento clínico', () => {
     // Y el texto lo explica, que es lo que pidió el odontólogo.
     expect(boca).toContain('rojo indicado · azul realizado');
     expect(boca).toContain('Azul: tratamiento ya realizado');
-    expect(boca).toContain('Rojo: caries, obturación o tratamiento indicado');
+    expect(boca).toContain('Rojo: caries, restauración o tratamiento indicado');
   });
 });
 

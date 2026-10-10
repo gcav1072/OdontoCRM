@@ -1,13 +1,17 @@
 import {
   allowedStatesFor,
+  ARCH_CANVAS_HEIGHT,
   archLayout,
   CLINICAL_STATE_COLORS,
   CONDITION_LABELS,
 } from '@odontocrm/contracts';
 import type {
+  ArchLayout,
   ClinicalState,
   Dentition,
   OdontogramDetail,
+  ProsthesisArch,
+  ProsthesisRecord,
   ToothPlacement,
   ToothSurface,
   WholeToothCondition,
@@ -15,7 +19,8 @@ import type {
 
 import { findingsForTooth } from '../../lib/odontogram-api';
 import { t } from '../../lib/i18n';
-import { GeometricTooth, TOOTH_LABEL_BASELINE, ToothConditionSymbol } from './GeometricTooth';
+import { GeometricTooth, ToothConditionSymbol } from './GeometricTooth';
+import { ProsthesisOverlay } from './ProsthesisOverlay';
 
 /**
  * Las dos arcadas del odontograma, interactivas.
@@ -26,8 +31,8 @@ import { GeometricTooth, TOOTH_LABEL_BASELINE, ToothConditionSymbol } from './Ge
  * va del 18 al 28 y la inferior del 48 al 38.
  */
 
-/** Alto del lienzo de una arcada: la pieza (100) más el número de pieza. */
-const ARCH_HEIGHT = TOOTH_LABEL_BASELINE + 14;
+/** Alto del lienzo de una arcada: la pieza (100), el número y la franja de prótesis. */
+const ARCH_HEIGHT = ARCH_CANVAS_HEIGHT;
 
 /**
  * Un ancho mínimo para que las piezas sigan siendo cómodas de pulsar en pantallas
@@ -43,12 +48,19 @@ interface ArchProps {
   orientacion: string;
   teeth: readonly ToothPlacement[];
   detail: OdontogramDetail | null;
+  /** Colocación completa de la boca (para situar la doble línea de la prótesis). */
+  layout: ArchLayout;
+  /** Arcada que representa esta banda. */
+  arch: ProsthesisArch;
+  /** Prótesis removibles a pintar en esta banda (vacío en las bandas temporales). */
+  prostheses: readonly ProsthesisRecord[];
   /** Ancho total del lienzo (el de la arcada más larga, para que las dos cuadren). */
   width: number;
   activeTooth: number | null;
   activeSurfaces: readonly ToothSurface[];
   readOnly: boolean;
   onToothPress?: (toothNumber: number, surface: ToothSurface | null) => void;
+  onProsthesisPress?: (prosthesis: ProsthesisRecord) => void;
 }
 
 const Arch = ({
@@ -56,11 +68,15 @@ const Arch = ({
   orientacion,
   teeth,
   detail,
+  layout,
+  arch,
+  prostheses,
   width,
   activeTooth,
   activeSurfaces,
   readOnly,
   onToothPress,
+  onProsthesisPress,
 }: ArchProps) => (
   <section>
     <p className="mb-1 text-xs font-medium text-ink-subtle">
@@ -95,6 +111,15 @@ const Arch = ({
             </g>
           );
         })}
+
+        {/* La franja de las prótesis removibles: doble línea bajo las piezas. */}
+        <ProsthesisOverlay
+          prostheses={prostheses}
+          arch={arch}
+          layout={layout}
+          readOnly={readOnly}
+          onPress={onProsthesisPress}
+        />
       </svg>
     </div>
   </section>
@@ -104,6 +129,7 @@ const Arch = ({
 /** Tratamientos: los que llevan estado (realizado / indicado). */
 const TREATMENT_CONDITIONS: readonly WholeToothCondition[] = [
   'extraccion_indicada',
+  'extraida',
   'corona',
   'implante',
   'endodoncia',
@@ -146,7 +172,7 @@ const Legend = () => (
         )}`}
       </li>
       {/* El azul es «hecho»: la caries no se «completa» —se trata y pasa a
-          obturación—, así que completado solo lo lleva la obturación (spec §2). */}
+          restauración—, así que completado solo lo lleva la restauración (spec §2). */}
       <li className="flex items-center gap-1.5">
         <span
           className="inline-block size-3 rounded-sm border border-border"
@@ -183,6 +209,19 @@ const Legend = () => (
       ))}
     </ul>
 
+    <ul className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-ink-muted">
+      {/* Prótesis removibles: la doble línea que une un tramo (PPR) o la arcada (PRT). */}
+      <li className="flex items-center gap-1.5">
+        <svg viewBox="0 0 40 24" className="h-4 w-8 shrink-0" aria-hidden>
+          <line x1={2} y1={9} x2={38} y2={9} stroke={CLINICAL_STATE_COLORS.pendiente} strokeWidth={3} />
+          <line x1={2} y1={15} x2={38} y2={15} stroke={CLINICAL_STATE_COLORS.pendiente} strokeWidth={3} />
+          <line x1={2} y1={4} x2={2} y2={20} stroke={CLINICAL_STATE_COLORS.pendiente} strokeWidth={3} />
+          <line x1={38} y1={4} x2={38} y2={20} stroke={CLINICAL_STATE_COLORS.pendiente} strokeWidth={3} />
+        </svg>
+        {t('odonto.protesis.leyenda')}
+      </li>
+    </ul>
+
     <p className="mt-2 text-xs text-ink-subtle">{t('odonto.leyenda.caras')}</p>
   </div>
 );
@@ -199,6 +238,10 @@ export interface OdontogramChartProps {
    * `null` si se pulsó fuera de las caras). El panel decide qué hacer según el modo.
    */
   onToothPress?: (toothNumber: number, surface: ToothSurface | null) => void;
+  /**
+   * Un **toque o clic** en la doble línea de una prótesis removible: reabre su ficha.
+   */
+  onProsthesisPress?: (prosthesis: ProsthesisRecord) => void;
   readOnly?: boolean;
   /** Dentición a dibujar cuando todavía no hay odontograma. */
   dentition?: Dentition;
@@ -209,10 +252,12 @@ export const OdontogramChart = ({
   activeTooth = null,
   activeSurfaces = [],
   onToothPress,
+  onProsthesisPress,
   readOnly = false,
   dentition,
 }: OdontogramChartProps) => {
   const layout = archLayout(dentition ?? detail?.dentition ?? 'permanente');
+  const prostheses = detail?.prostheses ?? [];
 
   return (
     <div className="space-y-4">
@@ -221,27 +266,36 @@ export const OdontogramChart = ({
         orientacion={t('odonto.arcada.superior.orientacion')}
         teeth={layout.upper}
         detail={detail}
+        layout={layout}
+        arch="maxilar"
+        prostheses={prostheses}
         width={layout.width}
         activeTooth={activeTooth}
         activeSurfaces={activeSurfaces}
         readOnly={readOnly}
         onToothPress={onToothPress}
+        onProsthesisPress={onProsthesisPress}
       />
       <Arch
         title={t('odonto.arcada.inferior')}
         orientacion={t('odonto.arcada.inferior.orientacion')}
         teeth={layout.lower}
         detail={detail}
+        layout={layout}
+        arch="mandibula"
+        prostheses={prostheses}
         width={layout.width}
         activeTooth={activeTooth}
         activeSurfaces={activeSurfaces}
         readOnly={readOnly}
         onToothPress={onToothPress}
+        onProsthesisPress={onProsthesisPress}
       />
       {/*
         Dentición mixta (ADR 0051): las piezas de leche van en su propia banda, cada
         una en la ranura de la que la va a sustituir. Las bandas solo existen cuando
-        hay piezas temporales, que es lo que dice `archLayout`.
+        hay piezas temporales, que es lo que dice `archLayout`. Las prótesis removibles
+        son de la arcada permanente, así que en estas bandas no se pintan.
       */}
       {layout.upperPrimary.length > 0 && (
         <Arch
@@ -249,6 +303,9 @@ export const OdontogramChart = ({
           orientacion={t('odonto.arcada.superior.orientacion')}
           teeth={layout.upperPrimary}
           detail={detail}
+          layout={layout}
+          arch="maxilar"
+          prostheses={[]}
           width={layout.width}
           activeTooth={activeTooth}
           activeSurfaces={activeSurfaces}
@@ -262,6 +319,9 @@ export const OdontogramChart = ({
           orientacion={t('odonto.arcada.inferior.orientacion')}
           teeth={layout.lowerPrimary}
           detail={detail}
+          layout={layout}
+          arch="mandibula"
+          prostheses={[]}
           width={layout.width}
           activeTooth={activeTooth}
           activeSurfaces={activeSurfaces}

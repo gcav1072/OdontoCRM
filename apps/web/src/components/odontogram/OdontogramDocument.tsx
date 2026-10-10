@@ -2,12 +2,15 @@ import {
   CLINICAL_STATE_COLORS,
   CLINICAL_STATE_LABELS,
   CONDITION_LABELS,
+  PROSTHESIS_ARCH_LABELS,
+  PROSTHESIS_KIND_LABELS,
   hasPrimaryFindings,
   surfaceLabelFor,
   supersedesSurfaces,
 } from '@odontocrm/contracts';
 import type {
   OdontogramDetail,
+  ProsthesisRecord,
   ToothFindingHistoryEntry,
   ToothFindingRecord,
 } from '@odontocrm/contracts';
@@ -131,6 +134,55 @@ const FindingsTable = ({ detail }: { detail: OdontogramDetail }) => {
   );
 };
 
+/**
+ * Tabla de prótesis removibles (PPR/PRT): de tramo o de arcada completa. Se suma a la
+ * del odontograma para que el papel liste también lo que **no** vive en una pieza.
+ */
+const ProsthesesTable = ({ prostheses }: { prostheses: readonly ProsthesisRecord[] }) => (
+  <table className="w-full border-collapse text-sm">
+    <thead>
+      <tr className="border-b border-[color:var(--brand-line)] text-left text-xs tracking-wide text-[color:var(--brand-primary)] uppercase">
+        <th className="py-1.5 pr-3">{t('odonto.protesis.titulo')}</th>
+        <th className="py-1.5 pr-3">{t('odonto.protesis.arcada')}</th>
+        <th className="py-1.5 pr-3">{t('odonto.hallazgos.estado')}</th>
+        <th className="py-1.5">{t('odonto.hallazgos.notas')}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {prostheses.map((prosthesis) => (
+        <tr key={prosthesis.id} className="border-b border-[color:var(--brand-line-soft)] align-top">
+          <td className="py-1.5 pr-3 font-medium text-[color:var(--brand-ink)]">
+            {PROSTHESIS_KIND_LABELS[prosthesis.kind]}
+          </td>
+          <td className="py-1.5 pr-3 text-[color:var(--brand-ink-muted)]">
+            {prosthesis.kind === 'prt'
+              ? PROSTHESIS_ARCH_LABELS[prosthesis.arch]
+              : `${PROSTHESIS_ARCH_LABELS[prosthesis.arch]} · ${prosthesis.toothNumbers.join(', ')}`}
+          </td>
+          <td className="py-1.5 pr-3">
+            <span
+              className="inline-flex items-center gap-1.5"
+              style={{ color: CLINICAL_STATE_COLORS[prosthesis.state] }}
+            >
+              <span
+                className="inline-block size-2.5 rounded-full"
+                style={{ backgroundColor: CLINICAL_STATE_COLORS[prosthesis.state] }}
+                aria-hidden
+              />
+              {CLINICAL_STATE_LABELS[prosthesis.state]}
+            </span>
+          </td>
+          <td className="py-1.5 text-[color:var(--brand-ink-subtle)]">
+            {prosthesis.notes === null || prosthesis.notes.trim() === ''
+              ? t('odonto.hallazgos.sinNotas')
+              : prosthesis.notes}
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+);
+
 export interface OdontogramDocumentProps {
   detail: OdontogramDetail;
   /**
@@ -236,6 +288,17 @@ export const OdontogramDocument = ({
             <FindingsTable detail={detail} />
           </div>
         </section>
+
+        {detail.prostheses.length > 0 && (
+          <section className="mt-5">
+            <h2 className="text-sm font-semibold tracking-wide text-[color:var(--brand-primary)] uppercase">
+              {t('odonto.protesis.titulo')}
+            </h2>
+            <div className="mt-3">
+              <ProsthesesTable prostheses={detail.prostheses} />
+            </div>
+          </section>
+        )}
 
         {/*
         Historial de cambios (opcional): la evolución del odontograma con sus fechas,

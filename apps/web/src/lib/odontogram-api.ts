@@ -8,8 +8,11 @@ import type {
   OdontogramLookup,
   OdontogramMutationResult,
   PrintOdontogramResult,
+  ProsthesisArch,
+  ProsthesisRecord,
   RecordFindingInput,
   RecordFindingsBatchInput,
+  RecordProsthesisInput,
   ToothFindingRecord,
   ToothSurface,
 } from '@odontocrm/contracts';
@@ -43,6 +46,17 @@ export const findingsForTooth = (
   detail: Pick<OdontogramDetail, 'findings'> | null | undefined,
   toothNumber: number,
 ): ToothFindingRecord[] => detail?.findings[String(toothNumber)] ?? [];
+
+/** Prótesis removibles vigentes del odontograma; `[]` si no hay ninguna. */
+export const prosthesesOf = (
+  detail: Pick<OdontogramDetail, 'prostheses'> | null | undefined,
+): ProsthesisRecord[] => detail?.prostheses ?? [];
+
+/** Prótesis removibles de una arcada concreta. */
+export const prosthesesForArch = (
+  detail: Pick<OdontogramDetail, 'prostheses'> | null | undefined,
+  arch: ProsthesisArch,
+): ProsthesisRecord[] => prosthesesOf(detail).filter((prosthesis) => prosthesis.arch === arch);
 
 /** `true` si la pieza tiene algún hallazgo registrado (y por tanto no está sana). */
 export const toothIsAffected = (
@@ -155,6 +169,23 @@ export const odontogramApi = {
     api.delete<OdontogramMutationResult>(
       `/odontogram/patients/${patientId}/surfaces/${String(input.toothNumber)}/${input.surface}`,
     ),
+
+  /**
+   * Registra o corrige una **prótesis removible** (PPR/PRT). La clave natural es
+   * tipo + arcada: volver a registrar la de una arcada la actualiza (la PRT se
+   * normaliza a la arcada completa en el servicio).
+   */
+  recordProsthesis: (
+    patientId: string,
+    input: RecordProsthesisInput,
+  ): Promise<OdontogramMutationResult> =>
+    api.request<OdontogramMutationResult>('PUT', `/odontogram/patients/${patientId}/prostheses`, {
+      body: input,
+    }),
+
+  /** Retira una prótesis removible por su identificador. */
+  removeProsthesis: (patientId: string, id: string): Promise<OdontogramMutationResult> =>
+    api.delete<OdontogramMutationResult>(`/odontogram/patients/${patientId}/prostheses/${id}`),
 
   /** Histórico append-only de cambios, para la vista de evolución y el informe. */
   history: (

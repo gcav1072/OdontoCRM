@@ -3,6 +3,7 @@ import {
   CONDITION_LABELS,
   CLINICAL_STATE_LABELS,
   PROCEDURE_LABELS,
+  PROCEDURE_TRANSITIONS,
   SURFACE_FORM_ORDER,
   allowedStatesFor,
   isStateAllowed,
@@ -67,7 +68,14 @@ export const procedimientosDisponibles = (
   const procedimientos: ToothProcedure[] = [];
   if (tiene('caries')) procedimientos.push('obturar');
   if (tiene('extraccion_indicada')) procedimientos.push('extraer');
-  if (tiene('ausente') && tiene('implante')) procedimientos.push('rehabilitar');
+  // La rehabilitación vale para cualquier ausencia (congénita o por exodoncia),
+  // siempre que haya un implante vigente que sostenga la corona (spec §5).
+  if (
+    PROCEDURE_TRANSITIONS.rehabilitar.from.some((condition) => tiene(condition)) &&
+    tiene('implante')
+  ) {
+    procedimientos.push('rehabilitar');
+  }
   return procedimientos;
 };
 

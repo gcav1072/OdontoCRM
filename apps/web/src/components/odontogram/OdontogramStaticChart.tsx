@@ -1,5 +1,6 @@
 import {
   allowedStatesFor,
+  ARCH_CANVAS_HEIGHT,
   archLayout,
   CLINICAL_STATE_COLORS,
   CONDITION_LABELS,
@@ -7,9 +8,12 @@ import {
   TOOTH_OUTLINE_POINTS,
 } from '@odontocrm/contracts';
 import type {
+  ArchLayout,
   ClinicalState,
   Dentition,
   OdontogramDetail,
+  ProsthesisArch,
+  ProsthesisRecord,
   ToothFindingRecord,
   ToothPlacement,
   ToothSurface,
@@ -19,6 +23,7 @@ import type {
 import { t } from '../../lib/i18n';
 import { findingsForTooth } from '../../lib/odontogram-api';
 import { TOOTH_LABEL_BASELINE, ToothConditionSymbol, markerSlots } from './GeometricTooth';
+import { ProsthesisOverlay } from './ProsthesisOverlay';
 import { toothGroupTransform } from '@odontocrm/contracts';
 
 /**
@@ -120,8 +125,8 @@ const StaticTooth = ({ toothNumber, findings, size, flipped, mirrorX }: StaticTo
   );
 };
 
-/** Alto del lienzo de una arcada: la pieza, el aire del número y el número. */
-const ARCH_HEIGHT = TOOTH_LABEL_BASELINE + 16;
+/** Alto del lienzo de una arcada: la pieza, el aire del número y la franja de prótesis. */
+const ARCH_HEIGHT = ARCH_CANVAS_HEIGHT;
 
 /** Muestra en pequeño el símbolo de una condición, en el color de su estado. */
 const SymbolPreview = ({
@@ -139,12 +144,21 @@ const SymbolPreview = ({
 const Arch = ({
   teeth,
   detail,
+  layout,
+  arch,
+  prostheses,
   size,
   width,
   caption,
 }: {
   teeth: readonly ToothPlacement[];
   detail: Pick<OdontogramDetail, 'findings'>;
+  /** Colocación completa de la boca (para situar la doble línea de la prótesis). */
+  layout: ArchLayout;
+  /** Arcada que representa esta banda. */
+  arch: ProsthesisArch;
+  /** Prótesis removibles de esta arcada (vacío en las bandas temporales). */
+  prostheses: readonly ProsthesisRecord[];
   size: number;
   /**
    * Ancho del lienzo de la arcada **completa** (el de la huella permanente). Todas las
@@ -173,6 +187,9 @@ const Arch = ({
             />
           </g>
         ))}
+
+        {/* La franja de las prótesis removibles: doble línea bajo las piezas. */}
+        <ProsthesisOverlay prostheses={prostheses} arch={arch} layout={layout} readOnly />
       </svg>
     </figure>
   );
@@ -221,24 +238,35 @@ const OdontogramLegend = () => (
         </span>
         {CONDITION_LABELS.ausente}
       </li>
-      {(['extraccion_indicada', 'corona', 'implante', 'endodoncia'] as const).map((condition) => (
-        <li key={condition} className="flex items-center gap-1.5">
-          <span className="flex items-center gap-0.5">
-            {/* Solo los colores que la condición admite (spec §2): la extracción
-                indicada siempre va roja; los tratamientos, en las dos fases. */}
-            {allowedStatesFor(condition).map((state) => (
-              <SymbolPreview key={state} condition={condition} state={state} />
-            ))}
-          </span>
-          {t('odonto.leyenda.tratamiento', { condicion: CONDITION_LABELS[condition] })}
-        </li>
-      ))}
+      {(['extraccion_indicada', 'extraida', 'corona', 'implante', 'endodoncia'] as const).map(
+        (condition) => (
+          <li key={condition} className="flex items-center gap-1.5">
+            <span className="flex items-center gap-0.5">
+              {/* Solo los colores que la condición admite (spec §2): la extracción
+                  indicada siempre va roja; los tratamientos, en las dos fases. */}
+              {allowedStatesFor(condition).map((state) => (
+                <SymbolPreview key={state} condition={condition} state={state} />
+              ))}
+            </span>
+            {t('odonto.leyenda.tratamiento', { condicion: CONDITION_LABELS[condition] })}
+          </li>
+        ),
+      )}
+      <li className="flex items-center gap-1.5">
+        <svg viewBox="0 0 40 24" className="h-4 w-8 shrink-0" aria-hidden>
+          <line x1={2} y1={9} x2={38} y2={9} stroke={CLINICAL_STATE_COLORS.pendiente} strokeWidth={3} />
+          <line x1={2} y1={15} x2={38} y2={15} stroke={CLINICAL_STATE_COLORS.pendiente} strokeWidth={3} />
+          <line x1={2} y1={4} x2={2} y2={20} stroke={CLINICAL_STATE_COLORS.pendiente} strokeWidth={3} />
+          <line x1={38} y1={4} x2={38} y2={20} stroke={CLINICAL_STATE_COLORS.pendiente} strokeWidth={3} />
+        </svg>
+        {t('odonto.protesis.leyenda')}
+      </li>
     </ul>
   </div>
 );
 
 export interface OdontogramStaticChartProps {
-  detail: Pick<OdontogramDetail, 'findings' | 'dentition'> | null;
+  detail: Pick<OdontogramDetail, 'findings' | 'dentition' | 'prostheses'> | null;
   dentition?: Dentition;
   /** Alto del lienzo de cada pieza, en unidades del `viewBox`. */
   toothSize?: number;
@@ -260,14 +288,19 @@ export const OdontogramStaticChart = ({
   toothSize = 100,
   showPrimary = true,
 }: OdontogramStaticChartProps) => {
-  const boca = detail ?? { findings: {}, dentition: 'permanente' as Dentition };
+  const boca =
+    detail ?? { findings: {}, dentition: 'permanente' as Dentition, prostheses: [] };
   const layout = archLayout(dentition ?? boca.dentition);
+  const prostheses = boca.prostheses ?? [];
 
   return (
     <div className="mx-auto max-w-[20cm] space-y-4">
       <Arch
         teeth={layout.upper}
         detail={boca}
+        layout={layout}
+        arch="maxilar"
+        prostheses={prostheses}
         size={toothSize}
         width={layout.width}
         caption={t('odonto.arcada.superior.orientacion')}
@@ -275,17 +308,24 @@ export const OdontogramStaticChart = ({
       <Arch
         teeth={layout.lower}
         detail={boca}
+        layout={layout}
+        arch="mandibula"
+        prostheses={prostheses}
         size={toothSize}
         width={layout.width}
         caption={t('odonto.arcada.inferior.orientacion')}
       />
       {/* Dentición mixta (ADR 0051): las piezas de leche, en su banda y en la ranura
           de la que las va a sustituir. Solo existen si `archLayout` las trae y, en el
-          informe, si hay algún hallazgo temporal que las haga relevantes. */}
+          informe, si hay algún hallazgo temporal que las haga relevantes. Las prótesis
+          removibles son de la arcada permanente: en estas bandas no se pintan. */}
       {showPrimary && layout.upperPrimary.length > 0 && (
         <Arch
           teeth={layout.upperPrimary}
           detail={boca}
+          layout={layout}
+          arch="maxilar"
+          prostheses={[]}
           size={toothSize}
           width={layout.width}
           caption={`${t('odonto.arcada.superior.temporal')} · ${t('odonto.arcada.superior.orientacion')}`}
@@ -295,6 +335,9 @@ export const OdontogramStaticChart = ({
         <Arch
           teeth={layout.lowerPrimary}
           detail={boca}
+          layout={layout}
+          arch="mandibula"
+          prostheses={[]}
           size={toothSize}
           width={layout.width}
           caption={`${t('odonto.arcada.inferior.temporal')} · ${t('odonto.arcada.inferior.orientacion')}`}

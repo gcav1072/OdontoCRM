@@ -1157,6 +1157,8 @@ const DICCIONARIO = {
   'auditoria.tooth_finding_updated': 'Hallazgo actualizado en una pieza',
   'auditoria.tooth_finding_removed': 'Hallazgo quitado de una pieza',
   'auditoria.tooth_finding_superseded': 'Hallazgo reemplazado por uno nuevo',
+  'auditoria.prosthesis_recorded': 'Prótesis removible registrada',
+  'auditoria.prosthesis_removed': 'Prótesis removible retirada',
   'auditoria.odontogram_printed': 'Odontograma impreso',
   // Facturación y pagos (Fase 11)
   'auditoria.invoice_issued': 'Factura emitida',
@@ -2825,7 +2827,7 @@ const DICCIONARIO = {
    * El color no decora: dice en qué punto está el tratamiento. Rojo = hallazgo activo
    * o tratamiento indicado/pendiente; azul = preexistente o ya realizado.
    */
-  'odonto.leyenda.rojo': 'Rojo: caries, obturación o tratamiento indicado (por hacer)',
+  'odonto.leyenda.rojo': 'Rojo: caries, restauración o tratamiento indicado (por hacer)',
   'odonto.leyenda.azul': 'Azul: tratamiento ya realizado o completado',
   /** Un mismo símbolo significa «indicado» o «realizado» según su color. */
   'odonto.leyenda.tratamiento': '{condicion}: rojo indicado · azul realizado',
@@ -2866,7 +2868,7 @@ const DICCIONARIO = {
   'odonto.rapida.pendiente': 'minúscula = pendiente',
   'odonto.rapida.completado': 'MAYÚSCULA = completado',
   'odonto.rapida.sinCaras':
-    'Sin caras marcadas: la caries o la obturación van a la cara de masticación (oclusal; en incisivos y caninos, el borde incisal).',
+    'Sin caras marcadas: la caries o la restauración van a la cara de masticación (oclusal; en incisivos y caninos, el borde incisal).',
   'odonto.rapida.piezaSana': 'La pieza {pieza} está sana.',
   'odonto.rapida.piezaTiene': 'La pieza {pieza} tiene: {detalle}.',
   'odonto.rapida.suprimir': 'borra la cara marcada o, si no hay ninguna, la de masticación',
@@ -2881,6 +2883,7 @@ const DICCIONARIO = {
   'odonto.deshacer.ultima': 'Deshacer: {accion}',
   'odonto.exito.cambiado': 'Cambio aplicado: {accion}.',
   'odonto.exito.deshacer': 'Se deshizo el último cambio de la pieza {pieza}.',
+  'odonto.exito.deshacerProtesis': 'Se deshizo el último cambio de prótesis.',
 
   'odonto.aviso.sinCambios': 'Sin cambios: la pieza {pieza} ya estaba así.',
   'odonto.aviso.carasSuperadas.titulo': 'Caras superadas por la pieza completa',
@@ -2907,7 +2910,7 @@ const DICCIONARIO = {
   'odonto.sheet.marcarPendiente': 'Marcar pendiente',
   'odonto.sheet.caras': 'Caras',
   'odonto.sheet.carasAyuda':
-    'Marca una o varias caras y elige la condición: se guardan todas de una vez. Sin ninguna marcada, la caries o la obturación van a la cara de masticación (oclusal; en incisivos y caninos, el borde incisal).',
+    'Marca una o varias caras y elige la condición: se guardan todas de una vez. Sin ninguna marcada, la caries o la restauración van a la cara de masticación (oclusal; en incisivos y caninos, el borde incisal).',
   'odonto.sheet.estado': 'Estado',
   'odonto.sheet.condicion': 'Condición',
   'odonto.sheet.invalida': 'Esa pieza no admite el cambio.',
@@ -2915,7 +2918,7 @@ const DICCIONARIO = {
   'odonto.sheet.abrir': 'Marcar con botones',
   'odonto.sheet.procedimiento': 'Procedimiento',
   'odonto.sheet.procedimientoAyuda':
-    'Cumple el plan en un toque: «Obturar» convierte la caries en obturación, «Extraer» deja la pieza ausente y «Poner corona» la rehabilitada sobre el implante. Todo queda en la historia clínica.',
+    'Cumple el plan en un toque: «Restaurar» convierte la caries en restauración, «Extraer» deja la pieza extraída y «Poner corona» la rehabilitada sobre el implante. Todo queda en la historia clínica.',
   'odonto.activa.ninguna': 'Ninguna pieza elegida: pulsa una en el diagrama.',
   'odonto.activa.pieza': 'Pieza {pieza} elegida.',
   'odonto.tactil.ayuda':
@@ -2925,6 +2928,33 @@ const DICCIONARIO = {
   'odonto.teclado.desactivar': 'Usar toques',
   'odonto.aviso.piezaEntera':
     '«{condicion}» es un tratamiento de la pieza completa: no supera las caras, que se quedan como estaban.',
+
+  // ── Prótesis removibles (PPR/PRT) ─────────────────────────────────────────
+  'odonto.protesis.titulo': 'Prótesis removible',
+  'odonto.protesis.ppr': 'Prótesis parcial (PPR)',
+  'odonto.protesis.prt': 'Prótesis total (PRT)',
+  'odonto.protesis.arcada': 'Arcada',
+  'odonto.protesis.maxilar': 'Maxilar superior (18–28)',
+  'odonto.protesis.mandibula': 'Mandíbula inferior (48–38)',
+  'odonto.protesis.tramo': 'Tramo: {desde} a {hasta}',
+  'odonto.protesis.arcadaCompleta': 'Arcada completa: {piezas} piezas',
+  'odonto.protesis.estado': 'Estado',
+  'odonto.protesis.indicada': 'Indicada (por confeccionar)',
+  'odonto.protesis.instalada': 'Instalada (en uso)',
+  'odonto.protesis.notas': 'Observaciones',
+  'odonto.protesis.notasPlaceholder': 'Observación clínica (opcional)',
+  'odonto.protesis.guardar': 'Guardar prótesis',
+  'odonto.protesis.eliminar': 'Eliminar',
+  'odonto.protesis.existente': 'Esta arcada ya tiene una prótesis de este tipo: se actualizará.',
+  'odonto.protesis.ppr.activar': 'Prótesis parcial (PPR)',
+  'odonto.protesis.ppr.activo': 'Cancelar la prótesis parcial',
+  'odonto.protesis.ppr.primera': 'PPR: toca la primera pieza del tramo',
+  'odonto.protesis.ppr.ultima': 'PPR: toca la última pieza del tramo',
+  'odonto.protesis.prt.titulo': 'Prótesis total',
+  'odonto.protesis.aplicada': 'Prótesis guardada: {detalle}.',
+  'odonto.protesis.retirada': 'Prótesis eliminada: {detalle}.',
+  'odonto.protesis.leyenda': '═ Doble línea (PPR/PRT): rojo indicada · azul instalada',
+  'odonto.protesis.deshacer': 'protesis {detalle}',
 } as const;
 
 export type TranslationKey = keyof typeof DICCIONARIO;
@@ -3055,6 +3085,8 @@ const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   tooth_finding_updated: t('auditoria.tooth_finding_updated'),
   tooth_finding_removed: t('auditoria.tooth_finding_removed'),
   tooth_finding_superseded: t('auditoria.tooth_finding_superseded'),
+  prosthesis_recorded: t('auditoria.prosthesis_recorded'),
+  prosthesis_removed: t('auditoria.prosthesis_removed'),
   odontogram_printed: t('auditoria.odontogram_printed'),
   invoice_issued: t('auditoria.invoice_issued'),
   invoice_printed: t('auditoria.invoice_printed'),

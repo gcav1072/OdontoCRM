@@ -1,5 +1,8 @@
 import {
   CONDITION_LABELS,
+  archOfTooth,
+  archRange,
+  archTeeth,
   initialQuickEntryState,
   isPrimaryTooth,
   odontogramSummary,
@@ -10,6 +13,9 @@ import type {
   OdontogramDetail,
   OdontogramLookup,
   OdontogramMutationResult,
+  ProsthesisArch,
+  ProsthesisKind,
+  ProsthesisRecord,
   QuickEntryState,
   ToothFindingRecord,
   ToothSurface,
@@ -27,7 +33,7 @@ import {
   Spinner,
   buttonClasses,
 } from '@odontocrm/ui';
-import { Hand, History, Keyboard, Printer, Undo2 } from 'lucide-react';
+import { Hand, History, Keyboard, Layers, Printer, Undo2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -39,6 +45,7 @@ import { dentitionLabel, findingsForTooth, odontogramApi } from '../../lib/odont
 import { NoticeBanner } from '../NoticeBanner';
 import { OdontogramChart } from './OdontogramChart';
 import { pressIntent } from './press-intent';
+import { ProsthesisDialog } from './ProsthesisDialog';
 import { QuickEntryBar, describeAction } from './QuickEntryBar';
 import type { QuickEntryAction } from './QuickEntryBar';
 import { ToothFindingSheet } from './ToothFindingSheet';
@@ -70,13 +77,25 @@ const BOCA_VACIA: Pick<OdontogramDetail, 'findings' | 'dentition'> = {
 /** Cuántos cambios se pueden deshacer hacia atrás. */
 const MAX_UNDO = 20;
 
-interface UndoEntry {
-  toothNumber: number;
-  /** Hallazgos que tenía la pieza **justo antes** del cambio. */
-  snapshot: readonly ToothFindingRecord[];
-  /** Frase del cambio, para el botón de deshacer. */
-  descripcion: string;
-}
+/**
+ * Un cambio deshacible: de una **pieza** (sus hallazgos) o de una **prótesis** (las de
+ * la boca). El deshacer guarda el estado **entero** antes del cambio para reponerlo.
+ */
+type UndoEntry =
+  | {
+      kind: 'pieza';
+      toothNumber: number;
+      /** Hallazgos que tenía la pieza **justo antes** del cambio. */
+      snapshot: readonly ToothFindingRecord[];
+      /** Frase del cambio, para el botón de deshacer. */
+      descripcion: string;
+    }
+  | {
+      kind: 'protesis';
+      /** Prótesis que había **justo antes** del cambio. */
+      snapshot: readonly ProsthesisRecord[];
+      descripcion: string;
+    };
 
 export interface OdontogramPanelProps {
   patientId: string;
@@ -116,6 +135,24 @@ export const OdontogramPanel = ({
     null,
   );
   /**
+   * Borrador de prótesis abierto en la ficha: tipo, arcada y piezas del tramo (PPR) o
+   * de la arcada completa (PRT). La ficha se abre desde la barra (PRT) o tras el
+   * segundo toque del tramo (PPR).
+   */
+  const [protesis, setProtesis] = useState<{
+    kind: ProsthesisKind;
+    arch: ProsthesisArch;
+    toothNumbers: number[];
+  } | null>(null);
+  /** Prótesis ya registrada que se está editando (si la ficha se abrió desde el gráfico). */
+  const [protesisExistente, setProtesisExistente] = useState<ProsthesisRecord | null>(null);
+  /** Modo «tramo de PPR»: la próxima pulsación elige la primera pieza y la siguiente la última. */
+  const [modoPpr, setModoPpr] = useState(false);
+  /** Primera pieza del tramo de PPR ya elegida, o `null` si toca elegirla. */
+  const [pprInicio, setPprInicio] = useState<number | null>(null);
+  /** Menú de la prótesis total (PRT): elige la arcada. */
+  const [menuPrt, setMenuPrt] = useState(false);
+  /**
    * Casilla «Activar dentición temporal»: `null` = automático (la pone la boca),
    * `true`/`false` = la decisión explícita de quien la pulsa. No se persiste: al
    * cambiar de paciente vuelve al automático.
@@ -136,6 +173,10 @@ export const OdontogramPanel = ({
     setPila([]);
     setPendientes(0);
     setHoja(null);
+    setProtesis(null);
+    setProtesisExistente(null);
+    setModoPpr(false);
+    setPprInicio(null);
     setTemporalManual(null);
     limpiar();
   }, [patientId, limpiar]);
@@ -203,11 +244,35 @@ export const OdontogramPanel = ({
     setPila((actual) => [
       ...actual.slice(-(MAX_UNDO - 1)),
       {
+        kind: 'pieza',
         toothNumber: input.toothNumber,
         snapshot: findingsForTooth(input.anterior, input.toothNumber),
         descripcion: input.descripcion,
       },
     ]);
+  };
+
+  /**
+   * Deshace un cambio de **prótesis**: repone la lista de prótesis que había antes.
+   * Como las prótesis son pocas, se borran las vigentes y se vuelven a registrar las
+   * del snapshot (la forma robusta de dejar el estado exactamente como estaba).
+   */
+  const deshacerProtesis = async (previas: readonly ProsthesisRecord[]): Promise<void> => {
+    for (const actual of detalleActual()?.prostheses ?? []) {
+      aplicarResultado(await odontogramApi.removeProsthesis(patientId, actual.id));
+    }
+    for (const previa of previas) {
+      aplicarResultado(
+        await odontogramApi.recordProsthesis(patientId, {
+          kind: previa.kind,
+          arch: previa.arch,
+          toothNumbers: previa.toothNumbers,
+          state: previa.state,
+          notes: previa.notes,
+          sessionId: previa.sessionId,
+        }),
+      );
+    }
   };
 
   const deshacer = async (): Promise<void> => {
@@ -217,6 +282,12 @@ export const OdontogramPanel = ({
     setPila((actual) => actual.slice(0, -1));
     setDeshaciendo(true);
     try {
+      if (entrada.kind === 'protesis') {
+        await deshacerProtesis(entrada.snapshot);
+        exito(t('odonto.exito.deshacerProtesis'));
+        return;
+      }
+
       // 1) Fuera lo que ahora sobra: desde una condición de pieza completa (que
       //    es la que superó las caras) hasta un hallazgo registrado de más.
       for (const hallazgo of findingsForTooth(detalleActual(), entrada.toothNumber)) {
@@ -287,13 +358,91 @@ export const OdontogramPanel = ({
     setHoja({ tooth: toothNumber, surfaces: surface === null ? [] : [surface] });
   };
 
+  /* ── Prótesis removibles (PPR/PRT): tramo por dos toques y arcada completa ── */
+
+  /** Prótesis ya registrada de un tipo y arcada (para editar en vez de duplicar). */
+  const protesisExistenteDe = (
+    kind: ProsthesisKind,
+    arch: ProsthesisArch,
+  ): ProsthesisRecord | null =>
+    (detalleActual()?.prostheses ?? []).find(
+      (prosthesis) => prosthesis.kind === kind && prosthesis.arch === arch,
+    ) ?? null;
+
+  /** Abre la ficha de una prótesis con su borrador (tipo, arcada y piezas). */
+  const abrirProtesis = (
+    kind: ProsthesisKind,
+    arch: ProsthesisArch,
+    toothNumbers: number[],
+    existente: ProsthesisRecord | null = null,
+  ): void => {
+    setProtesis({ kind, arch, toothNumbers });
+    setProtesisExistente(existente ?? protesisExistenteDe(kind, arch));
+  };
+
+  /** Cancela el modo tramo, el menú de la total y la ficha. */
+  const cerrarProtesis = (): void => {
+    setProtesis(null);
+    setProtesisExistente(null);
+    setModoPpr(false);
+    setPprInicio(null);
+    setMenuPrt(false);
+  };
+
+  /**
+   * Un toque en modo **tramo de PPR**: la primera pieza abre el tramo y la segunda lo
+   * cierra. Si la segunda es de otra arcada, se reinicia el tramo con esa pieza.
+   */
+  const elegirPiezaPpr = (toothNumber: number): void => {
+    const arch = archOfTooth(toothNumber);
+    if (arch === null) return; // las piezas temporales no llevan prótesis permanente
+    if (pprInicio === null) {
+      setPprInicio(toothNumber);
+      return;
+    }
+    if (archOfTooth(pprInicio) !== arch) {
+      setPprInicio(toothNumber);
+      return;
+    }
+    const tramo = archRange(arch, pprInicio, toothNumber);
+    setModoPpr(false);
+    setPprInicio(null);
+    abrirProtesis('ppr', arch, tramo);
+  };
+
+  /** Abre una **PRT** para una arcada completa (desde el menú de la barra). */
+  const abrirPrt = (arch: ProsthesisArch): void => {
+    setMenuPrt(false);
+    abrirProtesis('prt', arch, [...archTeeth(arch)]);
+  };
+
+  /** Reabre la ficha de una prótesis tocada en el gráfico. */
+  const alPulsarProtesis = (prosthesis: ProsthesisRecord): void => {
+    abrirProtesis(prosthesis.kind, prosthesis.arch, [...prosthesis.toothNumbers], prosthesis);
+  };
+
+  /** Guardado de una prótesis desde la ficha: relee y deja deshacer. */
+  const aplicarProtesis = (cambio: { descripcion: string }): void => {
+    const anteriores = detalleActual()?.prostheses ?? [];
+    void odontogramaQuery.refetch();
+    setPila((actual) => [
+      ...actual.slice(-(MAX_UNDO - 1)),
+      { kind: 'protesis', snapshot: anteriores, descripcion: cambio.descripcion },
+    ]);
+    exito(t('odonto.exito.cambiado', { accion: cambio.descripcion }));
+    cerrarProtesis();
+  };
+
   /**
    * Un toque en el gráfico. Qué toca hacer lo decide `pressIntent`: por defecto abre
-   * la hoja de la pieza; en modo teclado elige la pieza o marca la cara para la barra.
+   * la hoja de la pieza; en modo teclado elige la pieza o marca la cara para la barra;
+   * en modo prótesis elige la pieza del tramo.
    */
   const alPulsarPieza = (toothNumber: number, surface: ToothSurface | null): void => {
-    const intencion = pressIntent(modoTeclado, surface);
-    if (intencion === 'abrir-hoja') {
+    const intencion = pressIntent(modoTeclado, surface, modoPpr);
+    if (intencion === 'rango-protesis') {
+      elegirPiezaPpr(toothNumber);
+    } else if (intencion === 'abrir-hoja') {
       abrirHoja(toothNumber, surface);
     } else if (intencion === 'elegir-pieza') {
       seleccionarPieza(toothNumber);
@@ -312,6 +461,7 @@ export const OdontogramPanel = ({
     setPila((actual) => [
       ...actual.slice(-(MAX_UNDO - 1)),
       {
+        kind: 'pieza',
         toothNumber: cambio.toothNumber,
         snapshot: cambio.anterior,
         descripcion: cambio.descripcion,
@@ -422,6 +572,52 @@ export const OdontogramPanel = ({
               {t(modoTeclado ? 'odonto.teclado.desactivar' : 'odonto.teclado.activar')}
             </Button>
           )}
+          {canWrite && (
+            <div className="relative flex items-center gap-2">
+              <Button
+                variant={modoPpr ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => {
+                  setModoPpr((actual) => !actual);
+                  setPprInicio(null);
+                  setMenuPrt(false);
+                }}
+                leadingIcon={<Layers className="size-4" aria-hidden />}
+              >
+                {t(modoPpr ? 'odonto.protesis.ppr.activo' : 'odonto.protesis.ppr.activar')}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setMenuPrt((actual) => !actual);
+                  setModoPpr(false);
+                  setPprInicio(null);
+                }}
+                leadingIcon={<Layers className="size-4" aria-hidden />}
+              >
+                {t('odonto.protesis.prt.titulo')}
+              </Button>
+              {menuPrt && (
+                <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded-control border border-border bg-surface p-1 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => abrirPrt('maxilar')}
+                    className="block w-full rounded-control px-3 py-2 text-left text-sm text-ink hover:bg-surface-muted"
+                  >
+                    {t('odonto.protesis.maxilar')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => abrirPrt('mandibula')}
+                    className="block w-full rounded-control px-3 py-2 text-left text-sm text-ink hover:bg-surface-muted"
+                  >
+                    {t('odonto.protesis.mandibula')}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -500,8 +696,17 @@ export const OdontogramPanel = ({
               activeTooth={quick.toothNumber ?? hoja?.tooth ?? null}
               activeSurfaces={quick.surfaces}
               onToothPress={alPulsarPieza}
+              onProsthesisPress={alPulsarProtesis}
               readOnly={false}
             />
+
+            {modoPpr && (
+              <p className="rounded-control border border-primary/40 bg-primary/5 px-3 py-2 text-sm text-primary">
+                {pprInicio === null
+                  ? t('odonto.protesis.ppr.primera')
+                  : t('odonto.protesis.ppr.ultima')}
+              </p>
+            )}
 
             {modoTeclado ? (
               <>
@@ -565,6 +770,20 @@ export const OdontogramPanel = ({
           sessionId={sessionId}
           onClose={() => setHoja(null)}
           onApplied={aplicarHoja}
+          onError={(fallo) => error(fallo)}
+        />
+
+        <ProsthesisDialog
+          open={canWrite && protesis !== null}
+          patientId={patientId}
+          kind={protesis?.kind ?? 'ppr'}
+          arch={protesis?.arch ?? 'maxilar'}
+          toothNumbers={protesis?.toothNumbers ?? []}
+          existing={protesisExistente}
+          canWrite={canWrite}
+          sessionId={sessionId}
+          onClose={cerrarProtesis}
+          onApplied={aplicarProtesis}
           onError={(fallo) => error(fallo)}
         />
       </CardContent>

@@ -158,7 +158,7 @@ describe('etiqueta accesible de la pieza', () => {
       toothAriaLabel(16, [
         hallazgo({ surface: 'vestibular', condition: 'restauracion', state: 'completado' }),
       ]),
-    ).toBe('Pieza 16, obturación vestibular completado');
+    ).toBe('Pieza 16, restauración vestibular completado');
   });
 
   it('las condiciones de pieza completa se anuncian como tales', () => {

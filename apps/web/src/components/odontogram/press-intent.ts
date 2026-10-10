@@ -8,13 +8,20 @@ import type { ToothSurface } from '@odontocrm/contracts';
  * - `elegir-pieza` / `marcar-cara`: **modo teclado** (avanzado, opt-in). La pulsación
  *   alimenta la barra de carga rápida: fuera de las caras elige la pieza; sobre una
  *   cara, la marca.
+ * - `rango-protesis`: **modo prótesis**. La pulsación elige una pieza para el tramo
+ *   de una PPR (primera → última) en vez de abrir su hoja.
  *
  * Pura: la usa el panel para no repetir el `if` en el manejador del clic y poder
  * probarla aparte.
  */
-export type PressIntent = 'abrir-hoja' | 'elegir-pieza' | 'marcar-cara';
+export type PressIntent = 'abrir-hoja' | 'elegir-pieza' | 'marcar-cara' | 'rango-protesis';
 
-export const pressIntent = (modoTeclado: boolean, surface: ToothSurface | null): PressIntent => {
+export const pressIntent = (
+  modoTeclado: boolean,
+  surface: ToothSurface | null,
+  modoProtesis = false,
+): PressIntent => {
+  if (modoProtesis) return 'rango-protesis';
   if (!modoTeclado) return 'abrir-hoja';
   return surface === null ? 'elegir-pieza' : 'marcar-cara';
 };
