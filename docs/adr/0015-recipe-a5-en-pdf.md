@@ -1,6 +1,12 @@
 # ADR 0015 — Récipe A5 en PDF del servidor con membrete y QR
 
-- **Fecha:** 2026-10-02 · **Estado:** aceptada
+- **Fecha:** 2026-10-02 · **Estado:** aceptada (**forma superada por [ADR 0061](0061-recipe-en-dos-mitades-y-especialista-en-el-membrete.md)**)
+
+> **Nota (ADR 0061).** El **fondo** de esta decisión sigue vigente: el récipe es un PDF que compone
+> el servidor con Chromium, numerado, con QR y verificable sin exponer datos clínicos. Lo que cambió
+> es la **forma**: ya no es un A5 de una cara, sino una **hoja carta apaisada partida en dos mitades**
+> (copia de la farmacia y copia del paciente), y los datos del especialista pasan del pie al
+> **membrete**.
 
 ## Contexto
 
