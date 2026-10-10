@@ -34,8 +34,8 @@ export const readImageDataUri = async (path: string | null | undefined): Promise
 /** Tipo MIME de los archivos de fuente que sirve la marca (subconjunto `latin`). */
 const FONT_MIME = 'font/woff2';
 
-/** Un `.woff2` del repositorio como `data:` URI, o `null` si el archivo no está. */
-const readFontDataUri = async (path: string): Promise<string | null> => {
+/** Un `.woff2` como `data:` URI, o `null` si el archivo no está. */
+export const readFontFileDataUri = async (path: string): Promise<string | null> => {
   try {
     const data = await readFile(resolve(path));
     return `data:${FONT_MIME};base64,${data.toString('base64')}`;
@@ -44,9 +44,35 @@ const readFontDataUri = async (path: string): Promise<string | null> => {
   }
 };
 
+/** Una fuente ya resuelta a su `data:` URI, lista para armar su `@font-face`. */
+export interface ResolvedFontFace {
+  family: string;
+  weight: number;
+  style: 'normal' | 'italic';
+  dataUri: string;
+}
+
+/** La regla `@font-face` de una fuente resuelta. */
+export const fontFaceRule = (face: ResolvedFontFace): string =>
+  '@font-face {\n' +
+  `  font-family: '${face.family}';\n` +
+  `  font-style: ${face.style};\n` +
+  `  font-weight: ${String(face.weight)};\n` +
+  '  font-display: swap;\n' +
+  `  src: url(${face.dataUri}) format('woff2');\n` +
+  '}';
+
 /**
- * Las reglas `@font-face` de las fuentes de la marca, con cada `.woff2` incrustado
- * como `data:` URI.
+ * Todas las reglas `@font-face` de una lista **ya resuelta** (cada `.woff2` como
+ * `data:` URI). Es la parte pura: quien lee los archivos es el llamador —el servicio
+ * de documentos del repositorio, o identity para las fuentes subidas al almacén—.
+ */
+export const fontFaceCssFromResolved = (faces: readonly ResolvedFontFace[]): string =>
+  faces.map(fontFaceRule).join('\n');
+
+/**
+ * Las reglas `@font-face` de las fuentes de la marca, con cada `.woff2` del
+ * repositorio incrustado como `data:` URI.
  *
  * **¿Por qué incrustadas y no un `<link>` o un `@import`?** Porque el HTML se le pasa
  * a Chromium como **cadena** y el PDF se archiva: una fuente que dependiera de una
@@ -58,20 +84,15 @@ const readFontDataUri = async (path: string): Promise<string | null> => {
  * respaldo de `documentTitleSans`/`documentBodySans`.
  */
 export const brandFontFaceCss = async (fonts: BrandFonts = BRAND.fonts): Promise<string> => {
-  const reglas = await Promise.all(
-    fonts.files.map(async (file) => {
-      const dataUri = await readFontDataUri(file.path);
-      if (dataUri === null) return '';
-      return (
-        '@font-face {\n' +
-        `  font-family: '${fonts.family}';\n` +
-        `  font-style: ${file.style};\n` +
-        `  font-weight: ${String(file.weight)};\n` +
-        '  font-display: swap;\n' +
-        `  src: url(${dataUri}) format('woff2');\n` +
-        '}'
-      );
-    }),
-  );
-  return reglas.filter((regla) => regla !== '').join('\n');
+  const faces = (
+    await Promise.all(
+      fonts.files.map(async (file): Promise<ResolvedFontFace | null> => {
+        const dataUri = await readFontFileDataUri(file.path);
+        return dataUri === null
+          ? null
+          : { family: fonts.family, weight: file.weight, style: file.style, dataUri };
+      }),
+    )
+  ).filter((face): face is ResolvedFontFace => face !== null);
+  return fontFaceCssFromResolved(faces);
 };
