@@ -26,6 +26,7 @@ import { PatientsPage } from './pages/PatientsPage';
 import { ReportesPage } from './pages/ReportesPage';
 import { AuditoriaPage } from './pages/AuditoriaPage';
 import { CajaPage } from './pages/CajaPage';
+import { ConfiguracionPage } from './pages/ConfiguracionPage';
 import { SchedulingPage } from './pages/SchedulingPage';
 import { ScreensPage } from './pages/ScreensPage';
 import { ScreenConsultorioPage } from './pages/ScreenConsultorioPage';
@@ -66,6 +67,7 @@ export const App = () => {
         'flujo',
         'reportes',
         'auditoria',
+        'configuracion',
       ].includes(modulo.id),
   );
 
@@ -237,6 +239,16 @@ export const App = () => {
             element={
               <RequirePermission permission="screens:manage">
                 <ScreensPage />
+              </RequirePermission>
+            }
+          />
+
+          {/* Configuración de la aplicación (ADR 0060): solo el admin. */}
+          <Route
+            path="configuracion"
+            element={
+              <RequirePermission permission="settings:manage">
+                <ConfiguracionPage />
               </RequirePermission>
             }
           />

@@ -7,6 +7,7 @@ import { CriticalFlagsCard } from '../components/screens/CriticalFlagsCard';
 import { KioskNotice } from '../components/screens/KioskNotice';
 import { KioskStatusBar } from '../components/screens/KioskStatusBar';
 import { useKioskState } from '../components/screens/useKioskState';
+import { useScreenTexts } from '../hooks/useScreenTexts';
 import { formatTime } from '../lib/format';
 import { t } from '../lib/i18n';
 
@@ -25,6 +26,7 @@ export const ScreenConsultorioPage = () => {
   const { estado, sinToken, dispositivo, conectada, sinPermiso, reintentar } =
     useKioskState('consultorio');
   const [esPantallaCompleta, setEsPantallaCompleta] = useState(false);
+  const tr = useScreenTexts();
 
   const sillas = estado?.chairs ?? [];
   const waitingCount = estado?.waitingCount ?? 0;
@@ -51,13 +53,13 @@ export const ScreenConsultorioPage = () => {
         <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight text-white">
             <Stethoscope className="size-7 text-sky-300" aria-hidden="true" />
-            {t('pantalla.consultorio.titulo')}
+            {tr('pantalla.consultorio.titulo')}
           </h1>
           {dispositivo !== null && <p className="truncate text-sm text-slate-400">{dispositivo}</p>}
         </div>
 
         <p className="text-2xl font-semibold text-sky-300">
-          {t('pantalla.sala.count', { total: waitingCount })}
+          {tr('pantalla.sala.count', { total: waitingCount })}
         </p>
 
         {/* Una pantalla sin token no está «desconectada»: está sin configurar. */}
@@ -71,7 +73,7 @@ export const ScreenConsultorioPage = () => {
           /* Sin clave propia para el botón de pantalla completa: se etiqueta con
              el nombre del dispositivo (o con el de la pantalla), que es lo que
              identifica a este televisor (ver informe). */
-          aria-label={dispositivo ?? t('pantalla.consultorio.titulo')}
+          aria-label={dispositivo ?? tr('pantalla.consultorio.titulo')}
           aria-pressed={esPantallaCompleta}
           className="rounded-control border border-slate-700 p-2 text-slate-400 transition-colors hover:bg-slate-900 hover:text-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-sky-400"
         >
@@ -115,6 +117,7 @@ export const ScreenConsultorioPage = () => {
 
 /** Un consultorio en la pantalla compartida: ocupado (con sus datos) o libre. */
 const ChairTile = ({ silla }: { silla: ConsultationChair }) => {
+  const tr = useScreenTexts();
   const ocupado = silla.appointmentId !== null;
   /** Con paciente pero sin `since`: está llamado y entrando al consultorio. */
   const entrando = ocupado && silla.since === null;
@@ -134,21 +137,21 @@ const ChairTile = ({ silla }: { silla: ConsultationChair }) => {
         <h2 className="text-2xl font-bold tracking-tight text-sky-300">{silla.chairLabel}</h2>
         {silla.estado === 'en_consulta' ? (
           <Badge variant="success" className="text-sm">
-            {t('pantalla.consultorio.enConsulta')}
+            {tr('pantalla.consultorio.enConsulta')}
           </Badge>
         ) : silla.estado === 'llamado' ? (
           <Badge variant="warning" className="text-sm">
-            {t('pantalla.consultorio.llamado')}
+            {tr('pantalla.consultorio.llamado')}
           </Badge>
         ) : (
           <Badge variant="neutral" className="text-sm">
-            {t('pantalla.consultorio.libre')}
+            {tr('pantalla.consultorio.libre')}
           </Badge>
         )}
       </div>
 
       {!ocupado ? (
-        <p className="pt-3 text-2xl text-slate-500">{t('pantalla.consultorio.libre')}</p>
+        <p className="pt-3 text-2xl text-slate-500">{tr('pantalla.consultorio.libre')}</p>
       ) : (
         <>
           <p className="pt-3 text-5xl font-bold tracking-tight text-white">

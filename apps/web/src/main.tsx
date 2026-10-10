@@ -11,6 +11,7 @@ import { queryClient } from './lib/queryClient';
 import { AuthProvider } from './providers/AuthProvider';
 import { ClinicIdentityProvider } from './providers/ClinicIdentityProvider';
 import { RealtimeSyncProvider } from './providers/RealtimeSyncProvider';
+import { SettingsProvider } from './providers/SettingsProvider';
 import { ThemeProvider, aplicarTemaGuardado } from './providers/ThemeProvider';
 
 import './index.css';
@@ -107,12 +108,17 @@ try {
                     navegador. Va dentro de AuthProvider porque solo se pide **con
                     sesión**: sin ella la consulta daría 401 (ver el proveedor). */}
                 <ClinicIdentityProvider>
-                  {/* Dentro de AuthProvider (necesita saber si hay sesión) y de
-                      QueryClientProvider (invalida consultas): es el canal en vivo del
-                      personal, y sin sesión no abre nada. */}
-                  <RealtimeSyncProvider>
-                    <App />
-                  </RealtimeSyncProvider>
+                  {/* La configuración de la aplicación (ADR 0060): aplica el acento y la
+                      marca al documento y los reparte por contexto. Dentro de
+                      AuthProvider porque solo se pide con sesión. */}
+                  <SettingsProvider>
+                    {/* Dentro de AuthProvider (necesita saber si hay sesión) y de
+                        QueryClientProvider (invalida consultas): es el canal en vivo del
+                        personal, y sin sesión no abre nada. */}
+                    <RealtimeSyncProvider>
+                      <App />
+                    </RealtimeSyncProvider>
+                  </SettingsProvider>
                 </ClinicIdentityProvider>
               </AuthProvider>
             </BrowserRouter>

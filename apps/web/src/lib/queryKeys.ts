@@ -11,3 +11,10 @@
  * onboarding cuando el titular la edita.
  */
 export const CLINIC_IDENTITY_QUERY_KEY = ['identidad-consultorio'] as const;
+
+/**
+ * Configuración de la aplicación (ADR 0060): marca de los imprimibles, acento de la
+ * interfaz, textos del kiosko y canales. La consulta el proveedor que la aplica y la
+ * invalidan el login y el propio panel al guardar.
+ */
+export const APP_SETTINGS_QUERY_KEY = ['configuracion-app'] as const;

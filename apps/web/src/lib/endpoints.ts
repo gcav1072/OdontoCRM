@@ -116,12 +116,29 @@ import {
   type InvoiceStatus,
   type SetExchangeRateInput,
   type BillingRate,
+  type AppSettingsView,
+  type AppSettingsInput,
+  type BrandSettings,
+  type BrandSettingsInput,
+  type ChannelSettingsInput,
+  type ChannelSettingsView,
+  type ChannelTestInput,
+  type ChannelTestResult,
+  type EffectiveBrand,
+  type Chair,
+  type ChairInput,
 } from '@odontocrm/contracts';
 
 import { API_BASE, api, apiBinary, refreshSession, type QueryParams } from './api';
 /** Las exportaciones del expediente de un paciente (respuesta de la lista). */
 export interface DossierExportList {
   items: DossierExport[];
+  total: number;
+}
+
+/** Los consultorios (sillones) del catálogo de la agenda (respuesta de la lista). */
+export interface ChairList {
+  items: Chair[];
   total: number;
 }
 /**
@@ -284,6 +301,49 @@ export const usersApi = {
 
   roles: (signal?: AbortSignal): Promise<RoleCatalogResponse> =>
     api.get<RoleCatalogResponse>('/users/roles', { signal }),
+};
+
+/**
+ * **Configuración de la aplicación** (ADR 0060): marca de los imprimibles, acento de la
+ * interfaz, textos del kiosko y canales. La lee cualquier sesión (la necesita el proveedor
+ * que aplica la marca y el acento a toda la SPA); editarla exige `settings:manage` (admin).
+ */
+export const settingsApi = {
+  /** La configuración efectiva: marca, acento resuelto, textos y canales (sin secretos). */
+  get: (signal?: AbortSignal): Promise<AppSettingsView> =>
+    api.get<AppSettingsView>('/settings', { signal }),
+
+  /** Reemplaza la marca de los imprimibles (paleta, tipografías, medidas y fuentes). */
+  updateBrand: (input: BrandSettingsInput): Promise<EffectiveBrand> =>
+    api.put<EffectiveBrand>('/settings/brand', input),
+
+  /** Sube una fuente `.woff2` (multipart). El navegador pone el `boundary`. */
+  uploadFont: (
+    file: File,
+    meta: { weight: number; style: 'normal' | 'italic' },
+  ): Promise<BrandSettings> => {
+    const cuerpo = new FormData();
+    cuerpo.append('weight', String(meta.weight));
+    cuerpo.append('style', meta.style);
+    cuerpo.append('file', file);
+    return api.request<BrandSettings>('POST', '/settings/brand/fonts', { rawBody: cuerpo });
+  },
+
+  /** Quita una fuente subida (las de respaldo del repositorio no se tocan). */
+  removeFont: (path: string): Promise<BrandSettings> =>
+    api.delete<BrandSettings>('/settings/brand/fonts', { query: { path } }),
+
+  /** Acento de la interfaz y textos del kiosko. */
+  updateApp: (input: AppSettingsInput): Promise<AppSettingsInput> =>
+    api.put<AppSettingsInput>('/settings/app', input),
+
+  /** Credenciales de los canales (los secretos van cifrados y no vuelven). */
+  updateChannels: (input: ChannelSettingsInput): Promise<ChannelSettingsView> =>
+    api.put<ChannelSettingsView>('/settings/channels', input),
+
+  /** Prueba un canal mandando un mensaje de diagnóstico. */
+  testChannel: (input: ChannelTestInput): Promise<ChannelTestResult> =>
+    api.post<ChannelTestResult>('/settings/channels/test', input),
 };
 
 /**
@@ -676,6 +736,22 @@ export const agendaApi = {
     api.patch<SlotTemplate>(`/agenda/templates/${id}`, input),
 
   deleteTemplate: (id: string): Promise<void> => api.delete<void>(`/agenda/templates/${id}`),
+
+  /**
+   * **Consultorios (sillones)**: el catálogo que fija qué sillón ocupa cada franja.
+   * Consultarlo basta con leer la agenda; crearlos y renombrarlos exige
+   * `scheduling:manage` (admin) — es lo que edita el panel de configuración.
+   */
+  chairs: (params: { todos?: boolean } = {}, signal?: AbortSignal): Promise<ChairList> =>
+    api.get<ChairList>('/agenda/chairs', {
+      query: params.todos === true ? { todos: 'true' } : {},
+      signal,
+    }),
+
+  createChair: (input: ChairInput): Promise<Chair> => api.post<Chair>('/agenda/chairs', input),
+
+  updateChair: (id: string, input: Partial<ChairInput>): Promise<Chair> =>
+    api.patch<Chair>(`/agenda/chairs/${id}`, input),
 
   /** Vista previa exacta del lote: los mensajes que se prepararán, uno por cita. */
   notifyPreview: (input: NotifyPreviewInput, signal?: AbortSignal): Promise<NotifyBatch> =>

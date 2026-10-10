@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from 'react';
 import { NoticeBanner } from '../components/NoticeBanner';
 import { BotConversationsCard } from '../components/notifications/BotConversationsCard';
 import { BotStatusCard } from '../components/notifications/BotStatusCard';
-import { CancellationPolicyCard } from '../components/notifications/CancellationPolicyCard';
 import { ContactedDialog } from '../components/notifications/ContactedDialog';
 import { MessageTemplatesCard } from '../components/notifications/MessageTemplatesCard';
 import { NotificationDetailDialog } from '../components/notifications/NotificationDetailDialog';
@@ -42,7 +41,9 @@ const FILTROS_INICIALES: NotificationFiltersState = {
  * - Conversaciones activas del asistente (informativas).
  * - Plantillas editables con marcadores y vista previa.
  * - Vinculación de pacientes con enlace, QR y desvinculación.
- * - Política de cancelación del paciente (ADR 0057), solo para quien la puede editar.
+ *
+ * **La política de cancelación del paciente** (ADR 0057) ya **no** se edita aquí: con el
+ * panel de configuración (ADR 0060) se movió a `/configuracion`, que es solo del admin.
  *
  * Ver la pantalla exige `scheduling:read`; las acciones de escritura exigen
  * `scheduling:notify` y se comprueban aquí además de en la API. Las mutaciones
@@ -54,8 +55,6 @@ export const NotificationsPage = () => {
   const { notice, mostrar, exito, limpiar } = useNotice();
 
   const puedeNotificar = hasPermission('scheduling:notify');
-  /** Política de cancelación (ADR 0057): la editan solo el admin y el odontólogo. */
-  const puedePolitica = hasPermission('scheduling:cancel_policy');
 
   const [filtros, setFiltros] = useState<NotificationFiltersState>(FILTROS_INICIALES);
   const [busqueda, setBusqueda] = useState('');
@@ -159,10 +158,6 @@ export const NotificationsPage = () => {
         canNotify={puedeNotificar}
         onNotice={(variant, message) => mostrar({ variant, message })}
       />
-
-      {puedePolitica && (
-        <CancellationPolicyCard onNotice={(variant, message) => mostrar({ variant, message })} />
-      )}
 
       {reintentando !== null && (
         <RetryNotificationDialog

@@ -13,6 +13,7 @@ import {
   type KioskVoiceOptions,
 } from '../components/screens/kiosk-speech';
 import { useKioskState } from '../components/screens/useKioskState';
+import { useScreenTexts } from '../hooks/useScreenTexts';
 import { t } from '../lib/i18n';
 import { llamadoVigente, turnoLabel } from '../lib/screens';
 
@@ -48,55 +49,59 @@ interface CalledRowProps {
   compacto: boolean;
 }
 
-const CalledRow = ({ call, destacado, vigente, compacto }: CalledRowProps) => (
-  <li
-    className={cn(
-      'rounded-card border-2 bg-slate-900/70 px-6 py-4',
-      vigente ? 'border-sky-400' : 'border-slate-700',
-      destacado ? 'py-6' : null,
-    )}
-  >
-    <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-      <span
-        className={cn(
-          'font-bold tracking-tight text-white',
-          compacto ? 'text-3xl' : destacado ? 'text-7xl' : 'text-5xl',
-        )}
-      >
-        {abbreviateName(call.patientDisplayName)}
-      </span>
-      {call.callNumber >= 2 && (
-        <Badge variant="danger" className="text-sm">
-          {t('pantalla.lobby.segundoLlamado')}
-        </Badge>
+const CalledRow = ({ call, destacado, vigente, compacto }: CalledRowProps) => {
+  const tr = useScreenTexts();
+  return (
+    <li
+      className={cn(
+        'rounded-card border-2 bg-slate-900/70 px-6 py-4',
+        vigente ? 'border-sky-400' : 'border-slate-700',
+        destacado ? 'py-6' : null,
       )}
-    </div>
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <span
+          className={cn(
+            'font-bold tracking-tight text-white',
+            compacto ? 'text-3xl' : destacado ? 'text-7xl' : 'text-5xl',
+          )}
+        >
+          {abbreviateName(call.patientDisplayName)}
+        </span>
+        {call.callNumber >= 2 && (
+          <Badge variant="danger" className="text-sm">
+            {tr('pantalla.lobby.segundoLlamado')}
+          </Badge>
+        )}
+      </div>
 
-    <div className="flex flex-wrap items-baseline gap-x-8 gap-y-1 pt-2">
-      <span
-        className={cn(
-          'font-semibold text-sky-300',
-          compacto ? 'text-xl' : destacado ? 'text-4xl' : 'text-3xl',
-        )}
-      >
-        {t('pantalla.lobby.turno', { turno: turnoLabel(call) })}
-      </span>
-      <span
-        className={cn(
-          'font-semibold text-emerald-300',
-          compacto ? 'text-xl' : destacado ? 'text-4xl' : 'text-3xl',
-        )}
-      >
-        {t('pantalla.lobby.pasar', { sillon: call.chairLabel })}
-      </span>
-    </div>
-  </li>
-);
+      <div className="flex flex-wrap items-baseline gap-x-8 gap-y-1 pt-2">
+        <span
+          className={cn(
+            'font-semibold text-sky-300',
+            compacto ? 'text-xl' : destacado ? 'text-4xl' : 'text-3xl',
+          )}
+        >
+          {tr('pantalla.lobby.turno', { turno: turnoLabel(call) })}
+        </span>
+        <span
+          className={cn(
+            'font-semibold text-emerald-300',
+            compacto ? 'text-xl' : destacado ? 'text-4xl' : 'text-3xl',
+          )}
+        >
+          {tr('pantalla.lobby.pasar', { sillon: call.chairLabel })}
+        </span>
+      </div>
+    </li>
+  );
+};
 
 export const ScreenLobbyPage = () => {
   const { estado, sinToken, dispositivo, ajustes, conectada, sinPermiso, reintentar } =
     useKioskState('lobby');
   const [esPantallaCompleta, setEsPantallaCompleta] = useState(false);
+  const tr = useScreenTexts();
 
   const lobby = estado;
   const llamados = lobby?.calls ?? [];
@@ -154,13 +159,13 @@ export const ScreenLobbyPage = () => {
       <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-slate-800 px-8 py-5">
         <div className="min-w-0 flex-1">
           <h1 className="text-3xl font-bold tracking-tight text-white">
-            {t('pantalla.lobby.titulo')}
+            {tr('pantalla.lobby.titulo')}
           </h1>
           {dispositivo !== null && <p className="truncate text-sm text-slate-400">{dispositivo}</p>}
         </div>
 
         <p className="text-2xl font-semibold text-sky-300">
-          {t('pantalla.sala.count', { total: lobby?.waitingCount ?? 0 })}
+          {tr('pantalla.sala.count', { total: lobby?.waitingCount ?? 0 })}
         </p>
 
         {/* Una pantalla sin token no está «desconectada»: está sin configurar. */}
@@ -174,7 +179,7 @@ export const ScreenLobbyPage = () => {
           /* Sin clave propia para el botón de pantalla completa: se etiqueta con
              el nombre del dispositivo (o con el de la pantalla), que es lo que
              identifica a este televisor (ver informe). */
-          aria-label={dispositivo ?? t('pantalla.lobby.titulo')}
+          aria-label={dispositivo ?? tr('pantalla.lobby.titulo')}
           aria-pressed={esPantallaCompleta}
           className="rounded-control border border-slate-700 p-2 text-slate-400 transition-colors hover:bg-slate-900 hover:text-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-sky-400"
         >

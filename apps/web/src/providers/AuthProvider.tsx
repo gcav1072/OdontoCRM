@@ -19,7 +19,7 @@ import {
 import { authApi } from '../lib/endpoints';
 import { setAccessToken, setSessionLostHandler } from '../lib/api';
 import { isPermission, isRole } from '../lib/i18n';
-import { CLINIC_IDENTITY_QUERY_KEY } from '../lib/queryKeys';
+import { APP_SETTINGS_QUERY_KEY, CLINIC_IDENTITY_QUERY_KEY } from '../lib/queryKeys';
 
 /**
  * Sesión de la SPA.
@@ -101,6 +101,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
        * recargar y renovarla—, se marca para volver a pedirla.
        */
       void consultas.invalidateQueries({ queryKey: CLINIC_IDENTITY_QUERY_KEY });
+      // La configuración de la aplicación (marca y acento, ADR 0060) se pide igual de
+      // temprano y con la misma trampa: sin token queda en 401 y nadie la reintenta.
+      void consultas.invalidateQueries({ queryKey: APP_SETTINGS_QUERY_KEY });
     },
     [consultas],
   );

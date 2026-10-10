@@ -10,6 +10,7 @@ import {
   MonitorPlay,
   Receipt,
   ScrollText,
+  Settings2,
   Stethoscope,
   UserRoundCog,
   Users,
@@ -42,7 +43,8 @@ export type ModuleId =
   | 'auditoria'
   | 'usuarios'
   | 'miPerfil'
-  | 'pantallas';
+  | 'pantallas'
+  | 'configuracion';
 
 export interface ModuleDefinition {
   id: ModuleId;
@@ -180,6 +182,15 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     icon: MonitorPlay,
     permission: 'screens:manage',
   },
+  configuracion: {
+    id: 'configuracion',
+    path: '/configuracion',
+    labelKey: 'modulo.configuracion.titulo',
+    descriptionKey: 'modulo.configuracion.descripcion',
+    icon: Settings2,
+    // Solo el admin: son ajustes que afectan a toda la clínica (marca, canales, sillones).
+    permission: 'settings:manage',
+  },
 };
 
 export interface NavSection {
@@ -203,7 +214,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     ],
   },
   { titleKey: 'menu.seccion.analisis', modules: ['reportes', 'auditoria'] },
-  { titleKey: 'menu.seccion.admin', modules: ['usuarios', 'pantallas'] },
+  { titleKey: 'menu.seccion.admin', modules: ['usuarios', 'pantallas', 'configuracion'] },
 ];
 
 /** Módulo al que pertenece una ruta; `null` si es una pantalla sin módulo. */
