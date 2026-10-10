@@ -117,7 +117,7 @@ describe('dominio FDI', () => {
 });
 
 describe('captura por excepción: qué se puede registrar', () => {
-  it('la caries y la obturación se registran por cara', () => {
+  it('la caries y la restauración se registran por cara', () => {
     const caries = recordFindingSchema.parse({
       toothNumber: 24,
       surface: 'occlusal',
@@ -126,13 +126,13 @@ describe('captura por excepción: qué se puede registrar', () => {
     expect(caries.state).toBe('pendiente');
     expect(caries.notes).toBeNull();
 
-    const obturacion = recordFindingSchema.parse({
+    const restauracion = recordFindingSchema.parse({
       toothNumber: 24,
       surface: 'mesial',
       condition: 'restauracion',
       state: 'completado',
     });
-    expect(obturacion.state).toBe('completado');
+    expect(restauracion.state).toBe('completado');
   });
 
   it('las condiciones de pieza completa exigen surface null', () => {
@@ -170,7 +170,7 @@ describe('captura por excepción: qué se puede registrar', () => {
     }
   });
 
-  it('la caries y la obturación exigen la cara', () => {
+  it('la caries y la restauración exigen la cara', () => {
     expect(recordFindingSchema.safeParse({ toothNumber: 36, condition: 'caries' }).success).toBe(
       false,
     );
@@ -507,7 +507,7 @@ describe('estados clínicos válidos (spec anexo ADR 0032 §2)', () => {
         state: 'completado',
       }).success,
     ).toBe(false);
-    // La caries tampoco: se convierte en obturación.
+    // La caries tampoco: se convierte en restauración.
     expect(
       recordFindingSchema.safeParse({
         toothNumber: 36,
@@ -530,23 +530,66 @@ describe('estados clínicos válidos (spec anexo ADR 0032 §2)', () => {
   });
 
   it('los procedimientos mutan un hallazgo en otro (spec §5)', () => {
-    // La caries tratada pasa a obturación en la misma cara…
+    // La caries tratada pasa a restauración en la misma cara…
     expect(PROCEDURE_TRANSITIONS.obturar).toMatchObject({
-      from: 'caries',
+      from: ['caries'],
       to: 'restauracion',
       scope: 'surface',
     });
-    // …la extracción cumplida deja la pieza ausente…
+    // …la extracción cumplida deja la pieza **extraída** (acto quirúrgico)…
     expect(PROCEDURE_TRANSITIONS.extraer).toMatchObject({
-      from: 'extraccion_indicada',
-      to: 'ausente',
+      from: ['extraccion_indicada'],
+      to: 'extraida',
     });
-    // …y rehabilitar exige un implante vigente (fase quirúrgica → rehabilitada).
+    // …y rehabilitar exige un implante vigente, desde una ausencia congénita o
+    // quirúrgica (fase quirúrgica → rehabilitada).
     expect(PROCEDURE_TRANSITIONS.rehabilitar).toMatchObject({
-      from: 'ausente',
+      from: ['ausente', 'extraida'],
       to: 'corona',
       requiresImplante: true,
     });
+  });
+});
+
+describe('exodoncia realizada (`extraida`)', () => {
+  it('es un hecho consumado: solo `completado` (sale en azul)', () => {
+    expect(allowedStatesFor('extraida')).toEqual(['completado']);
+    expect(isStateAllowed('extraida', 'completado')).toBe(true);
+    expect(isStateAllowed('extraida', 'pendiente')).toBe(false);
+  });
+
+  it('supera y excluye las caras, como `ausente`', () => {
+    expect(supersedesSurfaces('extraida')).toBe(true);
+    expect(excludesSurfaces('extraida')).toBe(true);
+    // Una caries no se registra sobre una pieza extraída.
+    expect(recordingConflicts('extraida', 'caries')).toBe(true);
+    expect(conditionsConflict('extraida', 'caries')).toBe(true);
+  });
+
+  it('no convive con corona, endodoncia, ausente ni extracción indicada… pero sí con el implante', () => {
+    expect(conditionsConflict('extraida', 'corona')).toBe(true);
+    expect(conditionsConflict('extraida', 'endodoncia')).toBe(true);
+    expect(conditionsConflict('extraida', 'ausente')).toBe(true);
+    expect(conditionsConflict('extraida', 'extraccion_indicada')).toBe(true);
+    // Fase quirúrgica: la exodoncia y el implante que la sustituye conviven.
+    expect(conditionsConflict('extraida', 'implante')).toBe(false);
+  });
+
+  it('el esquema rechaza «extraída pendiente» y admite la completada', () => {
+    expect(
+      recordFindingSchema.safeParse({
+        toothNumber: 46,
+        condition: 'extraida',
+        state: 'pendiente',
+      }).success,
+    ).toBe(false);
+    expect(
+      recordFindingSchema.safeParse({
+        toothNumber: 46,
+        condition: 'extraida',
+        state: 'completado',
+      }).success,
+    ).toBe(true);
   });
 });
 
@@ -718,7 +761,7 @@ describe('máquina de la carga rápida', () => {
   });
 
   it('la mayúscula marca la misma condición como completada (si admite los dos estados)', () => {
-    // La obturación admite pendiente y completado.
+    // La restauración admite pendiente y completado.
     const pendiente = simular('24no');
     const completada = simular('24nO');
     expect(pendiente.ultimo).toMatchObject({ input: { state: 'pendiente', surface: 'occlusal' } });
@@ -741,16 +784,16 @@ describe('máquina de la carga rápida', () => {
     expect(estado.surfaces).toEqual([]);
   });
 
-  it('`a` marca la pieza ausente y `x` la extracción indicada, cada una con su estado válido', () => {
-    // `ausente` es un hecho consumado (completado); `extraccion_indicada` es un plan
-    // (pendiente). Da igual la caja que se pulse: el estado es el válido (spec §2).
+  it('`a` marca la pieza ausente, `x` la extracción indicada y `X` la extraída, cada una con su estado válido', () => {
+    // `ausente` y `extraida` son hechos consumados (completado); `extraccion_indicada`
+    // es un plan (pendiente). La caja de la tecla se clampea al estado válido (spec §2).
     expect(simular('48a').ultimo).toMatchObject({
       input: { toothNumber: 48, surface: null, condition: 'ausente', state: 'completado' },
     });
     expect(simular('48A').ultimo).toMatchObject({
       input: { condition: 'ausente', state: 'completado' },
     });
-    expect(simular('48X').ultimo).toMatchObject({
+    expect(simular('48x').ultimo).toMatchObject({
       input: {
         toothNumber: 48,
         surface: null,
@@ -758,8 +801,8 @@ describe('máquina de la carga rápida', () => {
         state: 'pendiente',
       },
     });
-    expect(simular('48x').ultimo).toMatchObject({
-      input: { condition: 'extraccion_indicada', state: 'pendiente' },
+    expect(simular('48X').ultimo).toMatchObject({
+      input: { condition: 'extraida', state: 'completado' },
     });
   });
 

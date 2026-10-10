@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { cleanText } from './patient.js';
+import type { ProsthesisRecord } from './prosthesis.js';
 
 /**
  * Odontograma FDI (Fase 6, sesión B).
@@ -18,15 +19,15 @@ import { cleanText } from './patient.js';
  *     hallazgo), que es lo que permite cargar la boca completa en < 30 s.
  *
  * Reglas clínicas:
- *  - Una cara admite **caries** u **obturación**, cada una con sus estados válidos
+ *  - Una cara admite **caries** u **restauración**, cada una con sus estados válidos
  *    (`pendiente` = rojo, `completado` = azul, doc §7.2): la caries solo se
- *    diagnostica, la obturación puede estar por hacer o hecha (`isStateAllowed`).
- *  - Las condiciones de **pieza completa** (ausente, extracción indicada, corona,
+ *    diagnostica, la restauración puede estar por hacer o hecha (`isStateAllowed`).
+ *  - Las condiciones de **pieza completa** (ausente, extracción indicada, extraida, corona,
  *    implante, endodoncia) tienen estados válidos propios, condiciones incompatibles
  *    y un efecto distinto sobre las caras: superarlas (`corona`, `implante`) o
  *    excluirlas (`ausente`, `implante`). Ver `WHOLE_TOOTH_RULES` y ADR 0032.
- *  - Los estados **no son estáticos**: la caries tratada pasa a obturación y la
- *    extracción cumplida deja la pieza ausente (`PROCEDURE_TRANSITIONS`).
+ *  - Los estados **no son estáticos**: la caries tratada pasa a restauración y la
+ *    extracción cumplida deja la pieza extraída (`PROCEDURE_TRANSITIONS`).
  */
 
 /* ── Dominio FDI ───────────────────────────────────────────────────────────── */
@@ -69,6 +70,7 @@ export const surfaceConditionSchema = z.enum(SURFACE_CONDITIONS);
 export const WHOLE_TOOTH_CONDITIONS = [
   'ausente',
   'extraccion_indicada',
+  'extraida',
   'corona',
   'implante',
   'endodoncia',
@@ -80,7 +82,7 @@ export const wholeToothConditionSchema = z.enum(WHOLE_TOOTH_CONDITIONS);
  * Regla de convivencia de cada condición de pieza completa ([ADR 0032](../../../../docs/adr/0032-convivencia-de-tratamientos-con-las-caras.md)).
  *
  * El odontograma se guarda por excepción y una pieza puede tener **varias** filas:
- * caries y obturación por cara, y los marcadores de tratamiento de la pieza
+ * caries y restauración por cara, y los marcadores de tratamiento de la pieza
  * completa. La pregunta es cuáles pueden convivir, y la respuesta no es la misma
  * para todas:
  *
@@ -147,7 +149,7 @@ export const WHOLE_TOOTH_RULES: Readonly<Record<WholeToothCondition, WholeToothR
   ausente: {
     supersedesSurfaces: true,
     excludesSurfaces: true,
-    incompatibleWith: ['extraccion_indicada', 'corona', 'endodoncia'],
+    incompatibleWith: ['extraccion_indicada', 'extraida', 'corona', 'endodoncia'],
     // Un hecho consumado: la pieza no está. No hay «ausente pendiente»; la ausencia
     // *futura* se llama `extraccion_indicada` (spec anexo ADR 0032 §2).
     allowedStates: ['completado'],
@@ -160,8 +162,25 @@ export const WHOLE_TOOTH_RULES: Readonly<Record<WholeToothCondition, WholeToothR
   extraccion_indicada: {
     supersedesSurfaces: false,
     excludesSurfaces: false,
-    incompatibleWith: ['ausente', 'implante'],
+    incompatibleWith: ['ausente', 'extraida', 'implante'],
     allowedStates: ['pendiente'],
+  },
+  /**
+   * La exodoncia **ya realizada**: la pieza se extrajo en un acto quirúrgico
+   * documentado. Es la transición de `extraccion_indicada` al cumplirse (`extraer`)
+   * y se distingue de `ausente` —la agenesia o la pérdida no quirúrgica— para dejar
+   * constancia de **cómo** se perdió el diente.
+   *
+   * Es un hecho consumado, como `ausente`: supera y excluye las caras y solo existe
+   * `completado` (de ahí que salga en **azul**, el color de lo hecho). No convive con
+   * la corona ni con el conducto —el diente no está— y **sí con el implante**, que es
+   * su fase quirúrgica.
+   */
+  extraida: {
+    supersedesSurfaces: true,
+    excludesSurfaces: true,
+    incompatibleWith: ['ausente', 'extraccion_indicada', 'corona', 'endodoncia'],
+    allowedStates: ['completado'],
   },
   /**
    * La corona protésica **recubre el muñón en sus 360°**: en boca ya no se ve si
@@ -176,7 +195,7 @@ export const WHOLE_TOOTH_RULES: Readonly<Record<WholeToothCondition, WholeToothR
   corona: {
     supersedesSurfaces: true,
     excludesSurfaces: false,
-    incompatibleWith: ['ausente'],
+    incompatibleWith: ['ausente', 'extraida'],
     allowedStates: ['pendiente', 'completado'],
   },
   /**
@@ -200,7 +219,7 @@ export const WHOLE_TOOTH_RULES: Readonly<Record<WholeToothCondition, WholeToothR
   endodoncia: {
     supersedesSurfaces: false,
     excludesSurfaces: false,
-    incompatibleWith: ['ausente', 'implante'],
+    incompatibleWith: ['ausente', 'extraida', 'implante'],
     allowedStates: ['pendiente', 'completado'],
   },
 };
@@ -224,7 +243,7 @@ export interface SurfaceConditionRule {
  *
  * `caries` es una patología activa: se diagnostica (`pendiente`) y no se «completa»
  * —cuando se trata, el tejido cariado se sustituye por una restauración, y eso es la
- * transición `obturar`, no un cambio de estado—. `restauracion` (la obturación) sí
+ * transición `obturar`, no un cambio de estado—. `restauracion` (la restauración) sí
  * admite las dos: por hacer (empaste indicado o recambio) o ya hecha.
  */
 export const SURFACE_CONDITION_RULES: Readonly<Record<SurfaceCondition, SurfaceConditionRule>> = {
@@ -367,9 +386,10 @@ export const surfaceLabelFor = (toothNumber: number, surface: ToothSurface): str
 /** Nombre de la condición en la interfaz (leyenda, cargas rápidas y avisos). */
 export const CONDITION_LABELS: Readonly<Record<ToothCondition, string>> = {
   caries: 'Caries',
-  restauracion: 'Obturación',
+  restauracion: 'Restauración',
   ausente: 'Ausente',
   extraccion_indicada: 'Extracción indicada',
+  extraida: 'Extraída',
   corona: 'Corona',
   implante: 'Implante',
   endodoncia: 'Endodoncia',
@@ -716,8 +736,8 @@ export type RecordFindingsBatchInput = z.infer<typeof recordFindingsBatchSchema>
 
 /**
  * Procedimientos que **mutan** un hallazgo en otro. No son un simple cambio de
- * estado: la caries tratada deja de ser caries y pasa a ser una obturación; la
- * extracción cumplida deja la pieza ausente. El servicio los aplica en **una**
+ * estado: la caries tratada deja de ser caries y pasa a ser una restauración; la
+ * extracción cumplida deja la pieza extraída. El servicio los aplica en **una**
  * transacción (resuelve el origen e inserta el destino), para que la carrera entre
  * las dos escrituras no deje un estado a medias.
  */
@@ -726,14 +746,19 @@ export type ToothProcedure = (typeof TOOTH_PROCEDURES)[number];
 
 /** Nombre del procedimiento en la interfaz. */
 export const PROCEDURE_LABELS: Readonly<Record<ToothProcedure, string>> = {
-  obturar: 'Obturar',
+  obturar: 'Restaurar',
   extraer: 'Extraer',
   rehabilitar: 'Poner corona',
 };
 
 export interface ProcedureTransition {
-  /** Condición que el procedimiento **resuelve** (deja de estar vigente). */
-  from: ToothCondition;
+  /**
+   * Condición o condiciones que el procedimiento **resuelve** (deja de estar
+   * vigente). Es una lista porque una misma acción puede cumplirse sobre estados
+   * distintos: rehabilitar una ausencia vale tanto para la **agenesia** (`ausente`)
+   * como para la **exodoncia** (`extraida`).
+   */
+  from: readonly ToothCondition[];
   /** Condición que queda vigente al terminar. */
   to: ToothCondition;
   /** Estado de la condición resultante. */
@@ -745,27 +770,28 @@ export interface ProcedureTransition {
 }
 
 export const PROCEDURE_TRANSITIONS: Readonly<Record<ToothProcedure, ProcedureTransition>> = {
-  // Caries tratada → obturación en la **misma cara** (spec §5).
+  // Caries tratada → restauración en la **misma cara** (spec §5).
   obturar: {
-    from: 'caries',
+    from: ['caries'],
     to: 'restauracion',
     toState: 'completado',
     requiresImplante: false,
     scope: 'surface',
   },
-  // Extracción cumplida → pieza **ausente** (spec §5). Es la regla que se pidió
-  // automatizar: al cumplirse una extracción indicada, la pieza queda ausente.
+  // Extracción cumplida → pieza **extraída** (spec §5): el acto quirúrgico deja la
+  // pieza fuera y documenta **cómo** se perdió, distinto de la agenesia (`ausente`).
   extraer: {
-    from: 'extraccion_indicada',
-    to: 'ausente',
+    from: ['extraccion_indicada'],
+    to: 'extraida',
     toState: 'completado',
     requiresImplante: false,
     scope: 'whole',
   },
   // Fase quirúrgica → rehabilitada: sobre un **implante vigente**, la ausencia se
-  // resuelve y entra la corona (spec §5). Sin implante no se admite.
+  // resuelve y entra la corona (spec §5). Sin implante no se admite. La ausencia
+  // puede ser congénita (`ausente`) o quirúrgica (`extraida`).
   rehabilitar: {
-    from: 'ausente',
+    from: ['ausente', 'extraida'],
     to: 'corona',
     toState: 'completado',
     requiresImplante: true,
@@ -878,6 +904,8 @@ export interface OdontogramDetail {
   /** Dentición de la boca: se deduce del FDI al registrar el primer hallazgo. */
   dentition: Dentition;
   findings: Record<string, ToothFindingRecord[]>;
+  /** Prótesis removibles vigentes (PPR/PRT): de tramo o de arcada completa. */
+  prostheses: ProsthesisRecord[];
   /** Piezas con al menos un hallazgo (lo que **no** está aquí está sano). */
   affectedTeeth: number[];
   /** `true` si la boca todavía no tiene ningún hallazgo registrado. */
@@ -931,6 +959,10 @@ export interface OdontogramSummary {
   conditionCounts: Partial<Record<ToothCondition, number>>;
   pendingCount: number;
   completedCount: number;
+  /** Prótesis removibles vigentes (PPR/PRT). */
+  prosthesisCount: number;
+  /** Prótesis indicadas (rojo), pendientes de confeccionar o instalar. */
+  prosthesisPendingCount: number;
 }
 
 /* ── Resumen agregado (lectura clínica y futuros reportes) ──────────────────── */
@@ -939,6 +971,7 @@ export interface OdontogramSummary {
 export const odontogramSummary = (detail: {
   findings: Record<string, readonly ToothFindingRecord[]>;
   dentition: Dentition;
+  prostheses?: readonly ProsthesisRecord[];
 }): OdontogramSummary => {
   const teeth = new Set<number>();
   const conditionCounts: Partial<Record<ToothCondition, number>> = {};
@@ -953,6 +986,8 @@ export const odontogramSummary = (detail: {
       else completedCount += 1;
     }
   }
+
+  const prostheses = detail.prostheses ?? [];
 
   return {
     // Las piezas que la arcada **dibuja**: 32 en permanente, 20 en temporal y las dos
@@ -969,6 +1004,9 @@ export const odontogramSummary = (detail: {
     conditionCounts,
     pendingCount,
     completedCount,
+    prosthesisCount: prostheses.length,
+    prosthesisPendingCount: prostheses.filter((prosthesis) => prosthesis.state === 'pendiente')
+      .length,
   };
 };
 
@@ -1036,6 +1074,9 @@ export const WHOLE_TOOTH_MARKER_STYLES: Readonly<
 > = {
   ausente: { layer: 'aspa', scaleWhenCrowned: 1 },
   extraccion_indicada: { layer: 'overlay', scaleWhenCrowned: 1 },
+  // La exodoncia es un aspa sólida a tamaño completo, como `ausente`: el diente no
+  // está. La diferencia es el **color** (azul, hecho) y el significado, no la forma.
+  extraida: { layer: 'aspa', scaleWhenCrowned: 1 },
   corona: { layer: 'periferia', scaleWhenCrowned: 1 },
   implante: { layer: 'centro', scaleWhenCrowned: 0.62 },
   endodoncia: { layer: 'centro', scaleWhenCrowned: 0.62 },
@@ -1095,6 +1136,16 @@ export const WHOLE_TOOTH_SYMBOLS: Readonly<Record<WholeToothCondition, WholeToot
     shapes: [
       { kind: 'line', x1: 10, y1: 10, x2: 90, y2: 90, dash: '16 10' },
       { kind: 'line', x1: 90, y1: 10, x2: 10, y2: 90, dash: '16 10' },
+    ],
+  },
+  // La exodoncia realizada: la misma aspa sólida de `ausente`, pero en el color del
+  // estado (azul, hecho). Marca que el diente se extrajo, no que nunca estuvo.
+  extraida: {
+    strokeWidth: 10,
+    strokeLinecap: 'round',
+    shapes: [
+      { kind: 'line', x1: 10, y1: 10, x2: 90, y2: 90 },
+      { kind: 'line', x1: 90, y1: 10, x2: 10, y2: 90 },
     ],
   },
   // La prótesis recubre la pieza: círculo que la rodea en 360°.
@@ -1159,7 +1210,12 @@ export const wholeToothMarkers = (findings: readonly ToothFindingRecord[]): Toot
   const hayCorona = enteras.some((finding) => finding.condition === 'corona');
 
   return enteras
-    .filter((finding) => !(hayImplante && finding.condition === 'ausente'))
+    // El aspa de la ausencia —`ausente` o la exodoncia `extraida`— cede ante el
+    // implante: con tornillo puesto, el aspa sobra (fase quirúrgica ya resuelta).
+    .filter(
+      (finding) =>
+        !(hayImplante && (finding.condition === 'ausente' || finding.condition === 'extraida')),
+    )
     .map((finding) => {
       const estilo = WHOLE_TOOTH_MARKER_STYLES[finding.condition];
       // El marcador de centro solo se encoge si comparte la pieza con el círculo de
@@ -1340,6 +1396,20 @@ export const TOOTH_CANVAS = 100;
 export const TOOTH_LABEL_BASELINE = 138;
 
 /**
+ * Altura (Y) de la **franja de prótesis**: la doble línea de una PPR/PRT se dibuja
+ * justo debajo del número de pieza, en una banda propia que no tapa las aspas ni las
+ * caras. Vive en el contrato porque los tres renderizadores tienen que dibujarla a la
+ * misma altura.
+ */
+export const PROSTHESIS_BAND_Y = TOOTH_LABEL_BASELINE + 20;
+
+/**
+ * Alto total del lienzo de una arcada: la pieza (100), el número y la franja de
+ * prótesis de abajo. Lo usan los tres renderizadores como `viewBox` de la arcada.
+ */
+export const ARCH_CANVAS_HEIGHT = PROSTHESIS_BAND_Y + 16;
+
+/**
  * Hueco extra **en la línea media** (entre el 11 y el 21, y entre el 41 y el 31), en
  * unidades del lienzo.
  *
@@ -1489,14 +1559,16 @@ export const archLayout = (dentition: Dentition = 'permanente'): ArchLayout => {
  * como `pendiente` (rojo) y la **mayúscula** como `completado` (azul), que es el
  * gesto de «ya está hecho» sobre la misma tecla.
  *
- *   c / C  caries        o / O  obturación     x / X  extracción indicada
+ *   c / C  caries        o / O  restauración   x / X  extracción
  *   a / A  ausente       r / R  corona         i / I  implante
  *   e / E  endodoncia
  *
- * Las condiciones de **estado único** ignoran la caja: `c`/`C` (caries) registran
- * siempre `pendiente`, `x`/`X` (extracción) siempre `pendiente` y `a`/`A` (ausente)
- * siempre `completado`. Sin esto, la tecla contraria produciría un estado imposible
- * (ver `isStateAllowed`).
+ * Las condiciones de **estado único** clampean la caja al estado válido: `c`/`C`
+ * (caries) registran siempre `pendiente` y `a`/`A` (ausente) siempre `completado`.
+ * Sobre la `x` conviven las dos fases de la exodoncia: la **minúscula** registra la
+ * extracción **indicada** (`pendiente`, aspa roja discontinua) y la **mayúscula** la
+ * **extraída** (`completado`, aspa azul sólida). Sin este clampeo, la tecla contraria
+ * produciría un estado imposible (ver `isStateAllowed`).
  */
 export const QUICK_CONDITION_KEYS: Readonly<Record<string, ToothCondition>> = {
   c: 'caries',
@@ -1504,7 +1576,7 @@ export const QUICK_CONDITION_KEYS: Readonly<Record<string, ToothCondition>> = {
   o: 'restauracion',
   O: 'restauracion',
   x: 'extraccion_indicada',
-  X: 'extraccion_indicada',
+  X: 'extraida',
   a: 'ausente',
   A: 'ausente',
   r: 'corona',
@@ -1517,7 +1589,7 @@ export const QUICK_CONDITION_KEYS: Readonly<Record<string, ToothCondition>> = {
 
 /**
  * Tecla de cada cara cuando hay una pieza seleccionada. Se evita la `o` porque ya
- * es la obturación: la cara oclusal se registra con `n` (de masticació**n**) y las
+ * es la restauración: la cara oclusal se registra con `n` (de masticació**n**) y las
  * proximales con `s` (mesial) y `d` (distal).
  */
 export const QUICK_SURFACE_KEYS: Readonly<Record<string, ToothSurface>> = {
@@ -1533,7 +1605,7 @@ export interface QuickEntryState {
   toothNumber: number | null;
   /** Dígitos pendientes de completar el número de pieza (`"1"` esperando el 6). */
   pendingDigits: string;
-  /** Caras activas para la siguiente condición de caries/obturación. */
+  /** Caras activas para la siguiente condición de caries/restauración. */
   surfaces: ToothSurface[];
   /** Última condición elegida (se mantiene para encadenar piezas). */
   condition: ToothCondition | null;
@@ -1571,7 +1643,7 @@ const esPiezaViva = (toothNumber: number): boolean => isToothNumber(toothNumber)
  * mismo resultado en la pantalla y en las pruebas.
  *
  * Flujo: se escribe el número de pieza (dos dígitos, p. ej. `1` `6`), se eligen
- * caras con `v`/`l`/`n`/`s`/`d` (sin caras, la condición de caries u obturación se
+ * caras con `v`/`l`/`n`/`s`/`d` (sin caras, la condición de caries u restauración se
  * aplica a la cara oclusal) y se pulsa la tecla de condición. Al registrar, las
  * caras se limpian y **la pieza sigue seleccionada** para poder marcar otra cara o
  * encadenar la pieza siguiente escribiendo su número.
@@ -1637,7 +1709,7 @@ export const quickEntryKey = (
     return { state: siguiente, intent: { kind: 'state', state: siguiente } };
   }
 
-  // 3) Caras: se acumulan para la siguiente caries u obturación.
+  // 3) Caras: se acumulan para la siguiente caries u restauración.
   const cara = QUICK_SURFACE_KEYS[normalizada];
   if (cara !== undefined && state.toothNumber !== null) {
     const caras = state.surfaces.includes(cara)
@@ -1683,7 +1755,7 @@ export const quickEntryKey = (
       };
     }
 
-    // Caries u obturación sin cara marcada: se aplica a la cara oclusal, que es la
+    // Caries u restauración sin cara marcada: se aplica a la cara oclusal, que es la
     // que más se registra, y así una pieza se resuelve con dos pulsaciones.
     const caras: readonly ToothSurface[] =
       state.surfaces.length > 0 ? state.surfaces : ['occlusal'];

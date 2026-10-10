@@ -61,6 +61,9 @@ export const EVENT_TOPICS = {
 
   toothFindingRecorded: 'odontogram.finding.recorded',
   toothFindingRemoved: 'odontogram.finding.removed',
+  /** Prótesis removibles (PPR/PRT): alta/actualización y retirada. */
+  prosthesisRecorded: 'odontogram.prosthesis.recorded',
+  prosthesisRemoved: 'odontogram.prosthesis.removed',
 
   /**
    * Facturación y pagos (Fase 11, ADR 0044–0048). El **borrador no publica evento**: es un acto

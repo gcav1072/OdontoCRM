@@ -79,7 +79,7 @@ export const REPORT_DESCRIPTIONS: Readonly<Record<ReportKey, string>> = {
   'dentist-productivity': 'Citas, atendidos e inasistencias por odontólogo en el período.',
   demographics: 'Pirámide de edad y distribución por sexo, con rango de edad editable.',
   'clinical-profile': 'Pacientes con diabetes, hipertensión, alergias, anticoagulantes y otros.',
-  'oral-health': 'Prevalencia de caries, obturaciones y ausencias por pieza y por paciente.',
+  'oral-health': 'Prevalencia de caries, restauraciones y ausencias por pieza y por paciente.',
   prescriptions: 'Medicamentos más recetados en el período.',
 };
 
@@ -381,11 +381,12 @@ export const clinicalProfileCounts = (
 /* ── Salud bucal ───────────────────────────────────────────────────────────── */
 
 /** Condiciones que el reporte de salud bucal mide por pieza (ADR 0019). */
-export const ORAL_HEALTH_CONDITIONS = ['caries', 'restauracion', 'ausente'] as const;
+export const ORAL_HEALTH_CONDITIONS = ['caries', 'restauracion', 'ausente', 'extraida'] as const;
 export type OralHealthCondition = (typeof ORAL_HEALTH_CONDITIONS)[number];
 
 export const ORAL_HEALTH_LABELS: Readonly<Record<OralHealthCondition, string>> = {
   caries: 'Caries',
-  restauracion: 'Obturaciones',
+  restauracion: 'Restauraciones',
   ausente: 'Piezas ausentes',
+  extraida: 'Piezas extraídas',
 };

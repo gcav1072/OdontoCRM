@@ -81,6 +81,9 @@ export const AUDIT_ACTIONS = [
   'tooth_finding_updated',
   'tooth_finding_removed',
   'tooth_finding_superseded',
+  // Prótesis removibles (PPR/PRT): de tramo o de arcada completa.
+  'prosthesis_recorded',
+  'prosthesis_removed',
   'odontogram_printed',
   // Facturación y pagos (Fase 11; llegan por el outbox desde el servicio de facturación)
   'invoice_issued',
