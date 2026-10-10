@@ -138,7 +138,7 @@ const REPARACION = [
     where f.condition = 'extraccion_indicada' and f.state = 'completado' and f.resolved_at is null`,
   `update tooth_findings set resolved_at = now(), updated_at = now()
     where condition = 'extraccion_indicada' and state = 'completado' and resolved_at is null`,
-  // 2) Caries tratada → obturación completada en la misma cara.
+  // 2) Caries tratada → restauración completada en la misma cara.
   `insert into tooth_findings (
      odontogram_id, patient_id, tooth_number, surface, condition, state,
      notes, recorded_by, recorded_by_username, recorded_in_session_id, recorded_at, updated_at)
@@ -150,7 +150,7 @@ const REPARACION = [
   `insert into tooth_finding_history (
      odontogram_id, finding_id, patient_id, tooth_number, surface, condition, state, event, reason, notes, occurred_at)
    select f.odontogram_id, f.id, f.patient_id, f.tooth_number, f.surface, f.condition, f.state, 'resuelto',
-          'saneado por reglas clínicas: la caries tratada pasa a obturación', f.notes, now()
+          'saneado por reglas clínicas: la caries tratada pasa a restauración', f.notes, now()
      from tooth_findings f
     where f.condition = 'caries' and f.state = 'completado' and f.resolved_at is null`,
   `update tooth_findings set resolved_at = now(), updated_at = now()

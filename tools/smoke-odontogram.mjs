@@ -218,8 +218,8 @@ const repetido = await registrar({
 check('repetir el mismo hallazgo responde «sin cambios»', repetido.body?.unchanged === true);
 
 // 6) Cambiar el estado del hallazgo lo actualiza (y queda en la auditoría).
-//    La obturación admite pendiente y completado; la caries, solo pendiente (§2), así
-//    que el cambio de estado se prueba sobre la obturación de la 24.
+//    La restauración admite pendiente y completado; la caries, solo pendiente (§2), así
+//    que el cambio de estado se prueba sobre la restauración de la 24.
 const completado = await registrar({
   toothNumber: 24,
   surface: 'vestibular',
