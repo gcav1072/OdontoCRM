@@ -159,22 +159,24 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
     return lookup.odontogram;
   };
 
-  const filasDePieza = async (toothNumber: number) =>
+  /**
+   * Filas vigentes de una pieza. El `odontogram` se puede indicar: la suite tiene
+   * **dos pacientes** (el de la boca por lotes y el de los procedimientos) y cada uno
+   * tiene su propio odontograma; leer el equivocado devolvía listas vacías.
+   */
+  const filasDePieza = async (toothNumber: number, odontogram: string = odontogramId) =>
     handle.db
       .select()
       .from(toothFindings)
       .where(
-        and(
-          eq(toothFindings.odontogramId, odontogramId),
-          eq(toothFindings.toothNumber, toothNumber),
-        ),
+        and(eq(toothFindings.odontogramId, odontogram), eq(toothFindings.toothNumber, toothNumber)),
       );
 
-  const historial = async () =>
+  const historial = async (odontogram: string = odontogramId) =>
     handle.db
       .select()
       .from(toothFindingHistory)
-      .where(eq(toothFindingHistory.odontogramId, odontogramId));
+      .where(eq(toothFindingHistory.odontogramId, odontogram));
 
   /**
    * Resumen legible del histórico, para que un fallo diga **qué** había en la
@@ -182,9 +184,9 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
    * demás servicios contra la misma base de la cola, y un «expected 1 to be 2» sin
    * contexto no permite distinguir un fallo real de una interferencia.
    */
-  const historialResumen = async (): Promise<string> => {
-    const filas = await historial();
-    return `odontograma=${odontogramId} filas=${String(filas.length)} · ${filas
+  const historialResumen = async (odontogram: string = odontogramId): Promise<string> => {
+    const filas = await historial(odontogram);
+    return `odontograma=${odontogram} filas=${String(filas.length)} · ${filas
       .map((fila) => `${String(fila.toothNumber)}/${String(fila.surface)}/${fila.event}`)
       .join(', ')}`;
   };
@@ -977,11 +979,18 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
     expect(extraida.odontogram.findings['33']?.map((row) => [row.condition, row.state])).toEqual([
       ['ausente', 'completado'],
     ]);
+    // El odontograma del paciente de procedimientos (distinto del de la boca por lotes).
+    const odontogramProcedimientos = extraida.odontogram.id;
     // El origen no se borra: queda **resuelto** con su entrada en el histórico.
-    const origen = (await filasDePieza(33)).find((row) => row.condition === 'extraccion_indicada');
-    expect(origen?.resolvedAt).not.toBeNull();
+    const origen = (await filasDePieza(33, odontogramProcedimientos)).find(
+      (row) => row.condition === 'extraccion_indicada',
+    );
+    expect(origen?.resolvedAt ?? null).not.toBeNull();
     expect(
-      (await historial()).some((row) => row.event === 'resuelto' && row.toothNumber === 33),
+      (await historial(odontogramProcedimientos)).some(
+        (row) => row.event === 'resuelto' && row.toothNumber === 33,
+      ),
+      await historialResumen(odontogramProcedimientos),
     ).toBe(true);
 
     // Obturar: la caries tratada pasa a obturación completada en la misma cara.
