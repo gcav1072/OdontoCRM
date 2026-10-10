@@ -533,7 +533,7 @@ const findingsFor = (
       break;
     case 'caries_multiple':
       // La caries solo existe `pendiente` (spec anexo ADR 0032 §2): lo que se trató es
-      // una obturación, y esa sí puede ir completada.
+      // una restauración, y esa sí puede ir completada.
       for (const tooth of pickTeeth(rng.int(4, 6)))
         push(tooth, rng.pick(surfaces), 'caries', 'pendiente');
       for (const tooth of pickTeeth(rng.int(1, 3)))
@@ -546,7 +546,10 @@ const findingsFor = (
         push(tooth, rng.pick(surfaces), 'restauracion', 'completado');
       break;
     case 'edentulo_parcial': {
-      for (const tooth of pickTeeth(rng.int(3, 5))) push(tooth, null, 'ausente', 'completado');
+      // La pérdida de una pieza es tan pronto congénita como quirúrgica: el generador
+      // reparte `ausente` y `extraida` para que el reporte de salud bucal vea las dos.
+      for (const tooth of pickTeeth(rng.int(3, 5)))
+        push(tooth, null, rng.bool(0.5) ? 'extraida' : 'ausente', 'completado');
       for (const tooth of pickTeeth(rng.int(1, 2))) push(tooth, null, 'corona', 'completado');
       for (const tooth of pickTeeth(rng.int(1, 2)))
         push(tooth, rng.pick(surfaces), 'caries', 'pendiente');

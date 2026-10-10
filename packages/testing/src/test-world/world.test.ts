@@ -319,9 +319,14 @@ describe('récipes y odontogramas', () => {
         expect(TOOTH_SURFACES).toContain(finding.surface);
         expect(['caries', 'restauracion']).toContain(finding.condition);
       } else {
-        expect(['ausente', 'extraccion_indicada', 'corona', 'implante', 'endodoncia']).toContain(
-          finding.condition,
-        );
+        expect([
+          'ausente',
+          'extraccion_indicada',
+          'extraida',
+          'corona',
+          'implante',
+          'endodoncia',
+        ]).toContain(finding.condition);
       }
 
       const clave = `${finding.patientId}|${String(finding.toothNumber)}|${finding.surface ?? 'completa'}|${finding.condition}`;
