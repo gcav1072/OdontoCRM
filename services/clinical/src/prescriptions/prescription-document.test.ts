@@ -76,10 +76,12 @@ describe('la línea del paciente', () => {
 });
 
 describe('el récipe impreso', () => {
-  it('lleva la marca de agua del consultorio, con el contenido por encima', async () => {
+  it('lleva una marca de agua por mitad, con el contenido por encima', async () => {
     const html = await prescriptionHtml(base);
-    expect(html).toContain('class="brand-watermark"');
     expect(html).toContain('class="brand-doc"');
+    // Dos mitades ⇒ dos marcas de agua (una centrada en cada copia). Antes se emitía
+    // **una sola** a nivel de cuerpo y quedaba centrada sobre la línea divisoria.
+    expect(html.match(/class="brand-watermark"/g)).toHaveLength(2);
   });
   it('la paciente sale con su edad y su nacimiento concordados', async () => {
     const html = await prescriptionHtml(base);
@@ -125,9 +127,12 @@ describe('el récipe en dos mitades apaisadas', () => {
     expect(html).toContain('class="sheet"');
     // Dos medias hojas: la farmacia (izquierda) y el paciente (derecha).
     expect(html.match(/class="half"/g)).toHaveLength(2);
-    // El membrete y la firma se repiten en las dos.
+    // El membrete, la firma y la marca de agua se repiten en las dos.
     expect(html.match(/class="letterhead"/g)).toHaveLength(2);
     expect(html.match(/class="signature-name"/g)).toHaveLength(2);
+    expect(html.match(/class="brand-watermark"/g)).toHaveLength(2);
+    // Cada marca va **dentro** de su mitad, no antes de `.brand-doc` en el cuerpo.
+    expect(html).toContain('.half > .brand-watermark');
   });
 
   it('la copia de la farmacia lleva medicamento (negrita y subrayado), presentación, vía y dosis', async () => {

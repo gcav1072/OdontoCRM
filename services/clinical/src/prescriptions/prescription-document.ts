@@ -161,7 +161,14 @@ const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined):
      una carta apaisada con márgenes de 8 mm (215,9 − 16 ≈ 200 mm); fijarla permite
      anclar la firma abajo en cada mitad (margin-top: auto). */
   .sheet { display: flex; height: 199mm; }
-  .half { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+  .half { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+  /* La marca de agua va **una vez por mitad**, no sobre el pliego entero: el récipe son
+     dos copias en una sola hoja apaisada, y una marca centrada en la página caería justo
+     sobre la línea divisoria. Dentro de la mitad se reancla a «absolute» (la marca
+     compartida usa «fixed», que la cuelga de la hoja) y el contenido sube a una capa
+     superior para quedar por encima del velo. */
+  .half > .brand-watermark { position: absolute; }
+  .half > *:not(.brand-watermark) { position: relative; z-index: 1; }
   .half + .half { border-left: 0.3mm dashed var(--brand-line); padding-left: 6mm; }
   .half:first-child { padding-right: 6mm; }
   .letterhead { display: flex; align-items: flex-start; gap: 4mm; border-bottom: 0.6mm solid var(--brand-accent); padding-bottom: 2.5mm; }
@@ -336,11 +343,11 @@ export const prescriptionHtml = async (input: PrescriptionDocumentInput): Promis
 <html lang="es">
 <head><meta charset="utf-8"><title>Récipe ${escapeHtml(input.number)}</title><style>${styles(input.fontFaceCss ?? (await brandFontFaceCss()), input.brand)}</style></head>
 <body>
-  ${marcaDeAgua}
   <div class="brand-doc">
   <div class="sheet">
 
     <section class="half">
+      ${marcaDeAgua}
       ${membrete}
 
       <section class="rx">
@@ -358,6 +365,7 @@ export const prescriptionHtml = async (input: PrescriptionDocumentInput): Promis
     </section>
 
     <section class="half">
+      ${marcaDeAgua}
       ${membrete}
 
       <section class="rx">
