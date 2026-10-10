@@ -1,9 +1,10 @@
 import { timeSchema } from '@odontocrm/contracts';
-import { Alert, Button, Dialog, Field, Input } from '@odontocrm/ui';
+import { Alert, Button, Dialog, Field, Input, Select } from '@odontocrm/ui';
 import { useMutation } from '@tanstack/react-query';
 import { CalendarPlus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
+import { useDayView } from '../../hooks/useDayView';
 import { apiErrorMessage } from '../../lib/api';
 import { appointmentsApi } from '../../lib/endpoints';
 import { t } from '../../lib/i18n';
@@ -51,11 +52,21 @@ export const ScheduleNextAppointmentDialog = ({
   const [hora, setHora] = useState('08:00');
   const [duracion, setDuracion] = useState(String(MINUTOS_POR_DEFECTO));
   const [nota, setNota] = useState(notaSugerida ?? '');
+  const [chairId, setChairId] = useState('');
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
 
   const horaValida = timeSchema.safeParse(hora).success;
   const duracionNumero = Number(duracion);
   const duracionValida = Number.isInteger(duracionNumero) && duracionNumero >= 5;
+
+  const diaQuery = useDayView(fecha);
+  const chairs = useMemo(() => diaQuery.data?.chairs ?? [], [diaQuery.data]);
+
+  // Sin consultorio elegido (p. ej. antes de que cargue el día), se propone el primero.
+  useEffect(() => {
+    if (chairId !== '' || chairs.length === 0) return;
+    setChairId(chairs[0]?.chair.id ?? '');
+  }, [chairId, chairs]);
 
   const crear = useMutation({
     mutationFn: () =>
@@ -64,6 +75,7 @@ export const ScheduleNextAppointmentDialog = ({
         patientName,
         date: fecha,
         startTime: hora,
+        chairId,
         durationMinutes: duracionNumero,
         // Manual: la hora la pone el doctor, no sale del catálogo de franjas.
         slotKind: 'manual',
@@ -100,7 +112,7 @@ export const ScheduleNextAppointmentDialog = ({
           <Button
             loading={crear.isPending}
             loadingLabel={t('comun.enviando')}
-            disabled={!horaValida || !duracionValida || fecha === ''}
+            disabled={!horaValida || !duracionValida || fecha === '' || chairId === ''}
             leadingIcon={<CalendarPlus className="size-4" aria-hidden="true" />}
             onClick={() => {
               void confirmar();
@@ -147,6 +159,21 @@ export const ScheduleNextAppointmentDialog = ({
 
         <Field label={t('clinica.sesion.agendar.nota')}>
           <Input value={nota} onChange={(event) => setNota(event.target.value)} maxLength={500} />
+        </Field>
+
+        <Field label={t('programacion.asignar.consultorio')}>
+          <Select
+            value={chairId}
+            disabled={chairs.length === 0}
+            onChange={(event) => setChairId(event.target.value)}
+          >
+            {chairs.length === 0 && <option value="">{t('comun.sinDato')}</option>}
+            {chairs.map((entrada) => (
+              <option key={entrada.chair.id} value={entrada.chair.id}>
+                {entrada.chair.label}
+              </option>
+            ))}
+          </Select>
         </Field>
       </div>
     </Dialog>

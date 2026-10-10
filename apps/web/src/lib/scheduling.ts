@@ -4,6 +4,7 @@ import {
   formatTime12h,
   type AppointmentStatus,
   type AppointmentSummary,
+  type DaySlot,
   type DayView,
   type Permission,
   type Role,
@@ -316,6 +317,14 @@ const porHora = (left: { startTime: string }, right: { startTime: string }): num
   left.startTime.localeCompare(right.startTime);
 
 /**
+ * Todas las franjas del día, de todos los consultorios, en una sola lista. La jornada
+ * viene **por consultorio** (`day.chairs`); la rejilla y el selector de franjas la
+ * quieren aplanada, y cada franja lleva su `chairId` para saber a quién asignarla.
+ */
+export const daySlots = (day: DayView): DaySlot[] =>
+  day.chairs.flatMap((chair) => chair.slots).sort(porHora);
+
+/**
  * Devuelve una jornada nueva con las citas cambiadas aplicadas: lista de citas,
  * franjas ocupadas, contadores y cupo asignado. Todo por diferencias respecto al
  * estado anterior, sin volver a pedir el día al servidor.
@@ -355,41 +364,49 @@ export const applyDayChanges = (
     (left, right) => porHora(left, right) || left.createdAt.localeCompare(right.createdAt),
   );
 
-  // Las franjas se reconstruyen: se libera la cita que cambió y se ocupa su hora.
-  let slots = day.slots.map((slot) =>
-    slot.appointment !== null && finales.has(slot.appointment.id)
-      ? { ...slot, state: 'libre' as const, appointment: null }
-      : slot,
-  );
+  // Las franjas se reconstruyen **por consultorio**: se libera la cita que cambió y
+  // se ocupa su hora en el sillón que le toca (cada cita trae su `chairId`).
+  const chairs = day.chairs.map((vista) => {
+    let slots = vista.slots.map((slot) =>
+      slot.appointment !== null && finales.has(slot.appointment.id)
+        ? { ...slot, state: 'libre' as const, appointment: null }
+        : slot,
+    );
 
-  for (const cita of finales.values()) {
-    if (cita === null || cita.status === 'cancelada' || cita.status === 'reprogramada') continue;
+    for (const cita of finales.values()) {
+      if (cita === null || cita.status === 'cancelada' || cita.status === 'reprogramada') continue;
+      if (cita.chairId !== vista.chair.id) continue;
 
-    const indice = slots.findIndex((slot) => slot.startTime === cita.startTime);
-    const actual = slots[indice];
-    if (actual !== undefined) {
-      slots[indice] = { ...actual, state: 'ocupada', appointment: cita };
-    } else {
-      // Hora manual fuera de la rejilla: se añade su propia franja.
-      slots = [
-        ...slots,
-        {
-          startTime: cita.startTime,
-          endTime: cita.endTime,
-          kind: 'manual' as const,
-          state: 'ocupada' as const,
-          appointment: cita,
-        },
-      ].sort(porHora);
+      const indice = slots.findIndex((slot) => slot.startTime === cita.startTime);
+      const actual = slots[indice];
+      if (actual !== undefined) {
+        slots[indice] = { ...actual, state: 'ocupada', appointment: cita };
+      } else {
+        // Hora manual fuera de la rejilla: se añade su propia franja.
+        slots = [
+          ...slots,
+          {
+            startTime: cita.startTime,
+            endTime: cita.endTime,
+            kind: 'manual' as const,
+            state: 'ocupada' as const,
+            chairId: vista.chair.id,
+            chairLabel: vista.chair.label,
+            appointment: cita,
+          },
+        ].sort(porHora);
+      }
     }
-  }
+
+    return { ...vista, slots };
+  });
 
   const asignados = Math.max(0, assigned);
   const disponibles = day.capacity.capacity - asignados;
 
   return {
     ...day,
-    slots,
+    chairs,
     appointments,
     counts,
     capacity: {

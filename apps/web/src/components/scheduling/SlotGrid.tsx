@@ -10,6 +10,7 @@ import { LayoutGrid } from 'lucide-react';
 import { useState, type DragEvent } from 'react';
 
 import { SLOT_KIND_LABELS, SLOT_STATE_LABELS, t } from '../../lib/i18n';
+import { daySlots } from '../../lib/scheduling';
 import { AppointmentStatusBadge } from './AppointmentStatusBadge';
 
 export interface SlotGridProps {
@@ -18,8 +19,8 @@ export interface SlotGridProps {
   selectedRequest: RequestSummary | null;
   /** `scheduling:write`: sin el permiso la rejilla solo se consulta. */
   canAssign: boolean;
-  /** Pide asignar la solicitud (la seleccionada o la arrastrada) a esa hora. */
-  onRequestTime: (startTime: string, requestId?: string) => void;
+  /** Pide asignar la solicitud (la seleccionada o la arrastrada) a esa hora y consultorio. */
+  onRequestTime: (startTime: string, chairId: string, requestId?: string) => void;
   onOpenAppointment: (appointment: AppointmentSummary) => void;
 }
 
@@ -41,7 +42,8 @@ export const SlotGrid = ({
   const [sobre, setSobre] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
-  const libres = day.slots.filter((slot) => slot.state === 'libre').length;
+  const slots = daySlots(day);
+  const libres = slots.filter((slot) => slot.state === 'libre').length;
 
   const alSoltar = (event: DragEvent<HTMLButtonElement>, slot: DaySlot) => {
     event.preventDefault();
@@ -54,7 +56,7 @@ export const SlotGrid = ({
       return;
     }
     setAviso(null);
-    onRequestTime(slot.startTime, id);
+    onRequestTime(slot.startTime, slot.chairId ?? '', id);
   };
 
   const alPulsar = (slot: DaySlot) => {
@@ -72,7 +74,7 @@ export const SlotGrid = ({
       return;
     }
     setAviso(null);
-    onRequestTime(slot.startTime);
+    onRequestTime(slot.startTime, slot.chairId ?? '');
   };
 
   return (
@@ -86,9 +88,7 @@ export const SlotGrid = ({
           <p className="pt-1 text-sm text-ink-muted">{t('programacion.franja.ayuda')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="neutral">
-            {t('programacion.franja.total', { total: day.slots.length })}
-          </Badge>
+          <Badge variant="neutral">{t('programacion.franja.total', { total: slots.length })}</Badge>
           <Badge variant="success">{`${t('programacion.franja.libre')}: ${libres}`}</Badge>
         </div>
       </CardHeader>
@@ -109,11 +109,11 @@ export const SlotGrid = ({
           </Alert>
         )}
 
-        {day.slots.length === 0 ? (
+        {slots.length === 0 ? (
           <Alert variant="info">{t('programacion.franja.vacio')}</Alert>
         ) : (
           <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-            {day.slots.map((slot) => {
+            {slots.map((slot) => {
               const ocupada = slot.state === 'ocupada' && slot.appointment !== null;
               const fuera = slot.state === 'fuera_de_jornada';
               const resaltada = sobre === claveDeFranja(slot) && slot.state === 'libre';

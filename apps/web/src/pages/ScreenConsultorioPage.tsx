@@ -1,3 +1,4 @@
+import type { ConsultationChair } from '@odontocrm/contracts';
 import { Badge, cn } from '@odontocrm/ui';
 import { Clock, Maximize, Stethoscope } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -25,7 +26,8 @@ export const ScreenConsultorioPage = () => {
     useKioskState('consultorio');
   const [esPantallaCompleta, setEsPantallaCompleta] = useState(false);
 
-  const paciente = estado;
+  const sillas = estado?.chairs ?? [];
+  const waitingCount = estado?.waitingCount ?? 0;
 
   // El botón refleja el estado real del navegador (también al salir con Escape).
   useEffect(() => {
@@ -43,9 +45,6 @@ export const ScreenConsultorioPage = () => {
     void document.documentElement.requestFullscreen().catch(() => undefined);
   }, []);
 
-  /** Con paciente pero sin `since`: está llamado y entrando al consultorio. */
-  const entrando = paciente !== null && paciente.appointmentId !== null && paciente.since === null;
-
   return (
     <div className="min-h-dvh overflow-x-hidden bg-slate-950 text-slate-100">
       <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-slate-800 px-8 py-5">
@@ -58,12 +57,12 @@ export const ScreenConsultorioPage = () => {
         </div>
 
         <p className="text-2xl font-semibold text-sky-300">
-          {t('pantalla.sala.count', { total: paciente?.waitingCount ?? 0 })}
+          {t('pantalla.sala.count', { total: waitingCount })}
         </p>
 
         {/* Una pantalla sin token no está «desconectada»: está sin configurar. */}
         {!sinToken && (
-          <KioskStatusBar conectada={conectada} actualizado={paciente?.updatedAt ?? null} />
+          <KioskStatusBar conectada={conectada} actualizado={estado?.updatedAt ?? null} />
         )}
 
         <button
@@ -80,7 +79,7 @@ export const ScreenConsultorioPage = () => {
         </button>
       </header>
 
-      <main className="space-y-6 px-8 py-6">
+      <main className="px-8 py-6">
         {sinToken ? (
           /* Sin token no hay nada que mostrar ni que reintentar: el enlace se
              abre una vez desde el módulo Pantallas. */
@@ -94,64 +93,112 @@ export const ScreenConsultorioPage = () => {
             texto={t('pantalla.sinPermiso.texto')}
             onReintentar={reintentar}
           />
-        ) : paciente === null || paciente.appointmentId === null ? (
+        ) : sillas.length === 0 ? (
           <KioskNotice titulo={t('pantalla.consultorio.vacio')} />
         ) : (
-          <>
-            <section className="rounded-card border-2 border-slate-700 bg-slate-900/70 px-8 py-6">
-              <p className="text-7xl font-bold tracking-tight text-white">
-                {paciente.patientDisplayName}
-              </p>
-
-              <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2 pt-4">
-                {paciente.age !== null && (
-                  <span className="text-3xl font-semibold text-slate-200">
-                    {t('pantalla.consultorio.edad', { edad: paciente.age })}
-                  </span>
-                )}
-                {paciente.sex !== null && (
-                  <span className="text-3xl font-semibold text-slate-200">
-                    {t('pantalla.consultorio.sexo', { sexo: paciente.sex })}
-                  </span>
-                )}
-                {paciente.ticket !== null && (
-                  <span className="text-3xl font-semibold text-sky-300">
-                    {t('pantalla.consultorio.ticket', { ticket: paciente.ticket })}
-                  </span>
-                )}
-                {entrando && (
-                  <Badge variant="warning" className="text-lg">
-                    {t('pantalla.consultorio.entrando')}
-                  </Badge>
-                )}
-              </div>
-
-              {paciente.since !== null && (
-                <p className="flex items-center gap-2 pt-3 text-lg text-slate-300">
-                  <Clock className="size-5" aria-hidden="true" />
-                  {t('pantalla.consultorio.espera', { hora: formatTime(paciente.since) })}
-                </p>
-              )}
-            </section>
-
-            <section className="rounded-card border border-slate-700 bg-slate-900/60 px-8 py-5">
-              <h2 className="text-xl font-semibold text-slate-200">
-                {t('pantalla.consultorio.motivo')}
-              </h2>
-              <p
-                className={cn(
-                  'pt-1 text-3xl text-white',
-                  paciente.reason === null && 'text-slate-400',
-                )}
-              >
-                {paciente.reason ?? t('comun.sinDato')}
-              </p>
-            </section>
-
-            <CriticalFlagsCard flags={paciente.criticalFlags} />
-          </>
+          /* Una TV compartida: un tile por consultorio (con paciente o libre). */
+          <div
+            className={cn(
+              'grid gap-6',
+              sillas.length === 1 ? 'grid-cols-1' : 'sm:grid-cols-2 xl:grid-cols-3',
+            )}
+          >
+            {sillas.map((silla) => (
+              <ChairTile key={silla.chairId ?? silla.chairLabel} silla={silla} />
+            ))}
+          </div>
         )}
       </main>
     </div>
+  );
+};
+
+/** Un consultorio en la pantalla compartida: ocupado (con sus datos) o libre. */
+const ChairTile = ({ silla }: { silla: ConsultationChair }) => {
+  const ocupado = silla.appointmentId !== null;
+  /** Con paciente pero sin `since`: está llamado y entrando al consultorio. */
+  const entrando = ocupado && silla.since === null;
+
+  return (
+    <section
+      className={cn(
+        'rounded-card border-2 px-6 py-5',
+        silla.estado === 'en_consulta'
+          ? 'border-sky-500 bg-slate-900/80'
+          : ocupado
+            ? 'border-slate-600 bg-slate-900/60'
+            : 'border-slate-800 bg-slate-900/30',
+      )}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-2xl font-bold tracking-tight text-sky-300">{silla.chairLabel}</h2>
+        {silla.estado === 'en_consulta' ? (
+          <Badge variant="success" className="text-sm">
+            {t('pantalla.consultorio.enConsulta')}
+          </Badge>
+        ) : silla.estado === 'llamado' ? (
+          <Badge variant="warning" className="text-sm">
+            {t('pantalla.consultorio.llamado')}
+          </Badge>
+        ) : (
+          <Badge variant="neutral" className="text-sm">
+            {t('pantalla.consultorio.libre')}
+          </Badge>
+        )}
+      </div>
+
+      {!ocupado ? (
+        <p className="pt-3 text-2xl text-slate-500">{t('pantalla.consultorio.libre')}</p>
+      ) : (
+        <>
+          <p className="pt-3 text-5xl font-bold tracking-tight text-white">
+            {silla.patientDisplayName}
+          </p>
+
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2 pt-3">
+            {silla.age !== null && (
+              <span className="text-2xl font-semibold text-slate-200">
+                {t('pantalla.consultorio.edad', { edad: silla.age })}
+              </span>
+            )}
+            {silla.sex !== null && (
+              <span className="text-2xl font-semibold text-slate-200">
+                {t('pantalla.consultorio.sexo', { sexo: silla.sex })}
+              </span>
+            )}
+            {silla.ticket !== null && (
+              <span className="text-2xl font-semibold text-sky-300">
+                {t('pantalla.consultorio.ticket', { ticket: silla.ticket })}
+              </span>
+            )}
+            {entrando && (
+              <Badge variant="warning" className="text-base">
+                {t('pantalla.consultorio.entrando')}
+              </Badge>
+            )}
+          </div>
+
+          {silla.since !== null && (
+            <p className="flex items-center gap-2 pt-2 text-base text-slate-300">
+              <Clock className="size-4" aria-hidden="true" />
+              {t('pantalla.consultorio.espera', { hora: formatTime(silla.since) })}
+            </p>
+          )}
+
+          <div className="pt-4">
+            <h3 className="text-base font-semibold text-slate-300">
+              {t('pantalla.consultorio.motivo')}
+            </h3>
+            <p className={cn('pt-1 text-xl text-white', silla.reason === null && 'text-slate-400')}>
+              {silla.reason ?? t('comun.sinDato')}
+            </p>
+          </div>
+
+          <div className="pt-4">
+            <CriticalFlagsCard flags={silla.criticalFlags} />
+          </div>
+        </>
+      )}
+    </section>
   );
 };

@@ -159,7 +159,13 @@ describe('visibleReportKeys', () => {
   it('con `reports:read` se ven los operativos y ningún clínico', () => {
     const visibles = visibleReportKeys((permiso) => permiso === 'reports:read');
 
-    expect(visibles).toEqual(['funnel', 'capacity', 'demographics']);
+    expect(visibles).toEqual([
+      'funnel',
+      'capacity',
+      'chair-occupancy',
+      'dentist-productivity',
+      'demographics',
+    ]);
     expect(blockedReportKeys((permiso) => permiso === 'reports:read')).toEqual([
       'clinical-profile',
       'oral-health',
@@ -180,7 +186,13 @@ describe('visibleReportKeys', () => {
     // A la ruta `/reportes` se entra con `reports:read`, así que lo que decide
     // este ayudante es el bloque clínico: sin `reports:clinical` quedan fuera el
     // perfil clínico, la salud bucal y los récipes.
-    expect(visibleReportKeys(() => false)).toEqual(['funnel', 'capacity', 'demographics']);
+    expect(visibleReportKeys(() => false)).toEqual([
+      'funnel',
+      'capacity',
+      'chair-occupancy',
+      'dentist-productivity',
+      'demographics',
+    ]);
     expect(blockedReportKeys(() => false)).toEqual([
       'clinical-profile',
       'oral-health',

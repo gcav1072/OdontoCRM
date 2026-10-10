@@ -70,6 +70,7 @@ export const SchedulingPage = () => {
   const [asignando, setAsignando] = useState<{
     request: RequestSummary;
     startTime?: string;
+    chairId?: string;
   } | null>(null);
   const [cancelandoSolicitud, setCancelandoSolicitud] = useState<RequestSummary | null>(null);
   const [nuevaSolicitud, setNuevaSolicitud] = useState(false);
@@ -191,7 +192,7 @@ export const SchedulingPage = () => {
     );
   };
 
-  const alPedirHora = (startTime: string, requestId?: string) => {
+  const alPedirHora = (startTime: string, chairId: string, requestId?: string) => {
     if (
       solicitudElegida === null ||
       (requestId !== undefined && requestId !== solicitudElegida.id)
@@ -199,7 +200,7 @@ export const SchedulingPage = () => {
       mostrar({ variant: 'info', message: t('programacion.franja.sinSeleccion') });
       return;
     }
-    setAsignando({ request: solicitudElegida, startTime });
+    setAsignando({ request: solicitudElegida, startTime, chairId });
   };
 
   const alAccionar = (accionElegida: AppointmentAction, cita: AppointmentSummary) => {
@@ -403,6 +404,7 @@ export const SchedulingPage = () => {
           request={asignando.request}
           defaultDate={dia?.date ?? fecha}
           defaultStartTime={asignando.startTime}
+          defaultChairId={asignando.chairId}
           hasPermission={hasPermission}
           onClose={() => setAsignando(null)}
           onAssigned={trasAsignar}

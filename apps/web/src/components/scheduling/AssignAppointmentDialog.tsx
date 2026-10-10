@@ -11,8 +11,8 @@ import {
 } from '@odontocrm/contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
-import { Alert, Button, Dialog, Field, Input } from '@odontocrm/ui';
-import { useEffect, useState } from 'react';
+import { Alert, Button, Dialog, Field, Input, Select } from '@odontocrm/ui';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import type { z } from 'zod';
 
@@ -20,7 +20,9 @@ import { useDayView } from '../../hooks/useDayView';
 import { appointmentsApi } from '../../lib/endpoints';
 import { applyApiFieldErrors } from '../../lib/forms';
 import { formatDateOnly, schedulingErrorInfo } from '../../lib/scheduling';
+import { daySlots } from '../../lib/scheduling';
 import { t } from '../../lib/i18n';
+import { useClinicIdentity } from '../../providers/ClinicIdentityProvider';
 import { SlotPickerFields } from './SlotPickerFields';
 
 type ValoresAsignar = z.input<typeof assignAppointmentSchema>;
@@ -31,6 +33,8 @@ export interface AssignAppointmentDialogProps {
   defaultDate: string;
   /** Hora de la franja que se soltó o se pulsó, si la hay. */
   defaultStartTime?: string;
+  /** Consultorio de la franja que se pulsó, si la hay. */
+  defaultChairId?: string;
   hasPermission: (permission: Permission) => boolean;
   onClose: () => void;
   onAssigned: (appointment: AppointmentSummary, request: RequestSummary) => void;
@@ -46,12 +50,16 @@ export const AssignAppointmentDialog = ({
   request,
   defaultDate,
   defaultStartTime,
+  defaultChairId,
   hasPermission,
   onClose,
   onAssigned,
 }: AssignAppointmentDialogProps) => {
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   const [pista, setPista] = useState<string | null>(null);
+  /** Odontólogo opcional: fuera de RHF para que el vacío no falle la validación de uuid. */
+  const [dentistId, setDentistId] = useState('');
+  const clinic = useClinicIdentity();
 
   const formulario = useForm<ValoresAsignar, unknown, AsignarEnviado>({
     resolver: zodResolver(assignAppointmentSchema),
@@ -64,6 +72,7 @@ export const AssignAppointmentDialog = ({
       date: defaultDate,
       startTime: defaultStartTime ?? '',
       slotKind: 'franja',
+      chairId: defaultChairId ?? '',
       durationMinutes: DEFAULT_SLOT_MINUTES,
       notes: '',
       authorizeOverbook: false,
@@ -75,13 +84,27 @@ export const AssignAppointmentDialog = ({
   const fecha = formulario.watch('date') ?? defaultDate;
   const slotKind = (formulario.watch('slotKind') ?? 'franja') as SlotKind;
   const startTime = formulario.watch('startTime') ?? '';
+  const chairId = formulario.watch('chairId') ?? '';
   const durationMinutes = Number(formulario.watch('durationMinutes') ?? DEFAULT_SLOT_MINUTES);
 
   const diaQuery = useDayView(fecha);
   const dia = diaQuery.data;
   const refetchDia = diaQuery.refetch;
-  const franjas = dia?.slots ?? [];
+  const chairs = useMemo(() => dia?.chairs ?? [], [dia]);
+  // Franjas del consultorio elegido (o de todos, mientras no se elija uno).
+  const franjas =
+    dia === undefined
+      ? []
+      : daySlots(dia).filter((slot) => chairId === '' || slot.chairId === chairId);
   const libres = franjas.filter((franja) => franja.state === 'libre');
+
+  const odontologos = clinic?.dentists ?? [];
+
+  // Si no se fijó consultorio (p. ej. se abrió desde la cola), se propone el primero.
+  useEffect(() => {
+    if (chairId !== '' || chairs.length === 0) return;
+    setValue('chairId', chairs[0]?.chair.id ?? '', { shouldValidate: false });
+  }, [chairId, chairs, setValue]);
 
   const puedeSobrecupo = hasPermission('scheduling:overbook');
   const completo = dia?.capacity.isFull ?? false;
@@ -125,7 +148,11 @@ export const AssignAppointmentDialog = ({
     setErrorGeneral(null);
     setPista(null);
     try {
-      const cita = await asignar.mutateAsync(valores);
+      const cita = await asignar.mutateAsync({
+        ...valores,
+        // El odontólogo es opcional: vacío se manda como ausente.
+        dentistId: dentistId === '' ? undefined : dentistId,
+      });
       onAssigned(cita, request);
     } catch (fallo) {
       const info = schedulingErrorInfo(fallo);
@@ -217,6 +244,45 @@ export const AssignAppointmentDialog = ({
             })}
           />
         </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label={t('programacion.asignar.consultorio')}
+            error={errors.chairId?.message}
+            required
+          >
+            <Select
+              disabled={isSubmitting || chairs.length === 0}
+              {...formulario.register('chairId', {
+                onChange: () => {
+                  setValue('startTime', '', { shouldValidate: false });
+                },
+              })}
+            >
+              {chairs.length === 0 && <option value="">{t('comun.sinDato')}</option>}
+              {chairs.map((entrada) => (
+                <option key={entrada.chair.id} value={entrada.chair.id}>
+                  {entrada.chair.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label={t('programacion.asignar.odontologo')}>
+            <Select
+              disabled={isSubmitting}
+              value={dentistId}
+              onChange={(event) => setDentistId(event.target.value)}
+            >
+              <option value="">{t('programacion.asignar.odontologoSinAsignar')}</option>
+              {odontologos.map((odontologo) => (
+                <option key={odontologo.id} value={odontologo.id}>
+                  {odontologo.fullName}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
 
         {diaQuery.isPending ? (
           <p className="text-sm text-ink-muted">{t('programacion.asignar.cargandoDia')}</p>

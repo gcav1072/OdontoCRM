@@ -9,14 +9,14 @@ import {
 } from '@odontocrm/contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
-import { Alert, Button, Dialog, Field, Input } from '@odontocrm/ui';
+import { Alert, Button, Dialog, Field, Input, Select } from '@odontocrm/ui';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import type { z } from 'zod';
 
 import { useDayView } from '../../hooks/useDayView';
 import { appointmentsApi } from '../../lib/endpoints';
-import { formatDateOnly, schedulingErrorInfo } from '../../lib/scheduling';
+import { daySlots, formatDateOnly, schedulingErrorInfo } from '../../lib/scheduling';
 import { t } from '../../lib/i18n';
 import { SlotPickerFields } from './SlotPickerFields';
 
@@ -51,6 +51,7 @@ export const RescheduleAppointmentDialog = ({
       date: appointment.date,
       startTime: appointment.startTime,
       slotKind: appointment.slotKind,
+      chairId: appointment.chairId ?? undefined,
       durationMinutes: appointment.durationMinutes,
       reason: '',
       authorizeOverbook: false,
@@ -69,8 +70,13 @@ export const RescheduleAppointmentDialog = ({
   const diaQuery = useDayView(fecha, fecha !== appointment.date);
   const dia = diaQuery.data;
   const refetchDia = diaQuery.refetch;
-  const franjas = dia?.slots ?? [];
+  const chairId = formulario.watch('chairId') ?? appointment.chairId ?? '';
+  const franjas =
+    dia === undefined
+      ? []
+      : daySlots(dia).filter((slot) => chairId === '' || slot.chairId === chairId);
   const libres = franjas.filter((franja) => franja.state === 'libre');
+  const chairs = dia?.chairs ?? [];
 
   const puedeSobrecupo = hasPermission('scheduling:overbook');
   const completo = dia?.capacity.isFull ?? false;
@@ -206,6 +212,25 @@ export const RescheduleAppointmentDialog = ({
               onChange: () => setValue('startTime', '', { shouldValidate: false }),
             })}
           />
+        </Field>
+
+        <Field label={t('programacion.asignar.consultorio')}>
+          <Select
+            disabled={isSubmitting || chairs.length === 0}
+            value={chairId}
+            onChange={(event) => {
+              const elegido = event.target.value;
+              setValue('chairId', elegido === '' ? undefined : elegido, { shouldValidate: true });
+              setValue('startTime', '', { shouldValidate: false });
+            }}
+          >
+            {chairs.length === 0 && <option value="">{t('comun.sinDato')}</option>}
+            {chairs.map((entrada) => (
+              <option key={entrada.chair.id} value={entrada.chair.id}>
+                {entrada.chair.label}
+              </option>
+            ))}
+          </Select>
         </Field>
 
         <SlotPickerFields
