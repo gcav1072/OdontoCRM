@@ -29,16 +29,24 @@ la aplicación es **SVG a propósito**.
 
 ## Las fuentes
 
-`fonts/` guarda los `.woff2` que los imprimibles usan (hoy **Montserrat**, subconjunto `latin`,
-pesos 400 y 700) y su licencia (`OFL.txt`). El servidor los incrusta en el PDF y la SPA los carga
-al arrancar: **el papel no depende de las fuentes instaladas en el equipo** (ADR 0055).
+`fonts/` guarda los `.woff2` que los imprimibles usan —un **catálogo** de familias sans y script
+(Montserrat, Inter, Poppins, Lobster, Pacifico, Dancing Script), subconjunto `latin`— y la licencia
+de cada una (`OFL.txt` para Montserrat y `OFL-<familia>.txt` para el resto). El servidor los
+incrusta en el PDF y la SPA los carga al arrancar: **el papel no depende de las fuentes instaladas
+en el equipo** (ADR 0055).
+
+La convención de nombre es `<familia>-latin-<peso>-normal.woff2` (p. ej.
+`lobster-latin-400-normal.woff2`).
 
 - Se declaran en [`packages/contracts/src/brand.ts`](../../packages/contracts/src/brand.ts)
-  (`BRAND.fonts`), que es también donde se eligen la tipografía de los **títulos**
-  (`documentTitleSans`) y la del **cuerpo** (`documentBodySans`).
-- Cambiar de familia: dejar los `.woff2` aquí, ajustar `BRAND.fonts.files` y los dos primeros
-  nombres de las pilas, y recompilar (los PDF del servidor leen los archivos; la web hay que
-  recompilarla para que Vite copie los nuevos binarios).
+  (`BRAND.fonts.families`), donde cada familia lleva su `name` y sus archivos con peso y estilo.
+- Las pilas de **títulos** (`documentTitleSans`) y **cuerpo** (`documentBodySans`) empiezan por el
+  nombre de la familia elegida, y cada rol tiene su **peso** (`documentTitleWeight` /
+  `documentBodyWeight`).
+- **Desde el panel** (`/configuracion`) se elige la familia y el peso de cada rol en un desplegable,
+  con vista previa, y se suben más familias (con su peso y estilo). Cambiar el **catálogo** del
+  código es dejar los `.woff2` aquí, tocar `BRAND.fonts.families` y recompilar (los PDF del
+  servidor leen los archivos; la web recompila para que Vite copie los nuevos binarios).
 
 La **paleta**, las **tipografías** y las medidas del membrete se cambian en
 [`packages/contracts/src/brand.ts`](../../packages/contracts/src/brand.ts) (solo-código). Los datos
