@@ -238,7 +238,7 @@ export const CajaPage = () => {
 
       <TasaDelDia puedePublicar={puedePublicarTasa} />
 
-      <div className="grid gap-6 lg:grid-cols-[22rem_1fr]">
+      <div className="grid gap-6 @6xl:grid-cols-[22rem_minmax(0,1fr)]">
         <div className="space-y-4">
           <div className="flex gap-2">
             <Button
@@ -526,9 +526,12 @@ export const CajaPage = () => {
                   {lineas.map((linea, indice) => (
                     <li
                       key={`${linea.code}-${String(indice)}`}
-                      className="flex items-end gap-3 py-3"
+                      className="flex flex-wrap items-end gap-x-3 gap-y-2 py-3"
                     >
-                      <div className="min-w-0 flex-1">
+                      {/* En columna estrecha la descripción ocupa su propia línea y
+                          los números van debajo; antes la fila se salía y la
+                          descripción quedaba tapada por los campos. */}
+                      <div className="w-full min-w-0 @2xl:w-auto @2xl:flex-1">
                         <p className="truncate font-medium text-ink">{linea.description}</p>
                         <p className="text-xs text-ink-muted">
                           {linea.code}
@@ -536,7 +539,7 @@ export const CajaPage = () => {
                           {linea.surfaces.length > 0 && ` (${linea.surfaces.join(', ')})`}
                         </p>
                       </div>
-                      <label className="w-20">
+                      <label className="w-20 shrink-0">
                         <span className="mb-1 block text-xs text-ink-muted">
                           {t('caja.col.cantidad')}
                         </span>
@@ -553,7 +556,7 @@ export const CajaPage = () => {
                           }
                         />
                       </label>
-                      <label className="w-28">
+                      <label className="w-28 shrink-0">
                         <span className="mb-1 block text-xs text-ink-muted">
                           {t('caja.col.precio')}
                         </span>
@@ -567,7 +570,7 @@ export const CajaPage = () => {
                           }
                         />
                       </label>
-                      <span className="w-24 pb-2 text-right tabular-nums text-ink">
+                      <span className="w-24 shrink-0 pb-2 text-right tabular-nums text-ink">
                         {formatUsd(lineTotalCents(linea))}
                       </span>
                       {puedeEscribir && (
