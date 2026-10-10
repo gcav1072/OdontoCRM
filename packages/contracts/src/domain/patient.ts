@@ -228,6 +228,18 @@ export const MINOR_AGE = 18;
 export const isMinor = (birthDate: string | Date, at: Date = new Date()): boolean =>
   ageFromBirthDate(birthDate, at) < MINOR_AGE;
 
+/**
+ * `true` si el valor es una fecha de nacimiento **utilizable**. Un texto vacío o a
+ * medio escribir no lo es: `Date` lo vuelve una fecha inválida, `ageFromBirthDate`
+ * devuelve 0 años y `isMinor` lo leería como un recién nacido.
+ *
+ * Hace falta porque Zod ejecuta los `superRefine` aunque falle un campo: sin este
+ * guardián, un formulario con la fecha de nacimiento vacía pedía el representante del
+ * «menor» a un adulto.
+ */
+export const isValidBirthDate = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim() !== '' && !Number.isNaN(new Date(value).getTime());
+
 export const guardianSchema = z.object({
   fullName: requiredText(3, 120, 'Escribe el nombre del representante'),
   docType: docTypeSchema.optional(),
@@ -269,7 +281,11 @@ export const createPatientSchema = patientCoreSchema
         message: validation.message ?? 'Documento inválido',
       });
     }
-    if (isMinor(value.birthDate) && value.guardian === undefined) {
+    if (
+      isValidBirthDate(value.birthDate) &&
+      isMinor(value.birthDate) &&
+      value.guardian === undefined
+    ) {
       // Igual que en el formulario: el aviso apunta al **nombre del representante**
       // para que el error del servidor caiga en un campo visible (`applyApiFieldErrors`).
       ctx.addIssue({

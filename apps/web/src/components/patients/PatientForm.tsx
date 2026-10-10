@@ -27,6 +27,7 @@ import {
   formValuesFromPatient,
   isDuplicateDocument,
   patientFormSchema,
+  representanteVacio,
   summarizePatientChanges,
   type ChangeSummary,
   type PatientFormDraft,
@@ -145,6 +146,11 @@ export const PatientForm = ({
   const valoresValidos = async (): Promise<PatientFormValues | null> => {
     // Un doble clic rápido no debe disparar dos envíos.
     if (guardando) return null;
+    // Un representante sin datos es «sin representante»: se quita antes de validar para
+    // que un adulto pueda dejarlo en blanco. Para un menor el esquema vuelve a exigirlo.
+    if (representanteVacio(formulario.getValues('guardian'))) {
+      formulario.setValue('guardian', undefined, { shouldValidate: false, shouldDirty: false });
+    }
     const valido = await formulario.trigger();
     if (!valido) {
       // `formState` es un proxy que lee el estado vivo, así que tras `await trigger()`

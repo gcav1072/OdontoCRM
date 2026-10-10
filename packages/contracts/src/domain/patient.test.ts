@@ -9,6 +9,7 @@ import {
   documentKey,
   formatDocument,
   isMinor,
+  isValidBirthDate,
   normalizeDocNumber,
   normalizePhone,
   parseDocumentText,
@@ -102,6 +103,47 @@ describe('edad y minoría de edad', () => {
     expect(isMinor('2010-01-01', at)).toBe(true);
     expect(isMinor('2008-10-03', at)).toBe(true);
     expect(isMinor('2008-10-02', at)).toBe(false);
+  });
+
+  it('solo una fecha utilizable cuenta como fecha de nacimiento', () => {
+    expect(isValidBirthDate('1985-07-20')).toBe(true);
+    expect(isValidBirthDate('')).toBe(false);
+    expect(isValidBirthDate('   ')).toBe(false);
+    expect(isValidBirthDate('no-es-fecha')).toBe(false);
+    expect(isValidBirthDate(undefined)).toBe(false);
+  });
+});
+
+describe('el representante del menor', () => {
+  const alta = (extra: Record<string, unknown>) =>
+    createPatientSchema.safeParse({
+      docType: 'V',
+      docNumber: '12345678',
+      fullName: 'Juan Pérez',
+      birthDate: '1985-07-20',
+      sex: 'M',
+      phone: '0412-1234567',
+      ...extra,
+    });
+
+  it('un menor sin representante se rechaza, y el error apunta al nombre', () => {
+    const resultado = alta({ birthDate: '2015-07-20' });
+    expect(resultado.success).toBe(false);
+    if (resultado.success) return;
+    expect(resultado.error.issues.map((issue) => issue.path.join('.'))).toContain(
+      'guardian.fullName',
+    );
+  });
+
+  it('una fecha vacía o inválida no pide representante (Zod refina aunque falle el campo)', () => {
+    for (const birthDate of ['', 'no-es-fecha']) {
+      const resultado = alta({ birthDate });
+      expect(resultado.success).toBe(false);
+      if (resultado.success) continue;
+      expect(resultado.error.issues.map((issue) => issue.path.join('.'))).not.toContain(
+        'guardian.fullName',
+      );
+    }
   });
 });
 

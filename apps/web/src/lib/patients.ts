@@ -2,6 +2,7 @@ import {
   createPatientSchema,
   guardianSchema,
   isMinor,
+  isValidBirthDate,
   normalizeDocNumber,
   patientCoreSchema,
   SENSITIVE_PATIENT_FIELDS,
@@ -92,6 +93,20 @@ export const checkDocument = (type: DocType, display: string) =>
 export type GuardianFormValues = z.input<typeof guardianSchema>;
 
 /**
+ * `true` si el representante no tiene **ningún** dato. `docType` no cuenta (la ficha lo
+ * deja puesto por defecto) y un representante vacío es «sin representante»: así un
+ * adulto puede dejar la sección en blanco —o cambiar la fecha de menor a mayor— sin que
+ * el formulario se queje. La obligatoriedad para los menores la vuelve a imponer el
+ * esquema, que sí conoce la edad.
+ */
+export const representanteVacio = (guardian: GuardianFormValues | null | undefined): boolean => {
+  if (guardian === null || guardian === undefined) return true;
+  return [guardian.fullName, guardian.relationship, guardian.docNumber, guardian.phone].every(
+    (valor) => (valor ?? '').trim() === '',
+  );
+};
+
+/**
  * Esquema del formulario de paciente. Reutiliza los campos del contrato
  * (`patientCoreSchema` y `guardianSchema`: mismos teléfonos, mismas fechas,
  * mismos límites de texto) y solo cambia `docNumber`, que en el formulario se
@@ -116,7 +131,11 @@ export const patientFormSchema = z
     if (value.sex === '') {
       ctx.addIssue({ code: 'custom', path: ['sex'], message: 'Indica el sexo' });
     }
-    if (isMinor(value.birthDate) && value.guardian === undefined) {
+    if (
+      isValidBirthDate(value.birthDate) &&
+      isMinor(value.birthDate) &&
+      value.guardian === undefined
+    ) {
       // El aviso va al **nombre del representante** (y no a la raíz `guardian`),
       // que es el primer campo visible de la sección: así el error se pinta en un
       // control en vez de quedar como un aviso general sin ningún campo marcado.
@@ -343,7 +362,7 @@ export const summarizePatientChanges = (
   // Al cumplir 18 años el representante deja de tener sentido: se quita. Los dos
   // lados se comparan ya normalizados por el contrato ('' → null).
   const representanteDespues = guardianInputFrom(
-    isMinor(editado.birthDate) ? editado.guardian : null,
+    isValidBirthDate(editado.birthDate) && isMinor(editado.birthDate) ? editado.guardian : null,
   );
   cambios.push(...cambiosDelRepresentante(representanteAntes, representanteDespues));
 
