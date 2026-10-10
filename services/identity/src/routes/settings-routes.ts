@@ -34,6 +34,8 @@ const MAX_FONT_BYTES = 1024 * 1024;
 const FONT_MIME = 'font/woff2';
 
 const fuenteCamposSchema = z.object({
+  /** Familia a la que pertenece el archivo (el nombre del `@font-face`). */
+  family: z.string().trim().min(1).max(60),
   weight: z.coerce.number().int().min(100).max(900),
   style: z.enum(['normal', 'italic']),
 });
@@ -138,8 +140,9 @@ export const registerSettingsRoutes = (app: FastifyInstance, services: IdentityS
   });
 
   /**
-   * Sube una fuente `.woff2` (multipart) y la añade a la marca. El campo `family` ya
-   * vive en la marca; aquí solo se dice **peso** y **estilo** del archivo.
+   * Sube una fuente `.woff2` (multipart) y la añade a la **familia** indicada. El campo
+   * `family` llega en el formulario; aquí solo se dice a qué familia va, con qué peso y
+   * estilo.
    */
   app.post('/api/v1/settings/brand/fonts', { preHandler: manage }, async (request, reply) => {
     const identity = requireIdentity(request);
@@ -153,7 +156,7 @@ export const registerSettingsRoutes = (app: FastifyInstance, services: IdentityS
     }
 
     const body = request.body as
-      { file?: MultipartFile; weight?: unknown; style?: unknown } | undefined;
+      { file?: MultipartFile; family?: unknown; weight?: unknown; style?: unknown } | undefined;
     const file = body?.file;
     if (file === undefined) {
       throw new AppError({
@@ -163,6 +166,7 @@ export const registerSettingsRoutes = (app: FastifyInstance, services: IdentityS
       });
     }
     const campos = parseOrThrow(fuenteCamposSchema, {
+      family: campoTexto(body?.family),
       weight: campoTexto(body?.weight),
       style: campoTexto(body?.style),
     });
@@ -190,6 +194,7 @@ export const registerSettingsRoutes = (app: FastifyInstance, services: IdentityS
       db,
       blobStore,
       { data, originalName: file.filename, weight: campos.weight, style: campos.style },
+      campos.family,
       identity.userId,
     );
 
@@ -202,8 +207,13 @@ export const registerSettingsRoutes = (app: FastifyInstance, services: IdentityS
       ip: context.ip,
       userAgent: context.userAgent,
       requestId: context.requestId,
-      summary: `Fuente «${file.filename}» (${String(campos.weight)} ${campos.style}) añadida por ${identity.username}`,
-      after: { font: file.filename, weight: campos.weight, style: campos.style },
+      summary: `Fuente «${file.filename}» (${campos.family} · ${String(campos.weight)} ${campos.style}) añadida por ${identity.username}`,
+      after: {
+        font: file.filename,
+        family: campos.family,
+        weight: campos.weight,
+        style: campos.style,
+      },
       changedFields: ['fonts'],
     });
 

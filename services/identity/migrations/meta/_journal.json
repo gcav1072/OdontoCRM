@@ -43,6 +43,13 @@
       "when": 1791601767445,
       "tag": "0005_configuracion",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791688167445,
+      "tag": "0006_familias_de_fuente",
+      "breakpoints": true
     }
   ]
 }
