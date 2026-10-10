@@ -106,6 +106,10 @@ export interface SidebarProps {
  * En escritorio se puede colapsar a una banda de iconos; cada enlace lleva `aria-label`
  * para ese modo.
  *
+ * Al colapsar la marca se oculta y queda **solo el botón** de expandir, centrado: el
+ * raíl (`w-16`) no da para el logo (32 px) más el botón (28 px) más la separación, y
+ * dejarlos juntos hacía que el botón se saliera del raíl y el borde lo cortara.
+ *
  * Con el panel de sesión abierto el menú se desplaza por encima de él (`pb-[20rem]`,
  * la misma reserva que el contenido usa en `lg`) en vez de quedar debajo.
  */
@@ -118,14 +122,16 @@ export const Sidebar = ({ collapsed, onToggle, panelAbierto }: SidebarProps) => 
     )}
   >
     <div className="flex h-14 items-center gap-2 border-b border-border px-3">
-      <span className="grid size-8 shrink-0 place-items-center rounded-control bg-primary text-primary-ink">
-        <Stethoscope className="size-4" aria-hidden="true" />
-      </span>
       {!collapsed && (
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-ink">{t('app.nombre')}</span>
-          <span className="block truncate text-xs text-ink-subtle">{t('app.lema')}</span>
-        </span>
+        <>
+          <span className="grid size-8 shrink-0 place-items-center rounded-control bg-primary text-primary-ink">
+            <Stethoscope className="size-4" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-ink">{t('app.nombre')}</span>
+            <span className="block truncate text-xs text-ink-subtle">{t('app.lema')}</span>
+          </span>
+        </>
       )}
       <button
         type="button"
