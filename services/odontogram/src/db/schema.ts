@@ -200,8 +200,9 @@ export const odontogramPrints = pgTable(
  * como `smallint[]`.
  *
  * Reglas: la parcial cubre un tramo contiguo; la total, la arcada entera. Una arcada
- * admite **una sola prótesis viva** —parcial o total—, lo que garantiza un índice
- * parcial sobre `(odontogram_id, arch)` restringido a las filas sin resolver.
+ * admite **varias prótesis** mientras no compartan piezas (la convivencia la impone el
+ * servicio, que sí ve el resto de la arcada); aquí solo se blinda que haya **una sola
+ * PRT viva por arcada**.
  */
 export const prostheses = pgTable(
   'prostheses',
@@ -231,11 +232,12 @@ export const prostheses = pgTable(
   (table) => [
     index('idx_prostheses_odontogram').on(table.odontogramId),
     index('idx_prostheses_patient').on(table.patientId),
-    // Una sola prótesis **viva** por arcada, del tipo que sea: la parcial y la total
-    // no conviven (el servicio lo rechaza con 409 y este índice lo garantiza en la BD).
-    uniqueIndex('uq_prosthesis_arch_viva')
+    // Una sola PRT vigente por arcada: la prótesis total es única por definición
+    // (cubre la arcada entera, así que no convive con ninguna otra). Las parciales se
+    // validan en el servicio: pueden convivir si sus tramos no se solapan.
+    uniqueIndex('uq_prosthesis_prt_arch')
       .on(table.odontogramId, table.arch)
-      .where(sql`${table.resolvedAt} is null`),
+      .where(sql`${table.kind} = 'prt' and ${table.resolvedAt} is null`),
     check('chk_prostheses_kind', sql`${table.kind} in (${sqlLiteralList(PROSTHESIS_KINDS)})`),
     check('chk_prostheses_arch', sql`${table.arch} in (${sqlLiteralList(PROSTHESIS_ARCHES)})`),
     check('chk_prostheses_state', sql`${table.state} in (${sqlLiteralList(CLINICAL_STATES)})`),

@@ -269,5 +269,32 @@ export const prosthesisSummaryLabel = (prosthesis: ProsthesisRecord): string => 
     : `${sigla} ${String(primera)}–${String(ultima)}`;
 };
 
+/** `true` si las dos listas traen **el mismo conjunto** de piezas (da igual el orden). */
+export const sameTeeth = (a: readonly number[], b: readonly number[]): boolean => {
+  if (a.length !== b.length) return false;
+  const conjuntoB = new Set(b);
+  return (
+    new Set(a).size === conjuntoB.size && [...new Set(a)].every((tooth) => conjuntoB.has(tooth))
+  );
+};
+
+/**
+ * Piezas que **comparten** dos prótesis (la intersección), ordenadas. Es la pieza clave
+ * de la regla de convivencia: dos prótesis vivas de la misma arcada no pueden compartir
+ * ninguna pieza.
+ */
+export const sharedTeeth = (a: readonly number[], b: readonly number[]): number[] => {
+  const conjuntoB = new Set(b);
+  return [...new Set(a)].filter((tooth) => conjuntoB.has(tooth)).sort((x, y) => x - y);
+};
+
+/**
+ * `true` si dos prótesis se **solapan** (comparten alguna pieza). Una `PRT` cubre la
+ * arcada entera, así que se solapa con cualquier otra de su arcada; dos `PPR` solo se
+ * solapan si sus tramos se pisan.
+ */
+export const prosthesesOverlap = (a: readonly number[], b: readonly number[]): boolean =>
+  sharedTeeth(a, b).length > 0;
+
 /** Estados clínicos válidos de una prótesis (las dos fases). */
 export const PROSTHESIS_STATES: readonly ClinicalState[] = CLINICAL_STATES;

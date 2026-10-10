@@ -1,2 +1,0 @@
-DROP INDEX "uq_prosthesis_prt_arch";--> statement-breakpoint
-CREATE UNIQUE INDEX "uq_prosthesis_arch_viva" ON "prostheses" USING btree ("odontogram_id","arch") WHERE "prostheses"."resolved_at" is null;

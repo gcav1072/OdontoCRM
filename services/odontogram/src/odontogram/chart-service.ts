@@ -13,7 +13,9 @@ import {
   dentitionOfTooth,
   isStateAllowed,
   odontogramSummary,
+  prosthesesOverlap,
   recordingConflicts,
+  sharedTeeth,
   supersedesSurfaces,
   type AuditAction,
   type ClinicalState,
@@ -41,7 +43,7 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS, type EventTopic } from '@odontocrm/events';
 import { ConflictError, NotFoundError } from '@odontocrm/kernel';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 
 import type { OdontogramDb } from '../db/client.js';
 import {
@@ -831,7 +833,8 @@ const findActiveByCondition = async (
   /** `null` = pieza completa; `'any'` = cualquier cara; una cara concreta. */
   surface: ToothSurface | null | 'any',
 ): Promise<ToothFindingRow[]> => {
-  const condiciones: ToothCondition[] = typeof condition === 'string' ? [condition] : [...condition];
+  const condiciones: ToothCondition[] =
+    typeof condition === 'string' ? [condition] : [...condition];
   const filtros = [
     eq(toothFindings.odontogramId, odontogramId),
     eq(toothFindings.toothNumber, toothNumber),
@@ -1503,8 +1506,12 @@ const publishProsthesisEvent = async (
 /**
  * Registra (o corrige) una **prótesis removible** (PPR/PRT). Crea el odontograma si
  * es el primero. La **PRT** se normaliza a la arcada completa (las 16 piezas): el
- * cliente no tiene que enumerarlas. La clave natural es **tipo + arcada**, así que
- * volver a registrar la prótesis de una arcada la **actualiza**, no la duplica.
+ * cliente no tiene que enumerarlas.
+ *
+ * Una arcada admite **varias prótesis** mientras no compartan piezas: dos o más
+ * parciales de tramos distintos sí; la total, que cubre la arcada entera, no convive
+ * con ninguna. La clave natural para «actualizar en vez de duplicar» es **tipo +
+ * arcada + tramo**: volver a registrar la misma prótesis la actualiza.
  */
 export const recordProsthesis = async (
   db: OdontogramDb,
@@ -1528,45 +1535,45 @@ export const recordProsthesis = async (
       state: input.state,
     };
 
-    const existentes = await tx
+    const vigentes = await tx
       .select()
       .from(prostheses)
       .where(
         and(
           eq(prostheses.odontogramId, odontogram.id),
           eq(prostheses.arch, input.arch),
-          eq(prostheses.kind, input.kind),
           isNull(prostheses.resolvedAt),
         ),
-      )
-      .limit(1);
-    const existente = existentes[0];
+      );
 
-    // Una arcada admite **una sola prótesis viva**, sea parcial o total: no pueden
-    // convivir. Si la arcada ya tiene una del **tipo contrario**, se rechaza y se
-    // pide quitarla primero (la ficha muestra este mensaje tal cual).
-    const contraria = (
-      await tx
-        .select()
-        .from(prostheses)
-        .where(
-          and(
-            eq(prostheses.odontogramId, odontogram.id),
-            eq(prostheses.arch, input.arch),
-            ne(prostheses.kind, input.kind),
-            isNull(prostheses.resolvedAt),
-          ),
-        )
-        .limit(1)
-    )[0];
+    // La que se está corrigiendo: mismo tipo y mismo tramo (actualiza, no duplica).
+    const existente = vigentes.find(
+      (fila) => fila.kind === input.kind && sameToothNumbers(fila.toothNumbers, toothNumbers),
+    );
 
-    if (contraria !== undefined) {
-      const tipo = contraria.kind as ProsthesisKind;
+    // Una arcada admite varias prótesis **mientras no compartan piezas**. La total
+    // cubre la arcada entera, así que choca con cualquier otra; dos parciales, solo si
+    // sus tramos se pisan. Se pide quitar la que estorba (la ficha muestra el mensaje).
+    const choque = vigentes.find(
+      (fila) => fila.id !== existente?.id && prosthesesOverlap(fila.toothNumbers, toothNumbers),
+    );
+
+    if (choque !== undefined) {
+      const compartidas = sharedTeeth(choque.toothNumbers, toothNumbers);
       throw new ConflictError(
-        `La arcada «${PROSTHESIS_ARCH_LABELS[input.arch]}» ya tiene una ${
-          PROSTHESIS_KIND_LABELS[tipo]
-        }: quite primero esa prótesis para registrar la ${PROSTHESIS_KIND_LABELS[input.kind]}`,
-        { extensions: { arch: input.arch, conflictingKind: tipo, kind: input.kind } },
+        `La ${PROSTHESIS_KIND_LABELS[choque.kind as ProsthesisKind].toLowerCase()} de la arcada «${
+          PROSTHESIS_ARCH_LABELS[input.arch]
+        }» ya cubre ${compartidas.length === 1 ? 'la pieza' : 'las piezas'} ${compartidas.join(
+          ', ',
+        )}: quite primero esa prótesis o elija otras piezas`,
+        {
+          extensions: {
+            arch: input.arch,
+            conflictingId: choque.id,
+            conflictingKind: choque.kind,
+            overlappingTeeth: compartidas,
+          },
+        },
       );
     }
 

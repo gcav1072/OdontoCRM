@@ -29,13 +29,6 @@
       "when": 1791655266043,
       "tag": "0003_typical_proemial_gods",
       "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1791662472279,
-      "tag": "0004_complex_yellowjacket",
-      "breakpoints": true
     }
   ]
 }

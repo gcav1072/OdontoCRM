@@ -6,7 +6,10 @@ import {
   archTeeth,
   prosthesisSummaryLabel,
   prosthesisTrack,
+  prosthesesOverlap,
   recordProsthesisSchema,
+  sameTeeth,
+  sharedTeeth,
   teethAreContiguous,
   type ProsthesisRecord,
 } from './prosthesis.js';
@@ -106,7 +109,12 @@ describe('prótesis removibles (PPR/PRT)', () => {
       updatedAt: '2026-10-10T00:00:00.000Z',
       sessionId: null,
     };
-    const ppr: ProsthesisRecord = { ...base, kind: 'ppr', arch: 'maxilar', toothNumbers: [14, 15, 16] };
+    const ppr: ProsthesisRecord = {
+      ...base,
+      kind: 'ppr',
+      arch: 'maxilar',
+      toothNumbers: [14, 15, 16],
+    };
     const prt: ProsthesisRecord = {
       ...base,
       kind: 'prt',
@@ -115,5 +123,32 @@ describe('prótesis removibles (PPR/PRT)', () => {
     };
     expect(prosthesisSummaryLabel(ppr)).toBe('PPR 14–16');
     expect(prosthesisSummaryLabel(prt)).toBe('PRT Mandíbula inferior');
+  });
+});
+
+describe('convivencia de prótesis en una arcada (solape de piezas)', () => {
+  it('sameTeeth compara conjuntos, sin importar el orden', () => {
+    expect(sameTeeth([14, 15, 16], [16, 14, 15])).toBe(true);
+    expect(sameTeeth([14, 15, 16], [14, 15])).toBe(false);
+    expect(sameTeeth([14, 15, 16], [14, 15, 17])).toBe(false);
+  });
+
+  it('sharedTeeth devuelve la intersección ordenada', () => {
+    expect(sharedTeeth([14, 15, 16], [16, 17, 18])).toEqual([16]);
+    expect(sharedTeeth([14, 15, 16], [24, 25, 26])).toEqual([]);
+  });
+
+  it('dos parciales se solapan solo si sus tramos se pisan', () => {
+    expect(prosthesesOverlap([14, 15, 16], [24, 25, 26])).toBe(false);
+    expect(prosthesesOverlap([14, 15, 16], [16, 17])).toBe(true);
+    expect(prosthesesOverlap([14, 15, 16], [15, 16])).toBe(true);
+  });
+
+  it('la total, que cubre toda la arcada, se solapa con cualquier otra', () => {
+    const todaLaArcada = [...archTeeth('maxilar')];
+    expect(prosthesesOverlap(todaLaArcada, [14, 15, 16])).toBe(true);
+    expect(prosthesesOverlap(todaLaArcada, todaLaArcada)).toBe(true);
+    // Otra arcada no se toca: comparar piezas ya lo separa.
+    expect(prosthesesOverlap([14, 15, 16], [34, 35, 36])).toBe(false);
   });
 });

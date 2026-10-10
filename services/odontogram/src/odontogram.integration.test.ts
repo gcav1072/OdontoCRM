@@ -1064,18 +1064,18 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
   }, 40_000);
 
   /**
-   * Regla de negocio: una arcada admite **una sola prótesis viva**, sea parcial o
-   * total. Antes la clave natural (`tipo + arcada`) dejaba convivir una PPR y una
-   * PRT sobre la misma arcada; ahora el servicio rechaza la segunda con 409 y pide
-   * quitar la primera.
+   * Regla de negocio: una arcada admite **varias prótesis** mientras no compartan
+   * piezas. Antes la clave natural (`tipo + arcada`) trataba cualquier segunda
+   * prótesis como una actualización y dejaba convivir una PPR y una PRT; ahora el
+   * servicio rechaza con 409 la que **se solape** con otra viva y pide quitarla.
    */
-  it('una arcada admite una sola prótesis viva: parcial y total no conviven (409)', async () => {
+  it('una arcada admite varias PPR si no se solapan; la total no convive con nada (409)', async () => {
     const alta = (input: RecordProsthesisInput) =>
       recordProsthesis(handle.db, pacienteProtesis, input, actor);
-    const parcial = (): RecordProsthesisInput => ({
+    const ppr = (toothNumbers: number[]): RecordProsthesisInput => ({
       kind: 'ppr',
       arch: 'maxilar',
-      toothNumbers: [14, 15, 16],
+      toothNumbers,
       state: 'pendiente',
       notes: null,
       sessionId: null,
@@ -1089,20 +1089,38 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
       sessionId: null,
     });
 
-    // Se registra la total; la parcial de la misma arcada choca.
-    const conTotal = await alta(total());
-    const totalId = conTotal.odontogram.prostheses[0]?.id ?? '';
-    await expect(alta(parcial())).rejects.toThrow(ConflictError);
+    // Dos parciales de tramos disjuntos conviven.
+    await alta(ppr([14, 15, 16]));
+    const dosParciales = await alta(ppr([24, 25, 26]));
+    expect(dosParciales.odontogram.prostheses.map((p) => p.toothNumbers.join('.'))).toEqual([
+      '14.15.16',
+      '24.25.26',
+    ]);
 
-    // Se quita la total y la parcial entra sin problema.
-    await removeProsthesis(handle.db, pacienteProtesis, totalId, actor);
-    const conParcial = await alta(parcial());
-    expect(conParcial.odontogram.prostheses.map((protesis) => protesis.kind)).toEqual(['ppr']);
+    // Una parcial que pisa una pieza ya cubierta se rechaza.
+    await expect(alta(ppr([16, 17]))).rejects.toThrow(ConflictError);
 
-    // Con la parcial puesta, la total vuelve a chocar.
+    // Volver a registrar el mismo tramo **actualiza** (no duplica ni choca consigo misma).
+    const actualizada = await alta({
+      ...ppr([14, 15, 16]),
+      state: 'completado',
+    });
+    expect(actualizada.odontogram.prostheses).toHaveLength(2);
+
+    // La total cubre toda la arcada: choca con las parciales vivas.
     await expect(alta(total())).rejects.toThrow(ConflictError);
 
-    // La otra arcada sigue libre: la regla es por arcada.
+    // Se quitan las parciales y entonces sí entra la total.
+    for (const protesis of actualizada.odontogram.prostheses) {
+      await removeProsthesis(handle.db, pacienteProtesis, protesis.id, actor);
+    }
+    const conTotal = await alta(total());
+    expect(conTotal.odontogram.prostheses.map((p) => p.kind)).toEqual(['prt']);
+
+    // Con la total puesta, cualquier parcial vuelve a chocar.
+    await expect(alta(ppr([14, 15, 16]))).rejects.toThrow(ConflictError);
+
+    // La otra arcada es independiente.
     const mandibular = await alta({
       kind: 'prt',
       arch: 'mandibula',
