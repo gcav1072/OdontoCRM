@@ -1,6 +1,7 @@
 import { forwardRef, type SelectHTMLAttributes } from 'react';
 
 import { cn } from '../lib/cn';
+import { controlVisualClasses } from './control-classes';
 import { useFieldControl } from './field-context';
 
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
@@ -8,9 +9,7 @@ export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 }
 
 const BASE_CLASSES = [
-  'h-10 w-full appearance-none rounded-control border bg-surface px-3 pr-9 text-sm text-ink transition-colors',
-  'disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-muted',
-  'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus',
+  `h-10 appearance-none pr-9 px-3 ${controlVisualClasses}`,
   // Flecha dibujada con CSS para no depender de iconos externos en el paquete ui.
   "bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2364748b%22 stroke-width=%222%22 stroke-linecap=%22round%22><path d=%22m6 9 6 6 6-6%22/></svg>')] bg-[length:1rem_1rem] bg-[right_0.625rem_center] bg-no-repeat",
 ].join(' ');

@@ -32,6 +32,11 @@ export {
   type CardTitleProps,
 } from './components/Card';
 export { Checkbox, type CheckboxProps } from './components/Checkbox';
+export {
+  controlBoxClasses,
+  textareaClasses,
+  controlVisualClasses,
+} from './components/control-classes';
 export { Dialog, type DialogProps, type DialogSize } from './components/Dialog';
 export { EmptyState, type EmptyStateProps } from './components/EmptyState';
 export { Field, type FieldProps } from './components/Field';
@@ -41,6 +46,7 @@ export { Label, type LabelProps } from './components/Label';
 export { Select, type SelectProps } from './components/Select';
 export { Spinner, type SpinnerProps, type SpinnerSize } from './components/Spinner';
 export { Switch, type SwitchProps } from './components/Switch';
+export { Textarea, type TextareaProps } from './components/Textarea';
 export {
   Table,
   TableBody,

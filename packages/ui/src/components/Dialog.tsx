@@ -119,7 +119,13 @@ export const Dialog = ({
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        {/* El cuerpo es un **contenedor de consulta** (`@container`): así los
+            componentes compartidos resuelven sus variantes contra el ancho real
+            del diálogo y no contra el de la página que lo abrió (que en un
+            teléfono es el mismo, pero en un portátil con el diálogo estrecho no). */}
+        <div className="@container min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-4">
+          {children}
+        </div>
 
         {footer && (
           <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-surface-muted px-5 py-3.5">

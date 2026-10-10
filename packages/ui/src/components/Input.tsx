@@ -1,6 +1,7 @@
 import { forwardRef, type InputHTMLAttributes } from 'react';
 
 import { cn } from '../lib/cn';
+import { controlVisualClasses } from './control-classes';
 import { useFieldControl } from './field-context';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -8,12 +9,7 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   invalid?: boolean;
 }
 
-const BASE_CLASSES = [
-  'h-10 w-full rounded-control border bg-surface px-3 text-sm text-ink shadow-xs transition-colors',
-  'placeholder:text-ink-subtle',
-  'disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-muted',
-  'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus',
-].join(' ');
+const BASE_CLASSES = `h-10 px-3 ${controlVisualClasses}`;
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   {

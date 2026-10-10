@@ -43,7 +43,10 @@ export const Field = ({
     <FieldContext.Provider
       value={{ id: controlId, invalid: Boolean(error), required, describedBy }}
     >
-      <div className={cn('flex flex-col gap-1.5', className)}>
+      {/* `min-w-0`: en una celda de grid o de flex, sin esto el ancho mínimo del
+          bloque es el del texto más largo y la etiqueta/ayuda desborda su columna
+          en pantallas estrechas (el control de al lado quedaba tapado). */}
+      <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
         <Label htmlFor={controlId} required={required}>
           {label}
         </Label>
