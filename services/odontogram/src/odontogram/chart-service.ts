@@ -41,7 +41,7 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS, type EventTopic } from '@odontocrm/events';
 import { ConflictError, NotFoundError } from '@odontocrm/kernel';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 
 import type { OdontogramDb } from '../db/client.js';
 import {
@@ -1541,6 +1541,34 @@ export const recordProsthesis = async (
       )
       .limit(1);
     const existente = existentes[0];
+
+    // Una arcada admite **una sola prótesis viva**, sea parcial o total: no pueden
+    // convivir. Si la arcada ya tiene una del **tipo contrario**, se rechaza y se
+    // pide quitarla primero (la ficha muestra este mensaje tal cual).
+    const contraria = (
+      await tx
+        .select()
+        .from(prostheses)
+        .where(
+          and(
+            eq(prostheses.odontogramId, odontogram.id),
+            eq(prostheses.arch, input.arch),
+            ne(prostheses.kind, input.kind),
+            isNull(prostheses.resolvedAt),
+          ),
+        )
+        .limit(1)
+    )[0];
+
+    if (contraria !== undefined) {
+      const tipo = contraria.kind as ProsthesisKind;
+      throw new ConflictError(
+        `La arcada «${PROSTHESIS_ARCH_LABELS[input.arch]}» ya tiene una ${
+          PROSTHESIS_KIND_LABELS[tipo]
+        }: quite primero esa prótesis para registrar la ${PROSTHESIS_KIND_LABELS[input.kind]}`,
+        { extensions: { arch: input.arch, conflictingKind: tipo, kind: input.kind } },
+      );
+    }
 
     // Sin cambios no se escribe ni se audita.
     if (

@@ -2,9 +2,11 @@ import type {
   ClinicalState,
   OdontogramDetail,
   RecordFindingInput,
+  RecordProsthesisInput,
   ToothCondition,
   ToothSurface,
 } from '@odontocrm/contracts';
+import { archTeeth } from '@odontocrm/contracts';
 import {
   consumerQueueName,
   countPendingEvents,
@@ -39,7 +41,9 @@ import {
   getOdontogramByPatient,
   recordFinding,
   recordFindingsBatch,
+  recordProsthesis,
   registerPrint,
+  removeProsthesis,
 } from './odontogram/chart-service.js';
 
 /**
@@ -83,6 +87,8 @@ const pacienteTemporal = globalThis.crypto.randomUUID();
 const pacienteSinBoca = globalThis.crypto.randomUUID();
 /** Boca propia de las pruebas de procedimientos: no altera los conteos de la principal. */
 const pacienteProcedimientos = globalThis.crypto.randomUUID();
+/** Boca propia de las pruebas de prótesis removibles (PPR/PRT). */
+const pacienteProtesis = globalThis.crypto.randomUUID();
 
 const hallazgo = (input: {
   toothNumber: number;
@@ -1055,5 +1061,56 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
         [odontogramId, patientId],
       ),
     ).rejects.toThrow(/chk_tooth_findings_state_allowed/);
+  }, 40_000);
+
+  /**
+   * Regla de negocio: una arcada admite **una sola prótesis viva**, sea parcial o
+   * total. Antes la clave natural (`tipo + arcada`) dejaba convivir una PPR y una
+   * PRT sobre la misma arcada; ahora el servicio rechaza la segunda con 409 y pide
+   * quitar la primera.
+   */
+  it('una arcada admite una sola prótesis viva: parcial y total no conviven (409)', async () => {
+    const alta = (input: RecordProsthesisInput) =>
+      recordProsthesis(handle.db, pacienteProtesis, input, actor);
+    const parcial = (): RecordProsthesisInput => ({
+      kind: 'ppr',
+      arch: 'maxilar',
+      toothNumbers: [14, 15, 16],
+      state: 'pendiente',
+      notes: null,
+      sessionId: null,
+    });
+    const total = (): RecordProsthesisInput => ({
+      kind: 'prt',
+      arch: 'maxilar',
+      toothNumbers: [...archTeeth('maxilar')],
+      state: 'pendiente',
+      notes: null,
+      sessionId: null,
+    });
+
+    // Se registra la total; la parcial de la misma arcada choca.
+    const conTotal = await alta(total());
+    const totalId = conTotal.odontogram.prostheses[0]?.id ?? '';
+    await expect(alta(parcial())).rejects.toThrow(ConflictError);
+
+    // Se quita la total y la parcial entra sin problema.
+    await removeProsthesis(handle.db, pacienteProtesis, totalId, actor);
+    const conParcial = await alta(parcial());
+    expect(conParcial.odontogram.prostheses.map((protesis) => protesis.kind)).toEqual(['ppr']);
+
+    // Con la parcial puesta, la total vuelve a chocar.
+    await expect(alta(total())).rejects.toThrow(ConflictError);
+
+    // La otra arcada sigue libre: la regla es por arcada.
+    const mandibular = await alta({
+      kind: 'prt',
+      arch: 'mandibula',
+      toothNumbers: [...archTeeth('mandibula')],
+      state: 'pendiente',
+      notes: null,
+      sessionId: null,
+    });
+    expect(mandibular.odontogram.prostheses).toHaveLength(2);
   }, 40_000);
 });

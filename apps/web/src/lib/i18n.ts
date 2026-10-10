@@ -2957,7 +2957,7 @@ const DICCIONARIO = {
   'odonto.protesis.notas': 'Observaciones',
   'odonto.protesis.notasPlaceholder': 'Observación clínica (opcional)',
   'odonto.protesis.guardar': 'Guardar prótesis',
-  'odonto.protesis.eliminar': 'Eliminar',
+  'odonto.protesis.eliminar': 'Eliminar prótesis',
   'odonto.protesis.existente': 'Esta arcada ya tiene una prótesis de este tipo: se actualizará.',
   'odonto.protesis.ppr.activar': 'Prótesis parcial (PPR)',
   'odonto.protesis.ppr.activo': 'Cancelar la prótesis parcial',

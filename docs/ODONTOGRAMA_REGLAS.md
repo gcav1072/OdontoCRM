@@ -197,12 +197,18 @@ o de **arcada completa** (`ProsthesisRecord`, `prosthesisTrack`, migración `000
 
 - **PPR (parcial):** un **tramo contiguo** de la arcada (p. ej. `14–16`), elegido en el gráfico con
   **dos toques** (primera y última pieza del tramo).
-- **PRT (total):** la **arcada completa** (18–28 o 48–38); una sola por arcada (índice único parcial).
+- **PRT (total):** la **arcada completa** (18–28 o 48–38).
+- **Una sola prótesis viva por arcada:** parcial y total **no conviven**, ni dos parciales. Registrar
+  una segunda prótesis en una arcada que ya tiene una se **rechaza con 409** y pide quitar la primera;
+  en la base lo garantiza el índice único parcial `uq_prosthesis_arch_viva` sobre
+  `(odontogram_id, arch)` restringido a `resolved_at is null`.
 - **Estado:** `pendiente` (rojo, indicada / por confeccionar) o `completado` (azul, instalada).
 - **Dibujo:** doble línea con **retenedores** en los extremos de la PPR, en una **franja bajo las
   piezas** (no tapa aspas ni caras), a la misma altura en pantalla, papel y dossier.
 - **Validación** (`recordProsthesisSchema`): todas las piezas de la misma arcada; tramo contiguo en la
-  PPR; arcada completa en la PRT (el servidor normaliza la PRT a las 16 piezas).
+  PPR; arcada completa en la PRT (el servidor normaliza la PRT a las 16 piezas). La exclusividad
+  parcial/total de la arcada la impone el **servicio** (`recordProsthesis`), porque necesita leer el
+  estado previo de la base.
 
 ## 7. Enforcement en tres capas
 

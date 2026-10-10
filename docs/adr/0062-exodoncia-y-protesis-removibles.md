@@ -44,7 +44,11 @@ DTO `prostheses` en `OdontogramDetail`), no en el diccionario de piezas:
 
 - **PPR (parcial):** un **tramo contiguo** de una arcada; se elige en el gráfico con **dos toques**
   (primera y última pieza).
-- **PRT (total):** la **arcada completa**; **una sola por arcada** (índice único parcial).
+- **PRT (total):** la **arcada completa**.
+- **Una sola prótesis viva por arcada:** la parcial y la total no conviven (ni dos parciales).
+  Registrar una segunda se rechaza con **409** («quite primero esa prótesis») y la base lo garantiza
+  con el índice único parcial `uq_prosthesis_arch_viva` sobre `(odontogram_id, arch)` restringido a
+  `resolved_at is null` (sustituye al antiguo `uq_prosthesis_prt_arch`, migración `0004`).
 - **Estado:** `pendiente` (rojo, indicada) o `completado` (azul, instalada).
 - **Dibujo:** doble línea con retenedores en los extremos de la PPR, en una **franja bajo las piezas**
   (no tapa aspas ni caras). La geometría vive en el contrato (`prosthesisTrack`) y la comparten
