@@ -126,15 +126,15 @@ const estilos = (fontFaces: string, brand: BrandThemePayload | null | undefined)
   .letterhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; border-bottom: 0.6mm solid var(--brand-accent); padding-bottom: 3mm; }
   .letterhead-brand { display: flex; align-items: flex-start; gap: 6mm; }
   .logo { height: var(--brand-logo-height-mm); width: auto; }
-  .clinic-name { font-family: var(--brand-font-doc-title); font-size: 14pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
+  .clinic-name { font-family: var(--brand-font-doc-title); font-size: 14pt; font-weight: var(--brand-font-doc-title-weight); color: var(--brand-primary); margin: 0; }
   .clinic-line { font-size: 8pt; color: var(--brand-ink-muted); margin: 0.6mm 0 0; }
   /* La línea del especialista va en el membrete, bajo la dirección y el teléfono. */
   .clinic-dentist { font-size: 8pt; color: var(--brand-ink-strong); margin: 0.8mm 0 0; }
   .doc-meta { text-align: right; font-size: 8pt; color: var(--brand-ink-muted); min-width: 55mm; }
-  .doc-number { font-family: var(--brand-font-doc-title); font-size: 12pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
-  h1 { font-family: var(--brand-font-doc-title); font-size: 13pt; margin: 4mm 0 0; color: var(--brand-primary); }
+  .doc-number { font-family: var(--brand-font-doc-title); font-size: 12pt; font-weight: var(--brand-font-doc-title-weight); color: var(--brand-primary); margin: 0; }
+  h1 { font-family: var(--brand-font-doc-title); font-size: 13pt; font-weight: var(--brand-font-doc-title-weight); margin: 4mm 0 0; color: var(--brand-primary); }
   .subtitle { font-size: 8.5pt; color: var(--brand-ink-muted); margin: 1mm 0 0; }
-  h2 { font-family: var(--brand-font-doc-title); font-size: 10pt; color: var(--brand-primary); margin: 5mm 0 1.5mm; border-bottom: 0.2mm solid var(--brand-line); padding-bottom: 0.8mm; }
+  h2 { font-family: var(--brand-font-doc-title); font-size: 10pt; font-weight: var(--brand-font-doc-title-weight); color: var(--brand-primary); margin: 5mm 0 1.5mm; border-bottom: 0.2mm solid var(--brand-line); padding-bottom: 0.8mm; }
   .filiacion { display: flex; flex-wrap: wrap; gap: 1mm 8mm; font-size: 8.5pt; margin-top: 2mm; }
   .filiacion dt { color: var(--brand-ink-muted); font-size: 7pt; text-transform: uppercase; letter-spacing: 0.2mm; margin: 0; }
   .filiacion dd { margin: 0.3mm 0 1mm; font-weight: 600; }

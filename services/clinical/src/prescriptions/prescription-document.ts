@@ -167,12 +167,12 @@ const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined):
   .letterhead { display: flex; align-items: flex-start; gap: 4mm; border-bottom: 0.6mm solid var(--brand-accent); padding-bottom: 2.5mm; }
   .logo { height: 12mm; width: auto; }
   .letterhead-text { flex: 1; min-width: 0; }
-  .clinic-name { font-family: var(--brand-font-doc-title); font-size: 11pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
+  .clinic-name { font-family: var(--brand-font-doc-title); font-size: 11pt; font-weight: var(--brand-font-doc-title-weight); color: var(--brand-primary); margin: 0; }
   .clinic-line { font-size: 7.5pt; color: var(--brand-ink-muted); margin: 0.5mm 0 0; }
   /* La línea del especialista va en el membrete, bajo la dirección y el teléfono. */
   .clinic-dentist { font-size: 7.5pt; color: var(--brand-ink-strong); margin: 0.8mm 0 0; }
   .rx { display: flex; justify-content: space-between; align-items: baseline; gap: 3mm; margin-top: 3mm; }
-  .rx-title { font-family: var(--brand-font-doc-title); font-size: 13pt; font-weight: 700; letter-spacing: 0.4mm; margin: 0; color: var(--brand-primary); }
+  .rx-title { font-family: var(--brand-font-doc-title); font-size: 13pt; font-weight: var(--brand-font-doc-title-weight); letter-spacing: 0.4mm; margin: 0; color: var(--brand-primary); }
   .rx-number { font-size: 8pt; color: var(--brand-ink-muted); text-align: right; }
   .patient { margin-top: 2mm; font-size: 8.5pt; }
   .patient strong { font-weight: 600; }
@@ -195,7 +195,7 @@ const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined):
   .med { font-weight: 600; }
   .detail { color: var(--brand-ink-strong); font-size: 7.5pt; }
   .instructions { margin-top: 3mm; font-size: 8pt; }
-  .instructions h2 { font-family: var(--brand-font-doc-title); font-size: 8pt; text-transform: uppercase; letter-spacing: 0.2mm; color: var(--brand-primary); margin: 0 0 1mm; }
+  .instructions h2 { font-family: var(--brand-font-doc-title); font-size: 8pt; font-weight: var(--brand-font-doc-title-weight); text-transform: uppercase; letter-spacing: 0.2mm; color: var(--brand-primary); margin: 0 0 1mm; }
   /* La firma se ancla al pie de su mitad; el especialista ya va en el membrete, así que
      bajo la línea solo queda el nombre. */
   .signature { text-align: center; font-size: 8.5pt; min-width: 48mm; margin-top: auto; padding-top: 6mm; }
@@ -283,7 +283,10 @@ export const prescriptionHtml = async (input: PrescriptionDocumentInput): Promis
       <div class="rp-item">
         <p class="rp-med">${escapeHtml(item.medicationName)}</p>
         ${lineas
-          .map(([etiqueta, valor]) => `<p class="rp-line"><strong>${etiqueta}:</strong> ${escapeHtml(valor)}</p>`)
+          .map(
+            ([etiqueta, valor]) =>
+              `<p class="rp-line"><strong>${etiqueta}:</strong> ${escapeHtml(valor)}</p>`,
+          )
           .join('')}
       </div>`;
     })
