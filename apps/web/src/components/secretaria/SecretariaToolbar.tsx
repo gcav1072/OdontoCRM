@@ -35,7 +35,7 @@ export const SecretariaToolbar = ({
   onReload,
 }: SecretariaToolbarProps) => (
   <Card>
-    <CardHeader className="gap-4 xl:flex-row xl:items-end xl:justify-between">
+    <CardHeader className="gap-4 @6xl:flex-row @6xl:items-end @6xl:justify-between">
       <div className="min-w-0">
         <CardTitle as="h2" className="flex items-center gap-2">
           <CalendarDays className="size-5 text-primary" aria-hidden="true" />
@@ -75,7 +75,7 @@ export const SecretariaToolbar = ({
           {t('secretaria.diaSiguiente')}
         </Button>
 
-        <Field label={t('secretaria.fecha')} className="w-44">
+        <Field label={t('secretaria.fecha')} className="w-full @2xl:w-44">
           <Input
             type="date"
             value={date}
@@ -86,7 +86,7 @@ export const SecretariaToolbar = ({
           />
         </Field>
 
-        <Field label={t('secretaria.buscar')} className="w-full sm:w-64">
+        <Field label={t('secretaria.buscar')} className="w-full @2xl:w-64">
           <Input
             type="search"
             value={search}

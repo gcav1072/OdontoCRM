@@ -28,7 +28,7 @@ export interface DayCountersProps {
  */
 export const DayCounters = ({ counts, dense = false }: DayCountersProps) => {
   const lista = (
-    <dl className={cn('grid grid-cols-2 gap-3 sm:grid-cols-4', dense ? 'gap-2' : 'p-5')}>
+    <dl className={cn('grid grid-cols-2 gap-3 @2xl:grid-cols-4', dense ? 'gap-2' : 'p-5')}>
       {CONTADORES.map(({ clave, etiqueta }) => (
         <div
           key={clave}
