@@ -4,7 +4,9 @@ import {
   brandRootBlock,
   brandWatermarkCss,
   brandWatermarkHtml,
+  clinicDentistLine,
   formatRateMicros,
+  type ClinicDentist,
   type ClinicIdentity,
   type BrandThemePayload,
 } from '@odontocrm/contracts';
@@ -21,6 +23,8 @@ export interface CreditNotePdfInput {
   clinic?: ClinicIdentity;
   /** Logo ya incrustado (`data:` URI); si falta, se lee el del repositorio. */
   logoDataUri?: string | null;
+  /** Odontólogo que responde por el documento; su línea va en el membrete. */
+  dentist?: ClinicDentist | null;
   /** `NC-000001`. */
   creditNoteLabel: string;
   issuedAt: Date;
@@ -52,6 +56,8 @@ export const renderCreditNoteHtml = async (input: CreditNotePdfInput): Promise<s
   const clinic = input.clinic ?? CLINIC;
   const logo = input.logoDataUri ?? (await readImageDataUri(clinic.logoPath ?? BRAND.logoPath));
   const marcaDeAgua = brandWatermarkHtml(logo ?? (await readImageDataUri(BRAND.watermarkPath)));
+  // El odontólogo que responde por el documento, en el membrete.
+  const lineaDentista = clinicDentistLine(input.dentist ?? null);
 
   return `<!doctype html>
 <html lang="es">
@@ -70,6 +76,8 @@ export const renderCreditNoteHtml = async (input: CreditNotePdfInput): Promise<s
   .emisor .logo { height: var(--brand-logo-height-mm); width: auto; }
   .nombre { font-family: var(--brand-font-doc-title); font-weight: 700; color: var(--brand-primary); }
   .dato { color: var(--brand-ink-muted); }
+  /* La línea del especialista va en el membrete, bajo la dirección y el teléfono. */
+  .dentista { color: var(--brand-ink-strong); }
   table { width: 100%; border-collapse: collapse; margin-top: 5mm; }
   td { padding: 1.6mm 1mm; border-bottom: .5pt solid var(--brand-line-soft); }
   td.etiqueta { color: var(--brand-ink-muted); width: 55mm; }
@@ -90,6 +98,7 @@ export const renderCreditNoteHtml = async (input: CreditNotePdfInput): Promise<s
         <div class="dato">${escapar(clinic.name)}</div>
         <div class="dato">RIF: ${escapar(clinic.rif)}</div>
         <div class="dato">${escapar(`${clinic.address}, ${clinic.city}`)}</div>
+        ${lineaDentista === '' ? '' : `<div class="dentista">${escapar(lineaDentista)}</div>`}
       </div>
     </div>
     <div style="text-align:right">

@@ -139,6 +139,7 @@ export const issueInvoice = async (
   const html = await renderInvoiceHtml({
     clinic: identidad?.clinic,
     logoDataUri: identidad?.logoDataUri ?? null,
+    dentist: identidad?.dentist ?? null,
     brand: marca?.theme ?? null,
     fontFaceCss: marca?.fontFaceCss ?? null,
     series: serie.series,

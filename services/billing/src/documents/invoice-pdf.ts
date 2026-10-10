@@ -4,10 +4,12 @@ import {
   brandRootBlock,
   brandWatermarkCss,
   brandWatermarkHtml,
+  clinicDentistLine,
   formatRateMicros,
   rateToMicros,
   vesCentimosFromUsd,
   type BillingDraftItem,
+  type ClinicDentist,
   type ClinicIdentity,
   type InvoiceTotals,
   type BrandThemePayload,
@@ -34,6 +36,8 @@ export interface InvoicePdfInput {
   clinic?: ClinicIdentity;
   /** Logo ya incrustado (`data:` URI); si falta, se lee el del repositorio. */
   logoDataUri?: string | null;
+  /** Odontólogo que responde por el documento; su línea va en el membrete. */
+  dentist?: ClinicDentist | null;
   series: string;
   numberLabel: string;
   controlNumber: string | null;
@@ -118,6 +122,8 @@ export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string>
   const logo = input.logoDataUri ?? (await readImageDataUri(clinic.logoPath ?? BRAND.logoPath));
   const marcaDeAgua = brandWatermarkHtml(logo ?? (await readImageDataUri(BRAND.watermarkPath)));
   const fecha = fechaFiscal(input.issuedAt);
+  // El odontólogo que responde por el documento, en el membrete.
+  const lineaDentista = clinicDentistLine(input.dentist ?? null);
   const enBs = (cents: number): number => vesCentimosFromUsd(cents, input.rateMicros);
 
   // La base gravada se desglosa **por alícuota** (Art. 13 num. 10); hoy solo hay una general.
@@ -150,6 +156,8 @@ export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string>
   .emisor .logo { height: var(--brand-logo-height-mm); width: auto; }
   .emisor .nombre { font-family: var(--brand-font-doc-title); font-weight: 700; font-size: 11pt; color: var(--brand-primary); }
   .emisor .dato { color: var(--brand-ink-muted); }
+  /* La línea del especialista va en el membrete, bajo la dirección y el teléfono. */
+  .emisor .dentista { color: var(--brand-ink-strong); }
   .documento { text-align: right; min-width: 60mm; }
   .documento .numero { font-family: var(--brand-font-doc-title); font-size: 12pt; font-weight: 700; color: var(--brand-primary); }
   .documento .control { font-weight: 600; }
@@ -182,6 +190,7 @@ export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string>
         <div class="dato">${escapar(clinic.name)}</div>
         <div class="dato">RIF: ${escapar(clinic.rif)}</div>
         <div class="dato">${escapar(`${clinic.address}, ${clinic.city}`)}</div>
+        ${lineaDentista === '' ? '' : `<div class="dentista">${escapar(lineaDentista)}</div>`}
       </div>
     </div>
     <div class="documento">

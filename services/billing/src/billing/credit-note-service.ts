@@ -209,6 +209,7 @@ export const voidInvoice = async (
   const html = await renderCreditNoteHtml({
     clinic: identidad?.clinic,
     logoDataUri: identidad?.logoDataUri ?? null,
+    dentist: identidad?.dentist ?? null,
     brand: marca?.theme ?? null,
     fontFaceCss: marca?.fontFaceCss ?? null,
     creditNoteLabel,

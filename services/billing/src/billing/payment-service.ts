@@ -243,6 +243,7 @@ export const collectPayment = async (
   const html = await renderReceiptHtml({
     clinic: identidad?.clinic,
     logoDataUri: identidad?.logoDataUri ?? null,
+    dentist: identidad?.dentist ?? null,
     brand: marca?.theme ?? null,
     fontFaceCss: marca?.fontFaceCss ?? null,
     receiptLabel,
