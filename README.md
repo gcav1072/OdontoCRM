@@ -8,7 +8,7 @@ más adelante, fuera de ella por VPN.
 > **Estado: Fases 10 y 11 completadas, con las mejoras de resiliencia ya dentro — el sistema
 > está listo para la clínica.** Las diez fases del plan están implementadas y validadas:
 > identidad y sesiones, pacientes, agenda, bot de Telegram, secretaría y pantallas kiosko,
-> historia clínica, odontograma FDI, sesiones y récipes A5 con QR, reportes y auditoría, con el
+> historia clínica, odontograma FDI, sesiones y récipes con QR, reportes y auditoría, con el
 > **modo test**, el **seed determinista**, la **observabilidad** (`npm run estado`) y el
 > **despliegue probado de punta a punta** en Fedora (systemd) y Windows (PM2). La **Fase 11**
 > añadió la **facturación y los pagos** (`services/billing`), y después entraron las mejoras del
@@ -216,7 +216,7 @@ logo de respaldo y marca de agua) y las vías de producción— está en
 | patients | 4002 | ✅ Fase 2 |
 | scheduling | 4003 | ✅ Fase 3 |
 | notifications | 4004 | ✅ Fase 4 (Telegram) · Fase 4.1 (multicanal + webhook) |
-| clinical | 4005 | ✅ Fase 6 (historia clínica) · Fase 7 (sesiones, adjuntos y récipes A5) |
+| clinical | 4005 | ✅ Fase 6 (historia clínica) · Fase 7 (sesiones, adjuntos y récipes) |
 | odontogram | 4006 | ✅ Fase 6, sesión B (odontograma FDI) |
 | screens | 4007 | ✅ Fase 5 (secretaría y pantallas con SSE) |
 | reporting | 4008 | ✅ Fase 9 (read model, KPIs y auditoría UI) |
@@ -559,11 +559,12 @@ pasa a `cerrada`, que es inmutable ([ADR 0034](docs/adr/0034-sesion-clinica-evol
 
 ---
 
-## API de la Fase 7B (adjuntos, récipes A5 y verificación)
+## API de la Fase 7B (adjuntos, récipes y verificación)
 
 Los **adjuntos** son radiografías, fotos clínicas y documentos de la sesión (con pie). El **récipe**
-es un documento A5 con membrete, numerado `RX-000001` y verificable por QR
-([ADR 0015](docs/adr/0015-recipe-a5-en-pdf.md), [ADR 0036](docs/adr/0036-recipe-emitido-documento-archivado.md)).
+es un **PDF de carta apaisada partido en dos mitades** —la copia de la farmacia y la del paciente—,
+con membrete, numerado `RX-000001` y verificable por QR ([ADR 0015](docs/adr/0015-recipe-a5-en-pdf.md),
+[ADR 0036](docs/adr/0036-recipe-emitido-documento-archivado.md), [ADR 0061](docs/adr/0061-recipe-en-dos-mitades-y-especialista-en-el-membrete.md)).
 
 | Método y ruta | Qué hace | Permiso |
 | :--- | :--- | :--- |
@@ -574,14 +575,15 @@ es un documento A5 con membrete, numerado `RX-000001` y verificable por QR
 | `GET /api/v1/clinical/patients/:patientId/attachments` | Todos los adjuntos del paciente (ficha) | `clinical:read` |
 | `GET /api/v1/clinical/medications?search=` | Catálogo de medicamentos para el autocompletado | `clinical:read` |
 | `PUT /api/v1/clinical/sessions/:id/prescription` | Guarda el **borrador** del récipe de la sesión | `clinical:write` |
-| `POST /api/v1/clinical/prescriptions/:id/issue` | **Emite**: número, PDF A5 archivado y código de verificación | `clinical:write` |
+| `POST /api/v1/clinical/prescriptions/:id/issue` | **Emite**: número, PDF archivado y código de verificación | `clinical:write` |
 | `GET /api/v1/clinical/prescriptions/:id/pdf` | Descarga el PDF archivado (imprimir es leer) | `clinical:read` |
 | `POST /api/v1/clinical/prescriptions/:id/printed` | Deja constancia de la impresión o descarga | `clinical:read` |
 | `POST /api/v1/clinical/prescriptions/:id/annul` | Anula con motivo (nunca se borra) | `clinical:write` |
 | `GET /api/v1/clinical/patients/:patientId/prescriptions` | Historial de récipes del paciente | `clinical:read` |
 | `GET /api/v1/clinical/verify/:code` | **Público**: confirma que el récipe es auténtico, sin datos clínicos | — |
 
-- **El PDF A5 lo compone Chromium** (Playwright) desde la plantilla del membrete, que sale de la
+- **El PDF lo compone Chromium** (Playwright) desde la plantilla del membrete —carta apaisada con
+dos mitades: la copia de la farmacia y la del paciente—, que sale de la
   [sección editable del consultorio](packages/contracts/src/clinic.ts); si falta un dato (RIF,
   teléfono, MPPS, especialidad) el editor **avisa antes de emitir** y el récipe sale sin él.
   Se instala una vez: `npx playwright install chromium`.

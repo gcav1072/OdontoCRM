@@ -4,6 +4,37 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Imprimibles] — El récipe en dos mitades y el especialista en el membrete · 2026-10-10
+
+Dos mejoras que tocan **todos** los imprimibles ([ADR 0061](docs/adr/0061-recipe-en-dos-mitades-y-especialista-en-el-membrete.md)).
+
+**El récipe cambia de forma.** Pasa de un A5 de una cara a una **hoja carta apaisada partida en dos
+mitades verticales**, separadas por una línea discontinua para cortar o doblar:
+
+- **izquierda — copia de la farmacia:** por medicamento, **Medicamento** (negrita y subrayado),
+  **Presentación**, **Vía** y **Dosis**, más el paciente, el número y la fecha del récipe y el código
+  de verificación como texto (sin QR);
+- **derecha — copia del paciente:** el layout de siempre (tabla, indicaciones generales) con el QR.
+
+Las dos mitades llevan **membrete y firma propios**. La interfaz **no se toca**: los mismos datos que
+ya se llenan alimentan las dos caras.
+
+**El especialista va al membrete.** Los datos del odontólogo que responde (Odontólogo ·
+Especialidad · MPPS · Colegiatura) salen ahora **debajo de la dirección y el teléfono**, no bajo la
+firma. Se imprimen solo los campos llenos, con el ayudante `clinicDentistLine()`. Bajo la línea de
+firma queda **solo el nombre**. Se aplica a los siete imprimibles: récipe y dossier (clinical),
+reporte (reporting), factura, recibo y nota de crédito (billing), e historia clínica y odontograma
+(navegador). Los récipes **ya emitidos** conservan su A5 archivado; el layout nuevo aplica a los que
+se emitan desde ahora.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `clinicDentistLine()` (`packages/contracts`) | Une nombre · especialidad · MPPS · colegiatura, solo lo lleno |
+| `prescription-document.ts` | Hoja apaisada en dos mitades, QR solo a la derecha |
+| `pdf-renderer.ts` | `format: 'Letter'` + `landscape: true` para el récipe |
+| `MembreteDocumento.tsx` | La línea del especialista en la historia clínica y el odontograma |
+| `report-html.ts`, `invoice-pdf.ts`, `receipt-pdf.ts`, `credit-note-pdf.ts` | La línea del especialista en el membrete |
+
 ## [Configuración] — Panel de administración de la aplicación · 2026-10-09
 
 Poner el sistema con otro consultorio tenía una cola de ajustes que **solo se cambiaban por código o
