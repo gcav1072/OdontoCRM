@@ -81,7 +81,10 @@ export const PatientDiffDialog = ({
 
         <ul className="divide-y divide-border overflow-hidden rounded-control border border-border">
           {cambios.map((cambio) => (
-            <li key={cambio.field} className="grid gap-1 px-3.5 py-3 sm:grid-cols-[12rem_1fr]">
+            <li
+              key={cambio.field}
+              className="grid gap-1 px-3.5 py-3 @2xl:grid-cols-[12rem_minmax(0,1fr)]"
+            >
               <span className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-ink">
                 {etiquetaDe(cambio.field)}
                 {esSensible(cambio.field) && (

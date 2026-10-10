@@ -226,7 +226,7 @@ export const PatientDetailPage = () => {
 
           {/* Resumen de identificación; los datos completos, editables según el
               permiso, están en el formulario de abajo. */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 @2xl:grid-cols-2 @5xl:grid-cols-3">
             <Dato
               etiqueta={t('pacientes.campo.birthDate')}
               valor={formatDate(paciente.birthDate)}

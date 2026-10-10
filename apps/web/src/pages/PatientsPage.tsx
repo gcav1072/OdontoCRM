@@ -144,7 +144,7 @@ export const PatientsPage = () => {
   return (
     <div className="space-y-5">
       <Card>
-        <CardHeader className="gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <CardHeader className="gap-3 @2xl:flex-row @2xl:items-end @2xl:justify-between">
           <div className="flex-1">
             <CardTitle as="h2">{t('pacientes.lista.titulo')}</CardTitle>
             <p className="pt-1 text-sm text-ink-muted">{t('pacientes.lista.descripcion')}</p>
@@ -160,8 +160,8 @@ export const PatientsPage = () => {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <div className="grid gap-3 lg:grid-cols-4">
-            <Field label={t('pacientes.lista.buscar')} className="lg:col-span-2">
+          <div className="grid gap-3 @5xl:grid-cols-4">
+            <Field label={t('pacientes.lista.buscar')} className="@5xl:col-span-2">
               <div className="relative">
                 <Search
                   className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-subtle"

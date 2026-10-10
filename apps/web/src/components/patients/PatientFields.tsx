@@ -6,7 +6,7 @@ import {
   type DocType,
   type Sex,
 } from '@odontocrm/contracts';
-import { Alert, Field, Input, Select } from '@odontocrm/ui';
+import { Alert, Field, Input, Select, Textarea } from '@odontocrm/ui';
 import { CalendarDays, NotebookPen, Phone, UserRound } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Controller, type FieldErrors, type UseFormReturn } from 'react-hook-form';
@@ -154,7 +154,7 @@ const NombreYSexo = ({ form, disabled }: { form: PatientFormApi; disabled: boole
   const { errors } = form.formState;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-4 @2xl:grid-cols-2">
       <Field label={t('pacientes.campo.fullName')} error={errors.fullName?.message} required>
         <Input autoComplete="off" disabled={disabled} {...form.register('fullName')} />
       </Field>
@@ -204,7 +204,7 @@ const SeccionRepresentante = ({
       )}
       <Alert variant="info">{t('pacientes.form.guardianMotivo', { edad })}</Alert>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 @2xl:grid-cols-2">
         <Field
           label={t('pacientes.form.guardianNombre')}
           error={errores?.fullName?.message}
@@ -308,7 +308,7 @@ export const PatientFields = ({
 
       {!showDocument && <NombreYSexo form={form} disabled={disabled} />}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 @2xl:grid-cols-2">
         <Field
           label={t('pacientes.campo.birthDate')}
           error={errors.birthDate?.message}
@@ -333,7 +333,7 @@ export const PatientFields = ({
         titulo={t('pacientes.form.seccionContacto')}
         icono={<Phone className="size-3.5" aria-hidden="true" />}
       >
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 @2xl:grid-cols-2">
           <Field
             label={t('pacientes.campo.phone')}
             hint={t('pacientes.form.telefonoAyuda')}
@@ -397,12 +397,7 @@ export const PatientFields = ({
           hint={t('pacientes.form.notasAyuda')}
           error={errors.notes?.message}
         >
-          <textarea
-            rows={3}
-            disabled={disabled}
-            className="w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-sm text-ink shadow-xs transition-colors placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-muted"
-            {...form.register('notes')}
-          />
+          <Textarea rows={3} disabled={disabled} {...form.register('notes')} />
         </Field>
       </Seccion>
     </div>

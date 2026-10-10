@@ -129,7 +129,7 @@ export const PatientRegistryPage = () => {
         <CardContent className="space-y-4">
           <form
             noValidate
-            className="grid gap-3 sm:grid-cols-[10rem_1fr_auto] sm:items-end"
+            className="grid gap-3 @2xl:grid-cols-[10rem_minmax(0,1fr)_auto] @2xl:items-end"
             onSubmit={(event) => {
               event.preventDefault();
               buscar();

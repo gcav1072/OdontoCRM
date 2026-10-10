@@ -177,7 +177,7 @@ export const PatientAttachments = ({ patientId }: PatientAttachmentsProps) => {
 
         {puedeEscribir && (
           <div className="space-y-3 rounded-card border border-border bg-surface-muted p-3.5">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 @2xl:grid-cols-2">
               <Field
                 label={t('pacientes.adjuntos.archivo')}
                 hint={t('pacientes.adjuntos.archivoAyuda', { max: formatFileSize(MAX_FILE_BYTES) })}
@@ -205,7 +205,7 @@ export const PatientAttachments = ({ patientId }: PatientAttachmentsProps) => {
               </Field>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            <div className="grid gap-3 @2xl:grid-cols-[minmax(0,1fr)_auto] @2xl:items-end">
               <Field label={t('pacientes.adjuntos.leyenda')}>
                 <Input
                   value={leyenda}

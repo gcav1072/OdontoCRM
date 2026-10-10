@@ -242,7 +242,7 @@ export const PatientForm = ({
   return (
     <>
       <Card>
-        <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <CardHeader className="gap-3 @2xl:flex-row @2xl:items-start @2xl:justify-between">
           <div className="min-w-0 flex-1">
             <CardTitle as="h2">
               {esAlta ? t('pacientes.alta.titulo') : t('pacientes.ficha.datos')}
@@ -295,7 +295,7 @@ export const PatientForm = ({
           )}
 
           {!esAlta && pidiendoMotivo && !editando && puedeEditar && (
-            <div className="grid gap-3 rounded-card border border-border bg-surface-muted p-3.5 sm:grid-cols-[1fr_auto] sm:items-end">
+            <div className="grid gap-3 rounded-card border border-border bg-surface-muted p-3.5 @2xl:grid-cols-[minmax(0,1fr)_auto] @2xl:items-end">
               <Field
                 label={t('pacientes.editar.motivo')}
                 hint={t('pacientes.editar.motivoTexto')}
