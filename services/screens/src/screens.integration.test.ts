@@ -9,6 +9,19 @@ import { createScreensDatabase, type ScreensDatabaseHandle } from './db/client.j
 import { callEvents, roomState, screenDevices } from './db/schema.js';
 import { createScreenBroadcaster } from './sala/broadcast.js';
 import { consultationState, lobbyState } from './sala/estado-service.js';
+
+/**
+ * La pantalla del consultorio es una sola TV **compartida**: su estado es la lista de
+ * sillones. Estas pruebas usan un único consultorio y la base es **la de desarrollo**,
+ * así que otra suite puede estar dejando pacientes en la misma sala: se busca el tile
+ * **de esta cita** (o, si no, el primero que haya).
+ */
+const tileDe = (estado: Awaited<ReturnType<typeof consultationState>>, appointmentId?: string) =>
+  (appointmentId === undefined
+    ? undefined
+    : estado.chairs.find((chair) => chair.appointmentId === appointmentId)) ??
+  estado.chairs[0] ??
+  null;
 import type { ScreensServices } from './services.js';
 import { createScreensServer } from './server.js';
 
@@ -30,6 +43,14 @@ const ready = databaseUrl !== undefined;
 const describeWithDatabase = ready ? describe : describe.skip;
 
 const MARK = `PRUEBA-F5-${String(Date.now()).slice(-6)}`;
+
+/**
+ * Consultorio **propio de cada cita** de la suite: un sillón no tiene dos pacientes a
+ * la vez, y el estado de la pantalla compartida agrupa por consultorio. Un prefijo
+ * distinto por suite evita además chocar con la suite de agenda, que corre en paralelo
+ * sobre la misma base de desarrollo dejando pacientes en «Consultorio 1».
+ */
+const chairFor = (appointmentId: string): string => `C-${MARK}-${appointmentId.slice(0, 4)}`;
 
 /** Evento de agenda, con la forma que publica `scheduling`. */
 const appointmentEvent = (input: {
@@ -57,6 +78,7 @@ const appointmentEvent = (input: {
         endTime: '09:30',
         status: 'llamado',
         requestId: null,
+        chairLabel: chairFor(input.appointmentId),
       },
       notification: {
         appointmentId: input.appointmentId,
@@ -111,6 +133,10 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
       lastError: null,
       // Sin servicio clínico en la suite: se usa lo que quedó en la proyección.
       alertLookup: async () => null,
+      // Un solo consultorio, con la misma etiqueta que usa `CHAIR_LABEL` en la suite.
+      chairCatalog: async () => [
+        { id: 'chair-1', label: 'Consultorio 1', shortLabel: 'C1', sortOrder: 0 },
+      ],
     };
   }, 30_000);
 
@@ -152,7 +178,7 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
     expect(llamado).toBeDefined();
     expect(llamado?.patientDisplayName).toBe('Juan P.');
     expect(llamado?.callNumber).toBe(1);
-    expect(llamado?.chairLabel).toBe('Consultorio 1');
+    expect(llamado?.chairLabel).toBe(chairFor(appointmentId));
     expect(llamado?.ticket).toBe('#000123');
     expect(estado.updatedAt).toContain('T');
   }, 40_000);
@@ -218,8 +244,8 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
 
     const enSala = await consultationState(handle.db);
     // Todavía no ha entrado: la pantalla muestra a quién se llamó.
-    expect(enSala.patientDisplayName).toBe('María R.');
-    expect(enSala.since).toBeNull();
+    expect(tileDe(enSala, appointmentId)?.patientDisplayName).toBe('María R.');
+    expect(tileDe(enSala, appointmentId)?.since).toBeNull();
 
     await aplicar(
       appointmentEvent({
@@ -233,13 +259,14 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
     );
 
     const enConsulta = await consultationState(handle.db);
-    expect(enConsulta.appointmentId).toBe(appointmentId);
-    expect(enConsulta.patientDisplayName).toBe('María R.');
-    expect(enConsulta.reason).toBe('Limpieza dental');
+    const tile = tileDe(enConsulta, appointmentId);
+    expect(tile?.appointmentId).toBe(appointmentId);
+    expect(tile?.patientDisplayName).toBe('María R.');
+    expect(tile?.reason).toBe('Limpieza dental');
     // El ticket es el de la cita: el evento solo lo actualiza si viene.
-    expect(enConsulta.ticket).toBe('#000124');
-    expect(enConsulta.since).not.toBeNull();
-    expect(enConsulta.criticalFlags).toEqual([]);
+    expect(tile?.ticket).toBe('#000124');
+    expect(tile?.since).not.toBeNull();
+    expect(tile?.criticalFlags).toEqual([]);
 
     // Los datos críticos los envía la historia clínica (Fase 6).
     await handle.db
@@ -253,8 +280,11 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
       .where(eq(roomState.appointmentId, appointmentId));
 
     const conFlags = await consultationState(handle.db);
-    expect(conFlags.criticalFlags).toHaveLength(2);
-    expect(conFlags.criticalFlags[0]).toMatchObject({ tipo: 'alergia', severidad: 'alto' });
+    expect(tileDe(conFlags, appointmentId)?.criticalFlags).toHaveLength(2);
+    expect(tileDe(conFlags, appointmentId)?.criticalFlags[0]).toMatchObject({
+      tipo: 'alergia',
+      severidad: 'alto',
+    });
 
     /**
      * Lo que se lee de la historia clínica manda sobre lo empujado: el doctor puede
@@ -274,12 +304,14 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
             ]
           : null,
     });
-    expect(frescos.criticalFlags).toHaveLength(1);
-    expect(frescos.criticalFlags[0]?.etiqueta).toBe('Alergia a la penicilina');
+    expect(tileDe(frescos, appointmentId)?.criticalFlags).toHaveLength(1);
+    expect(tileDe(frescos, appointmentId)?.criticalFlags[0]?.etiqueta).toBe(
+      'Alergia a la penicilina',
+    );
 
     // Si el servicio clínico no responde, queda lo empujado y la pantalla no se rompe.
     const sinServicio = await consultationState(handle.db, { alertLookup: async () => null });
-    expect(sinServicio.criticalFlags).toHaveLength(2);
+    expect(tileDe(sinServicio, appointmentId)?.criticalFlags).toHaveLength(2);
 
     // Marcarla como atendida la saca de la sala.
     expect(
@@ -302,7 +334,7 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
     expect(filas[0]?.leftAt).not.toBeNull();
 
     const estadoFinal = await consultationState(handle.db);
-    expect(estadoFinal.appointmentId).not.toBe(appointmentId);
+    expect(tileDe(estadoFinal, appointmentId)?.appointmentId).not.toBe(appointmentId);
   }, 40_000);
 
   it('el lote se aplica en orden aunque la cola lo entregue al revés', async () => {
@@ -390,7 +422,7 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
     expect(filas[0]?.leftAt).not.toBeNull();
 
     const estado = await consultationState(handle.db);
-    expect(estado.appointmentId).not.toBe(appointmentId);
+    expect(tileDe(estado, appointmentId)?.appointmentId).not.toBe(appointmentId);
 
     await handle.db.delete(roomState).where(eq(roomState.appointmentId, appointmentId));
   }, 40_000);

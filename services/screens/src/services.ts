@@ -1,6 +1,6 @@
 import type { ScreensConfig } from './config.js';
 import type { ScreensDb } from './db/client.js';
-import type { ClinicalAlertLookup } from './internal-client.js';
+import type { ChairCatalog, ClinicalAlertLookup } from './internal-client.js';
 import type { ScreenBroadcaster } from './sala/broadcast.js';
 import type pg from 'pg';
 
@@ -18,4 +18,9 @@ export interface ScreensServices {
    * que hace que la pantalla del consultorio muestre alergias y crónicos.
    */
   alertLookup: ClinicalAlertLookup;
+  /**
+   * Catálogo de consultorios (sillones) activos, leído de la agenda. La pantalla
+   * compartida pinta un tile por consultorio.
+   */
+  chairCatalog: ChairCatalog;
 }

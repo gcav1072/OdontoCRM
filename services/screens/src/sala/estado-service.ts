@@ -6,6 +6,7 @@ import {
   screenSettingsSchema,
   ticketSequence,
   type CallEvent,
+  type ConsultationChair,
   type ConsultationState,
   type CriticalFlag,
   type LobbyState,
@@ -21,7 +22,7 @@ import { and, asc, count, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 
 import type { ScreensConfig } from '../config.js';
 import type { ScreensDb } from '../db/client.js';
-import type { ClinicalAlertLookup } from '../internal-client.js';
+import type { ChairCatalog, ChairLite, ClinicalAlertLookup } from '../internal-client.js';
 import {
   callEvents,
   roomState,
@@ -159,6 +160,8 @@ interface EventAppointment {
   date: string | null;
   startTime: string | null;
   status: string | null;
+  /** Consultorio de la cita: es lo que pinta la sala para saber dónde entrar. */
+  chairLabel: string | null;
 }
 
 interface EventNotification {
@@ -356,7 +359,9 @@ export const applyEvent = async (deps: EstadoDeps, event: DomainEvent): Promise<
     patientName: notification.patientName,
     ticket: notification.ticket,
     reason: notification.reason,
-    chairLabel: config.CHAIR_LABEL,
+    // El consultorio viene **en el evento** (ADR 0041); `CHAIR_LABEL` queda como
+    // respaldo de una cita capturada antes de la migración multisillón.
+    chairLabel: appointment.chairLabel ?? config.CHAIR_LABEL,
     cuando,
   };
 
@@ -530,27 +535,87 @@ export const lobbyState = async (db: ScreensDb, config: ScreensConfig): Promise<
   };
 };
 
-/** Estado de la pantalla del consultorio: quién está dentro (o entrando). */
+/**
+ * Estado de la pantalla del consultorio, **por consultorio**: la TV es una sola y
+ * compartida, así que reparte un tile por sillón (con su paciente dentro, su llamado o
+ * «libre»).
+ *
+ * El catálogo de sillones lo sirve la agenda (`chairCatalog`); si no se puede leer, el
+ * estado se arma solo con los sillones que aparezcan en la sala, de modo que la TV
+ * siga mostrando lo que pasa aunque la agenda no responda.
+ */
 export const consultationState = async (
   db: ScreensDb,
-  options: { alertLookup?: ClinicalAlertLookup | undefined } = {},
+  options: {
+    alertLookup?: ClinicalAlertLookup | undefined;
+    chairCatalog?: ChairCatalog | undefined;
+  } = {},
 ): Promise<ConsultationState> => {
-  const filas = await db
-    .select()
-    .from(roomState)
-    .where(and(inArray(roomState.estado, ['en_consulta', 'llamado']), isNull(roomState.leftAt)))
-    .orderBy(asc(roomState.since));
+  const [filas, waiting, catalogo] = await Promise.all([
+    db
+      .select()
+      .from(roomState)
+      .where(and(inArray(roomState.estado, ['en_consulta', 'llamado']), isNull(roomState.leftAt)))
+      .orderBy(asc(roomState.since)),
+    waitingCount(db),
+    options.chairCatalog === undefined ? Promise.resolve([]) : options.chairCatalog(),
+  ]);
 
-  // Se prefiere al que está en el consultorio; si no hay, al último llamado.
-  const actual =
-    [...filas].reverse().find((fila) => fila.estado === 'en_consulta') ??
-    [...filas].reverse().find((fila) => fila.estado === 'llamado') ??
-    null;
+  // Una entrada por etiqueta de consultorio: se prefiere al que está **dentro**
+  // (`en_consulta`) sobre el que solo fue llamado.
+  const porLabel = new Map<string, RoomStateRow>();
+  for (const fila of filas) {
+    const actual = porLabel.get(fila.chairLabel);
+    if (
+      actual === undefined ||
+      (actual.estado !== 'en_consulta' && fila.estado === 'en_consulta')
+    ) {
+      porLabel.set(fila.chairLabel, fila);
+    }
+  }
 
-  const waiting = await waitingCount(db);
+  // Orden: primero el catálogo de la agenda; después, los sillones que aparezcan en la
+  // sala y no estén en el catálogo (p. ej. uno desactivado con un paciente dentro), para
+  // no perder de vista a nadie.
+  const etiquetas: string[] = [];
+  const vistas = new Set<string>();
+  for (const chair of catalogo) {
+    if (!vistas.has(chair.label)) {
+      vistas.add(chair.label);
+      etiquetas.push(chair.label);
+    }
+  }
+  for (const label of porLabel.keys()) {
+    if (!vistas.has(label)) {
+      vistas.add(label);
+      etiquetas.push(label);
+    }
+  }
 
-  if (actual === null) {
+  const chairs: ConsultationChair[] = [];
+  for (const label of etiquetas) {
+    const chair = catalogo.find((candidate) => candidate.label === label) ?? null;
+    const fila = porLabel.get(label) ?? null;
+    chairs.push(await chairEntry(chair, fila, options.alertLookup));
+  }
+
+  return {
+    chairs,
+    waitingCount: waiting,
+    updatedAt: new Date().toISOString(),
+  };
+};
+
+/** Un tile de la pantalla compartida: el sillón con su paciente (o «libre»). */
+const chairEntry = async (
+  chair: ChairLite | null,
+  fila: RoomStateRow | null,
+  alertLookup: ClinicalAlertLookup | undefined,
+): Promise<ConsultationChair> => {
+  if (fila === null) {
     return {
+      chairId: chair?.id ?? null,
+      chairLabel: chair?.label ?? '—',
       appointmentId: null,
       patientId: null,
       patientName: null,
@@ -560,9 +625,8 @@ export const consultationState = async (
       ticket: null,
       reason: null,
       since: null,
+      estado: 'libre',
       criticalFlags: [],
-      waitingCount: waiting,
-      updatedAt: new Date().toISOString(),
     };
   }
 
@@ -571,20 +635,21 @@ export const consultationState = async (
    * empujado antes queda como respaldo si el servicio clínico no responde. Así la
    * alergia que se escribe con el paciente sentado aparece sin esperar a nadie.
    */
-  const frescos = actual.patientId === null ? null : await options.alertLookup?.(actual.patientId);
+  const frescos = fila.patientId === null ? null : await alertLookup?.(fila.patientId);
 
   return {
-    appointmentId: actual.appointmentId,
-    patientId: actual.patientId,
-    patientName: actual.patientName,
-    patientDisplayName: actual.patientDisplayName,
-    age: ageAt(actual.patientBirthDate),
-    sex: actual.patientSex,
-    ticket: actual.ticket,
-    reason: actual.reason,
-    since: actual.estado === 'en_consulta' ? actual.since.toISOString() : null,
-    criticalFlags: frescos ?? flagsOf(actual),
-    waitingCount: waiting,
-    updatedAt: new Date().toISOString(),
+    chairId: chair?.id ?? null,
+    chairLabel: fila.chairLabel,
+    appointmentId: fila.appointmentId,
+    patientId: fila.patientId,
+    patientName: fila.patientName,
+    patientDisplayName: fila.patientDisplayName,
+    age: ageAt(fila.patientBirthDate),
+    sex: fila.patientSex,
+    ticket: fila.ticket,
+    reason: fila.reason,
+    since: fila.estado === 'en_consulta' ? fila.since.toISOString() : null,
+    estado: fila.estado as 'en_consulta' | 'llamado',
+    criticalFlags: frescos ?? flagsOf(fila),
   };
 };

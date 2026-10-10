@@ -55,7 +55,7 @@ const safeEquals = (left: string, right: string): boolean => {
  *    la ruta interna sigue disponible como respaldo.
  */
 export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServices): void => {
-  const { db, config, broadcast, alertLookup } = services;
+  const { db, config, broadcast, alertLookup, chairCatalog } = services;
   const manage = requirePermission('screens:manage');
   const display = requirePermission('screens:display');
 
@@ -151,7 +151,7 @@ export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServ
 
   app.get('/api/v1/screens/consultorio', { preHandler: display }, async (request, reply) => {
     await pantallaDe(request);
-    return reply.status(200).send(await consultationState(db, { alertLookup }));
+    return reply.status(200).send(await consultationState(db, { alertLookup, chairCatalog }));
   });
 
   /** Cuántas pantallas están conectadas en vivo (para la administración). */
@@ -220,7 +220,7 @@ export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServ
     const estado =
       kind === 'lobby'
         ? await lobbyState(db, config)
-        : await consultationState(db, { alertLookup });
+        : await consultationState(db, { alertLookup, chairCatalog });
     await abrirFlujo(request, reply, kind, estado);
   };
 
@@ -271,7 +271,7 @@ export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServ
   app.post('/internal/v1/screens/room/critical-flags', async (request, reply) => {
     const input = parseOrThrow(criticalFlagsInputSchema, request.body ?? {});
     const actualizadas = await setCriticalFlags(db, input.appointmentId, input.flags);
-    const estado = await consultationState(db, { alertLookup });
+    const estado = await consultationState(db, { alertLookup, chairCatalog });
     broadcast.publicar('consultorio', estado);
     return reply.status(200).send({ actualizadas, estado });
   });

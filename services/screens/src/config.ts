@@ -28,6 +28,13 @@ export const screensEnvSchema = baseEnvSchema.extend({
   /** Servicio de identidad: de ahí sale el nombre del consultorio (ADR 0056). */
   IDENTITY_URL: z.string().min(1).default('http://127.0.0.1:4001'),
 
+  /**
+   * Servicio de **agenda**: de ahí sale el catálogo de consultorios (sillones) que la
+   * pantalla del consultorio reparte en tiles. La agenda es la dueña de los sillones;
+   * `screens` solo los pinta.
+   */
+  SCHEDULING_URL: z.string().min(1).default('http://127.0.0.1:4003'),
+
   /** Servicio de pacientes: la pantalla del consultorio pide ahí la ficha. */
   PATIENTS_URL: z.string().min(1).default('http://127.0.0.1:4002'),
   /**

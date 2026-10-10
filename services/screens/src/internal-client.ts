@@ -1,4 +1,5 @@
 import {
+  chairListSchema,
   clinicalAlertsSchema,
   criticalFlagsFromAlerts,
   type CriticalFlag,
@@ -55,6 +56,77 @@ export const createPatientLookup = (
  * distingue «no tiene alergias» de «no pude comprobarlo».
  */
 export type ClinicalAlertLookup = (patientId: string) => Promise<CriticalFlag[] | null>;
+
+/**
+ * Catálogo de **consultorios activos**, leído al servicio de agenda por la red interna.
+ * La pantalla del consultorio es una sola TV compartida: pinta un tile por sillón, así
+ * que necesita saber **cuáles** hay. Es un dato que cambia poco, así que se cachea.
+ */
+export interface ChairLite {
+  id: string;
+  label: string;
+  shortLabel: string | null;
+  sortOrder: number;
+}
+
+export type ChairCatalog = () => Promise<readonly ChairLite[]>;
+
+const CHAIRS_TTL_MS = 60_000;
+
+export const createChairCatalog = (
+  config: Pick<ScreensConfig, 'SCHEDULING_URL' | 'INTERNAL_SERVICE_SECRET'>,
+): ChairCatalog => {
+  const base = config.SCHEDULING_URL;
+  const secret = config.INTERNAL_SERVICE_SECRET;
+
+  let cache: { at: number; value: ChairLite[] } | null = null;
+  let inFlight: Promise<ChairLite[]> | null = null;
+
+  const fetchChairs = async (): Promise<ChairLite[]> => {
+    try {
+      const response = await fetch(`${base}/internal/v1/agenda/chairs`, {
+        headers: { 'x-internal-token': secret ?? '' },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) return cache?.value ?? [];
+
+      const body = (await response.json()) as { items?: unknown };
+      if (!Array.isArray(body.items)) return cache?.value ?? [];
+
+      const parsed = chairListSchema.safeParse(body);
+      if (!parsed.success) return cache?.value ?? [];
+
+      return parsed.data.items
+        .filter((chair) => chair.isActive)
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map((chair) => ({
+          id: chair.id,
+          label: chair.label,
+          shortLabel: chair.shortLabel,
+          sortOrder: chair.sortOrder,
+        }));
+    } catch {
+      return cache?.value ?? [];
+    }
+  };
+
+  return async () => {
+    if (secret === undefined) return [];
+    const now = Date.now();
+    if (cache !== null && now - cache.at < CHAIRS_TTL_MS) return cache.value;
+    if (inFlight !== null) return inFlight;
+
+    inFlight = fetchChairs()
+      .then((value) => {
+        cache = { at: Date.now(), value };
+        return value;
+      })
+      .finally(() => {
+        inFlight = null;
+      });
+    return inFlight;
+  };
+};
 
 export const createAlertLookup = (
   config: Pick<ScreensConfig, 'CLINICAL_URL' | 'INTERNAL_SERVICE_SECRET'>,

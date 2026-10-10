@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 
 import type { ScreensConfig } from './config.js';
 import type { ScreensDatabaseHandle } from './db/client.js';
-import { createAlertLookup } from './internal-client.js';
+import { createAlertLookup, createChairCatalog } from './internal-client.js';
 import { createScreenBroadcaster } from './sala/broadcast.js';
 import { registerScreenRoutes } from './routes/screen-routes.js';
 import type { ScreensServices } from './services.js';
@@ -52,6 +52,7 @@ export const createScreensServer = async (
     broadcast: options.services?.broadcast ?? createScreenBroadcaster(),
     lastError: options.services?.lastError ?? null,
     alertLookup: options.services?.alertLookup ?? createAlertLookup(config),
+    chairCatalog: options.services?.chairCatalog ?? createChairCatalog(config),
   };
 
   registerScreenRoutes(app, services);

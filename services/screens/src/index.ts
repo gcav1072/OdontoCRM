@@ -13,7 +13,7 @@ import type { DomainEvent } from '@odontocrm/events';
 import { loadScreensConfig } from './config.js';
 import { handleDomainEvents } from './consumer.js';
 import { createScreensDatabase } from './db/client.js';
-import { createPatientLookup, createAlertLookup } from './internal-client.js';
+import { createPatientLookup, createAlertLookup, createChairCatalog } from './internal-client.js';
 import { createScreenBroadcaster } from './sala/broadcast.js';
 import { staffSignals } from './sala/staff-signal.js';
 import { consultationState, lobbyState } from './sala/estado-service.js';
@@ -37,11 +37,14 @@ const main = async (): Promise<void> => {
   const patientLookup = createPatientLookup(config);
   /** Datos críticos del paciente en curso (alergias, crónicos) para el consultorio. */
   const alertLookup = createAlertLookup(config);
+  /** Catálogo de consultorios (sillones) para repartir la pantalla compartida. */
+  const chairCatalog = createChairCatalog(config);
 
   const services: Omit<ScreensServices, 'config' | 'db' | 'pool'> = {
     broadcast,
     lastError: null,
     alertLookup,
+    chairCatalog,
   };
 
   const app = await createScreensServer({ config, database, services });
@@ -49,7 +52,10 @@ const main = async (): Promise<void> => {
   /** Recalcula y reparte el estado: es lo que ven las pantallas conectadas. */
   const refrescar = async (): Promise<void> => {
     broadcast.publicar('lobby', await lobbyState(database.db, config));
-    broadcast.publicar('consultorio', await consultationState(database.db, { alertLookup }));
+    broadcast.publicar(
+      'consultorio',
+      await consultationState(database.db, { alertLookup, chairCatalog }),
+    );
   };
 
   /**
