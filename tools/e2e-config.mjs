@@ -81,9 +81,10 @@ const call = async (path, options = {}) => {
 };
 
 /** Sube una fuente `.woff2` como multipart (el navegador pondría el `boundary`). */
-const subirFuente = async (ruta, { weight, style }) => {
+const subirFuente = async (ruta, { family, weight, style }) => {
   const data = await readFile(ruta);
   const form = new FormData();
+  form.append('family', family);
   form.append('weight', String(weight));
   form.append('style', style);
   form.append(
@@ -232,13 +233,22 @@ check(
   String(trasMarca?.themeCss).includes(`--brand-primary: ${MARCA_PRIMARIO};`),
 );
 
-/* Fuente subida con peso y estilo elegidos: se comprueba que entra en la marca, que el
-   `@font-face` sale con ese peso y que quitarla la devuelve a como estaba. */
-const subida = await subirFuente(FUENTE_REPO, { weight: PESO_FUENTE, style: 'normal' });
+/* Fuente subida con familia, peso y estilo elegidos: se comprueba que entra en la marca,
+   que el `@font-face` sale con ese peso y que quitarla la devuelve a como estaba. La
+   familia es una del catálogo (Montserrat), que las pilas ya referencian, así que su
+   `@font-face` se resuelve en el `themeCss`. */
+const subida = await subirFuente(FUENTE_REPO, {
+  family: 'Montserrat',
+  weight: PESO_FUENTE,
+  style: 'normal',
+});
 check('sube una fuente .woff2', subida.status === 200, `status ${subida.status}`);
+/** Todos los archivos de todas las familias (la marca ya no es una sola familia). */
+const archivosFuente = (marca) =>
+  (marca?.fonts?.families ?? []).flatMap((familia) => familia.files ?? []);
 check(
   'la fuente aparece en la marca como subida',
-  (subida.body?.fonts?.files ?? []).some(
+  archivosFuente(subida.body).some(
     (file) => file.weight === PESO_FUENTE && file.source === 'subido',
   ),
 );
@@ -249,7 +259,7 @@ check(
   String(trasFuente?.themeCss).includes(`font-weight: ${String(PESO_FUENTE)}`),
 );
 
-const rutaSubida = (trasFuente?.brand?.fonts?.files ?? []).find(
+const rutaSubida = archivosFuente(trasFuente?.brand).find(
   (file) => file.weight === PESO_FUENTE && file.source === 'subido',
 )?.path;
 if (typeof rutaSubida === 'string') {
@@ -260,7 +270,7 @@ if (typeof rutaSubida === 'string') {
   check('quita la fuente subida', quitada.status === 200, `status ${quitada.status}`);
   check(
     'la fuente subida deja de estar en la marca',
-    (quitada.body?.fonts?.files ?? []).some((file) => file.weight === PESO_FUENTE) === false,
+    archivosFuente(quitada.body).some((file) => file.weight === PESO_FUENTE) === false,
   );
 } else {
   check('la fuente subida tiene ruta para quitarla', false);
