@@ -112,7 +112,7 @@ export const CompleteProfilePage = () => {
   const { errors, isSubmitting } = formulario.formState;
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-canvas px-4 py-10">
+    <div className="@container flex min-h-dvh flex-col items-center justify-center gap-6 bg-canvas px-4 py-10">
       <div className="flex items-center gap-3">
         <span className="grid size-10 place-items-center rounded-card bg-primary text-primary-ink">
           <Stethoscope className="size-5" aria-hidden="true" />
@@ -166,7 +166,7 @@ export const CompleteProfilePage = () => {
               />
             </Field>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 @2xl:grid-cols-2">
               <Field
                 label={t('perfil.campo.colegiatura')}
                 error={errors.dentist?.licenseNumber?.message}
@@ -201,7 +201,7 @@ export const CompleteProfilePage = () => {
                   <Input {...formulario.register('clinic.address')} />
                 </Field>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 @2xl:grid-cols-2">
                   <Field label={t('perfil.consultorio.rif')} error={errors.clinic?.rif?.message}>
                     <Input placeholder="J-12345678-9" {...formulario.register('clinic.rif')} />
                   </Field>
@@ -213,7 +213,7 @@ export const CompleteProfilePage = () => {
                   </Field>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 @2xl:grid-cols-2">
                   <Field
                     label={t('perfil.consultorio.telefono')}
                     hint={t('perfil.consultorio.telefonoAyuda')}

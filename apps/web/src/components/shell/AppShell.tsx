@@ -63,10 +63,17 @@ export const AppShell = () => {
         <AppHeader onOpenMenu={() => setMenuMovilAbierto(true)} />
         {/* El relleno inferior deja sitio al panel fijo: sin él, el final de las
             tablas quedaría tapado cuando el panel está desplegado. En papel no
-            hay panel, así que el relleno se anula con `print:pb-0`. */}
+            hay panel, así que el relleno se anula con `print:pb-0`.
+
+            Es además el **contenedor de consulta** (`@container`) de todas las
+            pantallas: los diseños de varias columnas se resuelven contra el ancho
+            real de esta columna, no contra el de la ventana. Importa porque el raíl
+            lateral le come ~16rem al contenido: con breakpoints de ventana, `lg`
+            (1024 px) disparaba cuando a la columna le quedaban ~768 y los
+            formularios salían apretados (laptop de 1366 y iPad apaisado). */}
         <main
           className={cn(
-            'mx-auto w-full max-w-7xl flex-1 px-4 py-6 lg:px-8 print:max-w-none print:px-0 print:py-0',
+            '@container mx-auto w-full max-w-7xl flex-1 px-4 py-6 lg:px-8 print:max-w-none print:px-0 print:py-0',
             panelAbierto ? 'pb-[32rem] sm:pb-[24rem] lg:pb-[20rem]' : 'pb-20',
             'print:pb-0',
           )}

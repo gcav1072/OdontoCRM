@@ -58,7 +58,7 @@ export const ChangePasswordPage = () => {
   const { errors, isSubmitting } = formulario.formState;
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-canvas px-4 py-10">
+    <div className="@container flex min-h-dvh flex-col items-center justify-center gap-6 bg-canvas px-4 py-10">
       <div className="flex items-center gap-3">
         <span className="grid size-10 place-items-center rounded-card bg-primary text-primary-ink">
           <Stethoscope className="size-5" aria-hidden="true" />
