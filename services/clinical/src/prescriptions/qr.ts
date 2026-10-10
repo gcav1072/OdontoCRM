@@ -17,7 +17,7 @@ const ERROR_CORRECTION = 'M';
  * SVG del QR, listo para meter en el HTML del récipe.
  *
  * `cellSize` está en milímetros de papel (el HTML del PDF usa mm): 0,6 mm por módulo
- * deja un QR de unos 25 mm en un A5, que se lee bien desde un teléfono.
+ * deja un QR de unos 20 mm en la mitad del paciente, que se lee bien desde un teléfono.
  */
 export const qrSvg = (content: string, cellSizeMm = 0.6): string => {
   const qr = qrcode(0, ERROR_CORRECTION);

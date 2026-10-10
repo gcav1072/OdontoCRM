@@ -30,7 +30,7 @@ const main = async (): Promise<void> => {
     encryptionKey: parseEncryptionKey(config.STORAGE_ENCRYPTION_KEY),
   });
 
-  /** Un Chromium por proceso para el PDF A5 (arrancarlo cuesta más que el PDF). */
+  /** Un Chromium por proceso para el PDF del récipe (arrancarlo cuesta más que el PDF). */
   const pdfRenderer = createPdfRenderer({
     executablePath: config.PDF_CHROMIUM_PATH,
     timeoutMs: config.PDF_TIMEOUT_MS,

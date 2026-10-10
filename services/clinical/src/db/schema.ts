@@ -290,7 +290,7 @@ export const prescriptionNumberSequence = pgSequence('prescription_number_seq', 
 });
 
 /**
- * Récipes. Nacen como `borrador`, se **emiten** con su número, su PDF A5 archivado
+ * Récipes. Nacen como `borrador`, se **emiten** con su número, su PDF archivado
  * y su código de verificación, y **nunca se borran**: se anulan con motivo, y el
  * `CHECK` garantiza que lo emitido tenga número y código.
  */
@@ -318,7 +318,7 @@ export const prescriptions = pgTable(
     issuedByUsername: text('issued_by_username'),
     /** Código que lleva el QR y resuelve la página pública `/verificar/<código>`. */
     verifyCode: text('verify_code'),
-    /** PDF A5 archivado (ruta dentro del almacén) y su huella. */
+    /** PDF archivado (ruta dentro del almacén) y su huella. */
     pdfPath: text('pdf_path'),
     pdfSha256: text('pdf_sha256'),
     generatedAt: timestamp('generated_at', { withTimezone: true }),

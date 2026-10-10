@@ -61,7 +61,7 @@ export const clinicalEnvSchema = baseEnvSchema.extend({
   PUBLIC_APP_URL: z.string().min(1).default('http://127.0.0.1:5173'),
 
   /**
-   * Chromium para el PDF A5. Vacío = el navegador que administra Playwright
+   * Chromium para el PDF del récipe. Vacío = el navegador que administra Playwright
    * (`npx playwright install chromium`). Se puede fijar una ruta concreta en una
    * instalación que ya tenga Chromium (Fedora con el paquete del sistema).
    */

@@ -32,7 +32,7 @@ export interface CreateClinicalServerOptions {
   brandLookup: BrandLookup;
   /** Almacén de adjuntos y PDF de récipes. */
   blobStore: BlobStore;
-  /** Renderizador del PDF A5 (Chromium). */
+  /** Renderizador del PDF del récipe (Chromium). */
   pdfRenderer: PdfRenderer;
   /** Gancho para adelantar los eventos (lo conecta `index.ts` con el publicador). */
   kickOutbox?: (() => void) | undefined;
@@ -41,7 +41,7 @@ export interface CreateClinicalServerOptions {
 /**
  * Servidor del servicio clínico: historia clínica por secciones, catálogos
  * tipificados, firma, adendas, consentimiento, **sesiones** (la evolución),
- * **adjuntos** de la sesión y **récipes A5** con su verificación pública.
+ * **adjuntos** de la sesión y **récipes** con su verificación pública.
  *
  * Rutas públicas bajo `/api/v1/clinical` (el gateway reenvía sin recortar) y rutas
  * internas bajo `/internal/v1` con el secreto compartido. La verificación del récipe

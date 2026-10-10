@@ -22,7 +22,7 @@ export interface ClinicalServices {
   brandLookup: BrandLookup;
   /** Adjuntos de la sesión y PDF de los récipes: binarios en disco. */
   blobStore: BlobStore;
-  /** Chromium para el PDF A5 del récipe (uno por proceso, reutilizado). */
+  /** Chromium para el PDF del récipe (uno por proceso, reutilizado). */
   pdfRenderer: PdfRenderer;
   /** Adelanta el publicador del outbox (lo conecta `index.ts`). */
   kickOutbox?: (() => void) | undefined;

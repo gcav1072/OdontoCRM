@@ -226,7 +226,7 @@ export const registerPrescriptionRoutes = (
     return reply.status(200).send(await getPrescriptionDetail(db, id));
   });
 
-  /** Emitir: número, PDF A5 archivado y código de verificación. */
+  /** Emitir: número, PDF archivado y código de verificación. */
   app.post(
     '/api/v1/clinical/prescriptions/:id/issue',
     { preHandler: write },
