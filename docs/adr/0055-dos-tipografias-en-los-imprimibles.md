@@ -37,7 +37,12 @@ clínico no puede depender de lo que haya instalado quien lo abre.
      `import.meta.glob` sobre `assets/clinic/fonts/*.woff2`), igual que el logo.
 3. **De momento, Montserrat** (subconjunto `latin`, pesos 400 y 700) con su licencia
    OFL junto a los archivos. Cambiar de familia es dejar los `.woff2` en esa carpeta,
-   ajustar `BRAND.fonts.files` y los dos primeros nombres de las pilas.
+   ajustar `BRAND.fonts.families` y los primeros nombres de las pilas.
+
+> **Actualización ([ADR 0063](0063-seleccion-de-fuentes-por-rol.md)).** La marca pasó de **una**
+> familia a un **catálogo de familias** (`BRAND.fonts.families`) y de pilas de texto libre a una
+> **selección por desplegable con vista previa** en el panel, más un **peso por rol**
+> (`--brand-font-doc-title-weight` / `--brand-font-doc-body-weight`).
 4. **La marca sigue siendo solo-código.** Las tipografías se editan en `brand.ts` y se
    regenera `marca.css` (`npm run marca:css`); **no** se editan desde la aplicación. El
    ADR 0056 mueve la *identidad* (nombre, RIF, logo) a la base, no la *marca*.
