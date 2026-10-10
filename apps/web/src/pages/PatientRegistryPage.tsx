@@ -14,7 +14,7 @@ import {
   Spinner,
 } from '@odontocrm/ui';
 import { IdCard, Search, UserPlus } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { useNotice } from '../hooks/useNotice';
@@ -107,7 +107,13 @@ export const PatientRegistryPage = () => {
     setErrorDocumento(null);
   };
 
-  const valoresAlta: PatientFormValues = emptyFormValues(docType, docNumber);
+  // Los valores iniciales del alta se memoizan: si se recrearan en cada render, el
+  // `reset(iniciales)` de `PatientForm` dispararía con cualquier re-render del padre
+  // y borraría lo que el usuario ya había escrito.
+  const valoresAlta: PatientFormValues = useMemo(
+    () => emptyFormValues(docType, docNumber),
+    [docType, docNumber],
+  );
   const etiquetaModo = buscando ? t('registro.buscando') : t('registro.buscar');
 
   return (
