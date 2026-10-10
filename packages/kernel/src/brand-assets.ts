@@ -84,15 +84,18 @@ export const fontFaceCssFromResolved = (faces: readonly ResolvedFontFace[]): str
  * respaldo de `documentTitleSans`/`documentBodySans`.
  */
 export const brandFontFaceCss = async (fonts: BrandFonts = BRAND.fonts): Promise<string> => {
-  const faces = (
-    await Promise.all(
-      fonts.files.map(async (file): Promise<ResolvedFontFace | null> => {
-        const dataUri = await readFontFileDataUri(file.path);
-        return dataUri === null
-          ? null
-          : { family: fonts.family, weight: file.weight, style: file.style, dataUri };
-      }),
-    )
-  ).filter((face): face is ResolvedFontFace => face !== null);
+  const porFamilia = await Promise.all(
+    fonts.families.map(async (familia) =>
+      Promise.all(
+        familia.files.map(async (file): Promise<ResolvedFontFace | null> => {
+          const dataUri = await readFontFileDataUri(file.path);
+          return dataUri === null
+            ? null
+            : { family: familia.name, weight: file.weight, style: file.style, dataUri };
+        }),
+      ),
+    ),
+  );
+  const faces = porFamilia.flat().filter((face): face is ResolvedFontFace => face !== null);
   return fontFaceCssFromResolved(faces);
 };
