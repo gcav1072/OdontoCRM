@@ -32,6 +32,7 @@ const paciente = (
   caries: 0,
   restauracion: 0,
   ausente: 0,
+  extraida: 0,
   total: 0,
   ...valores,
 });
@@ -49,11 +50,11 @@ describe('salud bucal desde el odontograma', () => {
     );
 
     expect(documento.table.rows.map((fila) => fila['pieza'])).toEqual([16, 26, 46]);
-    expect(documento.table.rows[0]).toMatchObject({ caries: 1, obturaciones: 0, ausentes: 0 });
-    expect(documento.table.rows[2]).toMatchObject({ caries: 0, obturaciones: 0, ausentes: 1 });
+    expect(documento.table.rows[0]).toMatchObject({ caries: 1, restauraciones: 0, ausentes: 0 });
+    expect(documento.table.rows[2]).toMatchObject({ caries: 0, restauraciones: 0, ausentes: 1 });
   });
 
-  it('la serie por pieza lleva las tres condiciones del contrato', () => {
+  it('la serie por pieza lleva las cuatro condiciones del contrato', () => {
     const documento = componerSaludBucal(
       [
         hallazgo({ toothNumber: 16, condition: 'caries', findings: 2 }),
@@ -65,8 +66,9 @@ describe('salud bucal desde el odontograma', () => {
     const puntos = documento.series.find((serie) => serie.id === 'piezas')?.points ?? [];
     expect(puntos.map((punto) => [punto.x, punto.group, punto.y])).toEqual([
       ['16', 'Caries', 2],
-      ['16', 'Obturaciones', 1],
+      ['16', 'Restauraciones', 1],
       ['16', 'Piezas ausentes', 0],
+      ['16', 'Piezas extraídas', 0],
     ]);
     expect(documento.series.find((serie) => serie.id === 'piezas')?.kind).toBe('stacked-bar');
   });
@@ -82,7 +84,7 @@ describe('salud bucal desde el odontograma', () => {
       contexto(),
     );
     expect(documento.table.rows).toHaveLength(1);
-    expect(documento.table.rows[0]).toMatchObject({ caries: 1, obturaciones: 0, ausentes: 0 });
+    expect(documento.table.rows[0]).toMatchObject({ caries: 1, restauraciones: 0, ausentes: 0 });
   });
 
   it('recorta el top de pacientes y lo dice en las notas', () => {
@@ -99,7 +101,7 @@ describe('salud bucal desde el odontograma', () => {
       `${String(TOP_PACIENTES)} de ${String(TOP_PACIENTES + 3)}`,
     );
     const serie = documento.series.find((serie) => serie.id === 'pacientes');
-    expect(serie?.points).toHaveLength(TOP_PACIENTES * 3);
+    expect(serie?.points).toHaveLength(TOP_PACIENTES * 4);
     expect(documento.kpis.find((kpi) => kpi.label === 'Pacientes con hallazgos')?.value).toBe(
       TOP_PACIENTES + 3,
     );

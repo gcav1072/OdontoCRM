@@ -30,10 +30,10 @@ import {
 
 /**
  * Reporte de **salud bucal** desde el odontograma (plan §13, Fase 9): prevalencia de
- * caries, obturaciones y piezas ausentes, por pieza FDI y por paciente.
+ * caries, restauraciones y piezas ausentes, por pieza FDI y por paciente.
  *
  * Se cuentan los hallazgos **vigentes** (`resolved_at` nulo) **registrados en el
- * período**: una pieza ya obturada no es una caries activa, pero un hallazgo
+ * período**: una pieza ya restaurada no es una caries activa, pero un hallazgo
  * registrado en el período y después superado tampoco cuenta. Las dos cosas están
  * dichas en las notas del documento.
  *
@@ -57,6 +57,7 @@ export interface FilaPacienteBucal {
   caries: number;
   restauracion: number;
   ausente: number;
+  extraida: number;
   total: number;
 }
 
@@ -79,20 +80,26 @@ export const componerSaludBucal = (
   for (const fila of filas) {
     const condicion = voto(fila);
     if (condicion === null) continue;
-    const conteo = porPieza.get(fila.toothNumber) ?? { caries: 0, restauracion: 0, ausente: 0 };
+    const conteo = porPieza.get(fila.toothNumber) ?? {
+      caries: 0,
+      restauracion: 0,
+      ausente: 0,
+      extraida: 0,
+    };
     conteo[condicion] += fila.findings;
     porPieza.set(fila.toothNumber, conteo);
   }
 
   const piezas = [...porPieza.keys()].sort((izquierda, derecha) => izquierda - derecha);
   const filasTabla: ReportRow[] = piezas.map((pieza) => {
-    const conteo = porPieza.get(pieza) ?? { caries: 0, restauracion: 0, ausente: 0 };
+    const conteo = porPieza.get(pieza) ?? { caries: 0, restauracion: 0, ausente: 0, extraida: 0 };
     return {
       pieza,
       caries: conteo.caries,
-      obturaciones: conteo.restauracion,
+      restauraciones: conteo.restauracion,
       ausentes: conteo.ausente,
-      hallazgos: conteo.caries + conteo.restauracion + conteo.ausente,
+      extraidas: conteo.extraida,
+      hallazgos: conteo.caries + conteo.restauracion + conteo.ausente + conteo.extraida,
     };
   });
 
@@ -117,7 +124,7 @@ export const componerSaludBucal = (
     ranking.map((fila) => ({
       paciente: fila.etiqueta,
       caries: fila.caries,
-      obturaciones: fila.restauracion,
+      restauraciones: fila.restauracion,
       ausentes: fila.ausente,
       hallazgos: fila.total,
     })),
@@ -155,13 +162,21 @@ export const componerSaludBucal = (
         tone: 'bad',
       }),
       kpi(
-        'Obturaciones',
+        'Restauraciones',
         totales.find((total) => total.condicion === 'restauracion')?.hallazgos ?? 0,
         { hint: 'hallazgos vigentes' },
       ),
       kpi(
         'Piezas ausentes',
         totales.find((total) => total.condicion === 'ausente')?.hallazgos ?? 0,
+        {
+          hint: 'hallazgos vigentes',
+          tone: 'warn',
+        },
+      ),
+      kpi(
+        'Piezas extraídas',
+        totales.find((total) => total.condicion === 'extraida')?.hallazgos ?? 0,
         {
           hint: 'hallazgos vigentes',
           tone: 'warn',
@@ -187,8 +202,9 @@ export const componerSaludBucal = (
       [
         columna('pieza', 'Pieza (FDI)', 'number'),
         columna('caries', 'Caries', 'number'),
-        columna('obturaciones', 'Obturaciones', 'number'),
+        columna('restauraciones', 'Restauraciones', 'number'),
         columna('ausentes', 'Ausentes', 'number'),
+        columna('extraidas', 'Extraídas', 'number'),
         columna('hallazgos', 'Hallazgos', 'number'),
       ],
       filasTabla,
@@ -235,7 +251,7 @@ const proyectarDesdeHechos = async (
     .where(
       and(
         isNull(factToothFinding.resolvedAt),
-        sql`${factToothFinding.condition} in ('caries', 'restauracion', 'ausente')`,
+        sql`${factToothFinding.condition} in ('caries', 'restauracion', 'ausente', 'extraida')`,
         enRango(factToothFinding.recordedAt, ctx.range),
         ...condicionesDePaciente(ctx.filters, ctx.range.to),
       ),
@@ -262,6 +278,7 @@ const proyectarPacientes = async (
       caries: sql<number>`(count(*) filter (where ${factToothFinding.condition} = 'caries'))::int`,
       restauracion: sql<number>`(count(*) filter (where ${factToothFinding.condition} = 'restauracion'))::int`,
       ausente: sql<number>`(count(*) filter (where ${factToothFinding.condition} = 'ausente'))::int`,
+      extraida: sql<number>`(count(*) filter (where ${factToothFinding.condition} = 'extraida'))::int`,
       total: sql<number>`count(*)::int`,
     })
     .from(factToothFinding)
@@ -269,7 +286,7 @@ const proyectarPacientes = async (
     .where(
       and(
         isNull(factToothFinding.resolvedAt),
-        sql`${factToothFinding.condition} in ('caries', 'restauracion', 'ausente')`,
+        sql`${factToothFinding.condition} in ('caries', 'restauracion', 'ausente', 'extraida')`,
         enRango(factToothFinding.recordedAt, ctx.range),
         ...condicionesDePaciente(ctx.filters, ctx.range.to),
       ),
@@ -287,6 +304,7 @@ const proyectarPacientes = async (
     caries: fila.caries,
     restauracion: fila.restauracion,
     ausente: fila.ausente,
+    extraida: fila.extraida,
     total: fila.total,
   }));
 };

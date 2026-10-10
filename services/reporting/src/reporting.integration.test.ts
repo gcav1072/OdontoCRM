@@ -896,7 +896,7 @@ describeConBases('reporting: read model por eventos, reportes y exportación', (
     expect(impresion).toMatchObject({ estado: 'ignorado', motivo: 'impresion_del_odontograma' });
 
     await emitir([
-      // María: caries en la 16 (oclusal), obturación en la 26 y ausencia de la 36.
+      // María: caries en la 16 (oclusal), restauración en la 26 y ausencia de la 36.
       eventoHallazgo({
         patientId: maria.id,
         toothNumber: 16,
@@ -1003,9 +1003,9 @@ describeConBases('reporting: read model por eventos, reportes y exportación', (
     );
     const porPieza = new Map(documento.table.rows.map((fila) => [fila['pieza'], fila]));
     expect([...porPieza.keys()]).toEqual([16, 26, 36]);
-    expect(porPieza.get(16)).toMatchObject({ caries: 2, obturaciones: 0, ausentes: 0 });
-    expect(porPieza.get(26)).toMatchObject({ caries: 0, obturaciones: 1, ausentes: 0 });
-    expect(porPieza.get(36)).toMatchObject({ caries: 0, obturaciones: 0, ausentes: 1 });
+    expect(porPieza.get(16)).toMatchObject({ caries: 2, restauraciones: 0, ausentes: 0 });
+    expect(porPieza.get(26)).toMatchObject({ caries: 0, restauraciones: 1, ausentes: 0 });
+    expect(porPieza.get(36)).toMatchObject({ caries: 0, restauraciones: 0, ausentes: 1 });
     expect(documento.kpis.find((kpi) => kpi.label === 'Pacientes con hallazgos')?.value).toBe(2);
     expect(documento.kpis.find((kpi) => kpi.label === 'Piezas afectadas')?.value).toBe(3);
   }, 60_000);

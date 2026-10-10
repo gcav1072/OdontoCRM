@@ -43,6 +43,13 @@
       "when": 1791500000000,
       "tag": "0005_multisillon_etiquetas",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791655267000,
+      "tag": "0006_extraida_salud_bucal",
+      "breakpoints": true
     }
   ]
 }
