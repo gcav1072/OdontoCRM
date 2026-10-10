@@ -5,6 +5,7 @@ import {
   brandWatermarkCss,
   brandWatermarkHtml,
   clinicContactLine,
+  clinicDentistLine,
   clinicFullAddress,
   type LetterheadSnapshot,
   type ReportDocument,
@@ -74,6 +75,8 @@ const estilos = (fontFaces: string, brand: BrandThemePayload | null | undefined)
   .logo { height: var(--brand-logo-height-mm); width: auto; }
   .clinic-name { font-family: var(--brand-font-doc-title); font-size: 14pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
   .clinic-line { font-size: 8pt; color: var(--brand-ink-muted); margin: 0.6mm 0 0; }
+  /* La línea del especialista va en el membrete, bajo la dirección y el teléfono. */
+  .clinic-dentist { font-size: 8pt; color: var(--brand-ink-strong); margin: 0.8mm 0 0; }
   .doc-meta { text-align: right; font-size: 8pt; color: var(--brand-ink-muted); min-width: 60mm; }
   h1 { font-family: var(--brand-font-doc-title); font-size: 13pt; margin: 4mm 0 0; color: var(--brand-primary); }
   .subtitle { font-size: 8.5pt; color: var(--brand-ink-muted); margin: 1mm 0 0; }
@@ -118,6 +121,8 @@ export const reportHtml = async (
     .filter((linea): linea is string => linea !== null)
     .map((linea) => `<p class="clinic-line">${escapeHtml(linea)}</p>`)
     .join('');
+  // El especialista que responde por el documento, en el membrete.
+  const lineaDentista = clinicDentistLine(letterhead?.dentist ?? null);
 
   const kpis = documento.kpis
     .map(
@@ -180,6 +185,7 @@ export const reportHtml = async (
       <div>
         <p class="clinic-name">${escapeHtml(consultorio.name)}</p>
         ${lineasMembrete}
+        ${lineaDentista === '' ? '' : `<p class="clinic-dentist">${escapeHtml(lineaDentista)}</p>`}
       </div>
     </div>
     <div class="doc-meta">
