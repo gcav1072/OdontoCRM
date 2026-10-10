@@ -4,6 +4,8 @@ import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
 import { letterheadSnapshot, listDentists } from '../clinic/identity-service.js';
+import { effectiveBrand } from '../settings/brand-service.js';
+import { readChannelCredentials } from '../settings/channel-service.js';
 import type { IdentityServices } from '../services.js';
 
 const letterheadQuerySchema = z.object({
@@ -65,5 +67,22 @@ export const registerInternalRoutes = (app: FastifyInstance, services: IdentityS
   app.get('/internal/v1/identity/dentists', async (_request, reply) => {
     const items = await listDentists(db);
     return reply.status(200).send({ items, total: items.length });
+  });
+
+  /**
+   * La **marca efectiva** de los imprimibles (ADR 0060): el tema, las fuentes ya
+   * incrustadas y el logo. La leen clinical, reporting y billing para componer el papel
+   * sin saber si la marca viene de la base o del respaldo del código.
+   */
+  app.get('/internal/v1/identity/brand', async (_request, reply) => {
+    return reply.status(200).send(await effectiveBrand(db, blobStore));
+  });
+
+  /**
+   * Las **credenciales de los canales** en claro. Solo por la red interna: llevan los
+   * tokens de Telegram y de WhatsApp, que nunca viajan por el gateway.
+   */
+  app.get('/internal/v1/identity/channels', async (_request, reply) => {
+    return reply.status(200).send(await readChannelCredentials(db, config));
   });
 };

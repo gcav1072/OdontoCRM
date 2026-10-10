@@ -28,6 +28,7 @@ describe('mapa de rutas del gateway', () => {
       '/api/v1/audit',
       '/api/v1/devices',
       '/api/v1/identity',
+      '/api/v1/settings',
     ]);
   });
 
@@ -46,7 +47,7 @@ describe('mapa de rutas del gateway', () => {
       }),
     );
 
-    expect(routes).toHaveLength(16);
+    expect(routes).toHaveLength(17);
     expect(routes.map((route) => route.prefix)).toContain('/api/v1/screens');
   });
 

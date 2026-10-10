@@ -32,7 +32,14 @@ const sqlLiteralList = (values: readonly string[]): SQL => {
   );
 };
 
-import { DOC_TYPES, PERMISSIONS, ROLES, SCREEN_KINDS } from '@odontocrm/contracts';
+import { DOC_TYPES, PERMISSIONS, ROLES, SCREEN_KINDS, UI_ACCENT_IDS } from '@odontocrm/contracts';
+import type {
+  BrandFontsSettings,
+  BrandLetterheadSettings,
+  BrandPaletteSettings,
+  BrandTypographyInput,
+  ScreenTexts,
+} from '@odontocrm/contracts';
 
 /**
  * Esquema de la base de identidad. Incluye usuarios, sus roles, las sesiones
@@ -227,6 +234,82 @@ export const auditEvents = pgTable(
     index('idx_audit_action').on(table.action),
     index('idx_audit_entity').on(table.entityType, table.entityId),
   ],
+);
+
+/**
+ * Marca de los **imprimibles** guardada en la base (ADR 0060): paleta, tipografías,
+ * medidas y fuentes. Una **sola fila** (patrón singleton `id = 1`).
+ *
+ * Mientras no haya fila, la marca sale del respaldo del código (`BRAND`), así que una
+ * instalación recién puesta imprime con la identidad de fábrica sin sembrar nada.
+ * El **logo** no está aquí: ya vive en `clinic_profiles` (ADR 0056) y esta marca lo
+ * reutiliza.
+ */
+export const brandSettings = pgTable(
+  'brand_settings',
+  {
+    id: integer('id').primaryKey().default(1),
+    palette: jsonb('palette').$type<BrandPaletteSettings>(),
+    typography: jsonb('typography').$type<BrandTypographyInput>(),
+    letterhead: jsonb('letterhead').$type<BrandLetterheadSettings>(),
+    fonts: jsonb('fonts').$type<BrandFontsSettings>(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid('updated_by'),
+  },
+  (table) => [check('chk_brand_settings_singleton', sql`${table.id} = 1`)],
+);
+
+/**
+ * Configuración de la **aplicación** (ADR 0060): el acento de la interfaz y los
+ * textos del kiosko. Una sola fila (`id = 1`). El acento `null` significa «el de
+ * fábrica» (`DEFAULT_UI_ACCENT`).
+ */
+export const appSettings = pgTable(
+  'app_settings',
+  {
+    id: integer('id').primaryKey().default(1),
+    accent: text('accent'),
+    screenTexts: jsonb('screen_texts')
+      .$type<ScreenTexts>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid('updated_by'),
+  },
+  (table) => [
+    check('chk_app_settings_singleton', sql`${table.id} = 1`),
+    check(
+      'chk_app_settings_accent',
+      sql`${table.accent} is null or ${table.accent} in (${sqlLiteralList(UI_ACCENT_IDS)})`,
+    ),
+  ],
+);
+
+/**
+ * Credenciales y datos de los **canales de mensajería** (ADR 0060), una sola fila.
+ *
+ * Los **secretos** se guardan cifrados (`…_enc`: el blob del almacén con AES-256-GCM,
+ * en base64) con la misma clave que el resto del almacén. Los datos no secretos
+ * (usuario del bot, chat del admin, teléfono y base de WhatsApp) van en claro porque
+ * el panel los muestra.
+ */
+export const channelSettings = pgTable(
+  'channel_settings',
+  {
+    id: integer('id').primaryKey().default(1),
+    telegramBotUsername: text('telegram_bot_username'),
+    adminTelegramChatId: text('admin_telegram_chat_id'),
+    whatsappPhoneId: text('whatsapp_phone_id'),
+    whatsappApiBase: text('whatsapp_api_base'),
+    telegramBotTokenEnc: text('telegram_bot_token_enc'),
+    adminTelegramBotTokenEnc: text('admin_telegram_bot_token_enc'),
+    whatsappTokenEnc: text('whatsapp_token_enc'),
+    whatsappVerifyTokenEnc: text('whatsapp_verify_token_enc'),
+    whatsappAppSecretEnc: text('whatsapp_app_secret_enc'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid('updated_by'),
+  },
+  (table) => [check('chk_channel_settings_singleton', sql`${table.id} = 1`)],
 );
 
 /**

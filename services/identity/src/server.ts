@@ -12,6 +12,7 @@ import { registerAuthRoutes } from './routes/auth-routes.js';
 import { registerClinicRoutes } from './routes/clinic-routes.js';
 import { registerDeviceRoutes } from './routes/device-routes.js';
 import { registerInternalRoutes } from './routes/internal-routes.js';
+import { registerSettingsRoutes } from './routes/settings-routes.js';
 import { registerUserRoutes } from './routes/user-routes.js';
 import type { IdentityServices } from './services.js';
 
@@ -76,6 +77,7 @@ export const createIdentityServer = async (
   registerAuthRoutes(app, services);
   registerUserRoutes(app, services);
   registerClinicRoutes(app, services);
+  registerSettingsRoutes(app, services);
   registerAuditRoutes(app, services);
   registerDeviceRoutes(app, services);
   registerInternalRoutes(app, services);
