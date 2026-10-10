@@ -161,7 +161,9 @@ const NombreYSexo = ({ form, disabled }: { form: PatientFormApi; disabled: boole
 
       <Field label={t('pacientes.campo.sex')} error={errors.sex?.message} required>
         <Select disabled={disabled} {...form.register('sex')}>
-          <option value="">{t('comun.sinDato')}</option>
+          {/* El sexo es obligatorio: el hueco por defecto lo dice, no un «—» que
+              parece un valor válido y luego no deja guardar. */}
+          <option value="">{t('pacientes.campo.sexoPlaceholder')}</option>
           {SEXES.map((sexo: Sex) => (
             <option key={sexo} value={sexo}>
               {SEX_LABELS[sexo]}
@@ -185,12 +187,21 @@ const SeccionRepresentante = ({
 }) => {
   const errores = form.formState.errors.guardian;
   const tipoDocumento = (form.watch('guardian.docType') ?? 'V') as DocType;
+  // Un error anclado a la **raíz** de `guardian` (por ejemplo, una respuesta del
+  // servidor) no corresponde a ningún subcampo: si no se pinta aquí, el usuario ve
+  // el aviso general sin ningún campo marcado.
+  const errorSeccion = errores?.root?.message;
 
   return (
     <Seccion
       titulo={t('pacientes.form.guardianTitulo')}
       icono={<UserRound className="size-3.5" aria-hidden="true" />}
     >
+      {errorSeccion !== undefined && (
+        <Alert variant="danger" aria-live="polite">
+          {errorSeccion}
+        </Alert>
+      )}
       <Alert variant="info">{t('pacientes.form.guardianMotivo', { edad })}</Alert>
 
       <div className="grid gap-4 sm:grid-cols-2">

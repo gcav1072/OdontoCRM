@@ -640,6 +640,7 @@ const DICCIONARIO = {
   'pacientes.campo.occupation': 'Ocupación',
   'pacientes.campo.notes': 'Notas',
   'pacientes.campo.sex': 'Sexo',
+  'pacientes.campo.sexoPlaceholder': 'Selecciona el sexo',
   'pacientes.campo.status': 'Estado',
   'pacientes.campo.docType': 'Tipo de documento',
   'pacientes.campo.guardian': 'Representante',
@@ -690,6 +691,7 @@ const DICCIONARIO = {
     'Los campos marcados con * son obligatorios. Los textos se guardan limpios y el documento no se puede repetir.',
   'pacientes.alta.enviar': 'Registrar paciente',
   'pacientes.alta.revisar': 'Revisa los campos marcados antes de continuar.',
+  'pacientes.alta.revisarDetalle': 'Revisa los campos marcados antes de continuar: {detalle}',
 
   // Ficha en solo lectura
   'pacientes.lectura.rotulo': 'Modo lectura',

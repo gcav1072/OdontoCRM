@@ -117,9 +117,12 @@ export const patientFormSchema = z
       ctx.addIssue({ code: 'custom', path: ['sex'], message: 'Indica el sexo' });
     }
     if (isMinor(value.birthDate) && value.guardian === undefined) {
+      // El aviso va al **nombre del representante** (y no a la raíz `guardian`),
+      // que es el primer campo visible de la sección: así el error se pinta en un
+      // control en vez de quedar como un aviso general sin ningún campo marcado.
       ctx.addIssue({
         code: 'custom',
-        path: ['guardian'],
+        path: ['guardian', 'fullName'],
         message: 'Para un menor de edad hay que registrar al representante',
       });
     }

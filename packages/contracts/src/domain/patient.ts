@@ -270,9 +270,11 @@ export const createPatientSchema = patientCoreSchema
       });
     }
     if (isMinor(value.birthDate) && value.guardian === undefined) {
+      // Igual que en el formulario: el aviso apunta al **nombre del representante**
+      // para que el error del servidor caiga en un campo visible (`applyApiFieldErrors`).
       ctx.addIssue({
         code: 'custom',
-        path: ['guardian'],
+        path: ['guardian', 'fullName'],
         message: 'Para un menor de edad hay que registrar al representante',
       });
     }

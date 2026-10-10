@@ -40,6 +40,27 @@ import { PatientFields } from './PatientFields';
 /** Motivo mínimo que exige el contrato para editar (`updatePatientSchema.reason`). */
 const MOTIVO_MINIMO = 3;
 
+/**
+ * Primer mensaje de error del formulario, recorriendo el árbol de `formState.errors`.
+ * Se usa para que el aviso general **nombre** lo que falta en vez de dejar al usuario
+ * buscando un campo marcado que a veces no se ve (p. ej. cuando el error cuelga de una
+ * ruta que ninguna sección pinta).
+ */
+const primerMensajeDeError = (errores: unknown, profundidad = 0): string | null => {
+  if (profundidad > 4 || errores === null || typeof errores !== 'object') return null;
+  const registro = errores as Record<string, unknown>;
+  const propio = registro['message'];
+  if (typeof propio === 'string' && propio !== '') return propio;
+  for (const [clave, valor] of Object.entries(registro)) {
+    // `ref` apunta al nodo del DOM y `types` acumula criterios de validación: no son
+    // errores, y recorrerlos podría entrar en ciclos.
+    if (clave === 'ref' || clave === 'types') continue;
+    const mensaje = primerMensajeDeError(valor, profundidad + 1);
+    if (mensaje !== null) return mensaje;
+  }
+  return null;
+};
+
 export interface PatientFormProps {
   /** `create` da de alta; `edit` abre la ficha con el flujo de motivo y confirmación. */
   mode: 'create' | 'edit';
@@ -126,7 +147,14 @@ export const PatientForm = ({
     if (guardando) return null;
     const valido = await formulario.trigger();
     if (!valido) {
-      setErrorGeneral(t('pacientes.alta.revisar'));
+      // `formState` es un proxy que lee el estado vivo, así que tras `await trigger()`
+      // ya trae los errores recién calculados.
+      const detalle = primerMensajeDeError(formulario.formState.errors);
+      setErrorGeneral(
+        detalle === null
+          ? t('pacientes.alta.revisar')
+          : t('pacientes.alta.revisarDetalle', { detalle }),
+      );
       return null;
     }
     return formulario.getValues();
