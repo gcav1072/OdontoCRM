@@ -95,6 +95,8 @@ export type UpdateClinicProfileInput = z.infer<typeof updateClinicProfileSchema>
 
 /** Un odontólogo con su usuario y su nombre, como lo devuelve el API público. */
 export const dentistViewSchema = dentistProfileSchema.extend({
+  /** Id del usuario en identity: la agenda guarda `dentist_id` con este valor. */
+  id: z.uuid(),
   username: z.string(),
   fullName: z.string(),
 });

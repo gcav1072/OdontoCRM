@@ -135,6 +135,12 @@ export const expandTemplateSlots = (template: {
 export const slotTemplateSchema = z.object({
   id: z.uuid(),
   weekday: z.number().int().min(0).max(6),
+  /**
+   * Plantilla **por consultorio**. `null` = plantilla **común** (la de todos los
+   * sillones); con valor = plantilla propia de ese consultorio, que **reemplaza** a la
+   * común para ese día de la semana.
+   */
+  chairId: z.uuid().nullable(),
   startTime: timeSchema,
   endTime: timeSchema,
   slotMinutes: z.number().int().min(5).max(240),
@@ -149,6 +155,8 @@ export type SlotTemplate = z.infer<typeof slotTemplateSchema>;
 export const slotTemplateInputSchema = z
   .object({
     weekday: z.coerce.number().int().min(0).max(6),
+    /** `null` (por defecto) = plantilla común a todos los consultorios. */
+    chairId: z.uuid().nullable().default(null),
     startTime: timeSchema,
     endTime: timeSchema,
     slotMinutes: z.coerce.number().int().min(5).max(240).default(DEFAULT_SLOT_MINUTES),
@@ -185,6 +193,7 @@ export const DEFAULT_SLOT_TEMPLATES: readonly SlotTemplateInput[] = [1, 2, 3, 4,
   (weekday) => [
     {
       weekday,
+      chairId: null,
       startTime: '08:00',
       endTime: '12:00',
       slotMinutes: DEFAULT_SLOT_MINUTES,
@@ -193,6 +202,7 @@ export const DEFAULT_SLOT_TEMPLATES: readonly SlotTemplateInput[] = [1, 2, 3, 4,
     },
     {
       weekday,
+      chairId: null,
       startTime: '13:00',
       endTime: '17:00',
       slotMinutes: DEFAULT_SLOT_MINUTES,
@@ -201,6 +211,51 @@ export const DEFAULT_SLOT_TEMPLATES: readonly SlotTemplateInput[] = [1, 2, 3, 4,
     },
   ],
 );
+
+/* ── Consultorios (sillones) ───────────────────────────────────────────────── */
+
+/**
+ * Un **consultorio (sillón)** es el recurso que ocupa una franja horaria: dos citas
+ * pueden coincidir en hora si son en consultorios distintos, pero nunca en el mismo
+ * (`uq_appointments_slot`). El **odontólogo**, en cambio, es un atributo de la cita
+ * (opcional) que **no** bloquea la franja: dos doctores pueden usar el mismo sillón a
+ * horas distintas y cualquiera puede usar cualquier sillón.
+ */
+export const chairSchema = z.object({
+  id: z.uuid(),
+  /** Nombre tal como se lee en la interfaz y en la TV: «Consultorio 1». */
+  label: z.string(),
+  /** Etiqueta corta para pantallas estrechas («C1»), si el consultorio la define. */
+  shortLabel: z.string().nullable(),
+  /** Un consultorio desactivado no se asigna, pero conserva su histórico. */
+  isActive: z.boolean(),
+  /** Orden en la interfaz y en la pantalla compartida del consultorio. */
+  sortOrder: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type Chair = z.infer<typeof chairSchema>;
+
+export const chairInputSchema = z.object({
+  label: z.string().trim().min(1, 'Ponle un nombre al consultorio').max(60),
+  shortLabel: z.string().trim().max(12).nullable().default(null),
+  isActive: z.boolean().default(true),
+  sortOrder: z.coerce.number().int().min(0).max(999).default(0),
+});
+
+export type ChairInput = z.infer<typeof chairInputSchema>;
+
+export const chairUpdateSchema = chairInputSchema.partial();
+
+export type ChairUpdateInput = z.infer<typeof chairUpdateSchema>;
+
+export const chairListSchema = z.object({
+  items: z.array(chairSchema),
+  total: z.number().int().min(0),
+});
+
+export type ChairList = z.infer<typeof chairListSchema>;
 
 /* ── Solicitudes (tickets) ─────────────────────────────────────────────────── */
 
@@ -279,8 +334,18 @@ export const assignAppointmentSchema = z
     /** Duración en minutos; si falta se usa la de la franja o la del día. */
     durationMinutes: z.coerce.number().int().min(5).max(240).optional(),
     slotKind: z.enum(SLOT_KINDS).default('franja'),
+    /**
+     * Odontólogo que atiende: **opcional**. La secretaría puede agendar sin
+     * asignarlo y lo elige luego la doctora. No ocupa la franja: eso lo hace el
+     * consultorio.
+     */
     dentistId: z.uuid().optional(),
-    chairId: z.uuid().optional(),
+    /**
+     * **Consultorio (sillón)**: es el recurso que ocupa la franja. Obligatorio: dos
+     * citas pueden coincidir en hora si son en consultorios distintos, pero nunca en
+     * el mismo. El catálogo lo sirve `GET /api/v1/agenda/chairs`.
+     */
+    chairId: z.uuid(),
     notes: z.string().trim().max(500).optional(),
     /** Sobrecupo: exige permiso `scheduling:overbook` y motivo. */
     authorizeOverbook: z.boolean().default(false),
@@ -313,6 +378,11 @@ export const rescheduleAppointmentSchema = z.object({
   startTime: timeSchema,
   durationMinutes: z.coerce.number().int().min(5).max(240).optional(),
   slotKind: z.enum(SLOT_KINDS).default('franja'),
+  /**
+   * Consultorio al que se mueve la cita. Opcional: sin él, la cita **conserva** el
+   * suyo (reprogramar puede ser solo cambiar la hora, no de gabinete).
+   */
+  chairId: z.uuid().optional(),
   reason: z.string().trim().max(300).optional(),
   authorizeOverbook: z.boolean().default(false),
   overbookReason: z.string().trim().max(300).optional(),
@@ -347,7 +417,11 @@ export const appointmentSummarySchema = z.object({
   cancelledAt: z.string().nullable(),
   cancelledChannel: z.enum(CHANNELS).nullable(),
   dentistId: z.uuid().nullable(),
+  /** Nombre del odontólogo resuelto, para pintarlo sin cruzar servicios. */
+  dentistName: z.string().nullable(),
   chairId: z.uuid().nullable(),
+  /** Nombre del consultorio resuelto («Consultorio 1»). */
+  chairLabel: z.string().nullable(),
   checkedInAt: z.string().nullable(),
   startedAt: z.string().nullable(),
   finishedAt: z.string().nullable(),
@@ -506,6 +580,8 @@ export type ConfirmAppointmentInput = z.infer<typeof confirmAppointmentSchema>;
 
 export const setCapacitySchema = z.object({
   date: dateSchema,
+  /** Consultorio cuyo cupo se fija: el cupo es **por sillón y día**. */
+  chairId: z.uuid(),
   capacity: z.coerce.number().int().min(0).max(MAX_DAY_CAPACITY),
   notes: z.string().trim().max(300).optional(),
   reason: z.string().trim().max(300).optional(),
@@ -518,6 +594,12 @@ export type CapacitySource = z.infer<typeof capacitySourceSchema>;
 
 export const dayCapacitySchema = z.object({
   date: z.string(),
+  /**
+   * Consultorio del cupo. En el cupo **agregado** del día (suma de consultorios)
+   * ambos van en `null`.
+   */
+  chairId: z.uuid().nullable(),
+  chairLabel: z.string().nullable(),
   /** Cupo que se aplica (explícito si existe; si no, deducido de las franjas). */
   capacity: z.number().int().min(0),
   source: capacitySourceSchema,
@@ -544,29 +626,57 @@ export const daySlotSchema = z.object({
   endTime: z.string(),
   kind: z.enum(SLOT_KINDS),
   state: slotStateSchema,
+  /** Consultorio de la franja: es el recurso que se ocupa al asignar. */
+  chairId: z.uuid().nullable(),
+  chairLabel: z.string().nullable(),
   appointment: appointmentSummarySchema.nullable(),
 });
 
 export type DaySlot = z.infer<typeof daySlotSchema>;
+
+/** Contadores por estado de la jornada (de un consultorio o del día entero). */
+export const dayCountsSchema = z.object({
+  programadas: z.number().int().min(0),
+  notificadas: z.number().int().min(0),
+  confirmadas: z.number().int().min(0),
+  enSala: z.number().int().min(0),
+  atendidas: z.number().int().min(0),
+  noAsistio: z.number().int().min(0),
+  canceladas: z.number().int().min(0),
+});
+
+export type DayCounts = z.infer<typeof dayCountsSchema>;
+
+/**
+ * Jornada de **un consultorio**: su rejilla de franjas, su cupo y sus contadores.
+ * Con varios sillones, la jornada del día es una lista de estas vistas (una por
+ * consultorio activo).
+ */
+export const chairDayViewSchema = z.object({
+  chair: chairSchema,
+  capacity: dayCapacitySchema,
+  /** `true` si el consultorio tiene plantilla propia para ese día (no la común). */
+  ownSchedule: z.boolean(),
+  slots: z.array(daySlotSchema),
+  counts: dayCountsSchema,
+});
+
+export type ChairDayView = z.infer<typeof chairDayViewSchema>;
 
 export const dayViewSchema = z.object({
   date: z.string(),
   weekday: z.number().int(),
   weekdayName: z.string(),
   isWorkingDay: z.boolean(),
+  /** Una entrada por consultorio activo, en el orden del catálogo. */
+  chairs: z.array(chairDayViewSchema),
+  /** Cupo **agregado** del día (suma de consultorios); `chairId`/`chairLabel` van en `null`. */
   capacity: dayCapacitySchema,
-  slots: z.array(daySlotSchema),
+  /** Todas las citas del día, en cualquier consultorio. */
   appointments: z.array(appointmentSummarySchema),
   waiting: z.array(requestSummarySchema),
-  counts: z.object({
-    programadas: z.number().int().min(0),
-    notificadas: z.number().int().min(0),
-    confirmadas: z.number().int().min(0),
-    enSala: z.number().int().min(0),
-    atendidas: z.number().int().min(0),
-    noAsistio: z.number().int().min(0),
-    canceladas: z.number().int().min(0),
-  }),
+  /** Contadores agregados de todo el día (suma de los consultorios). */
+  counts: dayCountsSchema,
 });
 
 export type DayView = z.infer<typeof dayViewSchema>;

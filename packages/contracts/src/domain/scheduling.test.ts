@@ -172,12 +172,21 @@ describe('asignación de citas', () => {
       requestId: globalThis.crypto.randomUUID(),
       date: '2026-10-05',
       startTime: '08:30',
+      chairId: globalThis.crypto.randomUUID(),
     });
     expect(parsed.slotKind).toBe('franja');
     expect(parsed.authorizeOverbook).toBe(false);
   });
 
-  it('exige solicitud o paciente para la cita directa', () => {
+  it('exige el consultorio y la solicitud o el paciente', () => {
+    // Sin `chairId` no hay consultorio que ocupe la franja: se rechaza.
+    expect(
+      assignAppointmentSchema.safeParse({
+        requestId: globalThis.crypto.randomUUID(),
+        date: '2026-10-05',
+        startTime: '08:30',
+      }).success,
+    ).toBe(false);
     expect(
       assignAppointmentSchema.safeParse({ date: '2026-10-05', startTime: '08:30' }).success,
     ).toBe(false);
@@ -188,6 +197,7 @@ describe('asignación de citas', () => {
         date: '2026-10-05',
         startTime: '08:30',
         slotKind: 'manual',
+        chairId: globalThis.crypto.randomUUID(),
       }).success,
     ).toBe(true);
   });
@@ -197,6 +207,7 @@ describe('asignación de citas', () => {
       requestId: globalThis.crypto.randomUUID(),
       date: '2026-10-05',
       startTime: '08:30',
+      chairId: globalThis.crypto.randomUUID(),
     };
     expect(assignAppointmentSchema.safeParse({ ...base, authorizeOverbook: true }).success).toBe(
       false,
@@ -211,7 +222,10 @@ describe('asignación de citas', () => {
   });
 
   it('valida fecha y hora', () => {
-    const base = { requestId: globalThis.crypto.randomUUID() };
+    const base = {
+      requestId: globalThis.crypto.randomUUID(),
+      chairId: globalThis.crypto.randomUUID(),
+    };
     expect(
       assignAppointmentSchema.safeParse({ ...base, date: '05/10/2026', startTime: '08:30' })
         .success,
@@ -239,9 +253,16 @@ describe('asignación de citas', () => {
 
 describe('cupo del día', () => {
   it('admite cualquier cupo entre 0 y 100', () => {
-    expect(setCapacitySchema.parse({ date: '2026-10-05', capacity: 12 }).capacity).toBe(12);
-    expect(setCapacitySchema.safeParse({ date: '2026-10-05', capacity: -1 }).success).toBe(false);
-    expect(setCapacitySchema.safeParse({ date: '2026-10-05', capacity: 101 }).success).toBe(false);
+    const chairId = globalThis.crypto.randomUUID();
+    expect(setCapacitySchema.parse({ date: '2026-10-05', chairId, capacity: 12 }).capacity).toBe(
+      12,
+    );
+    expect(setCapacitySchema.safeParse({ date: '2026-10-05', chairId, capacity: -1 }).success).toBe(
+      false,
+    );
+    expect(
+      setCapacitySchema.safeParse({ date: '2026-10-05', chairId, capacity: 101 }).success,
+    ).toBe(false);
   });
 });
 

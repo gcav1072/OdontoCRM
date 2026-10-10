@@ -18,6 +18,7 @@ const identidadCompleta = clinicIdentityViewSchema.parse({
   },
   dentists: [
     {
+      id: '11111111-1111-4111-8111-111111111111',
       username: 'prueba',
       fullName: 'Odontólogo prueba',
       mpps: 'MPPS 12345',

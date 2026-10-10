@@ -26,6 +26,12 @@ export const PERMISSIONS = [
    * odontólogo**; la secretaría atiende el mostrador y no decide esta regla.
    */
   'scheduling:cancel_policy',
+  /**
+   * Administrar el **catálogo de consultorios (sillones)** y sus plantillas de
+   * franjas: solo `admin`. La secretaría y el odontólogo **usan** los consultorios
+   * (los eligen al asignar) pero no los crean ni los renombran.
+   */
+  'scheduling:manage',
   'screens:manage',
   'screens:display',
   'clinical:read',

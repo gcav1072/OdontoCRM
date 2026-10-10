@@ -26,6 +26,8 @@ import { PATIENT_STATUSES, SEXES } from './enums.js';
 export const REPORT_KEYS = [
   'funnel',
   'capacity',
+  'chair-occupancy',
+  'dentist-productivity',
   'demographics',
   'clinical-profile',
   'oral-health',
@@ -46,6 +48,8 @@ export const reportKeySchema = z.enum(REPORT_KEYS);
 export const REPORT_PERMISSIONS = {
   funnel: 'reports:read',
   capacity: 'reports:read',
+  'chair-occupancy': 'reports:read',
+  'dentist-productivity': 'reports:read',
   demographics: 'reports:read',
   'clinical-profile': 'reports:clinical',
   'oral-health': 'reports:clinical',
@@ -58,6 +62,8 @@ export const reportPermissionFor = (key: ReportKey): 'reports:read' | 'reports:c
 export const REPORT_LABELS: Readonly<Record<ReportKey, string>> = {
   funnel: 'Embudo y tasa de inasistencia',
   capacity: 'Ocupación de la agenda',
+  'chair-occupancy': 'Ocupación por consultorio',
+  'dentist-productivity': 'Productividad por odontólogo',
   demographics: 'Demografía',
   'clinical-profile': 'Perfil clínico',
   'oral-health': 'Salud bucal',
@@ -68,6 +74,9 @@ export const REPORT_DESCRIPTIONS: Readonly<Record<ReportKey, string>> = {
   funnel:
     'Solicitudes → programadas → notificadas → confirmadas → atendidas, con la tasa de inasistencia.',
   capacity: 'Cupos usados frente a disponibles por día y detección de horas pico.',
+  'chair-occupancy':
+    'Franjas usadas y libres por consultorio y día, para ver qué sillón se desaprovecha.',
+  'dentist-productivity': 'Citas, atendidos e inasistencias por odontólogo en el período.',
   demographics: 'Pirámide de edad y distribución por sexo, con rango de edad editable.',
   'clinical-profile': 'Pacientes con diabetes, hipertensión, alergias, anticoagulantes y otros.',
   'oral-health': 'Prevalencia de caries, obturaciones y ausencias por pieza y por paciente.',

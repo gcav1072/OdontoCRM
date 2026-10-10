@@ -49,6 +49,8 @@ const cita = (cambios: Partial<AppointmentSummary> = {}): AppointmentSummary => 
   cancelledChannel: null,
   dentistId: null,
   chairId: null,
+  chairLabel: null,
+  dentistName: null,
   checkedInAt: null,
   startedAt: null,
   finishedAt: null,

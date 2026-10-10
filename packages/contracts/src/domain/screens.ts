@@ -175,8 +175,18 @@ export interface LobbyState {
   updatedAt: string;
 }
 
-/** Estado que pinta la **pantalla del consultorio**. */
-export interface ConsultationState {
+/**
+ * Estado de **un consultorio** en la pantalla compartida del consultorio: quién está
+ * dentro (o entrando) en ese sillón, con sus datos críticos.
+ *
+ * La pantalla es **una sola TV para todos los consultorios** (decisión del 2026-10-09):
+ * muestra un tile por sillón, así que ya no describe «el paciente en curso» sino el
+ * estado de cada gabinete.
+ */
+export interface ConsultationChair {
+  /** Id del consultorio, o `null` si la cita aún no lo tiene asignado. */
+  chairId: string | null;
+  chairLabel: string;
   appointmentId: string | null;
   patientId: string | null;
   patientName: string | null;
@@ -189,8 +199,16 @@ export interface ConsultationState {
   reason: string | null;
   /** Desde cuándo está en el consultorio. */
   since: string | null;
+  /** `en_consulta` (resaltado) · `llamado` (late) · `libre` (apagado). */
+  estado: 'en_consulta' | 'llamado' | 'libre';
   /** Datos críticos que la pantalla resalta (llegan de la historia clínica). */
   criticalFlags: CriticalFlag[];
+}
+
+/** Estado que pinta la **pantalla del consultorio** (compartida, multi-sillón). */
+export interface ConsultationState {
+  /** Una entrada por consultorio activo, en el orden del catálogo. */
+  chairs: ConsultationChair[];
   /** Pacientes esperando en la sala, para el contexto del doctor. */
   waitingCount: number;
   updatedAt: string;
