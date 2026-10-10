@@ -49,6 +49,9 @@ const TEXTAREA_CLASSES =
 /** Condiciones de cara que se ofrecen en la hoja, con su acción. */
 const SURFACE_ACTIONS: readonly ToothCondition[] = ['caries', 'restauracion'];
 
+/** Caras con las que se abre la hoja cuando no se pulsó ninguna (identidad estable). */
+const SIN_CARAS: readonly ToothSurface[] = [];
+
 /**
  * Procedimientos que la pieza admite **ahora mismo** (spec §5), según lo que tiene
  * vigente: obturar si hay caries, extraer si hay extracción indicada y rehabilitar si
@@ -73,6 +76,11 @@ export interface ToothFindingSheetProps {
   /** Paciente dueño del odontograma. */
   patientId: string;
   toothNumber: number | null;
+  /**
+   * Caras que entran **marcadas** al abrir la hoja: la cara que se pulsó en el
+   * gráfico, si el toque la acertó. Vacío = la hoja abre sin ninguna marcada.
+   */
+  initialSurfaces?: readonly ToothSurface[];
   /** Hallazgos **vigentes** de la pieza. */
   findings: readonly ToothFindingRecord[];
   /** Sin permiso de escritura la hoja solo informa. */
@@ -96,6 +104,7 @@ export const ToothFindingSheet = ({
   open,
   patientId,
   toothNumber,
+  initialSurfaces = SIN_CARAS,
   findings,
   canWrite,
   sessionId = null,
@@ -103,7 +112,7 @@ export const ToothFindingSheet = ({
   onApplied,
   onError,
 }: ToothFindingSheetProps) => {
-  const [caras, setCaras] = useState<readonly ToothSurface[]>([]);
+  const [caras, setCaras] = useState<readonly ToothSurface[]>(initialSurfaces);
   const [estado, setEstado] = useState<ClinicalState>('pendiente');
   const [ocupada, setOcupada] = useState(false);
   const [errorLocal, setErrorLocal] = useState<string | null>(null);
@@ -113,17 +122,18 @@ export const ToothFindingSheet = ({
   /** Notas que se guardan con lo que se marque ahora (la columna NOTAS del informe). */
   const [notasNuevas, setNotasNuevas] = useState('');
 
-  // Cada vez que se abre (o se cambia de pieza) la selección arranca limpia: lo
-  // que hubiera marcado antes no vale para otra pieza.
+  // Cada vez que se abre (o se cambia de pieza) la selección arranca de cero: lo
+  // que hubiera marcado antes no vale para otra pieza. Si el toque acertó una cara,
+  // entra ya marcada.
   useEffect(() => {
     if (!open) return;
-    setCaras([]);
+    setCaras(initialSurfaces);
     setEstado('pendiente');
     setErrorLocal(null);
     setEditando(null);
     setNotas('');
     setNotasNuevas('');
-  }, [open, toothNumber]);
+  }, [open, toothNumber, initialSurfaces]);
 
   const cambiarCara = (surface: ToothSurface): void =>
     setCaras((actuales) =>

@@ -2699,8 +2699,7 @@ const DICCIONARIO = {
   // La boca sin odontograma no es un error: el patrón por excepción la lee sana.
   'odonto.sana.titulo': 'Boca sana por defecto',
   'odonto.sana.texto':
-    'Este paciente todavía no tiene ningún hallazgo. En la captura por excepción la pieza sana no se guarda: no se creará nada hasta el primer hallazgo.',
-  'odonto.sana.empezar': 'Empezar a registrar',
+    'Este paciente todavía no tiene ningún hallazgo. En la captura por excepción la pieza sana no se guarda: no se creará nada hasta el primer hallazgo. Pulsa una pieza del diagrama para registrar el primero.',
 
   'odonto.leyenda.titulo': 'Leyenda',
   'odonto.leyenda.pendiente': 'pendiente (rojo)',
@@ -2804,9 +2803,10 @@ const DICCIONARIO = {
   'odonto.activa.ninguna': 'Ninguna pieza elegida: pulsa una en el diagrama.',
   'odonto.activa.pieza': 'Pieza {pieza} elegida.',
   'odonto.tactil.ayuda':
-    'Toca una pieza para marcarla con botones grandes. También puedes usar el teclado.',
-  'odonto.tactil.raton':
-    'Pulsa una cara para marcarla, o el número de la pieza para elegirla y teclear.',
+    'Pulsa una pieza para abrir sus botones. Si aciertas una cara, entra ya marcada; puedes cambiarla ahí.',
+  // Modo teclado (avanzado): la captura por defecto es por toques.
+  'odonto.teclado.activar': 'Modo teclado',
+  'odonto.teclado.desactivar': 'Usar toques',
   'odonto.aviso.piezaEntera':
     '«{condicion}» es un tratamiento de la pieza completa: no supera las caras, que se quedan como estaban.',
 } as const;

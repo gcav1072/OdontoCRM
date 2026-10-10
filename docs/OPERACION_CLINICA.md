@@ -146,10 +146,12 @@ el aviso de primera visita recuerda que hay que completarla y firmarla.
 **Odontograma** (pestaña *Odontograma*). Se marca **lo que está mal**, no lo que está
 bien: un diente sano se queda sin marca.
 
-- Se toca la pieza (o su cara) y se elige el hallazgo: caries, restauración, ausente,
-  corona, implante, endodoncia…
-- Hay una **hoja táctil de botones grandes** para trabajar con el dedo en la tableta,
-  y carga rápida por teclado en el computador.
+- Se **pulsa la pieza** (o su cara) y se abre una **hoja de botones grandes** donde se
+  elige el hallazgo: caries, restauración, ausente, corona, implante, endodoncia… Si se
+  acierta una cara con el ratón, entra ya marcada; con el dedo, la hoja no distingue
+  caras y se marcan dentro. El gesto es el **mismo en el computador y en la tableta**.
+- Para quien prefiere teclear, el botón **«Modo teclado»** (arriba a la derecha) abre la
+  **carga rápida por teclado**; es un modo aparte, no el de por defecto.
 - Todo lo que se marca queda en la **evolución** del paciente (histórico que no se
   borra) y se puede **deshacer**.
 - Se imprime en **A4** en posición anatómica (como se ve al paciente).

@@ -252,13 +252,14 @@ export interface GeometricToothProps {
   /** Sin interacción: la vista impresa no lleva foco ni manejadores. */
   readOnly?: boolean;
   /**
-   * Qué hace un toque: `surfaces` (ratón: se acierta la cara) o `tooth` (dedo: la
-   * pieza entera abre la hoja de botones grandes). Con el dedo, apuntar a una cara
-   * de 12 px es una lotería.
+   * Un **toque o clic** en la pieza. Llega la **cara** que hay bajo el punto, o
+   * `null` si se pulsó fuera de las caras (el contorno, el número o el hueco).
+   *
+   * El panel decide qué hacer con eso según el modo de captura: por defecto abre la
+   * hoja de botones de la pieza (con la cara marcada, si la hubo); en modo teclado,
+   * elige la pieza o marca la cara para la barra de carga rápida.
    */
-  tapTargets?: 'surfaces' | 'tooth';
-  onSurfaceClick?: (surface: ToothSurface) => void;
-  onToothClick?: () => void;
+  onPress?: (surface: ToothSurface | null) => void;
 }
 
 export const GeometricTooth = ({
@@ -269,15 +270,13 @@ export const GeometricTooth = ({
   active = false,
   activeSurfaces = [],
   readOnly = false,
-  tapTargets = 'surfaces',
-  onSurfaceClick,
-  onToothClick,
+  onPress,
 }: GeometricToothProps) => {
   // El rectángulo invisible es la referencia de coordenadas: su caja es
   // exactamente el lienzo de la pieza, así que la escala sale de su ancho y no
   // del `viewBox` (que el navegador estira según el ancho del contenedor).
   const lienzo = useRef<SVGRectElement>(null);
-  const interactiva = !readOnly && (onSurfaceClick !== undefined || onToothClick !== undefined);
+  const interactiva = !readOnly && onPress !== undefined;
   const marcadores = markerSlots(findings);
 
   const superficieEn = (event: MouseEvent<SVGGElement>): ToothSurface | null => {
@@ -289,24 +288,15 @@ export const GeometricTooth = ({
   };
 
   const alPulsar = (event: MouseEvent<SVGGElement>): void => {
-    // Con el dedo, cualquier toque en la pieza es «abrir esta pieza»: la precisión
-    // la da la hoja, no el polígono.
-    if (tapTargets === 'tooth') {
-      onToothClick?.();
-      return;
-    }
-
-    const superficie = superficieEn(event);
-    // Fuera del lienzo (el hueco entre piezas, el contorno o el número) la
-    // pulsación elige la pieza entera: es el gesto de «voy a teclear aquí».
-    if (superficie === null) onToothClick?.();
-    else onSurfaceClick?.(superficie);
+    // La cara bajo el punto (o `null` si se pulsó fuera de las caras): el panel sabe
+    // qué hacer con eso. Ya no hay dos gestos distintos según el puntero.
+    onPress?.(superficieEn(event));
   };
 
   const alTeclear = (event: KeyboardEvent<SVGGElement>): void => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
-    onToothClick?.();
+    onPress?.(null);
   };
 
   return (

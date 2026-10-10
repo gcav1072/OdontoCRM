@@ -31,7 +31,6 @@ import { Hand, History, Keyboard, Printer, Undo2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useNotice } from '../../hooks/useNotice';
 import { apiErrorMessage } from '../../lib/api';
 import { formatDate } from '../../lib/format';
@@ -39,19 +38,24 @@ import { t } from '../../lib/i18n';
 import { dentitionLabel, findingsForTooth, odontogramApi } from '../../lib/odontogram-api';
 import { NoticeBanner } from '../NoticeBanner';
 import { OdontogramChart } from './OdontogramChart';
+import { pressIntent } from './press-intent';
 import { QuickEntryBar, describeAction } from './QuickEntryBar';
 import type { QuickEntryAction } from './QuickEntryBar';
 import { ToothFindingSheet } from './ToothFindingSheet';
 
 /**
- * El odontograma del paciente: gráfico, carga rápida por teclado, **hoja táctil**
- * de botones grandes y avisos.
+ * El odontograma del paciente: **se captura por toques** (pulsar una pieza abre su
+ * hoja de botones), con un **modo teclado** avanzado opt-in, el deshacer y los
+ * avisos.
  *
  * Es **autocontenido** a propósito: recibe el paciente y hace sus propias
  * lecturas y mutaciones, de modo que la pestaña que lo monte no necesite saber
  * nada del odontograma. Después de cada cambio actualiza la caché con el
- * odontograma que devuelve la API (`setQueryData`): un refetch por pulsación
- * rompería la velocidad del teclado, que es la razón de ser de esta pantalla.
+ * odontograma que devuelve la API (`setQueryData`), sin esperar a un refetch.
+ *
+ * El gesto es el mismo en todos los dispositivos: pulsar una pieza abre su hoja. Si
+ * el toque acierta una cara (con ratón), entra marcada; con el dedo, la precisión la
+ * da la hoja.
  */
 
 /** Clave de caché del odontograma de un paciente: la comparten panel e histórico. */
@@ -93,16 +97,24 @@ export const OdontogramPanel = ({
 }: OdontogramPanelProps) => {
   const queryClient = useQueryClient();
   const { notice, mostrar, exito, error, limpiar } = useNotice();
-  /** Con el dedo, tocar una pieza abre la hoja de botones grandes. */
-  const punteroGrueso = useCoarsePointer();
+  /**
+   * La captura por defecto es **por toques**: pulsar una pieza abre su hoja de
+   * botones. El teclado queda como **modo avanzado**, opt-in.
+   */
+  const [modoTeclado, setModoTeclado] = useState(false);
 
   const [quick, setQuick] = useState<QuickEntryState>(initialQuickEntryState);
   const [pila, setPila] = useState<readonly UndoEntry[]>([]);
   const [pendientes, setPendientes] = useState(0);
   const [deshaciendo, setDeshaciendo] = useState(false);
   const [foco, setFoco] = useState(0);
-  /** Pieza cuya hoja de botones está abierta (táctil o ratón sin teclado). */
-  const [hoja, setHoja] = useState<number | null>(null);
+  /**
+   * Pieza cuya hoja de botones está abierta, con las caras que se marcan al abrir
+   * (la cara que se pulsó en el gráfico, si la hubo).
+   */
+  const [hoja, setHoja] = useState<{ tooth: number; surfaces: readonly ToothSurface[] } | null>(
+    null,
+  );
   /**
    * Casilla «Activar dentición temporal»: `null` = automático (la pone la boca),
    * `true`/`false` = la decisión explícita de quien la pulsa. No se persiste: al
@@ -258,11 +270,6 @@ export const OdontogramPanel = ({
   const pedirFoco = (): void => setFoco((valor) => valor + 1);
 
   const seleccionarPieza = (toothNumber: number): void => {
-    // Con el dedo no se apunta a una cara de 12 px: el toque abre la hoja.
-    if (punteroGrueso) {
-      setHoja(toothNumber);
-      return;
-    }
     setQuick((actual) => ({
       ...actual,
       toothNumber,
@@ -270,6 +277,29 @@ export const OdontogramPanel = ({
       surfaces: actual.toothNumber === toothNumber ? actual.surfaces : [],
     }));
     pedirFoco();
+  };
+
+  /**
+   * Abre la **hoja de botones** de una pieza. Si el toque acertó una cara (ratón),
+   * entra marcada; con el dedo el toque no distingue caras y la hoja se abre limpia.
+   */
+  const abrirHoja = (toothNumber: number, surface: ToothSurface | null): void => {
+    setHoja({ tooth: toothNumber, surfaces: surface === null ? [] : [surface] });
+  };
+
+  /**
+   * Un toque en el gráfico. Qué toca hacer lo decide `pressIntent`: por defecto abre
+   * la hoja de la pieza; en modo teclado elige la pieza o marca la cara para la barra.
+   */
+  const alPulsarPieza = (toothNumber: number, surface: ToothSurface | null): void => {
+    const intencion = pressIntent(modoTeclado, surface);
+    if (intencion === 'abrir-hoja') {
+      abrirHoja(toothNumber, surface);
+    } else if (intencion === 'elegir-pieza') {
+      seleccionarPieza(toothNumber);
+    } else if (surface !== null) {
+      marcarCara(toothNumber, surface);
+    }
   };
 
   /** Un cambio hecho desde la hoja: se relee el odontograma y se puede deshacer. */
@@ -306,7 +336,7 @@ export const OdontogramPanel = ({
         ? { ...actual, toothNumber: null, pendingDigits: '', surfaces: [] }
         : actual,
     );
-    setHoja((actual) => (actual !== null && isPrimaryTooth(actual) ? null : actual));
+    setHoja((actual) => (actual !== null && isPrimaryTooth(actual.tooth) ? null : actual));
   };
 
   const marcarCara = (toothNumber: number, surface: ToothSurface): void => {
@@ -376,6 +406,22 @@ export const OdontogramPanel = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {canWrite && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setModoTeclado((actual) => !actual)}
+              leadingIcon={
+                modoTeclado ? (
+                  <Hand className="size-4" aria-hidden />
+                ) : (
+                  <Keyboard className="size-4" aria-hidden />
+                )
+              }
+            >
+              {t(modoTeclado ? 'odonto.teclado.desactivar' : 'odonto.teclado.activar')}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -413,17 +459,6 @@ export const OdontogramPanel = ({
         {detail === null && (
           <Alert variant="info" title={t('odonto.sana.titulo')}>
             <p>{t('odonto.sana.texto')}</p>
-            {canWrite && (
-              <div className="mt-3">
-                <Button
-                  variant="secondary"
-                  leadingIcon={<Keyboard className="size-4" aria-hidden />}
-                  onClick={pedirFoco}
-                >
-                  {t('odonto.sana.empezar')}
-                </Button>
-              </div>
-            )}
           </Alert>
         )}
 
@@ -457,54 +492,55 @@ export const OdontogramPanel = ({
 
         {canWrite ? (
           <>
-            {/* Primero el diagrama: el gesto empieza ahí (pulsar una cara o el
-                número de la pieza), y la barra de abajo muestra la pieza que
-                quedó elegida. */}
+            {/* Primero el diagrama: el gesto empieza ahí. Pulsar una pieza abre su
+                hoja de botones; si el toque acierta una cara (ratón), entra marcada. */}
             <OdontogramChart
               detail={detail}
               dentition={denticionGrafico}
-              activeTooth={quick.toothNumber ?? hoja}
+              activeTooth={quick.toothNumber ?? hoja?.tooth ?? null}
               activeSurfaces={quick.surfaces}
-              tapTargets={punteroGrueso ? 'tooth' : 'surfaces'}
-              onSurfaceClick={marcarCara}
-              onToothClick={seleccionarPieza}
+              onToothPress={alPulsarPieza}
               readOnly={false}
             />
 
-            <p className="text-xs text-ink-subtle">
-              {punteroGrueso ? t('odonto.tactil.ayuda') : t('odonto.tactil.raton')}
-            </p>
+            {modoTeclado ? (
+              <>
+                <QuickEntryBar
+                  patientId={patientId}
+                  detail={detail}
+                  state={quick}
+                  sessionId={sessionId}
+                  onStateChange={setQuick}
+                  onApplied={aplicar}
+                  onError={(fallo) => error(apiErrorMessage(fallo))}
+                  onPendingChange={setPendientes}
+                  onCancel={limpiar}
+                  focusSignal={foco}
+                />
 
-            <QuickEntryBar
-              patientId={patientId}
-              detail={detail}
-              state={quick}
-              sessionId={sessionId}
-              onStateChange={setQuick}
-              onApplied={aplicar}
-              onError={(fallo) => error(apiErrorMessage(fallo))}
-              onPendingChange={setPendientes}
-              onCancel={limpiar}
-              focusSignal={foco}
-            />
-
-            {/* Sin teclado a mano: la misma hoja táctil, con botones grandes. */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setHoja(quick.toothNumber ?? null)}
-                disabled={quick.toothNumber === null}
-                leadingIcon={<Hand className="size-4" aria-hidden />}
-              >
-                {t('odonto.sheet.abrir')}
-              </Button>
-              <span className="text-xs text-ink-subtle">
-                {quick.toothNumber === null
-                  ? t('odonto.activa.ninguna')
-                  : t('odonto.activa.pieza', { pieza: quick.toothNumber })}
-              </span>
-            </div>
+                {/* La misma hoja táctil, abierta para la pieza que se teclea. */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      if (quick.toothNumber !== null) abrirHoja(quick.toothNumber, null);
+                    }}
+                    disabled={quick.toothNumber === null}
+                    leadingIcon={<Hand className="size-4" aria-hidden />}
+                  >
+                    {t('odonto.sheet.abrir')}
+                  </Button>
+                  <span className="text-xs text-ink-subtle">
+                    {quick.toothNumber === null
+                      ? t('odonto.activa.ninguna')
+                      : t('odonto.activa.pieza', { pieza: quick.toothNumber })}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-ink-subtle">{t('odonto.tactil.ayuda')}</p>
+            )}
           </>
         ) : (
           <>
@@ -522,8 +558,9 @@ export const OdontogramPanel = ({
         <ToothFindingSheet
           open={canWrite && hoja !== null}
           patientId={patientId}
-          toothNumber={hoja}
-          findings={findingsForTooth(detail, hoja ?? 0)}
+          toothNumber={hoja?.tooth ?? null}
+          initialSurfaces={hoja?.surfaces ?? []}
+          findings={findingsForTooth(detail, hoja?.tooth ?? 0)}
           canWrite={canWrite}
           sessionId={sessionId}
           onClose={() => setHoja(null)}

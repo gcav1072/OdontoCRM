@@ -29,15 +29,13 @@ import { GeometricTooth, TOOTH_LABEL_BASELINE, ToothConditionSymbol } from './Ge
 /** Alto del lienzo de una arcada: la pieza (100) más el número de pieza. */
 const ARCH_HEIGHT = TOOTH_LABEL_BASELINE + 14;
 
-/** Un ancho mínimo para que las piezas sigan siendo pulsables en pantallas estrechas. */
-const MIN_WIDTH_CLASS = 'min-w-[44rem]';
-
 /**
- * Con el dedo, cada pieza tiene que medir al menos ~44 px (lo que un dedo
- * acierta): 16 piezas × 44 px ≈ 704 px. Si la tableta es más estrecha, la arcada
- * se desplaza en horizontal en vez de encoger las piezas.
+ * Un ancho mínimo para que las piezas sigan siendo cómodas de pulsar en pantallas
+ * estrechas. Ya no hay un ancho distinto para el dedo: el gesto es el mismo en todos
+ * los dispositivos —pulsar la pieza abre su hoja— y la precisión de la cara la da la
+ * hoja, no el tamaño de la casilla.
  */
-const MIN_TOUCH_WIDTH_CLASS = 'min-w-[48rem]';
+const MIN_WIDTH_CLASS = 'min-w-[44rem]';
 
 interface ArchProps {
   title: string;
@@ -50,9 +48,7 @@ interface ArchProps {
   activeTooth: number | null;
   activeSurfaces: readonly ToothSurface[];
   readOnly: boolean;
-  tapTargets: 'surfaces' | 'tooth';
-  onSurfaceClick?: (toothNumber: number, surface: ToothSurface) => void;
-  onToothClick?: (toothNumber: number) => void;
+  onToothPress?: (toothNumber: number, surface: ToothSurface | null) => void;
 }
 
 const Arch = ({
@@ -64,9 +60,7 @@ const Arch = ({
   activeTooth,
   activeSurfaces,
   readOnly,
-  tapTargets,
-  onSurfaceClick,
-  onToothClick,
+  onToothPress,
 }: ArchProps) => (
   <section>
     <p className="mb-1 text-xs font-medium text-ink-subtle">
@@ -76,7 +70,7 @@ const Arch = ({
     <div className="overflow-x-auto">
       <svg
         viewBox={`-6 -6 ${String(width + 12)} ${String(ARCH_HEIGHT)}`}
-        className={`w-full ${tapTargets === 'tooth' ? MIN_TOUCH_WIDTH_CLASS : MIN_WIDTH_CLASS}`}
+        className={`w-full ${MIN_WIDTH_CLASS}`}
         role="group"
         aria-label={title}
       >
@@ -92,14 +86,10 @@ const Arch = ({
                 active={activa}
                 activeSurfaces={activa ? activeSurfaces : []}
                 readOnly={readOnly}
-                tapTargets={tapTargets}
-                onSurfaceClick={
-                  onSurfaceClick === undefined
+                onPress={
+                  onToothPress === undefined
                     ? undefined
-                    : (surface) => onSurfaceClick(tooth.toothNumber, surface)
-                }
-                onToothClick={
-                  onToothClick === undefined ? undefined : () => onToothClick(tooth.toothNumber)
+                    : (surface) => onToothPress(tooth.toothNumber, surface)
                 }
               />
             </g>
@@ -202,17 +192,14 @@ export interface OdontogramChartProps {
   detail: OdontogramDetail | null;
   /** Pieza activa de la carga rápida. */
   activeTooth?: number | null;
-  /** Caras marcadas de la pieza activa. */
+  /** Caras marcadas de la pieza activa (modo teclado). */
   activeSurfaces?: readonly ToothSurface[];
-  onSurfaceClick?: (toothNumber: number, surface: ToothSurface) => void;
-  onToothClick?: (toothNumber: number) => void;
-  readOnly?: boolean;
   /**
-   * Qué hace un toque sobre una pieza: `surfaces` (ratón: se acierta la cara) o
-   * `tooth` (dedo: abre la hoja de botones grandes). Lo decide quien pinta el
-   * gráfico con `useCoarsePointer`.
+   * Un **toque o clic** en una pieza: llega su número y la cara bajo el punto (o
+   * `null` si se pulsó fuera de las caras). El panel decide qué hacer según el modo.
    */
-  tapTargets?: 'surfaces' | 'tooth';
+  onToothPress?: (toothNumber: number, surface: ToothSurface | null) => void;
+  readOnly?: boolean;
   /** Dentición a dibujar cuando todavía no hay odontograma. */
   dentition?: Dentition;
 }
@@ -221,10 +208,8 @@ export const OdontogramChart = ({
   detail,
   activeTooth = null,
   activeSurfaces = [],
-  onSurfaceClick,
-  onToothClick,
+  onToothPress,
   readOnly = false,
-  tapTargets = 'surfaces',
   dentition,
 }: OdontogramChartProps) => {
   const layout = archLayout(dentition ?? detail?.dentition ?? 'permanente');
@@ -240,9 +225,7 @@ export const OdontogramChart = ({
         activeTooth={activeTooth}
         activeSurfaces={activeSurfaces}
         readOnly={readOnly}
-        tapTargets={tapTargets}
-        onSurfaceClick={onSurfaceClick}
-        onToothClick={onToothClick}
+        onToothPress={onToothPress}
       />
       <Arch
         title={t('odonto.arcada.inferior')}
@@ -253,9 +236,7 @@ export const OdontogramChart = ({
         activeTooth={activeTooth}
         activeSurfaces={activeSurfaces}
         readOnly={readOnly}
-        tapTargets={tapTargets}
-        onSurfaceClick={onSurfaceClick}
-        onToothClick={onToothClick}
+        onToothPress={onToothPress}
       />
       {/*
         Dentición mixta (ADR 0051): las piezas de leche van en su propia banda, cada
@@ -272,9 +253,7 @@ export const OdontogramChart = ({
           activeTooth={activeTooth}
           activeSurfaces={activeSurfaces}
           readOnly={readOnly}
-          tapTargets={tapTargets}
-          onSurfaceClick={onSurfaceClick}
-          onToothClick={onToothClick}
+          onToothPress={onToothPress}
         />
       )}
       {layout.lowerPrimary.length > 0 && (
@@ -287,9 +266,7 @@ export const OdontogramChart = ({
           activeTooth={activeTooth}
           activeSurfaces={activeSurfaces}
           readOnly={readOnly}
-          tapTargets={tapTargets}
-          onSurfaceClick={onSurfaceClick}
-          onToothClick={onToothClick}
+          onToothPress={onToothPress}
         />
       )}
       <Legend />
