@@ -1,5 +1,10 @@
 import { createOutboxCheck, createPoolCheck } from '@odontocrm/db';
-import { buildServer, createLetterheadLookup, isProduction } from '@odontocrm/kernel';
+import {
+  buildServer,
+  createBrandLookup,
+  createLetterheadLookup,
+  isProduction,
+} from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 
 import type { ReportingConfig } from './config.js';
@@ -54,6 +59,7 @@ export const createReportingServer = async (
         timeoutMs: config.PDF_TIMEOUT_MS,
       }),
     letterheadLookup: options.services?.letterheadLookup ?? createLetterheadLookup(config),
+    brandLookup: options.services?.brandLookup ?? createBrandLookup(config),
     lastError: options.services?.lastError ?? null,
   };
 

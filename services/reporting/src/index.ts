@@ -7,7 +7,7 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
-import { createLetterheadLookup, startServer } from '@odontocrm/kernel';
+import { createBrandLookup, createLetterheadLookup, startServer } from '@odontocrm/kernel';
 
 import { loadReportingConfig } from './config.js';
 import { handleDomainEvents } from './consumer.js';
@@ -37,6 +37,7 @@ const main = async (): Promise<void> => {
   const services: Omit<ReportingServices, 'config' | 'db' | 'pool'> = {
     pdf,
     letterheadLookup: createLetterheadLookup(config),
+    brandLookup: createBrandLookup(config),
     lastError: null,
   };
 

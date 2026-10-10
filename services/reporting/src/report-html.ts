@@ -8,6 +8,7 @@ import {
   clinicFullAddress,
   type LetterheadSnapshot,
   type ReportDocument,
+  type BrandThemePayload,
 } from '@odontocrm/contracts';
 import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
@@ -60,9 +61,9 @@ const fechaHora = (iso: string): string => {
   return `${valor('day')}/${valor('month')}/${valor('year')} ${valor('hour')}:${valor('minute')}`;
 };
 
-const estilos = (fontFaces: string): string => `
+const estilos = (fontFaces: string, brand: BrandThemePayload | null | undefined): string => `
   ${fontFaces}
-  ${brandStyles()}
+  ${brandStyles(brand ?? BRAND)}
   ${brandWatermarkCss()}
   @page { size: A4 landscape; margin: 10mm 12mm; }
   * { box-sizing: border-box; }
@@ -101,6 +102,8 @@ const estilos = (fontFaces: string): string => `
 export const reportHtml = async (
   documento: ReportDocument,
   letterhead?: LetterheadSnapshot | undefined,
+  brand?: BrandThemePayload | null,
+  fontFaceCss?: string | null,
 ): Promise<string> => {
   // La identidad del consultorio: la de la base (ADR 0056) o el respaldo del código.
   const consultorio = letterhead?.clinic ?? CLINIC;
@@ -166,7 +169,7 @@ export const reportHtml = async (
 <head>
 <meta charset="utf-8">
 <title>${escapeHtml(documento.title)}</title>
-<style>${estilos(await brandFontFaceCss())}</style>
+<style>${estilos(fontFaceCss ?? (await brandFontFaceCss()), brand)}</style>
 </head>
 <body>
   ${marcaDeAgua}
