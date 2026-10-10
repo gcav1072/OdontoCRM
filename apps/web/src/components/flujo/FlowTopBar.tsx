@@ -119,7 +119,7 @@ export const FlowTopBar = ({
               onClick={() => onShift(1)}
               leadingIcon={<ChevronRight className="size-4" aria-hidden />}
             />
-            <Field label={t('flujo.fecha')} className="w-40">
+            <Field label={t('flujo.fecha')} className="w-full @2xl:w-40">
               <Input
                 type="date"
                 value={date}

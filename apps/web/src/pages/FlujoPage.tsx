@@ -276,7 +276,7 @@ export const FlujoPage = () => {
         </Alert>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <div className="grid gap-5 @6xl:grid-cols-[20rem_minmax(0,1fr)]">
         <DayQueue
           appointments={visibles}
           selectedId={cita?.id ?? null}
