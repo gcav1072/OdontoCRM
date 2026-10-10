@@ -53,6 +53,10 @@ export const toAppointmentSummary = (
   options: {
     request?: AppointmentRequestRow | null;
     rescheduledToId?: string | null;
+    /** Nombre del consultorio resuelto por quien tiene el catálogo a mano. */
+    chairLabel?: string | null;
+    /** Nombre del odontólogo resuelto (opcional: la cita puede no tener doctor). */
+    dentistName?: string | null;
   } = {},
 ): AppointmentSummary => {
   const request = options.request ?? null;
@@ -77,7 +81,9 @@ export const toAppointmentSummary = (
     status: row.status as AppointmentStatus,
     callCount: row.callCount,
     dentistId: row.dentistId,
+    dentistName: options.dentistName ?? null,
     chairId: row.chairId,
+    chairLabel: options.chairLabel ?? null,
     checkedInAt: row.checkedInAt?.toISOString() ?? null,
     startedAt: row.startedAt?.toISOString() ?? null,
     finishedAt: row.finishedAt?.toISOString() ?? null,

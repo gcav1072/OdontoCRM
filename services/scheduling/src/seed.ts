@@ -1,11 +1,11 @@
 import { addMinutes, expandTemplateSlots, weekdayOf } from '@odontocrm/contracts';
 import { existsSync, readFileSync } from 'node:fs';
 import pg from 'pg';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 
 import { loadSchedulingConfig } from './config.js';
 import { createSchedulingDatabase } from './db/client.js';
-import { appointmentRequests, appointments, slotTemplates } from './db/schema.js';
+import { appointmentRequests, appointments, chairs, slotTemplates } from './db/schema.js';
 import { toHm } from './mappers.js';
 import { todayInClinic } from './shared/context.js';
 
@@ -149,6 +149,19 @@ const main = async (): Promise<void> => {
 
   // 2) Citas del día repartidas por las franjas de la plantilla.
   if (appointmentsToCreate > 0) {
+    // El consultorio por defecto, que sembró la migración multisillón.
+    const chairRow = (
+      await database.db
+        .select({ id: chairs.id })
+        .from(chairs)
+        .orderBy(asc(chairs.sortOrder), asc(chairs.label))
+        .limit(1)
+    )[0];
+    if (chairRow === undefined) {
+      throw new Error('No hay consultorios: aplica las migraciones antes de sembrar.');
+    }
+    const chairId = chairRow.id;
+
     const templates = await database.db
       .select()
       .from(slotTemplates)
@@ -198,6 +211,7 @@ const main = async (): Promise<void> => {
           durationMinutes: 30,
           slotKind: 'franja' as const,
           status,
+          chairId,
           callCount: status === 'en_sala_espera' ? 1 : 0,
           notes: `${MARK}: cita de ejemplo`,
           createdBy: null,

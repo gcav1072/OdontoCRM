@@ -10,6 +10,7 @@ import { registerInternalRoutes } from './routes/internal-routes.js';
 import { registerRequestRoutes } from './routes/request-routes.js';
 import type { SchedulingServices } from './services.js';
 import { createClinicalSessionLookup } from './shared/clinical-client.js';
+import { createDentistCatalog } from './shared/identity-client.js';
 
 export interface CreateSchedulingServerOptions {
   config: SchedulingConfig;
@@ -51,6 +52,7 @@ export const createSchedulingServer = async (
     db: database.db,
     pool: database.pool,
     sessionLookup: createClinicalSessionLookup(config),
+    dentistCatalog: createDentistCatalog(config),
     ...(options.kickOutbox === undefined ? {} : { kickOutbox: options.kickOutbox }),
   };
 

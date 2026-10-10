@@ -3,6 +3,7 @@ import type { SchedulingDb } from './db/client.js';
 import type pg from 'pg';
 
 import type { ClinicalSessionLookup } from './shared/clinical-client.js';
+import type { DentistCatalog } from './shared/identity-client.js';
 
 /** Todo lo que necesitan las rutas del servicio de agenda. */
 export interface SchedulingServices {
@@ -14,6 +15,11 @@ export interface SchedulingServices {
    * es lo que respalda el «atendido» sin motivo (Fase 7).
    */
   sessionLookup: ClinicalSessionLookup;
+  /**
+   * Catálogo `dentistId → nombre` de los odontólogos (leído de identity, cacheado):
+   * la cita guarda el id, no el nombre, y la jornada lo resuelve para mostrarlo.
+   */
+  dentistCatalog: DentistCatalog;
   /**
    * Adelanta la publicación de los eventos pendientes. Sirve para lo que tiene
    * que verse **ya** en otra pantalla: el llamado de la secretaría aparece en el

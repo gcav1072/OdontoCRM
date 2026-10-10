@@ -26,5 +26,6 @@ export const stableUuid = (key: string): string => {
   ].join('-');
 };
 
-/** Identificador estable del cupo de un día. */
-export const dayCapacityId = (date: string): string => stableUuid(`day_capacity:${date}`);
+/** Identificador estable del cupo de un **consultorio** en un día (clave `date + chair`). */
+export const dayCapacityId = (date: string, chairId: string): string =>
+  stableUuid(`day_capacity:${date}:${chairId}`);

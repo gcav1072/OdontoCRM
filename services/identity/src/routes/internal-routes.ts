@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
-import { letterheadSnapshot } from '../clinic/identity-service.js';
+import { letterheadSnapshot, listDentists } from '../clinic/identity-service.js';
 import type { IdentityServices } from '../services.js';
 
 const letterheadQuerySchema = z.object({
@@ -54,5 +54,16 @@ export const registerInternalRoutes = (app: FastifyInstance, services: IdentityS
   app.get('/internal/v1/identity/letterhead', async (request, reply) => {
     const query = parseQuery(letterheadQuerySchema, request.query);
     return reply.status(200).send(await letterheadSnapshot(db, blobStore, query.dentist ?? null));
+  });
+
+  /**
+   * El catálogo de odontólogos con perfil: `id → nombre` (más MPPS y especialidad).
+   * Lo lee la agenda para rotular el odontólogo de una cita sin guardar su nombre en
+   * la cita, y para el selector de la interfaz. Cambia poco, así que el consumidor lo
+   * cachea unos minutos.
+   */
+  app.get('/internal/v1/identity/dentists', async (_request, reply) => {
+    const items = await listDentists(db);
+    return reply.status(200).send({ items, total: items.length });
   });
 };

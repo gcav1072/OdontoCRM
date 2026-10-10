@@ -15,8 +15,10 @@ import type { SchedulingConfig } from '../config.js';
 import type { SchedulingDb } from '../db/client.js';
 import {
   appointments,
+  chairs,
   dayCapacities,
   slotTemplates,
+  type ChairRow,
   type DayCapacityRow,
   type SlotTemplateRow,
 } from '../db/schema.js';
@@ -25,9 +27,11 @@ import type { ActorContext } from '../shared/context.js';
 import { auditPayload, publish } from '../shared/events.js';
 import { dayCapacityId } from '../shared/ids.js';
 
-/** Cupo del día resuelto: explícito, deducido de las franjas o por defecto. */
+/** Cupo de un **consultorio** en un día: explícito, deducido de las franjas o por defecto. */
 export interface CapacityInfo {
   date: string;
+  chairId: string;
+  chairLabel: string | null;
   capacity: number;
   source: CapacitySource;
   explicit: DayCapacityRow | null;
@@ -37,33 +41,77 @@ export interface CapacityInfo {
   warning: string | null;
 }
 
-/** Citas que ocupan el día (las canceladas y reprogramadas liberan su hueco). */
-export const assignedOn = async (db: SchedulingDb, date: string): Promise<number> => {
+/**
+ * Citas que ocupan el día (las canceladas y reprogramadas liberan su hueco).
+ * Con `chairId` cuenta solo las de ese consultorio.
+ */
+export const assignedOn = async (
+  db: SchedulingDb,
+  date: string,
+  chairId?: string,
+): Promise<number> => {
+  const condiciones = [
+    eq(appointments.appointmentDate, date),
+    inArray(appointments.status, [...OCCUPYING_STATUSES]),
+  ];
+  if (chairId !== undefined) condiciones.push(eq(appointments.chairId, chairId));
+
   const rows = await db
     .select({ value: sql<number>`count(1)::int` })
     .from(appointments)
-    .where(
-      and(
-        eq(appointments.appointmentDate, date),
-        inArray(appointments.status, [...OCCUPYING_STATUSES]),
-      ),
-    );
+    .where(and(...condiciones));
   return rows[0]?.value ?? 0;
 };
 
+/**
+ * Plantillas activas de un día para un consultorio: la **propia** del sillón si la
+ * tiene, y si no, la **común** (`chair_id = null`). Sin `chairId` se devuelven las
+ * comunes, que es la plantilla que ve la jornada agregada.
+ */
 export const activeTemplatesFor = async (
   db: SchedulingDb,
   weekday: number,
-): Promise<SlotTemplateRow[]> =>
-  db
+  chairId: string | null = null,
+): Promise<SlotTemplateRow[]> => {
+  const rows = await db
     .select()
     .from(slotTemplates)
     .where(and(eq(slotTemplates.weekday, weekday), eq(slotTemplates.isActive, true)))
     .orderBy(asc(slotTemplates.startTime));
 
-/** Franjas de un día según su plantilla (vacío si no es día de consulta). */
-export const slotsForDate = async (db: SchedulingDb, date: string): Promise<TimeRange[]> => {
-  const templates = await activeTemplatesFor(db, weekdayOf(date));
+  const comunes = rows.filter((row) => row.chairId === null);
+  if (chairId === null) return comunes;
+  const propias = rows.filter((row) => row.chairId === chairId);
+  return propias.length > 0 ? propias : comunes;
+};
+
+/** ¿El consultorio tiene plantilla propia ese día de la semana? */
+export const hasOwnSchedule = async (
+  db: SchedulingDb,
+  weekday: number,
+  chairId: string,
+): Promise<boolean> => {
+  const rows = await db
+    .select({ id: slotTemplates.id })
+    .from(slotTemplates)
+    .where(
+      and(
+        eq(slotTemplates.weekday, weekday),
+        eq(slotTemplates.isActive, true),
+        eq(slotTemplates.chairId, chairId),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+};
+
+/** Franjas de un día según la plantilla de su consultorio (vacío si no es día de consulta). */
+export const slotsForDate = async (
+  db: SchedulingDb,
+  date: string,
+  chairId: string | null = null,
+): Promise<TimeRange[]> => {
+  const templates = await activeTemplatesFor(db, weekdayOf(date), chairId);
   return templates.flatMap((template) =>
     expandTemplateSlots({
       startTime: toHm(template.startTime),
@@ -79,12 +127,15 @@ export const slotsForDate = async (db: SchedulingDb, date: string): Promise<Time
 
 const buildInfo = (
   date: string,
+  chair: Pick<ChairRow, 'id' | 'label'>,
   capacity: number,
   source: CapacitySource,
   explicit: DayCapacityRow | null,
   assigned: number,
 ): CapacityInfo => ({
   date,
+  chairId: chair.id,
+  chairLabel: chair.label,
   capacity,
   source,
   explicit,
@@ -93,33 +144,49 @@ const buildInfo = (
   isFull: assigned >= capacity,
   warning:
     assigned > capacity
-      ? `El cupo (${String(capacity)}) queda por debajo de las ${String(assigned)} citas ya asignadas de ese día: no se ha borrado ninguna.`
+      ? `El cupo de ${chair.label} (${String(capacity)}) queda por debajo de las ${String(assigned)} citas ya asignadas de ese día: no se ha borrado ninguna.`
       : null,
 });
+
+/** Ficha del consultorio (para etiquetar el cupo); error si no existe. */
+export const chairFor = async (db: SchedulingDb, chairId: string): Promise<ChairRow> => {
+  const rows = await db.select().from(chairs).where(eq(chairs.id, chairId)).limit(1);
+  const row = rows[0];
+  if (row === undefined) throw new NotFoundError('El consultorio no existe');
+  return row;
+};
 
 export const capacityFor = async (
   db: SchedulingDb,
   date: string,
   config: Pick<SchedulingConfig, 'DEFAULT_DAY_CAPACITY'>,
+  chairId: string,
 ): Promise<CapacityInfo> => {
+  const chair = await chairFor(db, chairId);
   const [explicitRows, assigned, slots] = await Promise.all([
-    db.select().from(dayCapacities).where(eq(dayCapacities.date, date)).limit(1),
-    assignedOn(db, date),
-    slotsForDate(db, date),
+    db
+      .select()
+      .from(dayCapacities)
+      .where(and(eq(dayCapacities.date, date), eq(dayCapacities.chairId, chairId)))
+      .limit(1),
+    assignedOn(db, date, chairId),
+    slotsForDate(db, date, chairId),
   ]);
 
   const explicit = explicitRows[0] ?? null;
   if (explicit !== null) {
-    return buildInfo(date, explicit.capacity, 'explicito', explicit, assigned);
+    return buildInfo(date, chair, explicit.capacity, 'explicito', explicit, assigned);
   }
   if (slots.length > 0) {
-    return buildInfo(date, slots.length, 'plantilla', null, assigned);
+    return buildInfo(date, chair, slots.length, 'plantilla', null, assigned);
   }
-  return buildInfo(date, config.DEFAULT_DAY_CAPACITY, 'defecto', null, assigned);
+  return buildInfo(date, chair, config.DEFAULT_DAY_CAPACITY, 'defecto', null, assigned);
 };
 
 export const toDayCapacity = (info: CapacityInfo): DayCapacity => ({
   date: info.date,
+  chairId: info.chairId,
+  chairLabel: info.chairLabel,
   capacity: info.capacity,
   source: info.source,
   explicitCapacity: info.explicit?.capacity ?? null,
@@ -132,44 +199,45 @@ export const toDayCapacity = (info: CapacityInfo): DayCapacity => ({
   updatedAt: info.explicit?.updatedAt.toISOString() ?? null,
 });
 
-/** Cupos de un rango de fechas (para el calendario de ocupación de la jornada). */
+/**
+ * Cupos de un rango de fechas **agregados por día** (suma de consultorios), para el
+ * calendario de ocupación. El detalle por consultorio lo devuelve la jornada
+ * (`getDayView`).
+ */
 export const listCapacities = async (
   db: SchedulingDb,
   from: string,
   to: string,
   config: Pick<SchedulingConfig, 'DEFAULT_DAY_CAPACITY'>,
 ): Promise<DayCapacity[]> => {
-  const explicitRows = await db
-    .select()
-    .from(dayCapacities)
-    .where(and(gte(dayCapacities.date, from), lte(dayCapacities.date, to)));
-  const explicitByDate = new Map(explicitRows.map((row) => [row.date, row]));
+  const [activeChairs, explicitRows, counts, allTemplates] = await Promise.all([
+    db
+      .select()
+      .from(chairs)
+      .where(eq(chairs.isActive, true))
+      .orderBy(asc(chairs.sortOrder), asc(chairs.label)),
+    db
+      .select()
+      .from(dayCapacities)
+      .where(and(gte(dayCapacities.date, from), lte(dayCapacities.date, to))),
+    db
+      .select({ date: appointments.appointmentDate, value: sql<number>`count(1)::int` })
+      .from(appointments)
+      .where(
+        and(
+          gte(appointments.appointmentDate, from),
+          lte(appointments.appointmentDate, to),
+          inArray(appointments.status, [...OCCUPYING_STATUSES]),
+        ),
+      )
+      .groupBy(appointments.appointmentDate),
+    db.select().from(slotTemplates).where(eq(slotTemplates.isActive, true)),
+  ]);
 
-  const allTemplates = await db
-    .select()
-    .from(slotTemplates)
-    .where(eq(slotTemplates.isActive, true));
-  const byWeekday = new Map<number, SlotTemplateRow[]>();
-  for (const template of allTemplates) {
-    const list = byWeekday.get(template.weekday) ?? [];
-    list.push(template);
-    byWeekday.set(template.weekday, list);
+  const explicitByDate = new Map<string, number>();
+  for (const row of explicitRows) {
+    explicitByDate.set(row.date, (explicitByDate.get(row.date) ?? 0) + row.capacity);
   }
-
-  const counts = await db
-    .select({
-      date: appointments.appointmentDate,
-      value: sql<number>`count(1)::int`,
-    })
-    .from(appointments)
-    .where(
-      and(
-        gte(appointments.appointmentDate, from),
-        lte(appointments.appointmentDate, to),
-        inArray(appointments.status, [...OCCUPYING_STATUSES]),
-      ),
-    )
-    .groupBy(appointments.appointmentDate);
   const assignedByDate = new Map(counts.map((row) => [row.date, row.value]));
 
   const result: DayCapacity[] = [];
@@ -181,35 +249,67 @@ export const listCapacities = async (
     day = new Date(day.getTime() + 86_400_000)
   ) {
     const date = day.toISOString().slice(0, 10);
+    const weekday = weekdayOf(date);
+
+    // Capacidad del día = suma de la de cada consultorio activo (plantilla propia o común).
+    let slotTotal = 0;
+    let capacity = 0;
+    for (const chair of activeChairs) {
+      const propias = allTemplates.filter(
+        (template) => template.chairId === chair.id && template.weekday === weekday,
+      );
+      const comunes = allTemplates.filter(
+        (template) => template.chairId === null && template.weekday === weekday,
+      );
+      const efectivas = propias.length > 0 ? propias : comunes;
+      const slotCount = efectivas.reduce(
+        (total, template) =>
+          total +
+          expandTemplateSlots({
+            startTime: toHm(template.startTime),
+            endTime: toHm(template.endTime),
+            slotMinutes: template.slotMinutes,
+            breaks: template.breaks,
+          }).length,
+        0,
+      );
+      slotTotal += slotCount;
+      capacity += slotCount > 0 ? slotCount : config.DEFAULT_DAY_CAPACITY;
+    }
+
     const explicit = explicitByDate.get(date) ?? null;
-    const templates = byWeekday.get(weekdayOf(date)) ?? [];
-    const slotCount = templates.reduce(
-      (total, template) =>
-        total +
-        expandTemplateSlots({
-          startTime: toHm(template.startTime),
-          endTime: toHm(template.endTime),
-          slotMinutes: template.slotMinutes,
-          breaks: template.breaks,
-        }).length,
-      0,
-    );
-
     const assigned = assignedByDate.get(date) ?? 0;
-    const capacity =
-      explicit?.capacity ?? (slotCount > 0 ? slotCount : config.DEFAULT_DAY_CAPACITY);
+    const capacidadDia = explicit ?? capacity;
     const source: CapacitySource =
-      explicit !== null ? 'explicito' : slotCount > 0 ? 'plantilla' : 'defecto';
+      explicit !== null ? 'explicito' : slotTotal > 0 ? 'plantilla' : 'defecto';
 
-    result.push(toDayCapacity(buildInfo(date, capacity, source, explicit, assigned)));
+    result.push({
+      date,
+      chairId: null,
+      chairLabel: null,
+      capacity: capacidadDia,
+      source,
+      explicitCapacity: explicit,
+      notes: null,
+      assigned,
+      available: Math.max(0, capacidadDia - assigned),
+      isFull: assigned >= capacidadDia,
+      warning:
+        assigned > capacidadDia
+          ? `El cupo (${String(capacidadDia)}) queda por debajo de las ${String(assigned)} citas ya asignadas de ese día: no se ha borrado ninguna.`
+          : null,
+      updatedBy: null,
+      updatedAt: null,
+    });
   }
   return result;
 };
 
-/** Cambia el cupo del día (editable en cualquier momento, incluso ya asignado). */
+/** Cambia el cupo de un **consultorio** en un día (editable en cualquier momento). */
 export const setCapacity = async (
   db: SchedulingDb,
   input: {
+    chairId: string;
     date: string;
     capacity: number;
     notes?: string | undefined;
@@ -218,19 +318,20 @@ export const setCapacity = async (
   actor: ActorContext,
   config: Pick<SchedulingConfig, 'DEFAULT_DAY_CAPACITY'>,
 ): Promise<DayCapacity> => {
-  const previous = await capacityFor(db, input.date, config);
+  const previous = await capacityFor(db, input.date, config, input.chairId);
 
   await db.transaction(async (tx) => {
     await tx
       .insert(dayCapacities)
       .values({
         date: input.date,
+        chairId: input.chairId,
         capacity: input.capacity,
         notes: input.notes ?? null,
         updatedBy: actor.actorId,
       })
       .onConflictDoUpdate({
-        target: dayCapacities.date,
+        target: [dayCapacities.date, dayCapacities.chairId],
         set: {
           capacity: input.capacity,
           notes: input.notes ?? null,
@@ -241,14 +342,14 @@ export const setCapacity = async (
 
     await publish(tx, {
       topic: EVENT_TOPICS.capacityChanged,
-      aggregateId: dayCapacityId(input.date),
+      aggregateId: dayCapacityId(input.date, input.chairId),
       actor,
       payload: {
         ...auditPayload({
           entityType: 'day_capacity',
-          entityId: dayCapacityId(input.date),
+          entityId: dayCapacityId(input.date, input.chairId),
           action: 'day_capacity_changed',
-          summary: `Cupo del ${input.date}: ${String(previous.capacity)} → ${String(input.capacity)}`,
+          summary: `Cupo de ${previous.chairLabel ?? 'consultorio'} el ${input.date}: ${String(previous.capacity)} → ${String(input.capacity)}`,
           changedFields: ['capacity'],
           before: { capacity: previous.capacity, assigned: previous.assigned },
           after: { capacity: input.capacity, assigned: previous.assigned },
@@ -256,18 +357,20 @@ export const setCapacity = async (
           actor,
         }),
         date: input.date,
+        chairId: input.chairId,
         capacity: input.capacity,
         assigned: previous.assigned,
       },
     });
   });
 
-  return toDayCapacity(await capacityFor(db, input.date, config));
+  return toDayCapacity(await capacityFor(db, input.date, config, input.chairId));
 };
 
 export const toSlotTemplate = (row: SlotTemplateRow): SlotTemplate => ({
   id: row.id,
   weekday: row.weekday,
+  chairId: row.chairId,
   startTime: toHm(row.startTime),
   endTime: toHm(row.endTime),
   slotMinutes: row.slotMinutes,
@@ -298,6 +401,7 @@ export const createTemplate = async (
       .insert(slotTemplates)
       .values({
         weekday: input.weekday,
+        chairId: input.chairId,
         startTime: input.startTime,
         endTime: input.endTime,
         slotMinutes: input.slotMinutes,
@@ -352,6 +456,7 @@ export const updateTemplate = async (
       .update(slotTemplates)
       .set({
         ...(input.weekday === undefined ? {} : { weekday: input.weekday }),
+        ...(input.chairId === undefined ? {} : { chairId: input.chairId }),
         ...(input.startTime === undefined ? {} : { startTime: input.startTime }),
         ...(input.endTime === undefined ? {} : { endTime: input.endTime }),
         ...(input.slotMinutes === undefined ? {} : { slotMinutes: input.slotMinutes }),
@@ -445,10 +550,11 @@ export const deleteTemplate = async (
   });
 };
 
-/** Comprueba que el día no esté lleno; el sobrecupo exige permiso y motivo. */
+/** Comprueba que el consultorio no esté lleno ese día; el sobrecupo exige permiso y motivo. */
 export const assertCapacityAvailable = async (
   db: SchedulingDb,
   date: string,
+  chairId: string,
   options: {
     authorizeOverbook: boolean;
     overbookReason?: string | undefined;
@@ -456,12 +562,12 @@ export const assertCapacityAvailable = async (
   },
   config: Pick<SchedulingConfig, 'DEFAULT_DAY_CAPACITY'>,
 ): Promise<{ overbooked: boolean; info: CapacityInfo }> => {
-  const info = await capacityFor(db, date, config);
+  const info = await capacityFor(db, date, config, chairId);
   if (!info.isFull) return { overbooked: false, info };
 
   if (!options.authorizeOverbook) {
     throw new ConflictError(
-      `El día está completo (${String(info.assigned)}/${String(info.capacity)}). Autoriza el sobrecupo con un motivo para añadir otra cita.`,
+      `${info.chairLabel ?? 'El consultorio'} está completo el ${date} (${String(info.assigned)}/${String(info.capacity)}). Autoriza el sobrecupo con un motivo para añadir otra cita.`,
       { extensions: { requiresOverbook: true, capacity: info.capacity, assigned: info.assigned } },
     );
   }

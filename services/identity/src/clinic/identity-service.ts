@@ -60,6 +60,7 @@ export const readDentistProfile = async (db: IdentityDb, userId: string) => {
 const listDentistRows = async (db: IdentityDb) =>
   db
     .select({
+      id: users.id,
       username: users.username,
       fullName: users.fullName,
       mpps: dentistProfiles.mpps,
@@ -156,6 +157,7 @@ const effectiveDentists = (
   }));
 
 const toDentistView = (row: Awaited<ReturnType<typeof listDentistRows>>[number]): DentistView => ({
+  id: row.id,
   username: row.username,
   fullName: row.fullName,
   mpps: row.mpps,
@@ -187,6 +189,17 @@ export const resolveEffectiveIdentity = async (
     logoDataUri,
     fromDatabase: clinicRow !== null,
   };
+};
+
+/**
+ * Los odontólogos con perfil, con su **id de usuario** además del nombre. Es lo que
+ * la agenda lee por la ruta interna para resolver `dentistId → nombre` (y la interfaz,
+ * para el selector de odontólogo al asignar una cita). Sin logo, sin identidad del
+ * consultorio: es la lectura barata, cacheable, que no necesita el membrete.
+ */
+export const listDentists = async (db: IdentityDb): Promise<DentistView[]> => {
+  const rows = await listDentistRows(db);
+  return rows.map(toDentistView);
 };
 
 /* ──────────────────────────────────────────────────────────────────────────

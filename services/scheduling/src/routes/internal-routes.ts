@@ -15,6 +15,7 @@ import {
   getAppointment,
   listAppointments,
 } from '../appointments/appointment-service.js';
+import { listChairs } from '../agenda/chair-service.js';
 import { cancelRequest, createRequest, findRequestByTicket } from '../requests/request-service.js';
 import type { SchedulingServices } from '../services.js';
 import { systemActor } from '../shared/context.js';
@@ -125,7 +126,7 @@ export const registerInternalRoutes = (
     const summary = await confirmAppointment(
       db,
       id,
-      input,
+      { ...input, dentistCatalog: services.dentistCatalog },
       systemActor(`servicio:${input.channel}`),
     );
     return reply.status(200).send(summary);
@@ -144,9 +145,25 @@ export const registerInternalRoutes = (
     const summary = await cancelAppointment(
       db,
       id,
-      { channel: input.channel, reason: input.reason ?? null, config: services.config },
+      {
+        channel: input.channel,
+        reason: input.reason ?? null,
+        config: services.config,
+        dentistCatalog: services.dentistCatalog,
+      },
       systemActor(`servicio:${input.channel}`),
     );
     return reply.status(200).send(summary);
+  });
+
+  /**
+   * Catálogo de **consultorios activos** para la pantalla del consultorio: es dueño de
+   * los sillones la agenda, y la TV compartida los pide por aquí (red interna) para
+   * pintar un tile por gabinete sin leer una base ajena. Cambia poco: el consumidor lo
+   * cachea.
+   */
+  app.get('/internal/v1/agenda/chairs', async (_request, reply) => {
+    const items = await listChairs(db);
+    return reply.status(200).send({ items, total: items.length });
   });
 };

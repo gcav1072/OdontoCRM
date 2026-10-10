@@ -83,7 +83,12 @@ export const registerAppointmentRoutes = (
   app.post('/api/v1/appointments', { preHandler: write }, async (request, reply) => {
     const actor = actorFrom(request);
     const input = parseOrThrow(assignAppointmentSchema, request.body);
-    return reply.status(201).send(await assignAppointment(db, input, actor, { config }));
+    return reply.status(201).send(
+      await assignAppointment(db, input, actor, {
+        config,
+        dentistCatalog: services.dentistCatalog,
+      }),
+    );
   });
 
   app.get('/api/v1/appointments/:id', { preHandler: read }, async (request, reply) => {
@@ -100,7 +105,10 @@ export const registerAppointmentRoutes = (
   app.post('/api/v1/appointments/:id/check-in', { preHandler: write }, async (request, reply) => {
     const actor = actorFrom(request);
     const { id } = parseOrThrow(idParamsSchema, request.params);
-    const result = await transitionAppointment(db, id, 'en_sala_espera', actor, { config });
+    const result = await transitionAppointment(db, id, 'en_sala_espera', actor, {
+      config,
+      dentistCatalog: services.dentistCatalog,
+    });
     publicarYa();
     return reply.status(200).send(result);
   });
@@ -108,7 +116,10 @@ export const registerAppointmentRoutes = (
   app.post('/api/v1/appointments/:id/call', { preHandler: write }, async (request, reply) => {
     const actor = actorFrom(request);
     const { id } = parseOrThrow(idParamsSchema, request.params);
-    const result = await transitionAppointment(db, id, 'llamado', actor, { config });
+    const result = await transitionAppointment(db, id, 'llamado', actor, {
+      config,
+      dentistCatalog: services.dentistCatalog,
+    });
     publicarYa();
     return reply.status(200).send(result);
   });
@@ -116,7 +127,10 @@ export const registerAppointmentRoutes = (
   app.post('/api/v1/appointments/:id/start', { preHandler: write }, async (request, reply) => {
     const actor = actorFrom(request);
     const { id } = parseOrThrow(idParamsSchema, request.params);
-    const result = await transitionAppointment(db, id, 'en_consulta', actor, { config });
+    const result = await transitionAppointment(db, id, 'en_consulta', actor, {
+      config,
+      dentistCatalog: services.dentistCatalog,
+    });
     publicarYa();
     return reply.status(200).send(result);
   });
@@ -132,6 +146,7 @@ export const registerAppointmentRoutes = (
     const input = parseOrThrow(attendAppointmentSchema, request.body ?? {});
     const result = await transitionAppointment(db, id, 'atendido', actor, {
       config,
+      dentistCatalog: services.dentistCatalog,
       forceReason: input.forceReason,
       clinicalSessionId: input.clinicalSessionId,
       sessionLookup: services.sessionLookup,
@@ -147,6 +162,7 @@ export const registerAppointmentRoutes = (
     const input = parseOrThrow(noShowAppointmentSchema, request.body ?? {});
     const result = await transitionAppointment(db, id, 'no_asistio', actor, {
       config,
+      dentistCatalog: services.dentistCatalog,
       reason: input.reason,
     });
     publicarYa();
@@ -159,6 +175,7 @@ export const registerAppointmentRoutes = (
     const input = parseOrThrow(cancelAppointmentSchema, request.body ?? {});
     const result = await transitionAppointment(db, id, 'cancelada', actor, {
       config,
+      dentistCatalog: services.dentistCatalog,
       reason: input.reason,
     });
     publicarYa();
@@ -170,7 +187,12 @@ export const registerAppointmentRoutes = (
     const actor = actorFrom(request);
     const { id } = parseOrThrow(idParamsSchema, request.params);
     const input = parseOrThrow(rescheduleAppointmentSchema, request.body);
-    return reply.status(200).send(await rescheduleAppointment(db, id, input, actor, { config }));
+    return reply.status(200).send(
+      await rescheduleAppointment(db, id, input, actor, {
+        config,
+        dentistCatalog: services.dentistCatalog,
+      }),
+    );
   });
 
   /**
@@ -185,7 +207,12 @@ export const registerAppointmentRoutes = (
     const actor = actorFrom(request);
     const { id } = parseOrThrow(idParamsSchema, request.params);
     const input = parseOrThrow(confirmAppointmentSchema, request.body ?? {});
-    const result = await confirmAppointment(db, id, input, actor);
+    const result = await confirmAppointment(
+      db,
+      id,
+      { ...input, dentistCatalog: services.dentistCatalog },
+      actor,
+    );
     publicarYa();
     return reply.status(200).send(result);
   });

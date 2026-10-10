@@ -48,13 +48,17 @@ import {
   toStatusHistoryEntry,
 } from '../mappers.js';
 import { assertCapacityAvailable, slotsForDate } from '../agenda/capacity-service.js';
+import { activeChairOrThrow, chairLabelById } from '../agenda/chair-service.js';
 import { buildAppointmentMessage } from '../agenda/message.js';
 import { assertCanTransition, toClinicInstant, type ActorContext } from '../shared/context.js';
 import type { ClinicalSessionLookup } from '../shared/clinical-client.js';
+import type { DentistCatalog } from '../shared/identity-client.js';
 import { auditPayload, publish } from '../shared/events.js';
 
 export interface AssignOptions {
   config: SchedulingConfig;
+  /** Catálogo de odontólogos para rotular el evento (`dentistId → nombre`). */
+  dentistCatalog?: DentistCatalog;
 }
 
 const asSeconds = (time: string): string => `${toHm(time)}:00`;
@@ -76,10 +80,93 @@ const isUniqueViolation = (error: unknown): boolean => {
   return false;
 };
 
-const slotTaken = (date: string, startTime: string): ConflictError =>
-  new ConflictError(`Alguien acaba de ocupar las ${startTime} del ${date}. Elige otra franja.`, {
-    extensions: { slot: { startTime } },
-  });
+const slotTaken = (date: string, startTime: string, chairLabel?: string | null): ConflictError =>
+  new ConflictError(
+    chairLabel === undefined || chairLabel === null
+      ? `Alguien acaba de ocupar las ${startTime} del ${date}. Elige otra franja.`
+      : `Alguien acaba de ocupar las ${startTime} en ${chairLabel}. Elige otro consultorio o otra franja.`,
+    { extensions: { slot: { startTime } } },
+  );
+
+/**
+ * Bloque `appointment` de los eventos enriquecido con el consultorio y el odontólogo
+ * ([ADR 0041](../../../docs/adr/0041-el-evento-lleva-lo-que-el-consumidor-necesita.md)):
+ * las pantallas y los reportes lo consumen sin leer bases ajenas. `chairLabel` y
+ * `dentistName` van resueltos (o `null`) para que el consumidor solo pinte.
+ */
+const appointmentBlock = async (
+  db: SchedulingDb,
+  row: {
+    id: string;
+    appointmentDate: string;
+    startTime: string;
+    endTime: string;
+    status: string;
+    requestId: string | null;
+    chairId: string;
+    dentistId: string | null;
+  },
+  dentistCatalog?: DentistCatalog,
+): Promise<{
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+  requestId: string | null;
+  chairId: string;
+  chairLabel: string | null;
+  dentistId: string | null;
+  dentistName: string | null;
+}> => {
+  const [chairLabel, dentistNames] = await Promise.all([
+    chairLabelById(db, row.chairId),
+    dentistCatalog === undefined ? Promise.resolve(new Map<string, string>()) : dentistCatalog(),
+  ]);
+
+  return {
+    id: row.id,
+    date: row.appointmentDate,
+    startTime: toHm(row.startTime),
+    endTime: toHm(row.endTime),
+    status: row.status,
+    requestId: row.requestId,
+    chairId: row.chairId,
+    chairLabel,
+    dentistId: row.dentistId,
+    dentistName: row.dentistId === null ? null : (dentistNames.get(row.dentistId) ?? null),
+  };
+};
+
+/** Cita que ocupa la misma hora en **ese consultorio** (dos sillones pueden coincidir). */
+export const findOverlappingAppointment = async (
+  db: SchedulingDb,
+  input: {
+    date: string;
+    startTime: string;
+    endTime: string;
+    chairId: string;
+    ignoreAppointmentId?: string;
+  },
+): Promise<AppointmentRow | null> => {
+  const conditions = [
+    eq(appointments.appointmentDate, input.date),
+    eq(appointments.chairId, input.chairId),
+    inArray(appointments.status, [...OCCUPYING_STATUSES]),
+    sql`${appointments.startTime} < ${asSeconds(input.endTime)}::time`,
+    sql`${appointments.endTime} > ${asSeconds(input.startTime)}::time`,
+  ];
+  if (input.ignoreAppointmentId !== undefined) {
+    conditions.push(sql`${appointments.id} <> ${input.ignoreAppointmentId}`);
+  }
+
+  const rows = await db
+    .select()
+    .from(appointments)
+    .where(and(...conditions))
+    .limit(1);
+  return rows[0] ?? null;
+};
 
 const findRequest = async (db: SchedulingDb, id: string): Promise<AppointmentRequestRow | null> => {
   const rows = await db
@@ -95,29 +182,6 @@ export const getAppointmentRow = async (db: SchedulingDb, id: string): Promise<A
   const row = rows[0];
   if (row === undefined) throw new NotFoundError('La cita no existe');
   return row;
-};
-
-/** Cita que ocupa la misma hora en ese día (una sola silla: no hay doble cita). */
-export const findOverlappingAppointment = async (
-  db: SchedulingDb,
-  input: { date: string; startTime: string; endTime: string; ignoreAppointmentId?: string },
-): Promise<AppointmentRow | null> => {
-  const conditions = [
-    eq(appointments.appointmentDate, input.date),
-    inArray(appointments.status, [...OCCUPYING_STATUSES]),
-    sql`${appointments.startTime} < ${asSeconds(input.endTime)}::time`,
-    sql`${appointments.endTime} > ${asSeconds(input.startTime)}::time`,
-  ];
-  if (input.ignoreAppointmentId !== undefined) {
-    conditions.push(sql`${appointments.id} <> ${input.ignoreAppointmentId}`);
-  }
-
-  const rows = await db
-    .select()
-    .from(appointments)
-    .where(and(...conditions))
-    .limit(1);
-  return rows[0] ?? null;
 };
 
 const loadRequests = async (
@@ -156,9 +220,20 @@ const loadRescheduledChildren = async (
   return map;
 };
 
-const toSummaries = async (
+/**
+ * Etiquetas resueltas que la jornada y las listas inyectan en el resumen de la cita:
+ * el consultorio (que ya se conoce por la propia jornada) y el odontólogo (que llega
+ * del catálogo de identity). Fuera de la jornada van vacías y los campos salen `null`.
+ */
+export interface SummaryLabels {
+  chairLabels?: ReadonlyMap<string, string>;
+  dentistNames?: ReadonlyMap<string, string>;
+}
+
+export const toSummaries = async (
   db: SchedulingDb,
   rows: readonly AppointmentRow[],
+  labels: SummaryLabels = {},
 ): Promise<AppointmentSummary[]> => {
   const [requests, children] = await Promise.all([
     loadRequests(db, rows),
@@ -168,6 +243,9 @@ const toSummaries = async (
     toAppointmentSummary(row, {
       request: row.requestId === null ? null : (requests.get(row.requestId) ?? null),
       rescheduledToId: children.get(row.id) ?? null,
+      chairLabel: labels.chairLabels?.get(row.chairId) ?? null,
+      dentistName:
+        row.dentistId === null ? null : (labels.dentistNames?.get(row.dentistId) ?? null),
     }),
   );
 };
@@ -276,41 +354,57 @@ const durationFor = async (
   startTime: string,
   requested: number | undefined,
   config: Pick<SchedulingConfig, 'DEFAULT_APPOINTMENT_MINUTES'>,
+  chairId: string,
 ): Promise<number> => {
   if (requested !== undefined) return requested;
-  const slots = await slotsForDate(db, date);
+  const slots = await slotsForDate(db, date, chairId);
   const match = slots.find((slot) => slot.startTime === startTime);
   return match === undefined
     ? config.DEFAULT_APPOINTMENT_MINUTES
     : Math.max(5, minutesBetween(match.startTime, match.endTime));
 };
 
-/** Estado del día por estado de cita (contadores de la jornada). */
+/** Estado del día por estado de cita (contadores de la jornada); con `chairId`, de un consultorio. */
 export const countByStatus = async (
   db: SchedulingDb,
   date: string,
+  chairId?: string,
 ): Promise<Record<string, number>> => {
+  const condiciones = [eq(appointments.appointmentDate, date)];
+  if (chairId !== undefined) condiciones.push(eq(appointments.chairId, chairId));
+
   const rows = await db
     .select({ status: appointments.status, value: sql<number>`count(1)::int` })
     .from(appointments)
-    .where(eq(appointments.appointmentDate, date))
+    .where(and(...condiciones))
     .groupBy(appointments.status);
 
   return Object.fromEntries(rows.map((row) => [row.status, row.value]));
 };
 
-/** Citas de un día, en orden de hora. */
-export const appointmentsOn = async (db: SchedulingDb, date: string): Promise<AppointmentRow[]> =>
-  db
+/** Citas de un día, en orden de hora; con `chairId`, solo las de ese consultorio. */
+export const appointmentsOn = async (
+  db: SchedulingDb,
+  date: string,
+  chairId?: string,
+): Promise<AppointmentRow[]> => {
+  const condiciones = [eq(appointments.appointmentDate, date)];
+  if (chairId !== undefined) condiciones.push(eq(appointments.chairId, chairId));
+
+  return db
     .select()
     .from(appointments)
-    .where(eq(appointments.appointmentDate, date))
+    .where(and(...condiciones))
     .orderBy(asc(appointments.startTime));
+};
 
 export const listDayAppointments = async (
   db: SchedulingDb,
   date: string,
-): Promise<AppointmentSummary[]> => toSummaries(db, await appointmentsOn(db, date));
+  chairId?: string,
+  labels: SummaryLabels = {},
+): Promise<AppointmentSummary[]> =>
+  toSummaries(db, await appointmentsOn(db, date, chairId), labels);
 
 /** Última cita de cada solicitud (la que se muestra en la cola). */
 export const latestAppointmentsByRequest = async (
@@ -389,18 +483,28 @@ export const assignAppointment = async (
     });
   }
 
+  // El consultorio es el recurso que ocupa la franja: tiene que existir y estar activo.
+  const chair = await activeChairOrThrow(db, input.chairId);
+
   const startTime = toHm(input.startTime);
-  const duration = await durationFor(db, input.date, startTime, input.durationMinutes, config);
+  const duration = await durationFor(
+    db,
+    input.date,
+    startTime,
+    input.durationMinutes,
+    config,
+    input.chairId,
+  );
   const endTime = addMinutes(startTime, duration);
 
   if (input.slotKind === 'franja') {
-    const slots = await slotsForDate(db, input.date);
+    const slots = await slotsForDate(db, input.date, input.chairId);
     const slot = slots.find((candidate) => candidate.startTime === startTime);
     if (slot === undefined) {
       throw new AppError({
         status: 400,
         code: 'slot_not_in_schedule',
-        message: `Las ${startTime} no son una franja de la jornada de ese día. Elige una franja o usa la hora manual.`,
+        message: `Las ${startTime} no son una franja de la jornada de ${chair.label} ese día. Elige una franja o usa la hora manual.`,
         extensions: { slots: slots.map((candidate) => candidate.startTime) },
       });
     }
@@ -417,10 +521,11 @@ export const assignAppointment = async (
     date: input.date,
     startTime,
     endTime,
+    chairId: input.chairId,
   });
   if (overlapping !== null) {
     throw new ConflictError(
-      `Esa hora ya está ocupada (${toHm(overlapping.startTime)}–${toHm(overlapping.endTime)})`,
+      `Esa hora ya está ocupada en ${chair.label} (${toHm(overlapping.startTime)}–${toHm(overlapping.endTime)})`,
       {
         extensions: {
           slot: { startTime: toHm(overlapping.startTime), endTime: toHm(overlapping.endTime) },
@@ -433,6 +538,7 @@ export const assignAppointment = async (
   const { overbooked, info } = await assertCapacityAvailable(
     db,
     input.date,
+    input.chairId,
     {
       authorizeOverbook: input.authorizeOverbook,
       overbookReason: input.overbookReason,
@@ -458,7 +564,7 @@ export const assignAppointment = async (
           slotKind: input.slotKind,
           status: 'programada',
           dentistId: input.dentistId ?? null,
-          chairId: input.chairId ?? null,
+          chairId: input.chairId,
           overbookAuthorized: overbooked,
           overbookReason: overbooked ? (input.overbookReason ?? null) : null,
           notes: input.notes ?? null,
@@ -516,14 +622,7 @@ export const assignAppointment = async (
             reason: overbooked ? (input.overbookReason ?? null) : null,
             actor,
           }),
-          appointment: {
-            id: row.id,
-            date: input.date,
-            startTime,
-            endTime,
-            status: 'programada',
-            requestId: request?.id ?? null,
-          },
+          appointment: await appointmentBlock(db, row, options.dentistCatalog),
           // El servicio de notificaciones (Fase 4) envía esto mismo al paciente.
           notification: message,
         },
@@ -555,8 +654,8 @@ export const assignAppointment = async (
       return row;
     })
     .catch((error: unknown) => {
-      // Dos personas asignando la misma hora a la vez: decide el índice único.
-      if (isUniqueViolation(error)) throw slotTaken(input.date, startTime);
+      // Dos personas asignando la misma hora en el mismo consultorio: decide el índice único.
+      if (isUniqueViolation(error)) throw slotTaken(input.date, startTime, chair.label);
       throw error;
     });
 
@@ -607,6 +706,8 @@ export interface TransitionOptions {
    * notificaciones **no** encole un `cita_cancelada` duplicado.
    */
   skipNotice?: boolean | undefined;
+  /** Catálogo de odontólogos para rotular el evento (`dentistId → nombre`). */
+  dentistCatalog?: DentistCatalog | undefined;
   config: SchedulingConfig;
   now?: Date;
 }
@@ -800,14 +901,7 @@ export const transitionAppointment = async (
             reason: options.reason ?? options.forceReason ?? null,
             actor,
           }),
-          appointment: {
-            id,
-            date: current.appointmentDate,
-            startTime: toHm(current.startTime),
-            endTime: toHm(current.endTime),
-            status: to,
-            requestId: current.requestId,
-          },
+          appointment: await appointmentBlock(db, current, options.dentistCatalog),
           notification: buildAppointmentMessage(current, request, options.config),
           // La cancelación del bot no debe disparar el aviso `cita_cancelada` de la
           // cola: el asistente ya responde al paciente en el mismo turno (ADR 0053). El
@@ -846,6 +940,8 @@ export interface ConfirmOptions {
   /** Por dónde confirmó el paciente: `telegram`/`whatsapp` por el bot, `telefono` por la secretaría. */
   channel: Channel;
   note?: string | null;
+  /** Catálogo de odontólogos para rotular el evento (`dentistId → nombre`). */
+  dentistCatalog?: DentistCatalog | undefined;
   now?: Date;
 }
 
@@ -935,12 +1031,8 @@ export const confirmAppointment = async (
           actor,
         }),
         appointment: {
-          id,
-          date: current.appointmentDate,
-          startTime: toHm(current.startTime),
-          endTime: toHm(current.endTime),
+          ...(await appointmentBlock(db, current, options.dentistCatalog)),
           status: 'confirmada',
-          requestId: current.requestId,
         },
         /**
          * **A propósito** no va el bloque `notification`: confirmar es la respuesta
@@ -960,6 +1052,8 @@ export interface CancelByPatientOptions {
   /** Por dónde canceló el paciente (`telegram`/`whatsapp`). */
   channel: Channel;
   reason?: string | null | undefined;
+  /** Catálogo de odontólogos para rotular el evento (`dentistId → nombre`). */
+  dentistCatalog?: DentistCatalog | undefined;
   config: SchedulingConfig;
   now?: Date;
 }
@@ -998,6 +1092,7 @@ export const cancelAppointment = async (
 
   return transitionAppointment(db, id, 'cancelada', actor, {
     config: options.config,
+    ...(options.dentistCatalog === undefined ? {} : { dentistCatalog: options.dentistCatalog }),
     reason: options.reason ?? `el paciente canceló por ${channelLabel(options.channel)}`,
     channel: options.channel,
     skipTransitionCheck: true,
@@ -1156,19 +1251,31 @@ export const rescheduleAppointment = async (
   const from = current.status as AppointmentStatus;
   assertCanTransition(from, 'reprogramada', actor);
 
+  // Se puede cambiar de consultorio al mover la cita; si no se indica, se conserva.
+  const chairId = input.chairId ?? current.chairId;
+  const chair = await activeChairOrThrow(db, chairId);
+
   const startTime = toHm(input.startTime);
-  const duration = await durationFor(db, input.date, startTime, input.durationMinutes, config);
+  const duration = await durationFor(
+    db,
+    input.date,
+    startTime,
+    input.durationMinutes,
+    config,
+    chairId,
+  );
   const endTime = addMinutes(startTime, duration);
 
   const overlapping = await findOverlappingAppointment(db, {
     date: input.date,
     startTime,
     endTime,
+    chairId,
     ignoreAppointmentId: id,
   });
   if (overlapping !== null) {
     throw new ConflictError(
-      `Esa hora ya está ocupada (${toHm(overlapping.startTime)}–${toHm(overlapping.endTime)})`,
+      `Esa hora ya está ocupada en ${chair.label} (${toHm(overlapping.startTime)}–${toHm(overlapping.endTime)})`,
       {
         extensions: {
           slot: { startTime: toHm(overlapping.startTime), endTime: toHm(overlapping.endTime) },
@@ -1181,6 +1288,7 @@ export const rescheduleAppointment = async (
   const { overbooked } = await assertCapacityAvailable(
     db,
     input.date,
+    chairId,
     {
       authorizeOverbook: input.authorizeOverbook,
       overbookReason: input.overbookReason,
@@ -1221,7 +1329,7 @@ export const rescheduleAppointment = async (
           slotKind: input.slotKind,
           status: 'programada',
           dentistId: current.dentistId,
-          chairId: current.chairId,
+          chairId,
           overbookAuthorized: overbooked,
           overbookReason: overbooked ? (input.overbookReason ?? null) : null,
           rescheduledFromId: current.id,
@@ -1260,12 +1368,7 @@ export const rescheduleAppointment = async (
             actor,
           }),
           appointment: {
-            id: row.id,
-            date: input.date,
-            startTime,
-            endTime,
-            status: 'programada',
-            requestId: row.requestId,
+            ...(await appointmentBlock(db, row, options.dentistCatalog)),
             rescheduledFromId: current.id,
           },
           previousAppointmentId: current.id,
@@ -1276,7 +1379,7 @@ export const rescheduleAppointment = async (
       return row;
     })
     .catch((error: unknown) => {
-      if (isUniqueViolation(error)) throw slotTaken(input.date, startTime);
+      if (isUniqueViolation(error)) throw slotTaken(input.date, startTime, chair.label);
       throw error;
     });
 

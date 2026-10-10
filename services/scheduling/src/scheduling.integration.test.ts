@@ -15,7 +15,7 @@ import {
   stopBoss,
 } from '@odontocrm/db';
 import { TEST_WAIT_MS } from '@odontocrm/testing';
-import { and, eq, like, sql } from 'drizzle-orm';
+import { and, asc, eq, like, sql } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -25,7 +25,7 @@ import { createIdentityDatabase } from '../../identity/dist/db/client.js';
 import * as identitySchema from '../../identity/dist/db/schema.js';
 import { loadSchedulingConfig } from './config.js';
 import { createSchedulingDatabase } from './db/client.js';
-import { appointmentRequests, appointments } from './db/schema.js';
+import { appointmentRequests, appointments, chairs } from './db/schema.js';
 import {
   assignAppointment,
   cancelAppointment,
@@ -102,6 +102,12 @@ const admin: ActorContext = {
 const secretary: ActorContext = { ...admin, roles: ['secretario'] };
 const dentist: ActorContext = { ...admin, roles: ['odontologo'] };
 
+/**
+ * Consultorio que usan las pruebas. La migración multisillón siembra «Consultorio 1»,
+ * así que se reutiliza el que ya existe (no se crea uno nuevo en cada corrida).
+ */
+let chairId = '';
+
 const aRequest = (overrides: Partial<CreateRequestInput> = {}): CreateRequestInput => ({
   patientId: globalThis.crypto.randomUUID(),
   patientName: `Paciente ${MARK}`,
@@ -122,6 +128,7 @@ const anAssignment = (
   date: day,
   startTime: '08:00',
   slotKind: 'franja',
+  chairId,
   authorizeOverbook: false,
   // La marca también viaja a la cita: sin ella, la limpieza no la encontraría.
   notes: MARK,
@@ -172,6 +179,27 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     boss = createBoss({ connectionString: eventsUrl, applicationName: 'odontocrm-test-fase3' });
     await startBoss(boss);
     await ensureDomainEventsQueue(boss);
+
+    // El consultorio por defecto que sembró la migración multisillón.
+    const chairRow = (
+      await schedulingHandle.db
+        .select({ id: chairs.id })
+        .from(chairs)
+        .orderBy(asc(chairs.sortOrder), asc(chairs.label))
+        .limit(1)
+    )[0];
+    if (chairRow === undefined) throw new Error('No hay consultorios: aplica las migraciones');
+    chairId = chairRow.id;
+
+    /**
+     * Las pruebas corren contra la base **de desarrollo**, así que pueden quedar
+     * cupos explícitos de otras corridas (o de un `smoke:agenda`, que deja el día a
+     * cero). Se limpian las fechas de esta suite para que un residuo no cambie el
+     * cupo por debajo de los pies.
+     */
+    await schedulingHandle.db.execute(
+      sql`delete from day_capacities where date in (${day}, ${otherDay}, ${activityDay})`,
+    );
     // El mismo trabajador que corre en identity: convierte los eventos en auditoría.
     await registerDomainEventHandler(
       boss,
@@ -209,7 +237,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
       .delete(appointmentRequests)
       .where(like(appointmentRequests.notes, `%${MARK}%`));
     await schedulingHandle.db.execute(
-      sql`delete from day_capacities where date in (${day}, ${otherDay})`,
+      sql`delete from day_capacities where date in (${day}, ${otherDay}, ${activityDay})`,
     );
     await boss.deleteQueue(colaDePrueba).catch(() => undefined);
     await stopBoss(boss).catch(() => undefined);
@@ -263,7 +291,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
   it('el cupo bloquea la asignación y solo el admin autoriza el sobrecupo', async () => {
     const capacity = await setCapacity(
       schedulingHandle.db,
-      { date: day, capacity: 2, notes: `${MARK} cupo de prueba` },
+      { date: day, chairId, capacity: 2, notes: `${MARK} cupo de prueba` },
       admin,
       config,
     );
@@ -333,7 +361,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     // Bajar el cupo por debajo de lo asignado: avisa y no borra ninguna cita.
     const lowered = await setCapacity(
       schedulingHandle.db,
-      { date: day, capacity: 1, notes: `${MARK} cupo bajado` },
+      { date: day, chairId, capacity: 1, notes: `${MARK} cupo bajado` },
       admin,
       config,
     );
@@ -381,7 +409,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     // El cupo de este día lo fija esta prueba: así no depende del orden de otras.
     await setCapacity(
       schedulingHandle.db,
-      { date: day, capacity: 16, notes: `${MARK} cupo para reprogramar` },
+      { date: day, chairId, capacity: 16, notes: `${MARK} cupo para reprogramar` },
       admin,
       config,
     );
@@ -691,7 +719,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
   it('la vista del día arma franjas, citas, cola y contadores', async () => {
     await setCapacity(
       schedulingHandle.db,
-      { date: day, capacity: 16, notes: `${MARK} cupo de la vista` },
+      { date: day, chairId, capacity: 16, notes: `${MARK} cupo de la vista` },
       admin,
       config,
     );
@@ -701,14 +729,20 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     expect(view.isWorkingDay).toBe(true);
     expect(view.weekdayName).not.toBe('');
     // La jornada por defecto son 8 franjas por turno (8:00–12:00 y 13:00–17:00).
-    expect(view.slots.filter((slot) => slot.state !== 'fuera_de_jornada')).toHaveLength(16);
+    expect(
+      view.chairs
+        .flatMap((chair) => chair.slots)
+        .filter((slot) => slot.state !== 'fuera_de_jornada'),
+    ).toHaveLength(16);
     expect(view.capacity.capacity).toBe(16);
     expect(view.waiting.length).toBeGreaterThan(0);
     expect(
       view.counts.programadas + view.counts.notificadas + view.counts.canceladas,
     ).toBeGreaterThan(0);
 
-    const occupied = view.slots.filter((slot) => slot.state === 'ocupada');
+    const occupied = view.chairs
+      .flatMap((chair) => chair.slots)
+      .filter((slot) => slot.state === 'ocupada');
     expect(occupied.length).toBeGreaterThanOrEqual(3);
     expect(occupied[0]?.appointment?.patientName).toContain(MARK);
 
@@ -721,7 +755,9 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
       { config },
     );
     const withManual = await getDayView(schedulingHandle.db, day, config);
-    const manual = withManual.slots.find((slot) => slot.kind === 'manual');
+    const manual = withManual.chairs
+      .flatMap((chair) => chair.slots)
+      .find((slot) => slot.kind === 'manual');
     expect(manual?.startTime).toBe('12:15');
     expect(manual?.state).toBe('ocupada');
   }, 60_000);
@@ -1112,7 +1148,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
   it('el cupo se puede volver a subir y queda con su procedencia explícita', async () => {
     const restored = await setCapacity(
       schedulingHandle.db,
-      { date: day, capacity: 16, notes: `${MARK} cupo restaurado` },
+      { date: day, chairId, capacity: 16, notes: `${MARK} cupo restaurado` },
       admin,
       config,
     );
@@ -1120,7 +1156,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     expect(restored.capacity).toBe(16);
     expect(restored.warning).toBeNull();
 
-    const info = await capacityFor(schedulingHandle.db, day, config);
+    const info = await capacityFor(schedulingHandle.db, day, config, chairId);
     expect(info.available).toBeGreaterThanOrEqual(0);
     expect(info.isFull).toBe(false);
   }, 30_000);
@@ -1136,11 +1172,11 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
       throw new Error('no encontré domingo');
     })();
 
-    const info = await capacityFor(schedulingHandle.db, sunday, config);
+    const info = await capacityFor(schedulingHandle.db, sunday, config, chairId);
     expect(info.source).toBe('defecto');
     expect(info.capacity).toBe(config.DEFAULT_DAY_CAPACITY);
     const view = await getDayView(schedulingHandle.db, sunday, config);
     expect(view.isWorkingDay).toBe(false);
-    expect(view.slots).toHaveLength(0);
+    expect(view.chairs.flatMap((chair) => chair.slots)).toHaveLength(0);
   }, 30_000);
 });

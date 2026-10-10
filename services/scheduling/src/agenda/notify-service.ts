@@ -16,8 +16,10 @@ import type { SchedulingDb } from '../db/client.js';
 import { appointmentRequests, appointments, statusHistory } from '../db/schema.js';
 import { toHm } from '../mappers.js';
 import { buildAppointmentMessage } from './message.js';
+import { chairLabelById } from './chair-service.js';
 import { getAppointment } from '../appointments/appointment-service.js';
 import { assertCanTransition, todayInClinic, type ActorContext } from '../shared/context.js';
+import type { DentistCatalog } from '../shared/identity-client.js';
 import { auditPayload, publish } from '../shared/events.js';
 
 const selectionConditions = (
@@ -124,6 +126,7 @@ export const notifyBatch = async (
   input: NotifyBatchInput,
   actor: ActorContext,
   config: SchedulingConfig,
+  dentistCatalog?: DentistCatalog,
 ): Promise<NotifyBatchResult> => {
   const preview = await notifyPreview(db, input, config, { force: input.force });
   const pending = preview.items.filter((item) => item.willSend);
@@ -200,6 +203,13 @@ export const notifyBatch = async (
               startTime: toHm(row.startTime),
               endTime: toHm(row.endTime),
               status: 'notificada',
+              chairId: row.chairId,
+              chairLabel: await chairLabelById(db, row.chairId),
+              dentistId: row.dentistId,
+              dentistName:
+                row.dentistId === null
+                  ? null
+                  : ((await dentistCatalog?.())?.get(row.dentistId) ?? null),
               requestId: row.requestId,
             },
             // Con esto el servicio de notificaciones envía el mensaje y el .ics.

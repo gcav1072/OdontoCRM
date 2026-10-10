@@ -238,12 +238,19 @@ const sembrarPacientes = async (client) => {
 };
 
 const sembrarAgenda = async (client) => {
+  // El consultorio por defecto (migración multisillón): cupo y citas van ahí.
+  const chairId = (await client.query('select id from chairs order by sort_order, label limit 1'))
+    .rows[0]?.id;
+  if (chairId === undefined) {
+    throw new Error('No hay consultorios: aplica las migraciones antes de sembrar.');
+  }
+
   for (const capacity of world.capacities) {
     await client.query(
-      `insert into day_capacities (date, capacity, notes, updated_at)
-       values ($1,$2,$3, now())
-       on conflict (date) do update set capacity = excluded.capacity, notes = excluded.notes, updated_at = now()`,
-      [capacity.date, capacity.capacity, capacity.notes],
+      `insert into day_capacities (date, chair_id, capacity, notes, updated_at)
+       values ($1,$2,$3,$4, now())
+       on conflict (date, chair_id) do update set capacity = excluded.capacity, notes = excluded.notes, updated_at = now()`,
+      [capacity.date, chairId, capacity.capacity, capacity.notes],
     );
   }
 
@@ -293,8 +300,8 @@ const sembrarAgenda = async (client) => {
          start_time, end_time, duration_minutes, slot_kind, status, call_count, checked_in_at,
          started_at, finished_at, no_show_reason, force_attended_reason, clinical_session_id,
          overbook_authorized, overbook_reason, rescheduled_from_id, ics_sequence, notes,
-         created_by, created_at, updated_at
-       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'franja',$11,$12,$13,$14,$15,$16,$17,$18,false,null,$19,0,$20,null,$21,$21)
+         created_by, created_at, updated_at, chair_id
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'franja',$11,$12,$13,$14,$15,$16,$17,$18,false,null,$19,0,$20,null,$21,$21,$22)
        on conflict (id) do update set
          status = excluded.status, call_count = excluded.call_count,
          checked_in_at = excluded.checked_in_at, started_at = excluded.started_at,
@@ -322,6 +329,7 @@ const sembrarAgenda = async (client) => {
         appointment.rescheduledFromId,
         appointment.notes,
         appointment.scheduledAt,
+        chairId,
       ],
     );
 
