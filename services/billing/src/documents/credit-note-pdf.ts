@@ -70,11 +70,11 @@ export const renderCreditNoteHtml = async (input: CreditNotePdfInput): Promise<s
   ${brandWatermarkCss()}
   @page { size: A4 portrait; margin: 16mm 14mm; }
   body { font-family: var(--brand-font-doc-body); font-size: 10pt; color: var(--brand-ink); margin: 0; }
-  h1 { font-family: var(--brand-font-doc-title); font-size: 14pt; margin: 0 0 1mm; letter-spacing: .04em; color: var(--brand-primary); }
+  h1 { font-family: var(--brand-font-doc-title); font-size: 14pt; font-weight: var(--brand-font-doc-title-weight); margin: 0 0 1mm; letter-spacing: .04em; color: var(--brand-primary); }
   .cabecera { display: flex; justify-content: space-between; border-bottom: 1.2pt solid var(--brand-ink); padding-bottom: 3mm; }
   .emisor { display: flex; align-items: flex-start; gap: 5mm; }
   .emisor .logo { height: var(--brand-logo-height-mm); width: auto; }
-  .nombre { font-family: var(--brand-font-doc-title); font-weight: 700; color: var(--brand-primary); }
+  .nombre { font-family: var(--brand-font-doc-title); font-weight: var(--brand-font-doc-title-weight); color: var(--brand-primary); }
   .dato { color: var(--brand-ink-muted); }
   /* La línea del especialista va en el membrete, bajo la dirección y el teléfono. */
   .dentista { color: var(--brand-ink-strong); }

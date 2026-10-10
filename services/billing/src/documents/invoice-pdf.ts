@@ -150,16 +150,16 @@ export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string>
   @page { size: A4 portrait; margin: 14mm 12mm 12mm 12mm; }
   * { box-sizing: border-box; }
   body { font-family: var(--brand-font-doc-body); font-size: 9.5pt; color: var(--brand-ink); margin: 0; }
-  h1 { font-family: var(--brand-font-doc-title); font-size: 13pt; margin: 0; letter-spacing: .04em; color: var(--brand-primary); }
+  h1 { font-family: var(--brand-font-doc-title); font-size: 13pt; font-weight: var(--brand-font-doc-title-weight); margin: 0; letter-spacing: .04em; color: var(--brand-primary); }
   .cabecera { display: flex; justify-content: space-between; gap: 8mm; border-bottom: 1.2pt solid var(--brand-ink); padding-bottom: 3mm; }
   .emisor { display: flex; align-items: flex-start; gap: 5mm; max-width: 95mm; }
   .emisor .logo { height: var(--brand-logo-height-mm); width: auto; }
-  .emisor .nombre { font-family: var(--brand-font-doc-title); font-weight: 700; font-size: 11pt; color: var(--brand-primary); }
+  .emisor .nombre { font-family: var(--brand-font-doc-title); font-weight: var(--brand-font-doc-title-weight); font-size: 11pt; color: var(--brand-primary); }
   .emisor .dato { color: var(--brand-ink-muted); }
   /* La línea del especialista va en el membrete, bajo la dirección y el teléfono. */
   .emisor .dentista { color: var(--brand-ink-strong); }
   .documento { text-align: right; min-width: 60mm; }
-  .documento .numero { font-family: var(--brand-font-doc-title); font-size: 12pt; font-weight: 700; color: var(--brand-primary); }
+  .documento .numero { font-family: var(--brand-font-doc-title); font-size: 12pt; font-weight: var(--brand-font-doc-title-weight); color: var(--brand-primary); }
   .documento .control { font-weight: 600; }
   .bloque { margin-top: 3mm; display: flex; justify-content: space-between; gap: 8mm; }
   .caja { border: .6pt solid var(--brand-line); padding: 2mm; }
