@@ -362,8 +362,8 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
   }, 40_000);
 
   it('cambiar el estado de un hallazgo queda como actualizado en el histórico y en la auditoría', async () => {
-    // La obturación admite pendiente y completado (la caries solo pendiente, spec §2):
-    // el cambio de estado se prueba sobre la obturación de la 16.
+    // La restauración admite pendiente y completado (la caries solo pendiente, spec §2):
+    // el cambio de estado se prueba sobre la restauración de la 16.
     const resultado = await recordFinding(
       handle.db,
       patientId,
@@ -377,10 +377,10 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
     );
 
     expect(resultado.unchanged).toBe(false);
-    const obturacion = resultado.odontogram.findings['16']?.find(
+    const restauracion = resultado.odontogram.findings['16']?.find(
       (row) => row.condition === 'restauracion',
     );
-    expect(obturacion?.state).toBe('pendiente');
+    expect(restauracion?.state).toBe('pendiente');
 
     const filas = (await historial()).filter((row) => row.event === 'actualizado');
     expect(filas).toHaveLength(1);
@@ -398,7 +398,7 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
     );
     const actualizado = rows.find((row) => row.action === 'tooth_finding_updated');
     expect(actualizado?.changedFields).toEqual(['pieza 16', 'vestibular']);
-    expect(actualizado?.summary).toContain('obturación');
+    expect(actualizado?.summary).toContain('restauración');
   }, 40_000);
 
   it('`ausente` manda sobre las caras (ADR 0032) sin borrar el dato', async () => {
@@ -810,7 +810,7 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
    * una **caries recurrente** en el margen se registra *después* y sí se ve.
    */
   it('la caries recurrente sobre una corona se registra encima y el dato de debajo se conserva', async () => {
-    // 1) Un diente con su obturación, antes de coronarlo.
+    // 1) Un diente con su restauración, antes de coronarlo.
     await recordFinding(
       handle.db,
       patientId,
@@ -823,7 +823,7 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
       actor,
     );
 
-    // 2) Se corona: la obturación queda cubierta y el gráfico se queda con la corona.
+    // 2) Se corona: la restauración queda cubierta y el gráfico se queda con la corona.
     const coronada = await recordFinding(
       handle.db,
       patientId,
@@ -962,7 +962,7 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
    * Los procedimientos del ciclo de vida (spec §5): no cambian un estado, **mutan** el
    * hallazgo de origen en el de destino, en una sola transacción.
    */
-  it('los procedimientos mutan el hallazgo: extraer → ausente, obturar → obturación, rehabilitar → corona', async () => {
+  it('los procedimientos mutan el hallazgo: extraer → extraída, obturar → restauración, rehabilitar → corona', async () => {
     // Extraer: la extracción indicada cumplida deja la pieza **ausente**.
     await recordFinding(
       handle.db,
@@ -993,7 +993,7 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
       await historialResumen(odontogramProcedimientos),
     ).toBe(true);
 
-    // Obturar: la caries tratada pasa a obturación completada en la misma cara.
+    // Obturar: la caries tratada pasa a restauración completada en la misma cara.
     await recordFinding(
       handle.db,
       pacienteProcedimientos,

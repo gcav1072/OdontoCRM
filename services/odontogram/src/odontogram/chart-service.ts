@@ -3,9 +3,12 @@ import {
   CONDITION_LABELS,
   PROCEDURE_LABELS,
   PROCEDURE_TRANSITIONS,
+  PROSTHESIS_ARCH_LABELS,
+  PROSTHESIS_KIND_LABELS,
   SURFACE_FORM_ORDER,
   SURFACE_LABELS,
   allowedStatesFor,
+  archTeeth,
   conditionsConflict,
   dentitionOfTooth,
   isStateAllowed,
@@ -24,8 +27,12 @@ import {
   type OdontogramMutationResult,
   type OdontogramPatientSnapshot,
   type PrintOdontogramResult,
+  type ProsthesisArch,
+  type ProsthesisKind,
+  type ProsthesisRecord,
   type RecordFindingInput,
   type RecordFindingsBatchInput,
+  type RecordProsthesisInput,
   type ToothCondition,
   type ToothFindingHistoryEntry,
   type ToothFindingHistoryEvent,
@@ -34,15 +41,18 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS, type EventTopic } from '@odontocrm/events';
 import { ConflictError, NotFoundError } from '@odontocrm/kernel';
-import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 
 import type { OdontogramDb } from '../db/client.js';
 import {
   odontogramPrints,
   odontograms,
+  prosthesisHistory,
+  prostheses,
   toothFindingHistory,
   toothFindings,
   type OdontogramRow,
+  type ProsthesisRow,
   type ToothFindingHistoryRow,
   type ToothFindingRow,
 } from '../db/schema.js';
@@ -65,7 +75,7 @@ import { auditPayload, publish } from '../shared/events.js';
  *  - El **estado** de un hallazgo tiene que ser válido para su condición (spec anexo
  *    ADR 0032 §2): no hay «caries completada» ni «extracción indicada completada».
  *  - Los **procedimientos** (`completeProcedure`) mutan un hallazgo en otro en una
- *    sola transacción (extracción cumplida → ausente, caries tratada → obturación).
+ *    sola transacción (extracción cumplida → extraída, caries tratada → restauración).
  */
 
 /* ── Tipos y constantes ────────────────────────────────────────────────────── */
@@ -96,6 +106,10 @@ const iso = (value: Date | null): string | null => (value === null ? null : valu
 
 const conditionLabel = (condition: ToothCondition): string =>
   CONDITION_LABELS[condition].toLowerCase();
+
+/** «ausente o extraída»: une las condiciones de origen de un procedimiento. */
+const conditionsLabel = (conditions: readonly ToothCondition[]): string =>
+  conditions.map(conditionLabel).join(' o ');
 
 const surfaceLabel = (surface: ToothSurface): string => SURFACE_LABELS[surface].toLowerCase();
 
@@ -181,6 +195,35 @@ export const groupFindings = (
 const byFormOrder = (a: ToothSurface, b: ToothSurface): number =>
   SURFACE_FORM_ORDER.indexOf(a) - SURFACE_FORM_ORDER.indexOf(b);
 
+/* ── Mapeo y carga de prótesis removibles (PPR/PRT) ────────────────────────── */
+
+/** Fila de prótesis → DTO, con las fechas en ISO. */
+export const toProsthesisRecord = (row: ProsthesisRow): ProsthesisRecord => ({
+  id: row.id,
+  kind: row.kind as ProsthesisKind,
+  arch: row.arch as ProsthesisArch,
+  toothNumbers: row.toothNumbers,
+  state: row.state as ClinicalState,
+  notes: row.notes,
+  recordedByUsername: row.recordedByUsername,
+  recordedAt: row.recordedAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString(),
+  sessionId: row.recordedInSessionId,
+});
+
+/** Prótesis removibles **vigentes** de un odontograma, en orden estable. */
+const loadActiveProstheses = async (
+  db: OdontogramDb,
+  odontogramId: string,
+): Promise<ProsthesisRecord[]> => {
+  const rows = await db
+    .select()
+    .from(prostheses)
+    .where(and(eq(prostheses.odontogramId, odontogramId), isNull(prostheses.resolvedAt)))
+    .orderBy(asc(prostheses.arch), asc(prostheses.kind));
+  return rows.map(toProsthesisRecord);
+};
+
 /* ── Lectura ───────────────────────────────────────────────────────────────── */
 
 export const findOdontogramByPatient = async (
@@ -216,12 +259,14 @@ export const buildDetail = async (
   patient: OdontogramPatientSnapshot | null = null,
 ): Promise<OdontogramDetail> => {
   const { findings, affectedTeeth } = groupFindings(await loadActiveFindings(db, row.id));
+  const prosthesesList = await loadActiveProstheses(db, row.id);
 
   return {
     id: row.id,
     patientId: row.patientId,
     dentition: row.dentition as Dentition,
     findings,
+    prostheses: prosthesesList,
     affectedTeeth,
     empty: affectedTeeth.length === 0,
     recordedByUsername: row.recordedByUsername,
@@ -327,6 +372,7 @@ export interface OdontogramInternalChart {
   hasOdontogram: boolean;
   dentition: Dentition | null;
   findings: Record<string, ToothFindingRecord[]>;
+  prostheses: ProsthesisRecord[];
 }
 
 export const getInternalChart = async (
@@ -335,7 +381,7 @@ export const getInternalChart = async (
 ): Promise<OdontogramInternalChart> => {
   const odontogram = await findOdontogramByPatient(db, patientId);
   if (odontogram === null) {
-    return { patientId, hasOdontogram: false, dentition: null, findings: {} };
+    return { patientId, hasOdontogram: false, dentition: null, findings: {}, prostheses: [] };
   }
 
   const { findings } = groupFindings(await loadActiveFindings(db, odontogram.id));
@@ -344,6 +390,7 @@ export const getInternalChart = async (
     hasOdontogram: true,
     dentition: odontogram.dentition as Dentition,
     findings,
+    prostheses: await loadActiveProstheses(db, odontogram.id),
   };
 };
 
@@ -779,14 +826,16 @@ const findActiveByCondition = async (
   db: OdontogramDb,
   odontogramId: string,
   toothNumber: number,
-  condition: ToothCondition,
+  /** Una condición o varias: un procedimiento puede partir de estados distintos. */
+  condition: ToothCondition | readonly ToothCondition[],
   /** `null` = pieza completa; `'any'` = cualquier cara; una cara concreta. */
   surface: ToothSurface | null | 'any',
 ): Promise<ToothFindingRow[]> => {
+  const condiciones: ToothCondition[] = typeof condition === 'string' ? [condition] : [...condition];
   const filtros = [
     eq(toothFindings.odontogramId, odontogramId),
     eq(toothFindings.toothNumber, toothNumber),
-    eq(toothFindings.condition, condition),
+    inArray(toothFindings.condition, condiciones),
     isNull(toothFindings.resolvedAt),
   ];
   if (surface === null) filtros.push(isNull(toothFindings.surface));
@@ -1114,11 +1163,12 @@ export const recordFindingsBatch = async (
  *
  *  - `obturar`: resuelve la `caries` y deja una `restauracion` (completado) en la
  *    misma cara. Sin cara = **todas** las caries de la pieza.
- *  - `extraer`: resuelve la `extraccion_indicada` y deja la pieza `ausente`
+ *  - `extraer`: resuelve la `extraccion_indicada` y deja la pieza `extraida`
  *    (completado). Es la regla «al cumplirse una extracción indicada, la pieza queda
- *    ausente». La corona y el conducto que hubiera caen con el diente.
- *  - `rehabilitar`: exige un `implante` vigente, resuelve la `ausente` y deja una
- *    `corona` (completado): fase quirúrgica → rehabilitada.
+ *    extraída»: la exodoncia documentada, distinta de la agenesia (`ausente`). La
+ *    corona y el conducto que hubiera caen con el diente.
+ *  - `rehabilitar`: exige un `implante` vigente, resuelve la ausencia (`ausente` o
+ *    `extraida`) y deja una `corona` (completado): fase quirúrgica → rehabilitada.
  *
  * El origen se marca `resolved_at` con su entrada `resuelto` en el histórico (no se
  * borra: es la prueba de que existió) y el destino se aplica con `applyFinding`, así
@@ -1138,7 +1188,7 @@ export const completeProcedure = async (
 
     const context = eventContext(odontogram, patientId, actor);
     const at = new Date();
-    const motivo = `${PROCEDURE_LABELS[input.procedure].toLowerCase()}: ${conditionLabel(transicion.from)} → ${conditionLabel(transicion.to)}`;
+    const motivo = `${PROCEDURE_LABELS[input.procedure].toLowerCase()}: ${conditionsLabel(transicion.from)} → ${conditionLabel(transicion.to)}`;
 
     // 0) Rehabilitar sin implante no existe: una corona sobre implante necesita el
     //    tornillo que la sostiene (spec §5).
@@ -1179,7 +1229,7 @@ export const completeProcedure = async (
 
     if (origenes.length === 0) {
       throw new ConflictError(
-        `La pieza ${input.toothNumber} no tiene «${conditionLabel(transicion.from)}» que cumplir`,
+        `La pieza ${input.toothNumber} no tiene «${conditionsLabel(transicion.from)}» que cumplir`,
         {
           extensions: {
             toothNumber: input.toothNumber,
@@ -1204,7 +1254,7 @@ export const completeProcedure = async (
         for (const row of caen) {
           if (origenes.some((origen) => origen.id === row.id)) continue;
           await resolveFinding(tx, context, row, {
-            reason: 'la extracción deja la pieza ausente',
+            reason: 'la extracción deja la pieza extraída',
             at,
           });
         }
@@ -1333,6 +1383,302 @@ export const clearSurface = async (
 
     return {
       odontogram: await syncDentition(tx, await touchOdontogram(tx, odontogram.id, at)),
+      unchanged: false,
+      resolvedSurfaces: [],
+    };
+  });
+
+  return toMutationResult(db, outcome);
+};
+
+/* ── Prótesis removibles (PPR/PRT) ─────────────────────────────────────────── */
+
+/** Lo que se audita de una prótesis: tipo, arcada, tramo y estado. */
+type ProsthesisSnapshot = {
+  kind: ProsthesisKind;
+  arch: ProsthesisArch;
+  toothNumbers: number[];
+  state: ClinicalState;
+};
+
+const snapshotOfProsthesis = (row: ProsthesisRow): ProsthesisSnapshot => ({
+  kind: row.kind as ProsthesisKind,
+  arch: row.arch as ProsthesisArch,
+  toothNumbers: row.toothNumbers,
+  state: row.state as ClinicalState,
+});
+
+/** «prótesis parcial removible · maxilar superior (indicada)». */
+const describeProsthesis = (snapshot: ProsthesisSnapshot): string =>
+  `${PROSTHESIS_KIND_LABELS[snapshot.kind].toLowerCase()} · ${PROSTHESIS_ARCH_LABELS[
+    snapshot.arch
+  ].toLowerCase()} (${CLINICAL_STATE_LABELS[snapshot.state].toLowerCase()})`;
+
+const prosthesisChangedFields = (snapshot: ProsthesisSnapshot): string[] => [
+  'prótesis',
+  PROSTHESIS_KIND_LABELS[snapshot.kind].toLowerCase(),
+  PROSTHESIS_ARCH_LABELS[snapshot.arch].toLowerCase(),
+];
+
+/** `true` si las dos listas de piezas traen el mismo conjunto. */
+const sameToothNumbers = (a: readonly number[], b: readonly number[]): boolean => {
+  if (a.length !== b.length) return false;
+  const ordenadoA = [...a].sort((x, y) => x - y);
+  const ordenadoB = [...b].sort((x, y) => x - y);
+  return ordenadoA.every((value, index) => value === ordenadoB[index]);
+};
+
+const writeProsthesisHistory = async (
+  db: OdontogramDb,
+  input: {
+    context: FindingEventContext;
+    prosthesisId: string | null;
+    snapshot: ProsthesisSnapshot;
+    event: 'registrado' | 'actualizado' | 'eliminado';
+    reason: string | null;
+    notes: string | null;
+    sessionId: string | null;
+    occurredAt: Date;
+  },
+): Promise<void> => {
+  await db.insert(prosthesisHistory).values({
+    odontogramId: input.context.odontogramId,
+    prosthesisId: input.prosthesisId,
+    patientId: input.context.patientId,
+    kind: input.snapshot.kind,
+    arch: input.snapshot.arch,
+    toothNumbers: input.snapshot.toothNumbers,
+    state: input.snapshot.state,
+    event: input.event,
+    reason: input.reason,
+    notes: input.notes,
+    actorId: input.context.actor.actorId,
+    actorUsername: input.context.actor.actorUsername,
+    sessionId: input.sessionId,
+    occurredAt: input.occurredAt,
+  });
+};
+
+const publishProsthesisEvent = async (
+  db: OdontogramDb,
+  context: FindingEventContext,
+  snapshot: ProsthesisSnapshot,
+  change: {
+    topic: EventTopic;
+    action: AuditAction;
+    summary: string;
+    changedFields: string[];
+    before: ProsthesisSnapshot | null;
+    after: ProsthesisSnapshot | null;
+    reason?: string | null;
+  },
+): Promise<void> => {
+  await publish(db, {
+    topic: change.topic,
+    aggregateId: context.odontogramId,
+    actor: context.actor,
+    payload: {
+      ...auditPayload({
+        entityId: context.odontogramId,
+        action: change.action,
+        summary: change.summary,
+        changedFields: change.changedFields,
+        before: change.before,
+        after: change.after,
+        reason: change.reason ?? null,
+        actor: context.actor,
+      }),
+      patientId: context.patientId,
+      odontogramId: context.odontogramId,
+      prosthesis: {
+        kind: snapshot.kind,
+        arch: snapshot.arch,
+        toothNumbers: snapshot.toothNumbers,
+        state: snapshot.state,
+      },
+    },
+  });
+};
+
+/**
+ * Registra (o corrige) una **prótesis removible** (PPR/PRT). Crea el odontograma si
+ * es el primero. La **PRT** se normaliza a la arcada completa (las 16 piezas): el
+ * cliente no tiene que enumerarlas. La clave natural es **tipo + arcada**, así que
+ * volver a registrar la prótesis de una arcada la **actualiza**, no la duplica.
+ */
+export const recordProsthesis = async (
+  db: OdontogramDb,
+  patientId: string,
+  input: RecordProsthesisInput,
+  actor: ActorContext,
+): Promise<OdontogramMutationResult> => {
+  const toothNumbers =
+    input.kind === 'prt'
+      ? [...archTeeth(input.arch)]
+      : [...input.toothNumbers].sort((a, b) => a - b);
+
+  const outcome = await db.transaction(async (tx): Promise<ApplyOutcome> => {
+    const odontogram = await ensureOdontogram(tx, patientId, 'permanente', actor);
+    const context = eventContext(odontogram, patientId, actor);
+    const at = new Date();
+    const snapshot: ProsthesisSnapshot = {
+      kind: input.kind,
+      arch: input.arch,
+      toothNumbers,
+      state: input.state,
+    };
+
+    const existentes = await tx
+      .select()
+      .from(prostheses)
+      .where(
+        and(
+          eq(prostheses.odontogramId, odontogram.id),
+          eq(prostheses.arch, input.arch),
+          eq(prostheses.kind, input.kind),
+          isNull(prostheses.resolvedAt),
+        ),
+      )
+      .limit(1);
+    const existente = existentes[0];
+
+    // Sin cambios no se escribe ni se audita.
+    if (
+      existente !== undefined &&
+      existente.state === input.state &&
+      sameToothNumbers(existente.toothNumbers, toothNumbers) &&
+      (existente.notes ?? null) === input.notes
+    ) {
+      return { odontogram, unchanged: true, resolvedSurfaces: [] };
+    }
+
+    if (existente !== undefined) {
+      await tx
+        .update(prostheses)
+        .set({
+          toothNumbers,
+          state: input.state,
+          notes: input.notes,
+          recordedInSessionId: input.sessionId,
+          updatedAt: at,
+        })
+        .where(eq(prostheses.id, existente.id));
+
+      await writeProsthesisHistory(tx, {
+        context,
+        prosthesisId: existente.id,
+        snapshot,
+        event: 'actualizado',
+        reason: 'prótesis removible actualizada',
+        notes: input.notes,
+        sessionId: input.sessionId,
+        occurredAt: at,
+      });
+      await publishProsthesisEvent(tx, context, snapshot, {
+        topic: EVENT_TOPICS.prosthesisRecorded,
+        action: 'prosthesis_recorded',
+        summary: `${describeProsthesis(snapshot)} · actualizada`,
+        changedFields: prosthesisChangedFields(snapshot),
+        before: snapshotOfProsthesis(existente),
+        after: snapshot,
+      });
+    } else {
+      const inserted = await tx
+        .insert(prostheses)
+        .values({
+          odontogramId: odontogram.id,
+          patientId,
+          kind: input.kind,
+          arch: input.arch,
+          toothNumbers,
+          state: input.state,
+          notes: input.notes,
+          recordedBy: actor.actorId,
+          recordedByUsername: actor.actorUsername,
+          recordedInSessionId: input.sessionId,
+        })
+        .returning();
+      const row = inserted[0];
+      if (row === undefined) throw new NotFoundError('No se pudo registrar la prótesis');
+
+      await writeProsthesisHistory(tx, {
+        context,
+        prosthesisId: row.id,
+        snapshot,
+        event: 'registrado',
+        reason: 'prótesis removible registrada',
+        notes: input.notes,
+        sessionId: input.sessionId,
+        occurredAt: at,
+      });
+      await publishProsthesisEvent(tx, context, snapshot, {
+        topic: EVENT_TOPICS.prosthesisRecorded,
+        action: 'prosthesis_recorded',
+        summary: `${describeProsthesis(snapshot)} · registrada`,
+        changedFields: prosthesisChangedFields(snapshot),
+        before: null,
+        after: snapshot,
+      });
+    }
+
+    return {
+      odontogram: await touchOdontogram(tx, odontogram.id, at),
+      unchanged: false,
+      resolvedSurfaces: [],
+    };
+  });
+
+  return toMutationResult(db, outcome);
+};
+
+/** Retira una prótesis removible: histórico `eliminado` + evento + fila fuera. */
+export const removeProsthesis = async (
+  db: OdontogramDb,
+  patientId: string,
+  id: string,
+  actor: ActorContext,
+): Promise<OdontogramMutationResult> => {
+  const outcome = await db.transaction(async (tx): Promise<ApplyOutcome> => {
+    const odontogram = await findOdontogramByPatient(tx, patientId);
+    if (odontogram === null) throw new NotFoundError('El paciente todavía no tiene odontograma');
+
+    const rows = await tx
+      .select()
+      .from(prostheses)
+      .where(and(eq(prostheses.id, id), eq(prostheses.odontogramId, odontogram.id)))
+      .limit(1);
+    const row = rows[0];
+    if (row === undefined || row.resolvedAt !== null) {
+      return { odontogram, unchanged: true, resolvedSurfaces: [] };
+    }
+
+    const context = eventContext(odontogram, patientId, actor);
+    const at = new Date();
+    const snapshot = snapshotOfProsthesis(row);
+
+    await tx.delete(prostheses).where(eq(prostheses.id, row.id));
+    await writeProsthesisHistory(tx, {
+      context,
+      prosthesisId: null,
+      snapshot,
+      event: 'eliminado',
+      reason: 'prótesis removible retirada',
+      notes: row.notes,
+      sessionId: row.recordedInSessionId,
+      occurredAt: at,
+    });
+    await publishProsthesisEvent(tx, context, snapshot, {
+      topic: EVENT_TOPICS.prosthesisRemoved,
+      action: 'prosthesis_removed',
+      summary: `${describeProsthesis(snapshot)} · eliminada`,
+      changedFields: prosthesisChangedFields(snapshot),
+      before: snapshot,
+      after: null,
+      reason: 'prótesis removible retirada',
+    });
+
+    return {
+      odontogram: await touchOdontogram(tx, odontogram.id, at),
       unchanged: false,
       resolvedSurfaces: [],
     };

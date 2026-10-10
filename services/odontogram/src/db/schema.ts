@@ -1,6 +1,8 @@
 import {
   CLINICAL_STATES,
   DENTITIONS,
+  PROSTHESIS_ARCHES,
+  PROSTHESIS_KINDS,
   TOOTH_CONDITIONS,
   TOOTH_SURFACES,
 } from '@odontocrm/contracts';
@@ -125,14 +127,14 @@ export const toothFindings = pgTable(
       'chk_tooth_findings_state_allowed',
       sql`(
         (${table.condition} in ('caries', 'extraccion_indicada') and ${table.state} = 'pendiente')
-        or (${table.condition} = 'ausente' and ${table.state} = 'completado')
+        or (${table.condition} in ('ausente', 'extraida') and ${table.state} = 'completado')
         or ${table.condition} in ('restauracion', 'corona', 'implante', 'endodoncia')
       )`,
     ),
     // Una condición de cara no puede guardarse como pieza completa y al revés.
     check(
       'chk_tooth_findings_scope',
-      sql`(${table.surface} is null and ${table.condition} in ('ausente', 'extraccion_indicada', 'corona', 'implante', 'endodoncia')) or (${table.surface} is not null and ${table.condition} in ('caries', 'restauracion'))`,
+      sql`(${table.surface} is null and ${table.condition} in ('ausente', 'extraccion_indicada', 'extraida', 'corona', 'implante', 'endodoncia')) or (${table.surface} is not null and ${table.condition} in ('caries', 'restauracion'))`,
     ),
   ],
 );
@@ -191,7 +193,86 @@ export const odontogramPrints = pgTable(
   (table) => [index('idx_odontogram_prints').on(table.odontogramId, table.printedAt)],
 );
 
+/**
+ * Prótesis **removible** vigente (PPR/PRT). Es una entidad de **nivel de arcada o de
+ * tramo**, no de pieza: por eso vive en su propia tabla y no dentro de
+ * `tooth_findings`. `tooth_numbers` guarda el tramo (PPR) o la arcada completa (PRT)
+ * como `smallint[]`.
+ *
+ * Reglas: la parcial cubre un tramo contiguo; la total, la arcada entera. La unicidad
+ * de una PRT por arcada la garantiza un índice parcial (`kind = 'prt'` sin resolver).
+ */
+export const prostheses = pgTable(
+  'prostheses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    odontogramId: uuid('odontogram_id')
+      .notNull()
+      .references(() => odontograms.id, { onDelete: 'cascade' }),
+    patientId: uuid('patient_id').notNull(),
+    /** `ppr` (parcial) o `prt` (total). */
+    kind: text('kind').notNull(),
+    /** `maxilar` o `mandibula`. */
+    arch: text('arch').notNull(),
+    /** Piezas que cubre, en orden FDI. */
+    toothNumbers: smallint('tooth_numbers').array().notNull(),
+    /** `pendiente` (rojo, indicada) o `completado` (azul, instalada). */
+    state: text('state').notNull().default('pendiente'),
+    notes: text('notes'),
+    recordedBy: uuid('recorded_by'),
+    recordedByUsername: text('recorded_by_username'),
+    recordedInSessionId: uuid('recorded_in_session_id'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Cuándo se retiró/superó la prótesis. */
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('idx_prostheses_odontogram').on(table.odontogramId),
+    index('idx_prostheses_patient').on(table.patientId),
+    // Una sola PRT vigente por arcada: la prótesis total es única por definición.
+    uniqueIndex('uq_prosthesis_prt_arch')
+      .on(table.odontogramId, table.arch)
+      .where(sql`${table.kind} = 'prt' and ${table.resolvedAt} is null`),
+    check('chk_prostheses_kind', sql`${table.kind} in (${sqlLiteralList(PROSTHESIS_KINDS)})`),
+    check('chk_prostheses_arch', sql`${table.arch} in (${sqlLiteralList(PROSTHESIS_ARCHES)})`),
+    check('chk_prostheses_state', sql`${table.state} in (${sqlLiteralList(CLINICAL_STATES)})`),
+  ],
+);
+
+/**
+ * Histórico **append-only** de las prótesis: una fila por registro, cambio o retirada.
+ * Espejo de `tooth_finding_history` para el nivel de arcada/tramo.
+ */
+export const prosthesisHistory = pgTable(
+  'prosthesis_history',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    odontogramId: uuid('odontogram_id')
+      .notNull()
+      .references(() => odontograms.id, { onDelete: 'cascade' }),
+    /** Prótesis afectada; queda `null` si la fila ya no existe. */
+    prosthesisId: uuid('prosthesis_id'),
+    patientId: uuid('patient_id').notNull(),
+    kind: text('kind').notNull(),
+    arch: text('arch').notNull(),
+    toothNumbers: smallint('tooth_numbers').array().notNull(),
+    state: text('state').notNull(),
+    /** `registrado` | `actualizado` | `eliminado`. */
+    event: text('event').notNull(),
+    reason: text('reason'),
+    notes: text('notes'),
+    actorId: uuid('actor_id'),
+    actorUsername: text('actor_username'),
+    sessionId: uuid('session_id'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('idx_prosthesis_history').on(table.odontogramId, table.occurredAt)],
+);
+
 export type OdontogramRow = typeof odontograms.$inferSelect;
 export type ToothFindingRow = typeof toothFindings.$inferSelect;
 export type ToothFindingHistoryRow = typeof toothFindingHistory.$inferSelect;
+export type ProsthesisRow = typeof prostheses.$inferSelect;
+export type ProsthesisHistoryRow = typeof prosthesisHistory.$inferSelect;
 export type OdontogramPrintRow = typeof odontogramPrints.$inferSelect;

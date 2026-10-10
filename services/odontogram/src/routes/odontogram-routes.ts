@@ -2,8 +2,10 @@ import {
   clearSurfaceSchema,
   completeProcedureSchema,
   deleteFindingSchema,
+  deleteProsthesisSchema,
   recordFindingSchema,
   recordFindingsBatchSchema,
+  recordProsthesisSchema,
   toothConditionSchema,
   toothSurfaceSchema,
 } from '@odontocrm/contracts';
@@ -21,7 +23,9 @@ import {
   getOdontogramByPatient,
   recordFinding,
   recordFindingsBatch,
+  recordProsthesis,
   registerPrint,
+  removeProsthesis,
 } from '../odontogram/chart-service.js';
 import type { OdontogramServices } from '../services.js';
 import { actorFrom } from '../shared/context.js';
@@ -169,6 +173,38 @@ export const registerOdontogramRoutes = (
         surface: params.surface,
       });
       const result = await clearSurface(db, params.patientId, input, actor);
+      if (!result.unchanged) publicarYa();
+      return reply.status(200).send(result);
+    },
+  );
+
+  /**
+   * Registra o corrige una **prótesis removible** (PPR/PRT). Clave natural: tipo +
+   * arcada; volver a registrar la de una arcada la actualiza (la PRT se normaliza a
+   * la arcada completa en el servicio).
+   */
+  app.put(
+    '/api/v1/odontogram/patients/:patientId/prostheses',
+    { preHandler: write },
+    async (request, reply) => {
+      const actor = actorFrom(request);
+      const { patientId } = parseOrThrow(patientParamsSchema, request.params);
+      const input = parseOrThrow(recordProsthesisSchema, request.body ?? {});
+      const result = await recordProsthesis(db, patientId, input, actor);
+      if (!result.unchanged) publicarYa();
+      return reply.status(200).send(result);
+    },
+  );
+
+  /** Retira una prótesis removible por su identificador. */
+  app.delete(
+    '/api/v1/odontogram/patients/:patientId/prostheses/:id',
+    { preHandler: write },
+    async (request, reply) => {
+      const actor = actorFrom(request);
+      const { patientId } = parseOrThrow(patientParamsSchema, request.params);
+      const { id } = parseOrThrow(deleteProsthesisSchema, request.params as { id?: unknown });
+      const result = await removeProsthesis(db, patientId, id, actor);
       if (!result.unchanged) publicarYa();
       return reply.status(200).send(result);
     },
