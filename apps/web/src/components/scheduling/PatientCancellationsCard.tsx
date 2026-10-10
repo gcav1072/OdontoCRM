@@ -88,10 +88,10 @@ export const PatientCancellationsCard = () => {
 
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-end gap-3">
-          <Field label={t('programacion.cancelaciones.desde')} className="w-44">
+          <Field label={t('programacion.cancelaciones.desde')} className="w-full @2xl:w-44">
             <Input type="date" value={desde} onChange={(event) => setDesde(event.target.value)} />
           </Field>
-          <Field label={t('programacion.cancelaciones.hasta')} className="w-44">
+          <Field label={t('programacion.cancelaciones.hasta')} className="w-full @2xl:w-44">
             <Input type="date" value={hasta} onChange={(event) => setHasta(event.target.value)} />
           </Field>
           <Button

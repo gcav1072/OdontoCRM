@@ -1,7 +1,7 @@
 import { MAX_DAY_CAPACITY, setCapacitySchema, type DayCapacity } from '@odontocrm/contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
-import { Alert, Button, Dialog, Field, Input } from '@odontocrm/ui';
+import { Alert, Button, Dialog, Field, Input, Textarea } from '@odontocrm/ui';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import type { z } from 'zod';
@@ -117,7 +117,7 @@ export const CapacityDialog = ({ capacity, onClose, onSaved }: CapacityDialogPro
       >
         {errorGeneral !== null && <Alert variant="danger">{errorGeneral}</Alert>}
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 @2xl:grid-cols-2">
           <Field
             label={t('programacion.cupo.numero')}
             hint={t('programacion.cupo.numeroAyuda', { max: MAX_DAY_CAPACITY })}
@@ -149,11 +149,7 @@ export const CapacityDialog = ({ capacity, onClose, onSaved }: CapacityDialogPro
         )}
 
         <Field label={t('programacion.cupo.notas')} error={errors.notes?.message}>
-          <textarea
-            rows={2}
-            className="w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-sm text-ink shadow-xs transition-colors placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus"
-            {...formulario.register('notes')}
-          />
+          <Textarea rows={2} {...formulario.register('notes')} />
         </Field>
       </form>
     </Dialog>

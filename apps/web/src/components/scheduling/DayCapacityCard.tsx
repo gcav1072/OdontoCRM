@@ -32,7 +32,7 @@ export const DayCapacityCard = ({ day, canWrite, onEdit }: DayCapacityCardProps)
 
   return (
     <Card>
-      <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <CardHeader className="gap-3 @2xl:flex-row @2xl:items-start @2xl:justify-between">
         <div className="min-w-0">
           <CardTitle as="h2" className="flex items-center gap-2">
             <GaugeCircle className="size-4 text-primary" aria-hidden="true" />
@@ -119,7 +119,7 @@ export const DayCapacityCard = ({ day, canWrite, onEdit }: DayCapacityCardProps)
           </Alert>
         )}
 
-        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
+        <dl className="grid grid-cols-2 gap-2 @2xl:grid-cols-3 @5xl:grid-cols-7">
           <Contador etiqueta={t('programacion.contador.programadas')} valor={counts.programadas} />
           <Contador etiqueta={t('programacion.contador.notificadas')} valor={counts.notificadas} />
           <Contador etiqueta={t('programacion.contador.confirmadas')} valor={counts.confirmadas} />

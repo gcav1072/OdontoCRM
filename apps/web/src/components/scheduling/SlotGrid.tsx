@@ -79,7 +79,7 @@ export const SlotGrid = ({
 
   return (
     <Card>
-      <CardHeader className="gap-2 sm:flex-row sm:items-start sm:justify-between">
+      <CardHeader className="gap-2 @2xl:flex-row @2xl:items-start @2xl:justify-between">
         <div className="min-w-0">
           <CardTitle as="h2" className="flex items-center gap-2">
             <LayoutGrid className="size-4 text-primary" aria-hidden="true" />
@@ -112,7 +112,7 @@ export const SlotGrid = ({
         {slots.length === 0 ? (
           <Alert variant="info">{t('programacion.franja.vacio')}</Alert>
         ) : (
-          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+          <ul className="grid grid-cols-2 gap-2 @2xl:grid-cols-3 @6xl:grid-cols-4">
             {slots.map((slot) => {
               const ocupada = slot.state === 'ocupada' && slot.appointment !== null;
               const fuera = slot.state === 'fuera_de_jornada';

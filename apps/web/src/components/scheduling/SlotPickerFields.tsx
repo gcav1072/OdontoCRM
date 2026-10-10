@@ -106,7 +106,7 @@ export const SlotPickerFields = ({
           </Select>
         </Field>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 @2xl:grid-cols-2">
           <Field label={t('programacion.asignar.hora')} error={errorStartTime} required>
             <Input
               type="time"

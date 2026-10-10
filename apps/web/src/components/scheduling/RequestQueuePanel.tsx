@@ -109,7 +109,7 @@ export const RequestQueuePanel = ({
 
   return (
     <Card className="flex h-full flex-col">
-      <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <CardHeader className="gap-3 @2xl:flex-row @2xl:items-start @2xl:justify-between">
         <div className="min-w-0">
           <CardTitle as="h2" className="flex items-center gap-2">
             <ClipboardList className="size-4 text-primary" aria-hidden="true" />
@@ -125,8 +125,8 @@ export const RequestQueuePanel = ({
       </CardHeader>
 
       <CardContent className="flex min-h-0 flex-1 flex-col gap-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={t('programacion.cola.filtro.buscar')} className="sm:col-span-2">
+        <div className="grid gap-3 @2xl:grid-cols-2">
+          <Field label={t('programacion.cola.filtro.buscar')} className="@2xl:col-span-2">
             <div className="relative">
               <Search
                 className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-subtle"

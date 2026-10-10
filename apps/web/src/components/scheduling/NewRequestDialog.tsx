@@ -7,7 +7,18 @@ import {
 } from '@odontocrm/contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Alert, Badge, Button, Dialog, Field, Input, Select, Spinner, cn } from '@odontocrm/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  Dialog,
+  Field,
+  Input,
+  Select,
+  Spinner,
+  Textarea,
+  cn,
+} from '@odontocrm/ui';
 import { IdCard, Search, UserRound } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -270,7 +281,7 @@ export const NewRequestDialog = ({ onClose, onCreated }: NewRequestDialogProps) 
           <Input autoComplete="off" {...formulario.register('reason')} />
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 @2xl:grid-cols-3">
           <Field label={t('programacion.nueva.canal')} error={errors.channel?.message}>
             <Select {...formulario.register('channel')}>
               {CHANNELS.map((valor: Channel) => (
@@ -306,11 +317,7 @@ export const NewRequestDialog = ({ onClose, onCreated }: NewRequestDialogProps) 
         </div>
 
         <Field label={t('programacion.nueva.notas')} error={errors.notes?.message}>
-          <textarea
-            rows={2}
-            className="w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-sm text-ink shadow-xs transition-colors placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus"
-            {...formulario.register('notes')}
-          />
+          <Textarea rows={2} {...formulario.register('notes')} />
         </Field>
       </form>
     </Dialog>

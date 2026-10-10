@@ -11,7 +11,7 @@ import {
 } from '@odontocrm/contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
-import { Alert, Button, Dialog, Field, Input, Select } from '@odontocrm/ui';
+import { Alert, Button, Dialog, Field, Input, Select, Textarea } from '@odontocrm/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import type { z } from 'zod';
@@ -245,7 +245,7 @@ export const AssignAppointmentDialog = ({
           />
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 @2xl:grid-cols-2">
           <Field
             label={t('programacion.asignar.consultorio')}
             error={errors.chairId?.message}
@@ -321,11 +321,7 @@ export const AssignAppointmentDialog = ({
         )}
 
         <Field label={t('programacion.asignar.notas')} error={errors.notes?.message}>
-          <textarea
-            rows={2}
-            className="w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-sm text-ink shadow-xs transition-colors placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus"
-            {...formulario.register('notes')}
-          />
+          <Textarea rows={2} {...formulario.register('notes')} />
         </Field>
 
         {startTime !== '' && (

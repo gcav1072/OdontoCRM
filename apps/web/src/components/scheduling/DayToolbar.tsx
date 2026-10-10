@@ -43,7 +43,7 @@ export const DayToolbar = ({
   onTemplates,
 }: DayToolbarProps) => (
   <Card>
-    <CardHeader className="gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <CardHeader className="gap-4 @6xl:flex-row @6xl:items-end @6xl:justify-between">
       <div className="min-w-0">
         <CardTitle as="h1" className="flex items-center gap-2">
           <CalendarRange className="size-5 text-primary" aria-hidden="true" />
@@ -87,7 +87,7 @@ export const DayToolbar = ({
           {t('programacion.fecha.siguiente')}
         </Button>
 
-        <Field label={t('programacion.fecha.campo')} className="w-44">
+        <Field label={t('programacion.fecha.campo')} className="w-full @2xl:w-44">
           <Input
             type="date"
             value={date}

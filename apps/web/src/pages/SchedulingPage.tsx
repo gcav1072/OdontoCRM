@@ -221,7 +221,7 @@ export const SchedulingPage = () => {
     <div className="space-y-5">
       <NoticeBanner notice={notice} onClose={limpiar} />
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(19rem,23rem)_minmax(0,1fr)]">
+      <div className="grid gap-5 @6xl:grid-cols-[minmax(19rem,23rem)_minmax(0,1fr)]">
         <RequestQueuePanel
           selectedRequestId={solicitudElegida?.id ?? null}
           canWrite={puedeEscribir}
