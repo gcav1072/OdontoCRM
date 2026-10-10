@@ -9,12 +9,20 @@ import {
   startDeadLetterWatcher,
   stopBoss,
 } from '@odontocrm/db';
+import type { InboundMessage } from '@odontocrm/contracts';
 import { EVENT_TOPICS } from '@odontocrm/events';
 import { aplicarDatosDelConsultorio, createLetterheadLookup, startServer } from '@odontocrm/kernel';
 
 import { createAdminAlerter } from './alertas.js';
 import { createChannelAdapters } from './canales/index.js';
-import { loadNotificationsConfig } from './config.js';
+import { createChannelCredentialsLookup } from './channels-config.js';
+import {
+  applyChannelCredentials,
+  channelSignature,
+  loadNotificationsConfig,
+  syncChannelFields,
+  type NotificationsConfig,
+} from './config.js';
 import { handleDomainEvent, publishMessageEvent } from './consumer.js';
 import { avisarFalloAlPaciente, handleInbound } from './core/asistente.js';
 import { createNotificationsDatabase } from './db/client.js';
@@ -42,7 +50,25 @@ const main = async (): Promise<void> => {
   // entrega se guarda y se registra en cuanto el servidor está en pie.
   let logError: (error: unknown) => void = () => undefined;
   let logAviso: (error: unknown, contexto: string) => void = () => undefined;
-  const canales = createChannelAdapters(config, {
+
+  /**
+   * Los canales se construyen con la **configuración efectiva**: la del `.env` más lo que el
+   * panel haya guardado en la base (ADR 0060). La base manda; el `.env` es el respaldo.
+   *
+   * `configBase` se guarda intacto para que, si el panel **borra** un valor, se vuelva al del
+   * archivo en vez de quedarse pegado en el último valor de la base.
+   */
+  const configBase: NotificationsConfig = { ...config };
+  const canalesLookup = createChannelCredentialsLookup(config);
+  const resolverCanales = async (): Promise<NotificationsConfig> => {
+    const creds = await canalesLookup();
+    const efectivo = applyChannelCredentials(configBase, creds);
+    syncChannelFields(config, efectivo);
+    return efectivo;
+  };
+
+  const configCanales = await resolverCanales();
+  const canales = createChannelAdapters(configCanales, {
     onError: (error) => {
       logError(error);
     },
@@ -57,7 +83,7 @@ const main = async (): Promise<void> => {
    * fallo se guarda y se registra en cuanto el servidor está en pie.
    */
   const adminAlerter = createAdminAlerter({
-    config,
+    config: configCanales,
     onError: (error, contexto) => {
       logAviso(error, contexto);
     },
@@ -157,7 +183,7 @@ const main = async (): Promise<void> => {
       if (!esNuevo) return;
       // Este servicio es el que tiene el bot: llama al emisor directamente en vez de pedirse
       // el aviso a sí mismo por HTTP.
-      await adminAlerter.enviar({ ...deadLetterAlert(record), source: 'notifications' });
+      await services.adminAlerter.enviar({ ...deadLetterAlert(record), source: 'notifications' });
     },
     onError: (error) => {
       services.lastError = error instanceof Error ? error.message : String(error);
@@ -216,7 +242,8 @@ const main = async (): Promise<void> => {
     clients,
   };
 
-  await canales.registry.start(async (entrante) => {
+  /** El núcleo al que entregan los adaptadores (el mismo al reconstruirlos). */
+  const entregar = async (entrante: InboundMessage): Promise<void> => {
     try {
       const result = await handleInbound(asistente, entrante);
       if (result.handled) {
@@ -240,7 +267,62 @@ const main = async (): Promise<void> => {
         );
       }
     }
-  });
+  };
+
+  await canales.registry.start(entregar);
+
+  /**
+   * **Recarga de canales en caliente** (ADR 0060). Cuando alguien guarda un token en el
+   * panel, la base cambia; aquí se detecta cada minuto y se **reconstruyen** los adaptadores
+   * (Telegram vuelve a conectar con el token nuevo) sin reiniciar el servicio.
+   *
+   * Se mutan las propiedades del **mismo** objeto `canales`: las rutas lo capturaron por
+   * referencia al registrarse, así que siguen viendo el registro nuevo. El asistente y el
+   * emisor de avisos se reapuntan igual.
+   */
+  let firmaCanales = channelSignature(configCanales);
+  const recargarCanales = async (): Promise<void> => {
+    try {
+      const efectivo = await resolverCanales();
+      const firma = channelSignature(efectivo);
+      if (firma === firmaCanales) return;
+      firmaCanales = firma;
+
+      const nuevo = createChannelAdapters(efectivo, {
+        onError: (error) => {
+          logError(error);
+        },
+        onAviso: (error, contexto) => {
+          logAviso(error, contexto);
+        },
+      });
+
+      await canales.registry.stop().catch(() => undefined);
+      canales.registry = nuevo.registry;
+      canales.transport = nuevo.transport;
+      canales.modoTelegram = nuevo.modoTelegram;
+      canales.modoTest = nuevo.modoTest;
+      canales.webhooks = nuevo.webhooks;
+      asistente.canales = canales.registry;
+      services.adminAlerter = createAdminAlerter({
+        config: efectivo,
+        onError: (error, contexto) => {
+          logAviso(error, contexto);
+        },
+      });
+      await canales.registry.start(entregar);
+
+      app.log.info(
+        { modo: canales.modoTelegram, canales: canales.registry.all.map((a) => a.id) },
+        'Canales reconstruidos tras un cambio en la configuración',
+      );
+    } catch (error) {
+      app.log.error({ err: error }, 'No se pudieron recargar los canales');
+    }
+  };
+
+  const canalesTimer = setInterval(() => void recargarCanales(), 60_000);
+  canalesTimer.unref?.();
 
   const telegram = canales.registry.get('telegram');
   const telegramIdentidad = telegram === null ? null : await telegram.identidad().catch(() => null);
@@ -263,6 +345,7 @@ const main = async (): Promise<void> => {
 
   app.addHook('onClose', async () => {
     clearInterval(queueTimer);
+    clearInterval(canalesTimer);
     await deadLetters.stop();
     await canales.registry.stop();
     await outbox.stop();

@@ -3,6 +3,7 @@ import {
   ANTI_FLOOD_WINDOW_SECONDS,
   NOTIFICATION_MAX_ATTEMPTS,
   NOTIFICATION_RETRY_DELAYS_SECONDS,
+  type ChannelCredentials,
 } from '@odontocrm/contracts';
 import { baseEnvSchema, loadConfig, testModeEnabled } from '@odontocrm/kernel';
 import { z } from 'zod';
@@ -144,3 +145,75 @@ export const retryDelays = (config: NotificationsConfig): number[] =>
  */
 export const adminBotReady = (config: NotificationsConfig): boolean =>
   config.ADMIN_TELEGRAM_BOT_TOKEN !== undefined && config.ADMIN_TELEGRAM_CHAT_ID !== undefined;
+
+/**
+ * Aplica sobre la configuración las credenciales que el panel guardó en la base (ADR 0060).
+ *
+ * La **base manda** cuando trae el dato; el `.env` queda como **respaldo** (una instalación
+ * que ya tenía los tokens en el archivo sigue funcionando sin tocar el panel). Un campo en
+ * `null` en la base no pisa al `.env`: significa «no se configuró aquí», no «bórralo».
+ *
+ * Es puro y se llama **en caliente** (cada pocos minutos) para que guardar en el panel se
+ * note sin reiniciar: los adaptadores se reconstruyen con la configuración resultante.
+ */
+export const applyChannelCredentials = (
+  config: NotificationsConfig,
+  creds: ChannelCredentials | null,
+): NotificationsConfig => {
+  if (creds === null) return config;
+  return {
+    ...config,
+    TELEGRAM_BOT_TOKEN: creds.telegramBotToken ?? config.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_BOT_USERNAME: creds.telegramBotUsername ?? config.TELEGRAM_BOT_USERNAME,
+    ADMIN_TELEGRAM_BOT_TOKEN: creds.adminTelegramBotToken ?? config.ADMIN_TELEGRAM_BOT_TOKEN,
+    ADMIN_TELEGRAM_CHAT_ID: creds.adminTelegramChatId ?? config.ADMIN_TELEGRAM_CHAT_ID,
+    WHATSAPP_TOKEN: creds.whatsappToken ?? config.WHATSAPP_TOKEN,
+    WHATSAPP_PHONE_ID: creds.whatsappPhoneId ?? config.WHATSAPP_PHONE_ID,
+    WHATSAPP_VERIFY_TOKEN: creds.whatsappVerifyToken ?? config.WHATSAPP_VERIFY_TOKEN,
+    WHATSAPP_APP_SECRET: creds.whatsappAppSecret ?? config.WHATSAPP_APP_SECRET,
+    WHATSAPP_API_BASE:
+      creds.whatsappApiBase === '' ? config.WHATSAPP_API_BASE : creds.whatsappApiBase,
+  };
+};
+
+/**
+ * Copia los campos de canal de `origen` sobre `destino` (**el mismo objeto** que ya
+ * comparten el asistente, las rutas y la cola). Se usa al aplicar las credenciales del
+ * panel: en vez de repartir un `config` nuevo por medio servicio, se refresca el que ya
+ * está en uso y todo el que lo lea ve el dato bueno sin reiniciar.
+ */
+export const syncChannelFields = (
+  destino: NotificationsConfig,
+  origen: NotificationsConfig,
+): void => {
+  destino.TELEGRAM_BOT_TOKEN = origen.TELEGRAM_BOT_TOKEN;
+  destino.TELEGRAM_BOT_USERNAME = origen.TELEGRAM_BOT_USERNAME;
+  destino.ADMIN_TELEGRAM_BOT_TOKEN = origen.ADMIN_TELEGRAM_BOT_TOKEN;
+  destino.ADMIN_TELEGRAM_CHAT_ID = origen.ADMIN_TELEGRAM_CHAT_ID;
+  destino.WHATSAPP_TOKEN = origen.WHATSAPP_TOKEN;
+  destino.WHATSAPP_PHONE_ID = origen.WHATSAPP_PHONE_ID;
+  destino.WHATSAPP_VERIFY_TOKEN = origen.WHATSAPP_VERIFY_TOKEN;
+  destino.WHATSAPP_APP_SECRET = origen.WHATSAPP_APP_SECRET;
+  destino.WHATSAPP_API_BASE = origen.WHATSAPP_API_BASE;
+};
+
+/**
+ * Huella de lo que decide los adaptadores activos. El servicio la compara cada pocos
+ * minutos: si cambió (el panel guardó un token), reconstruye los adaptadores sin reiniciar.
+ *
+ * **No se registra ni se expone**: lleva los secretos dentro para detectar cualquier cambio,
+ * y por eso solo se compara en memoria.
+ */
+export const channelSignature = (config: NotificationsConfig): string =>
+  JSON.stringify([
+    config.TELEGRAM_BOT_TOKEN ?? null,
+    config.TELEGRAM_BOT_USERNAME ?? null,
+    config.ADMIN_TELEGRAM_BOT_TOKEN ?? null,
+    config.ADMIN_TELEGRAM_CHAT_ID ?? null,
+    config.WHATSAPP_TOKEN ?? null,
+    config.WHATSAPP_PHONE_ID ?? null,
+    config.WHATSAPP_VERIFY_TOKEN ?? null,
+    config.WHATSAPP_APP_SECRET ?? null,
+    config.WHATSAPP_API_BASE,
+    telegramMode(config),
+  ]);

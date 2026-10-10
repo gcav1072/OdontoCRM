@@ -2,6 +2,7 @@ import {
   CHANNEL_IDS,
   adminAlertSchema,
   appointmentNotificationFiltersSchema,
+  channelTestInputSchema,
   markContactedSchema,
   messageTemplateInputSchema,
   notificationFiltersSchema,
@@ -377,4 +378,57 @@ export const registerNotificationRoutes = (
   app.get('/internal/v1/notifications/admin-alert/status', async (_request, reply) =>
     reply.status(200).send(services.adminAlerter.estado()),
   );
+
+  /**
+   * **Prueba de un canal** desde el panel de configuración (ADR 0060). Identity no tiene el
+   * bot, así que el panel delega aquí: se manda un mensaje de diagnóstico por el canal
+   * pedido y se devuelve el resultado. Nunca lanza por un fallo del canal: responde
+   * `ok: false` con el motivo, que es lo que el panel enseña.
+   */
+  app.post('/internal/v1/notifications/channels/test', async (request, reply) => {
+    const input = parseOrThrow(channelTestInputSchema, request.body ?? {});
+    const texto =
+      'OdontoCRM · Prueba de configuración: si lees esto, el canal está bien configurado.';
+
+    if (input.canal === 'admin') {
+      const resultado = await services.adminAlerter.enviar({
+        level: 'info',
+        title: 'Prueba del panel de configuración',
+        detail: texto,
+        context: { origen: 'panel' },
+        source: 'panel',
+      });
+      return reply.status(200).send({
+        ok: resultado.enviado,
+        detalle: resultado.enviado
+          ? 'Aviso enviado al chat del administrador'
+          : (resultado.motivo ?? 'No se pudo enviar'),
+      });
+    }
+
+    const adaptador = canales.registry.get(input.canal);
+    if (adaptador === null) {
+      return reply.status(200).send({
+        ok: false,
+        detalle: `El canal ${input.canal} no está activo en esta instalación`,
+      });
+    }
+    if (input.destino === undefined) {
+      return reply
+        .status(200)
+        .send({ ok: false, detalle: 'Indica un destino (chat o número) para la prueba' });
+    }
+
+    try {
+      await adaptador.enviar({ direccion: input.destino, texto });
+      return reply
+        .status(200)
+        .send({ ok: true, detalle: `Mensaje de prueba enviado por ${input.canal}` });
+    } catch (error) {
+      return reply.status(200).send({
+        ok: false,
+        detalle: error instanceof Error ? error.message : 'No se pudo enviar el mensaje',
+      });
+    }
+  });
 };
