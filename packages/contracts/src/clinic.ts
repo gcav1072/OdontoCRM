@@ -129,6 +129,31 @@ export const clinicDentistFor = (
   return propio ?? clinicLeadDentist(clinic);
 };
 
+/**
+ * La línea del **especialista que emite** un imprimible, como se lee en el membrete,
+ * debajo de la dirección y el teléfono: «Od. María Gómez · Endodoncia · MPPS 12345 ·
+ * Colegiatura 6789».
+ *
+ * El nombre va primero porque es quien firma; la especialidad, el MPPS y la colegiatura
+ * son el respaldo legal y salen **solo si están llenos** (nada se imprime en blanco).
+ * El prefijo «MPPS » no se repite si el número ya lo trae («MPPS 12345»), y la
+ * colegiatura se rotula para que no se confunda con el MPPS. Sin odontólogo devuelve
+ * cadena vacía y el membrete no añade línea.
+ */
+export const clinicDentistLine = (dentist: ClinicDentist | null): string => {
+  if (dentist === null) return '';
+  const mpps = dentist.mpps?.trim() ?? '';
+  const colegiatura = dentist.licenseNumber?.trim() ?? '';
+  return [
+    dentist.fullName.trim(),
+    dentist.specialty?.trim() ?? '',
+    mpps === '' ? '' : /^mpps\b/i.test(mpps) ? mpps : `MPPS ${mpps}`,
+    colegiatura === '' ? '' : `Colegiatura ${colegiatura}`,
+  ]
+    .filter((parte) => parte !== '')
+    .join(' · ');
+};
+
 /** Etiquetas de lo que le falta al membrete para salir completo, en orden de importancia. */
 export const letterheadMissingFields = (clinic: ClinicIdentity = CLINIC): string[] => {
   const faltantes: string[] = [];

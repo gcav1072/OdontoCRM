@@ -5,6 +5,7 @@ import {
   clinicContactLine,
   clinicContactReady,
   clinicDentistFor,
+  clinicDentistLine,
   clinicFullAddress,
   clinicLeadDentist,
   letterheadMissingFields,
@@ -114,5 +115,49 @@ describe('ayudas de lectura del consultorio', () => {
     expect(faltantes).toContain('nombre del consultorio');
     expect(faltantes).toContain('dirección');
     expect(faltantes).toContain('MPPS del odontólogo');
+  });
+});
+
+describe('la línea del especialista en el membrete', () => {
+  it('junta nombre, especialidad, MPPS y colegiatura en ese orden', () => {
+    const dentista = {
+      username: 'jperez',
+      fullName: 'Od. José Pérez',
+      mpps: '12345',
+      specialty: 'Endodoncia',
+      licenseNumber: '6789',
+      email: null,
+    };
+    expect(clinicDentistLine(dentista)).toBe(
+      'Od. José Pérez · Endodoncia · MPPS 12345 · Colegiatura 6789',
+    );
+  });
+
+  it('no repite el prefijo «MPPS» si el número ya lo trae', () => {
+    const dentista = {
+      username: 'jperez',
+      fullName: 'Od. José Pérez',
+      mpps: 'MPPS 12345',
+      specialty: 'Endodoncia',
+      licenseNumber: null,
+      email: null,
+    };
+    expect(clinicDentistLine(dentista)).toBe('Od. José Pérez · Endodoncia · MPPS 12345');
+  });
+
+  it('solo imprime lo que está lleno: nada sale en blanco', () => {
+    const soloNombre = {
+      username: 'jperez',
+      fullName: 'Od. José Pérez',
+      mpps: null,
+      specialty: null,
+      licenseNumber: null,
+      email: null,
+    };
+    expect(clinicDentistLine(soloNombre)).toBe('Od. José Pérez');
+  });
+
+  it('sin odontólogo no hay línea que imprimir', () => {
+    expect(clinicDentistLine(null)).toBe('');
   });
 });
