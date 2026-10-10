@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   birthLine,
   prescriptionHtml,
+  routeText,
   type PrescriptionDocumentInput,
 } from './prescription-document.js';
 import { qrSvg } from './qr.js';
@@ -44,6 +45,7 @@ const base: PrescriptionDocumentInput = {
   ],
   generalInstructions: 'Volver si el dolor no cede en 48 horas.',
   verificationUrl: 'http://127.0.0.1:5173/verificar/ABCDE-FGHJK',
+  verifyCode: 'ABCDE-FGHJK',
   logoPath: null,
 };
 
@@ -114,5 +116,69 @@ describe('el récipe impreso', () => {
     // el propio módulo del QR (el enlace no se imprime como texto a propósito: lo
     // lee el teléfono, y quien no tenga teléfono usa el número de arriba).
     expect(html).toContain(qrSvg('http://127.0.0.1:5173/verificar/ABCDE-FGHJK'));
+  });
+});
+
+describe('el récipe en dos mitades apaisadas', () => {
+  it('parte la hoja en dos mitades, cada una con su membrete y su firma', async () => {
+    const html = await prescriptionHtml(base);
+    expect(html).toContain('class="sheet"');
+    // Dos medias hojas: la farmacia (izquierda) y el paciente (derecha).
+    expect(html.match(/class="half"/g)).toHaveLength(2);
+    // El membrete y la firma se repiten en las dos.
+    expect(html.match(/class="letterhead"/g)).toHaveLength(2);
+    expect(html.match(/class="signature-name"/g)).toHaveLength(2);
+  });
+
+  it('la copia de la farmacia lleva medicamento (negrita y subrayado), presentación, vía y dosis', async () => {
+    const html = await prescriptionHtml(base);
+    expect(html).toContain('RÉCIPE');
+    expect(html).toContain('rp-med');
+    expect(html).toContain('Presentación:');
+    expect(html).toContain('Vía:');
+    expect(html).toContain('Dosis:');
+    // El código de verificación se imprime como texto en esta mitad (allí no va QR).
+    expect(html).toContain('Código de verificación');
+    expect(html).toContain('ABCDE-FGHJK');
+  });
+
+  it('la copia del paciente lleva la tabla de indicaciones y el QR', async () => {
+    const html = await prescriptionHtml(base);
+    expect(html).toContain('INDICACIONES');
+    expect(html).toContain('<th>Medicamento</th><th>Dosis</th><th>Frecuencia</th>');
+    // El QR va **solo** en la mitad del paciente.
+    const qr = qrSvg('http://127.0.0.1:5173/verificar/ABCDE-FGHJK');
+    expect(html.split(qr)).toHaveLength(2);
+  });
+
+  it('el especialista va en el membrete, no bajo la firma', async () => {
+    const html = await prescriptionHtml(base);
+    expect(html).toContain('class="clinic-dentist"');
+    expect(html).toContain('Odontólogo prueba · Odontología general · MPPS 12345');
+    // Se quitó el detalle que estaba bajo el nombre del firmante.
+    expect(html).not.toContain('signature-detail');
+  });
+
+  it('sin odontólogo el membrete no añade la línea del especialista', async () => {
+    const html = await prescriptionHtml({ ...base, dentist: null });
+    expect(html).not.toContain('class="clinic-dentist"');
+    // La firma sigue saliendo (la raya para firmar a mano).
+    expect(html.match(/class="signature-line"/g)).toHaveLength(2);
+  });
+});
+
+describe('la vía como se imprime', () => {
+  it('traduce el código del catálogo a su etiqueta', () => {
+    expect(routeText('oral')).toBe('Vía oral');
+    expect(routeText('topica')).toBe('Vía tópica');
+  });
+
+  it('deja tal cual un valor que no es del catálogo (récipes ya emitidos)', () => {
+    expect(routeText('subcutánea')).toBe('subcutánea');
+  });
+
+  it('vacío o nulo no imprime nada', () => {
+    expect(routeText(null)).toBeNull();
+    expect(routeText('  ')).toBeNull();
   });
 });

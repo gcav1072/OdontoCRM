@@ -1,7 +1,7 @@
 import { chromium, type Browser } from 'playwright';
 
 /**
- * El PDF A5 del récipe, con Chromium ([ADR 0015](../../../docs/adr/0015-recipe-a5-en-pdf.md)).
+ * El PDF del récipe, con Chromium ([ADR 0015](../../../docs/adr/0015-recipe-a5-en-pdf.md)).
  *
  * Un solo navegador por proceso, reutilizado entre récipes: arrancarlo cuesta más que
  * generar el PDF. Las páginas se abren de a una (una cola sencilla) porque el
@@ -27,21 +27,24 @@ export interface PdfMarginMm {
 /**
  * Cómo se compone el papel.
  *
- * El **récipe** va a A5 sin opciones: su `@page` ya lleva el tamaño y los márgenes, y
- * esa es la firma que ya usaban las pruebas. El **dossier** necesita A4, folio en cada
- * página y márgenes que Chromium respete para dejar sitio al folio —y el folio solo
- * existe si el propio PDF lo dibuja (`displayHeaderFooter`); Chromium no soporta
- * `counter(page)` en los márgenes de `@page`, así que no hay forma de hacerlo con CSS.
+ * El **récipe** va en **carta apaisada** con `landscape: true`: su `@page` ya lleva el
+ * tamaño y los márgenes, y esa es la firma que ya usaban las pruebas. El **dossier**
+ * necesita A4, folio en cada página y márgenes que Chromium respete para dejar sitio al
+ * folio —y el folio solo existe si el propio PDF lo dibuja (`displayHeaderFooter`);
+ * Chromium no soporta `counter(page)` en los márgenes de `@page`, así que no hay forma
+ * de hacerlo con CSS.
  */
 export interface PdfRenderOptions {
-  format?: 'A5' | 'A4';
+  format?: 'A5' | 'A4' | 'Letter';
+  /** `true` gira la hoja (el récipe sale apaisado). */
+  landscape?: boolean;
   /** Pie repetido en cada página (HTML; admite `class="pageNumber"` y `"totalPages"`). */
   footerHtml?: string;
   marginMm?: PdfMarginMm;
 }
 
 export interface PdfRenderer {
-  /** HTML → PDF (A5 por defecto; el dossier pide A4 con folio). */
+  /** HTML → PDF (A5 por defecto; el récipe pide carta apaisada y el dossier A4 con folio). */
   render: (html: string, options?: PdfRenderOptions) => Promise<Buffer>;
   /** Cierra el navegador (lo llama el apagado del servicio). */
   close: () => Promise<void>;
@@ -78,11 +81,13 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
         // páginas que imprime el navegador.
         await page.emulateMedia({ colorScheme: 'light' });
         await page.setContent(html, { waitUntil: 'load', timeout: options.timeoutMs });
-        // El récipe va a A5 exacto (148 × 210 mm) con los márgenes de su `@page`. El
-        // dossier pide A4 y márgenes explícitos (para que quepa el folio del pie).
+        // El récipe va en **carta apaisada** (`landscape: true`) con los márgenes de su
+        // `@page`. El dossier pide A4 y márgenes explícitos (para que quepa el folio del
+        // pie).
         const margen = opciones?.marginMm;
         return await page.pdf({
           format: opciones?.format ?? 'A5',
+          landscape: opciones?.landscape ?? false,
           printBackground: true,
           ...(margen === undefined
             ? {}

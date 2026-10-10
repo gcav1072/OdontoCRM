@@ -53,7 +53,7 @@ import { createPdfRenderer, type PdfRenderer } from './prescriptions/pdf-rendere
  * Chromium de verdad**:
  *  1. el catálogo de medicamentos se lee y se busca;
  *  2. el borrador del récipe se guarda por sesión y se reemplaza entero;
- *  3. la emisión toma un número de la secuencia, **genera el PDF A5**, lo archiva y
+ *  3. la emisión toma un número de la secuencia, **genera el PDF**, lo archiva y
  *     deja el código de verificación;
  *  4. la verificación pública confirma el récipe **sin** datos clínicos;
  *  5. la reimpresión se cuenta y se audita, y el récipe se anula con motivo (nunca
@@ -135,7 +135,7 @@ const receta = (
     generalInstructions: 'Volver si el dolor no cede en 48 horas.',
   });
 
-describeWithDatabases('récipes y adjuntos: número, PDF A5, QR y auditoría', () => {
+describeWithDatabases('récipes y adjuntos: número, PDF, QR y auditoría', () => {
   let handle: Awaited<ReturnType<typeof createClinicalDatabase>>;
   let identityHandle: Awaited<ReturnType<typeof createIdentityDatabase>>;
   let boss: PgBoss;
@@ -306,7 +306,7 @@ describeWithDatabases('récipes y adjuntos: número, PDF A5, QR y auditoría', (
     expect(definitivo.items[0]?.position).toBe(1);
   }, 40_000);
 
-  it('emitir toma un número, genera el PDF A5, lo archiva y deja el código', async () => {
+  it('emitir toma un número, genera el PDF, lo archiva y deja el código', async () => {
     const emitido = await emitir(draftId);
 
     expect(emitido.status).toBe('emitida');

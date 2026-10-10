@@ -45,8 +45,9 @@ import type { PatientSnapshotLookup } from '../shared/patient-client.js';
  *
  * El ciclo es corto y deliberado:
  *  1. **Borrador** por sesión (uno solo): se guarda y se corrige cuanto haga falta.
- *  2. **Emisión**: se lleva un número de la secuencia, se genera el PDF A5, se
- *     archiva y se deja el código de verificación. A partir de ahí es un documento.
+ *  2. **Emisión**: se lleva un número de la secuencia, se genera el PDF (carta
+ *     apaisada, dos mitades), se archiva y se deja el código de verificación. A partir
+ *     de ahí es un documento.
  *  3. **Anulación** con motivo, si hay que dejarlo sin efecto (nunca se borra).
  *  4. **Reimpresión** contada y auditada cada vez que se descarga o se imprime.
  *
@@ -334,7 +335,9 @@ const nextPrescriptionNumber = async (db: ClinicalDb): Promise<number> => {
  */
 const renderPrescriptionPdf = async (pdfRenderer: PdfRenderer, html: string): Promise<Buffer> => {
   try {
-    return await pdfRenderer.render(html);
+    // Carta apaisada: dos mitades verticales (farmacia a la izquierda, paciente a la
+    // derecha). El tamaño y el margen los fija el `@page` de la plantilla.
+    return await pdfRenderer.render(html, { format: 'Letter', landscape: true });
   } catch (error) {
     throw new ServiceUnavailableError(
       'No se pudo generar el PDF del récipe: revisa el navegador (Chromium) del servidor. ' +
@@ -344,7 +347,7 @@ const renderPrescriptionPdf = async (pdfRenderer: PdfRenderer, html: string): Pr
 };
 
 /**
- * Emite el récipe: número, PDF A5 archivado y código de verificación.
+ * Emite el récipe: número, PDF archivado y código de verificación.
  *
  * El PDF se genera **antes** de tocar la base (Chromium tarda, y no se tiene una
  * transacción abierta mientras tanto) y después se confirma todo en una sola
@@ -408,6 +411,8 @@ export const issuePrescription = async (
     items,
     generalInstructions: row.generalInstructions,
     verificationUrl,
+    // El código con guion (`ABCDE-FGHJK`), como lo lee quien verifica el papel.
+    verifyCode: formatVerifyCode(verifyCode),
     logoPath: options.logoPath,
     logoDataUri: identidad?.logoDataUri ?? null,
     brand: marca?.theme ?? null,
