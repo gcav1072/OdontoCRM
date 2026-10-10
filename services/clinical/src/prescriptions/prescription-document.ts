@@ -8,6 +8,7 @@ import {
   clinicFullAddress,
   type ClinicDentist,
   type ClinicIdentity,
+  type BrandThemePayload,
 } from '@odontocrm/contracts';
 import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
@@ -58,6 +59,13 @@ export interface PrescriptionDocumentInput {
   clinic?: ClinicIdentity | null;
   /** Logo ya incrustado como `data:` URI; si falta, se lee `logoPath`. */
   logoDataUri?: string | null;
+  /**
+   * La **marca efectiva** de los imprimibles (ADR 0060). Si falta, se usa `BRAND` (el
+   * respaldo del código): los documentos ya emitidos y las pruebas siguen igual.
+   */
+  brand?: BrandThemePayload | null;
+  /** Las `@font-face` ya resueltas por identity (con los `.woff2` incrustados). */
+  fontFaceCss?: string | null;
 }
 
 /** Fecha como se lee en el papel: `1988-04-12` → `12/04/1988`. */
@@ -100,9 +108,9 @@ const longDate = (value: Date): string =>
     timeZone: 'America/Caracas',
   }).format(value);
 
-const styles = (fontFaces: string): string => `
+const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined): string => `
   ${fontFaces}
-  ${brandStyles()}
+  ${brandStyles(brand ?? BRAND)}
   ${brandWatermarkCss()}
   @page { size: A5; margin: 8mm 10mm; }
   * { box-sizing: border-box; }
@@ -211,7 +219,7 @@ export const prescriptionHtml = async (input: PrescriptionDocumentInput): Promis
 
   return `<!doctype html>
 <html lang="es">
-<head><meta charset="utf-8"><title>Récipe ${escapeHtml(input.number)}</title><style>${styles(await brandFontFaceCss())}</style></head>
+<head><meta charset="utf-8"><title>Récipe ${escapeHtml(input.number)}</title><style>${styles(input.fontFaceCss ?? (await brandFontFaceCss()), input.brand)}</style></head>
 <body>
   ${marcaDeAgua}
   <div class="brand-doc">

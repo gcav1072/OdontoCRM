@@ -1,5 +1,10 @@
 import { createOutboxCheck, createPoolCheck } from '@odontocrm/db';
-import { buildServer, isProduction, type LetterheadLookup } from '@odontocrm/kernel';
+import {
+  buildServer,
+  isProduction,
+  type BrandLookup,
+  type LetterheadLookup,
+} from '@odontocrm/kernel';
 import type { BlobStore } from '@odontocrm/storage';
 import multipart from '@fastify/multipart';
 import type { FastifyInstance } from 'fastify';
@@ -23,6 +28,8 @@ export interface CreateClinicalServerOptions {
   odontogramLookup: OdontogramChartLookup;
   /** La identidad del consultorio (del servicio de identidad), para el membrete. */
   letterheadLookup: LetterheadLookup;
+  /** La marca efectiva de los imprimibles (del servicio de identidad, ADR 0060). */
+  brandLookup: BrandLookup;
   /** Almacén de adjuntos y PDF de récipes. */
   blobStore: BlobStore;
   /** Renderizador del PDF A5 (Chromium). */
@@ -77,6 +84,7 @@ export const createClinicalServer = async (
     patientLookup: options.patientLookup,
     odontogramLookup: options.odontogramLookup,
     letterheadLookup: options.letterheadLookup,
+    brandLookup: options.brandLookup,
     blobStore: options.blobStore,
     pdfRenderer: options.pdfRenderer,
     ...(options.kickOutbox === undefined ? {} : { kickOutbox: options.kickOutbox }),

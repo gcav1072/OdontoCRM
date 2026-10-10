@@ -32,6 +32,7 @@ export const registerDossierRoutes = (app: FastifyInstance, services: ClinicalSe
     patientLookup,
     odontogramLookup,
     letterheadLookup,
+    brandLookup,
     config,
     kickOutbox,
   } = services;
@@ -56,7 +57,12 @@ export const registerDossierRoutes = (app: FastifyInstance, services: ClinicalSe
         { db, blobStore, pdfRenderer, patientLookup, odontogramLookup },
         patientId,
         actor,
-        { publicAppUrl: config.PUBLIC_APP_URL, logoPath: CLINIC.logoPath, letterheadLookup },
+        {
+          publicAppUrl: config.PUBLIC_APP_URL,
+          logoPath: CLINIC.logoPath,
+          letterheadLookup,
+          brandLookup,
+        },
       );
 
       kickOutbox?.();

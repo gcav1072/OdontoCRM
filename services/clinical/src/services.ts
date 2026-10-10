@@ -1,5 +1,5 @@
 import type { BlobStore } from '@odontocrm/storage';
-import type { LetterheadLookup } from '@odontocrm/kernel';
+import type { BrandLookup, LetterheadLookup } from '@odontocrm/kernel';
 import type pg from 'pg';
 
 import type { ClinicalConfig } from './config.js';
@@ -18,6 +18,8 @@ export interface ClinicalServices {
   odontogramLookup: OdontogramChartLookup;
   /** La identidad del consultorio (ADR 0056), para el membrete de los documentos. */
   letterheadLookup: LetterheadLookup;
+  /** La marca efectiva de los imprimibles (ADR 0060). */
+  brandLookup: BrandLookup;
   /** Adjuntos de la sesión y PDF de los récipes: binarios en disco. */
   blobStore: BlobStore;
   /** Chromium para el PDF A5 del récipe (uno por proceso, reutilizado). */

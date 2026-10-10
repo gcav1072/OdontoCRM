@@ -57,8 +57,16 @@ export const registerPrescriptionRoutes = (
   app: FastifyInstance,
   services: ClinicalServices,
 ): void => {
-  const { db, blobStore, pdfRenderer, patientLookup, letterheadLookup, config, kickOutbox } =
-    services;
+  const {
+    db,
+    blobStore,
+    pdfRenderer,
+    patientLookup,
+    letterheadLookup,
+    brandLookup,
+    config,
+    kickOutbox,
+  } = services;
   const read = requirePermission('clinical:read');
   const write = requirePermission('clinical:write');
 
@@ -231,6 +239,7 @@ export const registerPrescriptionRoutes = (
         logoPath: CLINIC.logoPath,
         patientLookup,
         letterheadLookup,
+        brandLookup,
       });
       publicarYa();
       return reply.status(200).send(prescription);

@@ -5,7 +5,7 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
-import { createLetterheadLookup, startServer } from '@odontocrm/kernel';
+import { createBrandLookup, createLetterheadLookup, startServer } from '@odontocrm/kernel';
 import { createDiskBlobStore, parseEncryptionKey } from '@odontocrm/storage';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -57,6 +57,7 @@ const main = async (): Promise<void> => {
     patientLookup: createPatientSnapshotLookup(config),
     odontogramLookup: createOdontogramChartLookup(config),
     letterheadLookup: createLetterheadLookup(config),
+    brandLookup: createBrandLookup(config),
     blobStore,
     pdfRenderer,
     kickOutbox: () => publicador.kick(),

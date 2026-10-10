@@ -20,6 +20,7 @@ import {
   type Dentition,
   type PrescriptionSummary,
   type ToothFindingRecord,
+  type BrandThemePayload,
 } from '@odontocrm/contracts';
 import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
@@ -63,6 +64,10 @@ export interface DossierDocumentInput {
   clinic?: ClinicIdentity | null;
   /** Logo ya incrustado como `data:` URI; si falta, se lee `logoPath`. */
   logoDataUri?: string | null;
+  /** La **marca efectiva** (ADR 0060). Si falta, se usa `BRAND`. */
+  brand?: BrandThemePayload | null;
+  /** Las `@font-face` ya resueltas por identity (con los `.woff2` incrustados). */
+  fontFaceCss?: string | null;
 }
 
 export interface DossierSessionEntry {
@@ -106,9 +111,9 @@ const dateTime = (value: Date | string): string => {
   return `${val('day')}/${val('month')}/${val('year')} ${val('hour')}:${val('minute')}`;
 };
 
-const estilos = (fontFaces: string): string => `
+const estilos = (fontFaces: string, brand: BrandThemePayload | null | undefined): string => `
   ${fontFaces}
-  ${brandStyles()}
+  ${brandStyles(brand ?? BRAND)}
   ${brandWatermarkCss()}
   @page { size: A4; }
   * { box-sizing: border-box; }
@@ -296,7 +301,7 @@ export const dossierHtml = async (input: DossierDocumentInput): Promise<string> 
 
   return `<!doctype html>
 <html lang="es">
-<head><meta charset="utf-8"><title>Expediente ${escapeHtml(input.number)}</title><style>${estilos(await brandFontFaceCss())}</style></head>
+<head><meta charset="utf-8"><title>Expediente ${escapeHtml(input.number)}</title><style>${estilos(input.fontFaceCss ?? (await brandFontFaceCss()), input.brand)}</style></head>
 <body>
   ${marcaDeAgua}
   <div class="brand-doc">

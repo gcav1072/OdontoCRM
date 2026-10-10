@@ -9,7 +9,7 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS } from '@odontocrm/events';
 import { ConflictError, NotFoundError, ServiceUnavailableError } from '@odontocrm/kernel';
-import type { LetterheadLookup } from '@odontocrm/kernel';
+import type { BrandLookup, LetterheadLookup } from '@odontocrm/kernel';
 import { buildStorageKey, type BlobStore } from '@odontocrm/storage';
 import { desc, eq, sql } from 'drizzle-orm';
 
@@ -57,6 +57,8 @@ export interface IssueDossierOptions {
   logoPath: string | null;
   /** Lectura de la identidad del consultorio (ADR 0056); sin ella, se usa `CLINIC`. */
   letterheadLookup?: LetterheadLookup | undefined;
+  /** Lectura de la marca efectiva (ADR 0060); sin ella, se usa `BRAND`. */
+  brandLookup?: BrandLookup | undefined;
 }
 
 export interface IssuedDossier {
@@ -162,6 +164,7 @@ export const issueDossier = async (
     options.letterheadLookup === undefined
       ? null
       : await options.letterheadLookup(actor.actorUsername);
+  const marca = options.brandLookup === undefined ? null : await options.brandLookup();
 
   const html = await dossierHtml({
     number: formatted,
@@ -180,6 +183,8 @@ export const issueDossier = async (
     verificationUrl,
     logoPath: options.logoPath,
     logoDataUri: identidad?.logoDataUri ?? null,
+    brand: marca?.theme ?? null,
+    fontFaceCss: marca?.fontFaceCss ?? null,
   });
 
   const pdf = await deps.pdfRenderer.render(html, {

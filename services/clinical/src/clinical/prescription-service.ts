@@ -16,7 +16,7 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS } from '@odontocrm/events';
 import { ConflictError, NotFoundError, ServiceUnavailableError } from '@odontocrm/kernel';
-import type { LetterheadLookup } from '@odontocrm/kernel';
+import type { BrandLookup, LetterheadLookup } from '@odontocrm/kernel';
 import type { BlobStore } from '@odontocrm/storage';
 import { buildStorageKey } from '@odontocrm/storage';
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
@@ -308,6 +308,11 @@ export interface IssueOptions {
    * no responde—, el membrete sale con `CLINIC` (el respaldo del código).
    */
   letterheadLookup?: LetterheadLookup | undefined;
+  /**
+   * Lectura de la marca efectiva de los imprimibles (ADR 0060). Si no se pasa —o si
+   * identity no responde—, el récipe sale con `BRAND` (el respaldo del código).
+   */
+  brandLookup?: BrandLookup | undefined;
 }
 
 const nextPrescriptionNumber = async (db: ClinicalDb): Promise<number> => {
@@ -385,6 +390,7 @@ export const issuePrescription = async (
     options.letterheadLookup === undefined
       ? null
       : await options.letterheadLookup(actor.actorUsername);
+  const marca = options.brandLookup === undefined ? null : await options.brandLookup();
 
   const html = await prescriptionHtml({
     number,
@@ -404,6 +410,8 @@ export const issuePrescription = async (
     verificationUrl,
     logoPath: options.logoPath,
     logoDataUri: identidad?.logoDataUri ?? null,
+    brand: marca?.theme ?? null,
+    fontFaceCss: marca?.fontFaceCss ?? null,
   } satisfies PrescriptionDocumentInput);
 
   const pdf = await renderPrescriptionPdf(pdfRenderer, html);
