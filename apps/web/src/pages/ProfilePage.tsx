@@ -157,7 +157,7 @@ export const ProfilePage = () => {
             </Alert>
           ) : (
             <>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 @2xl:grid-cols-2">
                 <Field label={t('perfil.campo.mpps')} required>
                   <Input value={mpps} onChange={(event) => setMpps(event.target.value)} />
                 </Field>
@@ -204,7 +204,7 @@ export const ProfilePage = () => {
             <CardDescription>{t('perfil.consultorio.ayuda')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 @2xl:grid-cols-2">
               <Field label={t('perfil.consultorio.nombre')} required>
                 <Input value={nombre} onChange={(event) => setNombre(event.target.value)} />
               </Field>
