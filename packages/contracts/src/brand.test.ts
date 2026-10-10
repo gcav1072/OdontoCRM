@@ -10,6 +10,7 @@ import {
   brandStyles,
   brandWatermarkCss,
   brandWatermarkHtml,
+  fontStackFor,
   logoMimeType,
 } from './brand.js';
 
@@ -37,7 +38,7 @@ const bloqueRoot = (css: string): string => {
 describe('la marca del consultorio', () => {
   it('declara todas las variables de paleta, tipografía y membrete', () => {
     const variables = brandCssVariables().split('\n');
-    expect(variables).toHaveLength(23);
+    expect(variables).toHaveLength(25);
     expect(variables.every((linea) => linea.startsWith('  --brand-'))).toBe(true);
     expect(brandRootBlock()).toContain(`--brand-primary: ${BRAND.palette.primary};`);
     // Los documentos tienen DOS tipografías: la de los títulos y la del cuerpo.
@@ -47,28 +48,59 @@ describe('la marca del consultorio', () => {
     expect(brandRootBlock()).toContain(
       `--brand-font-doc-body: ${BRAND.typography.documentBodySans};`,
     );
+    // Y un peso por rol, para no fijar «700» a mano en las plantillas.
+    expect(brandRootBlock()).toContain(
+      `--brand-font-doc-title-weight: ${String(BRAND.typography.documentTitleWeight)};`,
+    );
+    expect(brandRootBlock()).toContain(
+      `--brand-font-doc-body-weight: ${String(BRAND.typography.documentBodyWeight)};`,
+    );
     expect(brandRootBlock()).toContain(
       `--brand-logo-height-mm: ${String(BRAND.letterhead.logoHeightMm)}mm;`,
     );
   });
 
-  it('declara las dos tipografías y la familia de las fuentes auto-hospedadas', () => {
-    expect(BRAND.typography.documentTitleSans).toContain(`'${BRAND.fonts.family}'`);
-    expect(BRAND.typography.documentBodySans).toContain(`'${BRAND.fonts.family}'`);
-    expect(BRAND.fonts.files.length).toBeGreaterThan(0);
-    expect(BRAND.fonts.files.every((file) => file.path.startsWith('assets/clinic/fonts/'))).toBe(
-      true,
-    );
+  it('declara las dos tipografías sobre familias del catálogo, con su peso', () => {
+    const nombres = BRAND.fonts.families.map((familia) => `'${familia.name}'`);
+    const familiaDeLaPila = (pila: string): string => pila.split(',')[0]?.trim() ?? '';
+
+    // La familia del título es una del catálogo y tiene archivo con el peso del título.
+    const titulo = familiaDeLaPila(BRAND.typography.documentTitleSans);
+    expect(nombres).toContain(titulo);
+    const familiaTitulo = BRAND.fonts.families.find((f) => `'${f.name}'` === titulo);
+    expect(
+      familiaTitulo?.files.some((file) => file.weight === BRAND.typography.documentTitleWeight),
+    ).toBe(true);
+
+    // Lo mismo para el cuerpo.
+    const cuerpo = familiaDeLaPila(BRAND.typography.documentBodySans);
+    expect(nombres).toContain(cuerpo);
+    const familiaCuerpo = BRAND.fonts.families.find((f) => `'${f.name}'` === cuerpo);
+    expect(
+      familiaCuerpo?.files.some((file) => file.weight === BRAND.typography.documentBodyWeight),
+    ).toBe(true);
+
+    const archivos = BRAND.fonts.families.flatMap((familia) => familia.files);
+    expect(archivos.length).toBeGreaterThan(0);
+    expect(archivos.every((file) => file.path.startsWith('assets/clinic/fonts/'))).toBe(true);
     // Los pesos que usan los documentos: 700 para los títulos y 400 para el cuerpo.
-    const pesos = new Set(BRAND.fonts.files.map((file) => file.weight));
+    const pesos = new Set(archivos.map((file) => file.weight));
     expect(pesos.has(400)).toBe(true);
     expect(pesos.has(700)).toBe(true);
   });
 
+  it('compone la pila de una familia con el respaldo detrás', () => {
+    expect(fontStackFor('Lobster')).toBe(
+      `'Lobster', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`,
+    );
+  });
+
   it('los archivos de fuente declarados existen en el repositorio', () => {
     const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-    for (const file of BRAND.fonts.files) {
-      expect(existsSync(resolve(raiz, file.path)), `falta ${file.path}`).toBe(true);
+    for (const familia of BRAND.fonts.families) {
+      for (const file of familia.files) {
+        expect(existsSync(resolve(raiz, file.path)), `falta ${file.path}`).toBe(true);
+      }
     }
   });
 

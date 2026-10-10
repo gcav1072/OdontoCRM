@@ -61,6 +61,10 @@ export const brandTypographyInputSchema = z.object({
   documentTitleSans: z.string().trim().min(1).max(300),
   /** Pila del **cuerpo** (párrafos, tablas, notas). */
   documentBodySans: z.string().trim().min(1).max(300),
+  /** Peso de los títulos (`font-weight`); por defecto 700. */
+  documentTitleWeight: z.number().int().min(100).max(900).default(700),
+  /** Peso del cuerpo (`font-weight`); por defecto 400. */
+  documentBodyWeight: z.number().int().min(100).max(900).default(400),
   documentTitlePt: z.number().min(6).max(24),
   documentBodyPt: z.number().min(6).max(18),
   documentSmallPt: z.number().min(5).max(14),
@@ -95,10 +99,23 @@ export const brandFontFileSchema = z.object({
 
 export type BrandFontFileSettings = z.infer<typeof brandFontFileSchema>;
 
-export const brandFontsSchema = z.object({
-  /** Nombre de familia que declara el `@font-face` y abre las dos pilas. */
-  family: z.string().trim().min(1).max(60),
+/**
+ * Una **familia** del panel: su nombre (el del `@font-face`) y sus archivos. El panel
+ * la usa para el desplegable de título y de cuerpo; las del **catálogo** del código
+ * (`source: 'repo'`) están siempre y las **subidas** (`source: 'subido'`) se pueden
+ * quitar.
+ */
+export const brandFontFamilySchema = z.object({
+  /** Nombre de familia que declara el `@font-face` y abre la pila. */
+  name: z.string().trim().min(1).max(60),
   files: z.array(brandFontFileSchema).max(12),
+});
+
+export type BrandFontFamilySettings = z.infer<typeof brandFontFamilySchema>;
+
+/** Las familias de fuentes que el papel y la pantalla incrustan. */
+export const brandFontsSchema = z.object({
+  families: z.array(brandFontFamilySchema).max(24),
 });
 
 export type BrandFontsSettings = z.infer<typeof brandFontsSchema>;
@@ -549,6 +566,8 @@ export const brandThemePayloadSchema = z.object({
     uiMono: z.string().min(1),
     documentTitleSans: z.string().min(1),
     documentBodySans: z.string().min(1),
+    documentTitleWeight: z.number(),
+    documentBodyWeight: z.number(),
     documentTitlePt: z.number(),
     documentBodyPt: z.number(),
     documentSmallPt: z.number(),

@@ -43,6 +43,17 @@ export interface BrandTypography {
    * texto de alta legibilidad, que es lo que se busca en un documento clínico.
    */
   documentBodySans: string;
+  /**
+   * Peso (`font-weight`) de los **títulos** del documento. Se elige en el panel y se
+   * publica como `--brand-font-doc-title-weight`; los imprimibles lo aplican a las
+   * clases de título en vez de fijar «700» a mano.
+   */
+  documentTitleWeight: number;
+  /**
+   * Peso (`font-weight`) del **cuerpo** del documento, publicado como
+   * `--brand-font-doc-body-weight`.
+   */
+  documentBodyWeight: number;
   /** Tamaños en pt: «13» el título, «9» el cuerpo y «7,5» lo menudo (pie, notas). */
   documentTitlePt: number;
   documentBodyPt: number;
@@ -58,6 +69,19 @@ export interface BrandFontFile {
 }
 
 /**
+ * Una **familia** con todos sus archivos `.woff2` (un peso/estilo por archivo).
+ *
+ * Los documentos separan **títulos** y **cuerpo** en dos familias distintas: la marca
+ * puede poner un script con carácter en los títulos y una sans legible en el cuerpo.
+ */
+export interface BrandFontFamily {
+  /** Nombre que declara el `@font-face` y abre la pila (p. ej. «Montserrat»). */
+  name: string;
+  /** Los archivos de esa familia, cada uno con su peso y estilo. */
+  files: readonly BrandFontFile[];
+}
+
+/**
  * Las fuentes que los documentos declaran con `@font-face`.
  *
  * Existe por la misma razón que `logoPath`: el servidor (que compone el PDF con
@@ -65,13 +89,25 @@ export interface BrandFontFile {
  * archivos. Si la fuente dependiera de estar instalada en cada equipo, el mismo
  * récipe saldría con dos tipografías distintas según dónde se abriera.
  *
- * `family` es el nombre que se declara en `@font-face` y el primero de las pilas
- * `documentTitleSans`/`documentBodySans`.
+ * Cada familia lleva su `name` (el nombre del `@font-face`); la pila del título y la
+ * del cuerpo empiezan por el nombre de la familia elegida (`fontStackFor`).
  */
 export interface BrandFonts {
-  family: string;
-  files: readonly BrandFontFile[];
+  families: readonly BrandFontFamily[];
 }
+
+/**
+ * La pila de respaldo que cierra todas las pilas de los documentos: si la familia
+ * elegida no está, el papel cae en una sans del sistema y sigue siendo legible.
+ */
+export const DOC_FALLBACK_SANS = "'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+
+/**
+ * La pila CSS de una familia con el respaldo detrás: `'<familia>', <respaldo>`. Es
+ * la forma que el panel escribe en `documentTitleSans`/`documentBodySans` al elegir
+ * una familia en el desplegable (el primer nombre es la familia, el resto respalda).
+ */
+export const fontStackFor = (family: string): string => `'${family}', ${DOC_FALLBACK_SANS}`;
 
 /** Colores de la marca sobre papel (una sola variante: el papel no es oscuro). */
 export interface BrandPalette {
@@ -164,9 +200,12 @@ export const BRAND: Brand = {
       "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif",
     uiMono: "ui-monospace, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace",
     /** Títulos de los documentos: la voz de la marca sobre el papel. */
-    documentTitleSans: "'Montserrat', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
-    /** Cuerpo de los documentos. Hoy la misma familia; se pueden separar cuando se quiera. */
-    documentBodySans: "'Montserrat', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+    documentTitleSans: fontStackFor('Montserrat'),
+    /** Cuerpo de los documentos. Por defecto la misma familia que el título. */
+    documentBodySans: fontStackFor('Montserrat'),
+    /** Peso de los títulos y del cuerpo; el panel los cambia por separado. */
+    documentTitleWeight: 700,
+    documentBodyWeight: 400,
     documentTitlePt: 13,
     documentBodyPt: 9,
     documentSmallPt: 7.5,
@@ -174,22 +213,97 @@ export const BRAND: Brand = {
   /**
    * Fuentes de los documentos, auto-hospedadas en `assets/clinic/fonts/`.
    *
-   * El subconjunto `latin` de cada peso cubre el español (tildes y eñe incluidas).
-   * Al cambiar de familia: deja los `.woff2` en esa carpeta, ajusta `files`, cambia el
-   * primer nombre de `documentTitleSans`/`documentBodySans` y `family`.
+   * El catálogo de fábrica: tres sans (Montserrat, Inter, Poppins) y tres scripts
+   * (Lobster, Pacifico, Dancing Script). El subconjunto `latin` de cada peso cubre el
+   * español (tildes y eñe incluidas). El panel deja elegir una familia para los
+   * títulos y otra para el cuerpo, y subir más por su cuenta.
    */
   fonts: {
-    family: 'Montserrat',
-    files: [
+    families: [
       {
-        path: 'assets/clinic/fonts/montserrat-latin-400-normal.woff2',
-        weight: 400,
-        style: 'normal',
+        name: 'Montserrat',
+        files: [
+          {
+            path: 'assets/clinic/fonts/montserrat-latin-400-normal.woff2',
+            weight: 400,
+            style: 'normal',
+          },
+          {
+            path: 'assets/clinic/fonts/montserrat-latin-700-normal.woff2',
+            weight: 700,
+            style: 'normal',
+          },
+        ],
       },
       {
-        path: 'assets/clinic/fonts/montserrat-latin-700-normal.woff2',
-        weight: 700,
-        style: 'normal',
+        name: 'Inter',
+        files: [
+          {
+            path: 'assets/clinic/fonts/inter-latin-400-normal.woff2',
+            weight: 400,
+            style: 'normal',
+          },
+          {
+            path: 'assets/clinic/fonts/inter-latin-500-normal.woff2',
+            weight: 500,
+            style: 'normal',
+          },
+          {
+            path: 'assets/clinic/fonts/inter-latin-700-normal.woff2',
+            weight: 700,
+            style: 'normal',
+          },
+        ],
+      },
+      {
+        name: 'Poppins',
+        files: [
+          {
+            path: 'assets/clinic/fonts/poppins-latin-400-normal.woff2',
+            weight: 400,
+            style: 'normal',
+          },
+          {
+            path: 'assets/clinic/fonts/poppins-latin-700-normal.woff2',
+            weight: 700,
+            style: 'normal',
+          },
+        ],
+      },
+      {
+        name: 'Lobster',
+        files: [
+          {
+            path: 'assets/clinic/fonts/lobster-latin-400-normal.woff2',
+            weight: 400,
+            style: 'normal',
+          },
+        ],
+      },
+      {
+        name: 'Pacifico',
+        files: [
+          {
+            path: 'assets/clinic/fonts/pacifico-latin-400-normal.woff2',
+            weight: 400,
+            style: 'normal',
+          },
+        ],
+      },
+      {
+        name: 'Dancing Script',
+        files: [
+          {
+            path: 'assets/clinic/fonts/dancing-script-latin-400-normal.woff2',
+            weight: 400,
+            style: 'normal',
+          },
+          {
+            path: 'assets/clinic/fonts/dancing-script-latin-700-normal.woff2',
+            weight: 700,
+            style: 'normal',
+          },
+        ],
       },
     ],
   },
@@ -257,6 +371,8 @@ export const brandCssVariables = (brand: BrandTheme = BRAND): string => {
     ['font-ui-mono', typography.uiMono],
     ['font-doc-title', typography.documentTitleSans],
     ['font-doc-body', typography.documentBodySans],
+    ['font-doc-title-weight', typography.documentTitleWeight],
+    ['font-doc-body-weight', typography.documentBodyWeight],
     ['doc-title-pt', `${String(typography.documentTitlePt)}pt`],
     ['doc-body-pt', `${String(typography.documentBodyPt)}pt`],
     ['doc-small-pt', `${String(typography.documentSmallPt)}pt`],
@@ -287,6 +403,7 @@ export const brandStyles = (brand: BrandTheme = BRAND): string =>
 body {
   /* El cuerpo del documento. Los títulos llevan la clase .brand-title. */
   font-family: var(--brand-font-doc-body);
+  font-weight: var(--brand-font-doc-body-weight);
   color: var(--brand-ink);
   margin: 0;
 }
@@ -294,6 +411,7 @@ body {
 /* La voz de la marca: títulos y encabezados de sección de los documentos. */
 .brand-title {
   font-family: var(--brand-font-doc-title);
+  font-weight: var(--brand-font-doc-title-weight);
 }
 
 /* Fuente única de las líneas de tabla: th y td comparten separador. */

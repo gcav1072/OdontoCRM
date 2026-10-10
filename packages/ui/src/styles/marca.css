@@ -24,6 +24,8 @@
   --brand-font-ui-mono: ui-monospace, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
   --brand-font-doc-title: 'Montserrat', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --brand-font-doc-body: 'Montserrat', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --brand-font-doc-title-weight: 700;
+  --brand-font-doc-body-weight: 400;
   --brand-doc-title-pt: 13pt;
   --brand-doc-body-pt: 9pt;
   --brand-doc-small-pt: 7.5pt;

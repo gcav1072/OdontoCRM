@@ -104,12 +104,14 @@ describe('validación de la configuración', () => {
       typography: {
         documentTitleSans: "'Montserrat', sans-serif",
         documentBodySans: "'Montserrat', sans-serif",
+        documentTitleWeight: 700,
+        documentBodyWeight: 400,
         documentTitlePt: 13,
         documentBodyPt: 9,
         documentSmallPt: 7.5,
       },
       letterhead: { logoHeightMm: 18, watermarkWidthMm: 90, watermarkOpacity: 0.1 },
-      fonts: { family: 'Montserrat', files: [] },
+      fonts: { families: [{ name: 'Montserrat', files: [] }] },
     });
     expect(valida.success).toBe(true);
     if (valida.success) {
