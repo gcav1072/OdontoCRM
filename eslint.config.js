@@ -71,6 +71,15 @@ export default tseslint.config(
   },
 
   {
+    // Las pruebas de extremo a extremo (Playwright) ejecutan código **en la página**:
+    // además de Node (`fetch`, `process`) necesitan los globos del navegador
+    // (`document`, `getComputedStyle`) dentro de `page.evaluate`/`waitForFunction`.
+    files: ['tools/e2e-*.mjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+    rules: { 'no-console': 'off' },
+  },
+
+  {
     // Scripts de configuración en CommonJS (por ejemplo el ecosistema de PM2).
     files: ['**/*.cjs'],
     languageOptions: {

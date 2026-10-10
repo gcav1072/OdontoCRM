@@ -89,6 +89,7 @@
     "e2e:flujo": "node tools/e2e-flujo.mjs",
     "e2e:reportes": "node tools/e2e-reportes.mjs",
     "e2e:clinica": "node tools/e2e-clinica.mjs",
+    "e2e:config": "node tools/e2e-config.mjs",
     "check-secrets": "node tools/check-secrets.mjs",
     "marca:css": "node tools/generar-marca.mjs",
     "recifrar:almacen": "node tools/recifrar-almacen.mjs",
