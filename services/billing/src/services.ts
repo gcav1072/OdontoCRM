@@ -1,4 +1,4 @@
-import type { LetterheadLookup } from '@odontocrm/kernel';
+import type { BrandLookup, LetterheadLookup } from '@odontocrm/kernel';
 import type { BlobStore } from '@odontocrm/storage';
 import type pg from 'pg';
 
@@ -20,6 +20,8 @@ export interface BillingServices {
   pdf: PdfRenderer;
   /** La identidad del consultorio (ADR 0056), para el miembrete de los documentos de cobro. */
   letterheadLookup: LetterheadLookup;
+  /** La marca efectiva de los imprimibles (ADR 0060). */
+  brandLookup: BrandLookup;
   /** Avanza el publicador del outbox para que la auditoría aparezca al instante. */
   kickOutbox?: (() => void) | undefined;
   /** Último error del consumidor, para el diagnóstico. */

@@ -6,7 +6,7 @@ import {
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS } from '@odontocrm/events';
 import { ConflictError, NotFoundError } from '@odontocrm/kernel';
-import type { LetterheadLookup } from '@odontocrm/kernel';
+import type { BrandLookup, LetterheadLookup } from '@odontocrm/kernel';
 import { buildStorageKey, type BlobStore } from '@odontocrm/storage';
 import { and, eq, sql } from 'drizzle-orm';
 
@@ -45,6 +45,8 @@ export interface IssueDeps {
   pdf: { render: (html: string) => Promise<Buffer> };
   /** La identidad del consultorio (ADR 0056); sin ella, el miembrete usa `CLINIC`. */
   letterheadLookup?: LetterheadLookup | undefined;
+  /** La marca efectiva de los imprimibles (ADR 0060); sin ella, se usa `BRAND`. */
+  brandLookup?: BrandLookup | undefined;
 }
 
 /** El correlativo de la secuencia: atómico y único, nunca «el último + 1». */
@@ -133,9 +135,12 @@ export const issueInvoice = async (
   // 3) El PDF, fuera de la transacción.
   const issuedAt = new Date();
   const identidad = deps.letterheadLookup === undefined ? null : await deps.letterheadLookup();
+  const marca = deps.brandLookup === undefined ? null : await deps.brandLookup();
   const html = await renderInvoiceHtml({
     clinic: identidad?.clinic,
     logoDataUri: identidad?.logoDataUri ?? null,
+    brand: marca?.theme ?? null,
+    fontFaceCss: marca?.fontFaceCss ?? null,
     series: serie.series,
     numberLabel,
     controlNumber,

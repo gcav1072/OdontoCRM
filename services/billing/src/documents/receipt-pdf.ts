@@ -7,6 +7,7 @@ import {
   formatRateMicros,
   paymentMethodLabel,
   type ClinicIdentity,
+  type BrandThemePayload,
 } from '@odontocrm/contracts';
 import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
@@ -46,6 +47,10 @@ export interface ReceiptPdfInput {
   totalCentsUsd: number;
   balanceCentsUsd: number;
   receivedByUsername: string;
+  /** La **marca efectiva** de los imprimibles (ADR 0060). Si falta, se usa `BRAND`. */
+  brand?: BrandThemePayload | null;
+  /** Las `@font-face` ya resueltas por identity (con los `.woff2` incrustados). */
+  fontFaceCss?: string | null;
 }
 
 const escapar = (texto: string | null | undefined): string =>
@@ -74,8 +79,8 @@ export const renderReceiptHtml = async (input: ReceiptPdfInput): Promise<string>
 <meta charset="utf-8" />
 <title>${escapar(`Recibo ${input.receiptLabel}`)}</title>
 <style>
-  ${brandRootBlock()}
-  ${await brandFontFaceCss()}
+  ${brandRootBlock(input.brand ?? BRAND)}
+  ${input.fontFaceCss ?? (await brandFontFaceCss())}
   ${brandWatermarkCss()}
   @page { size: A4 portrait; margin: 16mm 14mm; }
   body { font-family: var(--brand-font-doc-body); font-size: 10pt; color: var(--brand-ink); margin: 0; }

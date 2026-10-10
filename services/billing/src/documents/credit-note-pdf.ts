@@ -6,6 +6,7 @@ import {
   brandWatermarkHtml,
   formatRateMicros,
   type ClinicIdentity,
+  type BrandThemePayload,
 } from '@odontocrm/contracts';
 import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
@@ -31,6 +32,10 @@ export interface CreditNotePdfInput {
   totalVesCentimos: number;
   rateMicros: number;
   issuedByUsername: string;
+  /** La **marca efectiva** de los imprimibles (ADR 0060). Si falta, se usa `BRAND`. */
+  brand?: BrandThemePayload | null;
+  /** Las `@font-face` ya resueltas por identity (con los `.woff2` incrustados). */
+  fontFaceCss?: string | null;
 }
 
 const escapar = (texto: string | null | undefined): string =>
@@ -54,8 +59,8 @@ export const renderCreditNoteHtml = async (input: CreditNotePdfInput): Promise<s
 <meta charset="utf-8" />
 <title>${escapar(`Nota de crédito ${input.creditNoteLabel}`)}</title>
 <style>
-  ${brandRootBlock()}
-  ${await brandFontFaceCss()}
+  ${brandRootBlock(input.brand ?? BRAND)}
+  ${input.fontFaceCss ?? (await brandFontFaceCss())}
   ${brandWatermarkCss()}
   @page { size: A4 portrait; margin: 16mm 14mm; }
   body { font-family: var(--brand-font-doc-body); font-size: 10pt; color: var(--brand-ink); margin: 0; }

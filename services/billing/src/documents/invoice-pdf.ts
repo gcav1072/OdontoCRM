@@ -10,6 +10,7 @@ import {
   type BillingDraftItem,
   type ClinicIdentity,
   type InvoiceTotals,
+  type BrandThemePayload,
 } from '@odontocrm/contracts';
 import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
@@ -61,6 +62,10 @@ export interface InvoicePdfInput {
   igtfNote: string;
   /** `true` para las copias: llevan «sin derecho a crédito fiscal» (Art. 13 num. 13). */
   esCopia?: boolean;
+  /** La **marca efectiva** de los imprimibles (ADR 0060). Si falta, se usa `BRAND`. */
+  brand?: BrandThemePayload | null;
+  /** Las `@font-face` ya resueltas por identity (con los `.woff2` incrustados). */
+  fontFaceCss?: string | null;
 }
 
 const escapar = (texto: string | null | undefined): string =>
@@ -132,8 +137,8 @@ export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string>
 <meta charset="utf-8" />
 <title>${escapar(`Factura ${input.numberLabel}`)}</title>
 <style>
-  ${brandRootBlock()}
-  ${await brandFontFaceCss()}
+  ${brandRootBlock(input.brand ?? BRAND)}
+  ${input.fontFaceCss ?? (await brandFontFaceCss())}
   ${brandWatermarkCss()}
   /* Una factura = una página (Art. 33). Los márgenes se miden sobre la forma física. */
   @page { size: A4 portrait; margin: 14mm 12mm 12mm 12mm; }
