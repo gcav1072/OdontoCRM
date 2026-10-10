@@ -88,7 +88,7 @@ const RolTipografico = ({
   return (
     <div className="space-y-3 rounded-control border border-border p-3">
       <h4 className="text-sm font-semibold text-ink">{etiqueta}</h4>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 @2xl:grid-cols-2">
         <Field label={t('config.marca.familia')}>
           <Select
             value={conocida ? familia : FAMILIA_PERSONALIZADA}
@@ -257,7 +257,7 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
         {/* Paleta */}
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-ink">{t('config.marca.paleta')}</h3>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 @2xl:grid-cols-2 @5xl:grid-cols-3">
             {PALETA.map(({ key, label }) => {
               const valor = form.palette[key];
               const invalido = !HEX_COLOR_PATTERN.test(valor);
@@ -274,7 +274,7 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
                           palette: { ...prev.palette, [key]: event.target.value },
                         }))
                       }
-                      className="h-9 w-10 cursor-pointer rounded-control border border-border bg-surface"
+                      className="h-9 w-10 shrink-0 cursor-pointer rounded-control border border-border bg-surface"
                     />
                     <Input
                       value={valor}
@@ -336,7 +336,7 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
               }
             />
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid gap-2 @2xl:grid-cols-3">
             <Field label={t('config.marca.tamanoTitulo')}>
               <Input
                 type="number"
@@ -391,7 +391,7 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
         {/* Medidas */}
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-ink">{t('config.marca.medidas')}</h3>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 @2xl:grid-cols-3">
             <Field label={t('config.marca.altoLogo')}>
               <Input
                 type="number"

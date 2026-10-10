@@ -63,7 +63,7 @@ export const PantallasSection = ({
       <CardContent className="space-y-6">
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-ink">{t('config.pantallas.textos')}</h3>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 @2xl:grid-cols-2">
             {SCREEN_TEXT_DEFINITIONS.map((definicion) => (
               <Field
                 key={definicion.key}

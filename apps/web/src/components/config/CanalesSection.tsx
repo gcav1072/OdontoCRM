@@ -187,7 +187,7 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
           <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
             {CHANNEL_LABELS.telegram}
           </h3>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 @2xl:grid-cols-2">
             {campoSecreto('telegramBotToken', t('config.canales.token'))}
             <Field label={t('config.canales.usuario')}>
               <Input
@@ -204,7 +204,7 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
           <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
             {t('config.canales.admin')}
           </h3>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 @2xl:grid-cols-2">
             {campoSecreto('adminTelegramBotToken', t('config.canales.token'))}
             <Field label={t('config.canales.adminChat')}>
               <Input
@@ -221,7 +221,7 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
           <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
             {CHANNEL_LABELS.whatsapp}
           </h3>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 @2xl:grid-cols-2">
             {campoSecreto('whatsappToken', t('config.canales.whatsappToken'))}
             {campoSecreto('whatsappVerifyToken', t('config.canales.whatsappVerify'))}
             {campoSecreto('whatsappAppSecret', t('config.canales.whatsappSecret'))}
