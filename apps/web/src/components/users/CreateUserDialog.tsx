@@ -123,7 +123,7 @@ export const CreateUserDialog = ({
             void formulario.handleSubmit(enviar)(event);
           }}
         >
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 @2xl:grid-cols-2">
             <Field
               label={t('usuarios.form.usuario')}
               hint={t('usuarios.form.usuarioAyuda')}

@@ -109,7 +109,7 @@ export const UsersPage = () => {
       <NoticeBanner notice={notice} onClose={limpiar} />
 
       <Card>
-        <CardHeader className="gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <CardHeader className="gap-3 @2xl:flex-row @2xl:items-end @2xl:justify-between">
           <div className="flex-1">
             <CardTitle as="h2">{t('usuarios.titulo')}</CardTitle>
             <p className="pt-1 text-sm text-ink-muted">{t('usuarios.descripcion')}</p>
@@ -123,7 +123,7 @@ export const UsersPage = () => {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <div className="grid gap-3 @2xl:grid-cols-[minmax(0,1fr)_auto] @2xl:items-end">
             <Field label={t('usuarios.buscar')}>
               <div className="relative">
                 <Search
@@ -140,7 +140,7 @@ export const UsersPage = () => {
               </div>
             </Field>
 
-            <Field label={t('usuarios.porPagina')} className="sm:w-32">
+            <Field label={t('usuarios.porPagina')} className="@2xl:w-32">
               <Select
                 value={String(porPagina)}
                 onChange={(event) => setPorPagina(Number(event.target.value))}

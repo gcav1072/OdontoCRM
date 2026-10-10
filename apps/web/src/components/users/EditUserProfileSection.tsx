@@ -90,7 +90,7 @@ export const EditUserProfileSection = ({
         </Alert>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 @2xl:grid-cols-2">
         <Field label={t('perfil.campo.mpps')}>
           <Input
             value={valores.mpps}

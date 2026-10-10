@@ -74,7 +74,7 @@ export const RolePicker = ({
         {permisosEfectivos.length === 0 ? (
           <p className="text-xs text-ink-muted">{t('usuarios.form.sinPermisos')}</p>
         ) : (
-          <ul className="grid gap-1.5 sm:grid-cols-2">
+          <ul className="grid gap-1.5 @2xl:grid-cols-2">
             {permisosEfectivos.map((permiso) => (
               <li key={permiso} className="flex items-start gap-2 text-xs text-ink-muted">
                 <CircleCheck className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden="true" />
