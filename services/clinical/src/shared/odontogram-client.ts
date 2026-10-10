@@ -1,4 +1,4 @@
-import type { Dentition, ToothFindingRecord } from '@odontocrm/contracts';
+import type { Dentition, ProsthesisRecord, ToothFindingRecord } from '@odontocrm/contracts';
 
 import type { ClinicalConfig } from '../config.js';
 
@@ -13,12 +13,14 @@ import type { ClinicalConfig } from '../config.js';
 export interface OdontogramChart {
   dentition: Dentition | null;
   findings: Record<string, readonly ToothFindingRecord[]>;
+  /** Prótesis removibles (PPR/PRT): de tramo o de arcada completa. */
+  prostheses: readonly ProsthesisRecord[];
 }
 
 export type OdontogramChartLookup = (patientId: string) => Promise<OdontogramChart>;
 
 /** Lo que se devuelve cuando el odontograma no se pudo leer o el paciente no tiene. */
-const SIN_ODONTOGRAMA: OdontogramChart = { dentition: null, findings: {} };
+const SIN_ODONTOGRAMA: OdontogramChart = { dentition: null, findings: {}, prostheses: [] };
 
 export const createOdontogramChartLookup = (
   config: Pick<ClinicalConfig, 'ODONTOGRAM_URL' | 'INTERNAL_SERVICE_SECRET'>,
@@ -40,6 +42,7 @@ export const createOdontogramChartLookup = (
         hasOdontogram?: unknown;
         dentition?: unknown;
         findings?: unknown;
+        prostheses?: unknown;
       };
       if (cuerpo.hasOdontogram !== true) return SIN_ODONTOGRAMA;
 
@@ -51,6 +54,9 @@ export const createOdontogramChartLookup = (
           typeof cuerpo.findings === 'object' && cuerpo.findings !== null
             ? (cuerpo.findings as Record<string, readonly ToothFindingRecord[]>)
             : {},
+        prostheses: Array.isArray(cuerpo.prostheses)
+          ? (cuerpo.prostheses as readonly ProsthesisRecord[])
+          : [],
       };
     } catch {
       return SIN_ODONTOGRAMA;

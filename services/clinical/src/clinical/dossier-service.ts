@@ -171,7 +171,11 @@ export const issueDossier = async (
     issuedAt,
     patient,
     alerts,
-    odontogram: { dentition: odontogram.dentition, findings: odontogram.findings },
+    odontogram: {
+      dentition: odontogram.dentition,
+      findings: odontogram.findings,
+      prostheses: odontogram.prostheses,
+    },
     sessions: sessions.map((session) => ({
       sessionNumber: session.sessionNumber,
       closedAt: session.closedAt,

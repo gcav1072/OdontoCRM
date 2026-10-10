@@ -20,6 +20,7 @@ import {
   type ClinicIdentity,
   type Dentition,
   type PrescriptionSummary,
+  type ProsthesisRecord,
   type ToothFindingRecord,
   type BrandThemePayload,
 } from '@odontocrm/contracts';
@@ -51,6 +52,8 @@ export interface DossierDocumentInput {
   odontogram: {
     dentition: Dentition | null;
     findings: Record<string, readonly ToothFindingRecord[]>;
+    /** Prótesis removibles vigentes (PPR/PRT). */
+    prostheses?: readonly ProsthesisRecord[];
   };
   /** Sesiones **cerradas**, de la más antigua a la más reciente (la evolución). */
   sessions: readonly DossierSessionEntry[];

@@ -1,6 +1,9 @@
 import {
+  ARCH_CANVAS_HEIGHT,
   CLINICAL_STATE_COLORS,
   CONDITION_LABELS,
+  PROSTHESIS_BAND_Y,
+  PROSTHESIS_KIND_SHORT,
   SURFACE_POLYGONS,
   TOOTH_CANVAS,
   TOOTH_LABEL_BASELINE,
@@ -11,11 +14,15 @@ import {
   archLayout,
   hasPrimaryFindings,
   odontogramSummary,
+  prosthesisTrack,
   toothGroupTransform,
   wholeToothMarkerTone,
   wholeToothMarkers,
+  type ArchLayout,
   type Dentition,
   type OdontogramSummary,
+  type ProsthesisArch,
+  type ProsthesisRecord,
   type ToothFindingRecord,
   type ToothMarker,
   type ToothPlacement,
@@ -50,8 +57,8 @@ import {
  * hallazgos que acompaña al dibujo.
  */
 
-/** Alto del lienzo de una arcada: la pieza, el aire del número y el número. */
-const ARCH_HEIGHT = TOOTH_LABEL_BASELINE + 16;
+/** Alto del lienzo de una arcada: la pieza, el aire del número y la franja de prótesis. */
+const ARCH_HEIGHT = ARCH_CANVAS_HEIGHT;
 
 /** Color del halo de un símbolo: el del papel, para que se lea sobre una cara pintada. */
 const HALO_COLOR = '#ffffff';
@@ -175,6 +182,10 @@ const archSvg = (
   width: number,
   findings: Record<string, readonly ToothFindingRecord[]>,
   caption: string,
+  /** Prótesis removibles de esta arcada (vacío en las bandas temporales). */
+  prostheses: readonly ProsthesisRecord[],
+  arch: ProsthesisArch,
+  layout: ArchLayout,
 ): string => {
   if (teeth.length === 0) return '';
   const piezas = teeth
@@ -186,10 +197,42 @@ const archSvg = (
 
   return (
     `<figure class="arch"><figcaption>${caption}</figcaption>` +
-    `<svg viewBox="0 0 ${String(width)} ${String(ARCH_HEIGHT)}" xmlns="http://www.w3.org/2000/svg">${piezas}</svg>` +
+    `<svg viewBox="0 0 ${String(width)} ${String(ARCH_HEIGHT)}" xmlns="http://www.w3.org/2000/svg">${piezas}${prosthesesSvg(prostheses, arch, layout)}</svg>` +
     '</figure>'
   );
 };
+
+/**
+ * La **doble línea** de las prótesis removibles, en la franja bajo las piezas. La
+ * geometría la da el contrato (`prosthesisTrack`), la misma que la pantalla y el papel
+ * del navegador: la doble línea no puede salir distinta en el PDF del dossier.
+ */
+const prosthesesSvg = (
+  prostheses: readonly ProsthesisRecord[],
+  arch: ProsthesisArch,
+  layout: ArchLayout,
+): string =>
+  prostheses
+    .filter((prosthesis) => prosthesis.arch === arch)
+    .map((prosthesis) => {
+      const track = prosthesisTrack(prosthesis, layout);
+      if (track === null) return '';
+      const color = CLINICAL_STATE_COLORS[prosthesis.state];
+      const ganchos =
+        prosthesis.kind === 'ppr'
+          ? `<line x1="${String(track.x1)}" y1="${String(PROSTHESIS_BAND_Y - 9)}" x2="${String(track.x1)}" y2="${String(PROSTHESIS_BAND_Y + 9)}" stroke="${color}" stroke-width="3" stroke-linecap="round"/>` +
+            `<line x1="${String(track.x2)}" y1="${String(PROSTHESIS_BAND_Y - 9)}" x2="${String(track.x2)}" y2="${String(PROSTHESIS_BAND_Y + 9)}" stroke="${color}" stroke-width="3" stroke-linecap="round"/>`
+          : '';
+      return (
+        `<g data-protesis="${prosthesis.kind}">` +
+        `<line x1="${String(track.x1)}" y1="${String(PROSTHESIS_BAND_Y - 4)}" x2="${String(track.x2)}" y2="${String(PROSTHESIS_BAND_Y - 4)}" stroke="${color}" stroke-width="3" stroke-linecap="round"/>` +
+        `<line x1="${String(track.x1)}" y1="${String(PROSTHESIS_BAND_Y + 4)}" x2="${String(track.x2)}" y2="${String(PROSTHESIS_BAND_Y + 4)}" stroke="${color}" stroke-width="3" stroke-linecap="round"/>` +
+        ganchos +
+        `<text x="${String((track.x1 + track.x2) / 2)}" y="${String(PROSTHESIS_BAND_Y - 10)}" fill="${color}" font-size="11" font-weight="700" text-anchor="middle">${PROSTHESIS_KIND_SHORT[prosthesis.kind]}</text>` +
+        '</g>'
+      );
+    })
+    .join('');
 
 const leyenda = (): string =>
   `<ul class="odo-legend">` +
@@ -210,6 +253,7 @@ const leyenda = (): string =>
           .join('')}${CONDITION_LABELS[condition]}</li>`,
     )
     .join('') +
+  `<li><svg viewBox="0 0 40 24" width="32" height="16"><line x1="2" y1="9" x2="38" y2="9" stroke="${CLINICAL_STATE_COLORS.pendiente}" stroke-width="3"/><line x1="2" y1="15" x2="38" y2="15" stroke="${CLINICAL_STATE_COLORS.pendiente}" stroke-width="3"/><line x1="2" y1="4" x2="2" y2="20" stroke="${CLINICAL_STATE_COLORS.pendiente}" stroke-width="3"/><line x1="38" y1="4" x2="38" y2="20" stroke="${CLINICAL_STATE_COLORS.pendiente}" stroke-width="3"/></svg>Prótesis removible (PPR/PRT): rojo indicada · azul instalada</li>` +
   '</ul>';
 
 export interface OdontogramSection {
@@ -237,9 +281,12 @@ const dentitionCaption = (dentition: Dentition): string =>
 export const odontogramSection = (input: {
   dentition: Dentition | null;
   findings: Record<string, readonly ToothFindingRecord[]>;
+  /** Prótesis removibles vigentes (PPR/PRT). */
+  prostheses?: readonly ProsthesisRecord[];
 }): OdontogramSection => {
   const dentition = input.dentition ?? 'permanente';
-  const summary = odontogramSummary({ findings: input.findings, dentition });
+  const prostheses = input.prostheses ?? [];
+  const summary = odontogramSummary({ findings: input.findings, dentition, prostheses });
 
   if (input.dentition === null) {
     return {
@@ -251,12 +298,29 @@ export const odontogramSection = (input: {
 
   const layout = archLayout(dentition);
   const bandas = [
-    archSvg(layout.upper, layout.width, input.findings, 'Arcada superior · vestibular arriba'),
-    archSvg(layout.lower, layout.width, input.findings, 'Arcada inferior · vestibular abajo'),
+    archSvg(
+      layout.upper,
+      layout.width,
+      input.findings,
+      'Arcada superior · vestibular arriba',
+      prostheses,
+      'maxilar',
+      layout,
+    ),
+    archSvg(
+      layout.lower,
+      layout.width,
+      input.findings,
+      'Arcada inferior · vestibular abajo',
+      prostheses,
+      'mandibula',
+      layout,
+    ),
     // Las bandas primarias solo existen en la dentición mixta y, como en el imprimible
     // del navegador, solo se dibujan si hay algún hallazgo en piezas de leche: una
     // banda vacía haría dudar de si faltó capturarla. Van debajo de la principal, cada
-    // pieza de leche en la ranura de su sucesor (ADR 0051).
+    // pieza de leche en la ranura de su sucesor (ADR 0051). Las prótesis removibles
+    // son de la arcada permanente: en estas bandas no se pintan.
     ...(hasPrimaryFindings(input.findings)
       ? [
           archSvg(
@@ -264,12 +328,18 @@ export const odontogramSection = (input: {
             layout.width,
             input.findings,
             'Dentición temporal · arcada superior',
+            [],
+            'maxilar',
+            layout,
           ),
           archSvg(
             layout.lowerPrimary,
             layout.width,
             input.findings,
             'Dentición temporal · arcada inferior',
+            [],
+            'mandibula',
+            layout,
           ),
         ]
       : []),

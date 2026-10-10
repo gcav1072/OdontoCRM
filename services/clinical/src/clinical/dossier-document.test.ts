@@ -288,10 +288,12 @@ describe('el dossier del expediente', () => {
 
     // El tornillo se dibuja siempre…
     expect(conImplante).toContain('<line x1="50" y1="16" x2="50" y2="84"');
-    // …y con implante el aspa de ausente solo sale en la leyenda (1); sin él, también
-    // en el dibujo, con su halo y su marca (1 de la leyenda + 2 de la pieza = 3).
-    expect(aspas(conImplante)).toBe(1);
-    expect(aspas(sinImplante)).toBe(3);
+    // …y con implante el aspa de ausente solo sale en la leyenda; sin él, también en
+    // el dibujo, con su halo y su marca. La leyenda sumó la fila de `extraida` (otra
+    // aspa sólida), así que la base es 2 (una de `ausente` + una de `extraida`) y el
+    // dibujo de la pieza aporta 2 más cuando el aspa no cede.
+    expect(aspas(conImplante)).toBe(2);
+    expect(aspas(sinImplante)).toBe(4);
   });
 
   it('sin odontograma el hueco se explica y no se dibuja nada', async () => {
