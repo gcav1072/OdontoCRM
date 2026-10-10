@@ -28,7 +28,7 @@ en `brand.ts` y sin usar).
 | [0003](0003-outbox-y-pg-boss.md) | Outbox transaccional + pg-boss sobre PostgreSQL (sin broker externo) | aceptada |
 | [0004](0004-nueve-microservicios.md) | Nueve microservicios por contexto delimitado | aceptada |
 | [0005](0005-autenticacion-y-roles.md) | JWT corto + refresh rotativo + RBAC y tokens de dispositivo | aceptada |
-| [0006](0006-un-odontologo-un-sillon.md) | Un odontólogo y un sillón, con el modelo preparado para más | aceptada |
+| [0006](0006-un-odontologo-un-sillon.md) | Un odontólogo y un sillón, con el modelo preparado para más | **superada por [0059](0059-el-sillon-es-el-recurso-de-la-agenda.md)** |
 | [0007](0007-identificacion-de-pacientes.md) | Identificación V, E, P y menores con marcador `SC-` | aceptada |
 | [0008](0008-bot-unico-long-polling.md) | Un solo bot de Telegram con long polling, deep link y plan B manual | aceptada |
 | [0009](0009-cupo-y-franjas.md) | Cupo diario editable, plantillas de franjas y hora manual | aceptada |
@@ -79,4 +79,6 @@ en `brand.ts` y sin usar).
 | [0054](0054-membrete-unico-en-los-imprimibles.md) | El membrete, el logo y la marca de agua son los mismos en todos los imprimibles (y la marca de agua, antes declarada y sin usar, se cablea) | aceptada |
 | [0055](0055-dos-tipografias-en-los-imprimibles.md) | Los imprimibles tienen dos tipografías (títulos y cuerpo), auto-hospedadas e incrustadas: el papel no depende del equipo | aceptada |
 | [0056](0056-la-identidad-del-consultorio-vive-en-la-base.md) | La identidad del consultorio vive en la base de datos: el titular la completa en su primer acceso, queda auditada y `clinic.ts` pasa a semilla y respaldo | aceptada |
+| [0057](0057-cancelacion-con-plazo-canales-y-novedades.md) | La cancelación del paciente tiene plazo (configurable), la bandeja de canales dice el nombre y `/inicio` cuenta las novedades | aceptada |
 | [0058](0058-sin-datos-personales-en-el-codigo.md) | Sin datos personales en el código: la identidad se sirve solo desde el registro del titular (se elimina el respaldo con datos y los overrides `CLINIC_*`) | aceptada |
+| [0059](0059-el-sillon-es-el-recurso-de-la-agenda.md) | El **sillón** es el recurso que ocupa la franja (varios consultorios en paralelo); el odontólogo es un atributo opcional y la pantalla de consultorio es una TV compartida con un tile por sillón | aceptada |

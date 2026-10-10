@@ -4,6 +4,44 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Agenda] — Varios consultorios y varios odontólogos (multisillón) · 2026-10-09
+
+El sistema nació para **un odontólogo y un sillón** ([ADR 0006](docs/adr/0006-un-odontologo-un-sillon.md)),
+con `dentist_id`/`chair_id` en la cita «para no migrar después». La clínica tiene **varios
+consultorios y varios odontólogos**, así que ese «después» llegó: ahora el **sillón es el recurso
+que ocupa una franja** y el odontólogo un **atributo opcional** ([ADR 0059](docs/adr/0059-el-sillon-es-el-recurso-de-la-agenda.md)).
+
+**El núcleo.** Nace el catálogo `chairs` (servicio de agenda, dueño del solapamiento). El índice
+único pasa a `(fecha, hora, consultorio)`: **dos citas pueden coincidir en hora si son en salas
+distintas**, nunca en la misma. El cupo (`day_capacities`) y las plantillas (`slot_templates`) son
+**por consultorio** (una plantilla sin sillón es la común). La migración **sembró «Consultorio 1» y
+reasignó todo el histórico** antes de poner los `NOT NULL`.
+
+**Las pantallas.** El bloque `appointment` de los eventos lleva el consultorio y el odontólogo con
+sus **nombres** ([ADR 0041](docs/adr/0041-el-evento-lleva-lo-que-el-consumidor-necesita.md)), así que
+la sala y los reportes no leen bases ajenas. La **pantalla del consultorio es una sola TV compartida**
+con **un tile por sillón** (paciente o «libre»), y el displaylobby dice a qué consultorio pasar. La
+agenda sirve el catálogo por una ruta interna.
+
+**La interfaz.** La jornada se ve **por consultorio** (selector + rejilla del sillón elegido); al
+asignar se elige **consultorio** (obligatorio) y **odontólogo** (opcional). El catálogo de
+consultorios se administra en `/programacion` con el permiso nuevo **`scheduling:manage`** (admin).
+
+**Reportes.** Dos nuevos, operativos: **ocupación por consultorio** y **productividad por
+odontólogo**.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `chairs` + `appointments.chair_id` obligatorio | El sillón es la clave del recurso; un consultorio se **desactiva**, no se borra |
+| `uq_appointments_slot` por consultorio | Dos salas en paralelo; misma sala a la misma hora sigue bloqueada (409) |
+| Cupo y plantillas por sillón | `day_capacities (date, chair_id)` y `slot_templates.chair_id` (nullable = común) |
+| `ChairDayView` / `DayView.chairs[]` | La jornada se reparte por consultorio, con el agregado del día |
+| Evento `appointment` con `chairLabel`/`dentistName` | Las pantallas y los reportes rotulan sin consultar a nadie |
+| Pantalla de consultorio multi-tile | Una TV compartida, un tile por sillón, en el orden del catálogo |
+| `scheduling:manage` + diálogo de consultorios | Alta y edición del catálogo, solo `admin` |
+| Rutas internas `/internal/v1/agenda/chairs` y `/internal/v1/identity/dentists` | Catálogos para la TV y para el selector de odontólogo |
+| Reportes `chair-occupancy` y `dentist-productivity` | Ocupación por sala y citas/atendidas por doctor |
+
 ## [Limpieza] — Sin datos personales en el código y la identidad solo desde el registro · 2026-10-09
 
 El repositorio ya no lleva los datos de un consultorio concreto. La identidad —nombre, dirección,

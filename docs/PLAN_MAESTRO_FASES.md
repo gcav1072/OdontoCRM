@@ -46,7 +46,7 @@ Todas fueron confirmadas contigo en la sesión de planificación del 2026-10-02.
 | 3 | Mensajería | **Transactional outbox + `pg-boss` sobre PostgreSQL**. Cero infraestructura extra; la interfaz `EventBus` permite migrar a RabbitMQ sin tocar dominios. |
 | 4 | Granularidad | **9 servicios** + el gateway (ver §2.2). |
 | 5 | Autenticación | **JWT de acceso (15 min, EdDSA) + refresh rotativo en cookie `httpOnly`**; RBAC por módulo; **pantallas con token de dispositivo** (rol `pantalla`), no con usuario. |
-| 6 | Personal | **Un odontólogo y un sillón.** Roles: `admin`, `secretario`, `odontologo` (+ rol técnico `pantalla`). El modelo guarda `dentist_id`/`chair_id` con un único registro por defecto para no migrar después. |
+| 6 | Personal | **Un odontólogo y un sillón.** Roles: `admin`, `secretario`, `odontologo` (+ rol técnico `pantalla`). El modelo guarda `dentist_id`/`chair_id` con un único registro por defecto para no migrar después. *(Superado: el **sillón** pasa a ser el recurso de la franja y el odontólogo un atributo opcional, con varios consultorios en paralelo — [ADR 0059](adr/0059-el-sillon-es-el-recurso-de-la-agenda.md).)* |
 | 7 | Identificación | **V, E y P** + **menores sin cédula** con marcador temporal `SC-<código>`. Normalización a `V-12345678`; único por `(tipo, número)`. |
 | 8 | Telegram | **Un único bot para siempre** (BotFather), **long polling** (funciona 100 % en LAN, sin exponer nada a internet), asistente paso a paso, **vinculación por deep link** `t.me/<bot>?start=<ticket>` y estado `notificación manual pendiente` si el paciente no tiene Telegram. |
 | 9 | Programación | **Cupo diario editable** + **plantilla de franjas horarias** (duración, pausas) + **edición manual de la hora** por paciente. |
