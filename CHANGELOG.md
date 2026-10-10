@@ -4,6 +4,32 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Configuración] — Las fuentes de los imprimibles se eligen por rol · 2026-10-10
+
+La marca de los imprimibles pasa de **una sola familia** a un **catálogo de familias**, y el panel
+`/configuracion` deja de pedir la pila CSS a mano: se elige **familia y peso** de los títulos y del
+cuerpo en un desplegable, **con vista previa** ([ADR 0063](docs/adr/0063-seleccion-de-fuentes-por-rol.md)).
+
+**Catálogo.** Tres sans (Montserrat, Inter, Poppins) y tres script (Lobster, Pacifico, Dancing
+Script), todas OFL, auto-hospedadas en `assets/clinic/fonts/` (convención
+`<familia>-latin-<peso>-normal.woff2`). Además se pueden **subir** familias nuevas desde el panel
+indicando su **familia, peso y estilo**.
+
+**Selección por rol.** Título y cuerpo tienen su propio desplegable de familia y de peso, con una
+línea de **vista previa** que se dibuja al instante; un bloque **avanzado** permite editar la pila
+CSS. El **peso** de los títulos deja de estar fijo en 700 y pasa a ser de la marca
+(`--brand-font-doc-title-weight` / `--brand-font-doc-body-weight`).
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `brand.ts` | `BrandFonts` pasa a `families[]`; `documentTitleWeight`/`documentBodyWeight`; catálogo y `fontStackFor`; 25 variables `--brand-*` |
+| `domain/settings.ts` | `brandFontFamilySchema`; `brandFontsSchema.families`; pesos en la tipografía |
+| `brand-service.ts` | Normaliza `{ family, files }` → `families`; resuelve **solo las familias referenciadas**; `addBrandFont` con familia |
+| `settings-routes.ts` | La subida multipart acepta el campo `family` |
+| Migración `0006` (identity) | Envuelve las marcas antiguas en `families` (solo datos) |
+| `MarcaSection.tsx` | Desplegables de familia/peso por rol, vista previa, pila avanzada y subida por familia |
+| `report-html.ts` + 5 documentos | Los títulos usan la variable de peso en vez de `font-weight: 700` fijo |
+
 ## [Odontograma] — La exodoncia realizada y las prótesis removibles · 2026-10-10
 
 Dos estados clínicos que faltaban, anexos al [ADR 0062](docs/adr/0062-exodoncia-y-protesis-removibles.md).

@@ -152,15 +152,22 @@ export const BRAND: Brand = {
     uiMono: '…',
     documentTitleSans: "'Montserrat', …",  // TÍTULOS (nombre, «RÉCIPE», encabezados)
     documentBodySans: "'Montserrat', …",   // CUERPO (párrafos, tablas, notas)
+    documentTitleWeight: 700,       // peso de los títulos y del cuerpo (por rol)
+    documentBodyWeight: 400,
     documentTitlePt: 13,            // tamaños en pt; cuerpo 9; menudo 7,5
     documentBodyPt: 9,
     documentSmallPt: 7.5,
   },
   fonts: {                          // las fuentes que el papel y la pantalla incrustan
-    family: 'Montserrat',
-    files: [
-      { path: 'assets/clinic/fonts/montserrat-latin-400-normal.woff2', weight: 400, style: 'normal' },
-      { path: 'assets/clinic/fonts/montserrat-latin-700-normal.woff2', weight: 700, style: 'normal' },
+    families: [
+      {
+        name: 'Montserrat',
+        files: [
+          { path: 'assets/clinic/fonts/montserrat-latin-400-normal.woff2', weight: 400, style: 'normal' },
+          { path: 'assets/clinic/fonts/montserrat-latin-700-normal.woff2', weight: 700, style: 'normal' },
+        ],
+      },
+      // … Inter, Poppins (sans) y Lobster, Pacifico, Dancing Script (script).
     ],
   },
   letterhead: { logoHeightMm: 18, watermarkWidthMm: 90, watermarkOpacity: 0.1 },
@@ -170,16 +177,18 @@ export const BRAND: Brand = {
 ```
 
 **Las dos tipografías** (ADR 0055). `--brand-font-doc-title` la aplican los títulos (la clase
-`.brand-title` y las cabeceras de cada plantilla) y `--brand-font-doc-body` el `body`. En
-`assets/clinic/fonts/` viven los `.woff2` **auto-hospedados** (subconjunto `latin`, que cubre el
-español) con su licencia OFL.
+`.brand-title` y las cabeceras de cada plantilla) y `--brand-font-doc-body` el `body`; cada una
+lleva su **peso** (`--brand-font-doc-title-weight` / `--brand-font-doc-body-weight`), que se elige
+en el panel. En `assets/clinic/fonts/` viven los `.woff2` **auto-hospedados** (subconjunto `latin`,
+que cubre el español) con su licencia OFL.
 
 - El **servidor** los incrusta en el PDF como `@font-face` con `data:` URI: el documento
   archivado no depende de las fuentes del equipo.
 - La **SPA** los carga al arrancar (`apps/web/src/lib/fuentes.ts`, con `import.meta.glob`), así
   que la historia clínica y el odontograma que imprime el navegador salen con la misma familia.
-- Cambiar de familia: dejar los `.woff2` en esa carpeta, ajustar `BRAND.fonts.files` y los dos
-  primeros nombres de las pilas.
+- Cambiar de familia: dejar los `.woff2` en esa carpeta, ajustar `BRAND.fonts.families` y los
+  primeros nombres de las pilas. **Desde el panel** (`/configuracion`) se elige la familia y el
+  peso de cada rol en un desplegable, con vista previa, y se suben más familias (ADR 0063).
 
 **La marca de agua** es el **logo efectivo** (el subido, o el del repositorio), centrado y
 translúcido, detrás del contenido de **todos** los imprimibles. Se repite en cada hoja. **Su
