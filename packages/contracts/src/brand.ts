@@ -111,12 +111,25 @@ export interface BrandLetterhead {
   watermarkOpacity: number;
 }
 
-export interface Brand {
+/**
+ * El **tema de la marca impresa**: paleta, tipografías y medidas del membrete, sin
+ * las fuentes ni el logo (esos viajan aparte).
+ *
+ * Existe para que la marca pueda venir de la **base** (panel de configuración, ADR
+ * 0060) y no solo del código: las funciones puras que generan el CSS de los
+ * documentos aceptan un `BrandTheme` cualquiera y el servicio le pasa el **efectivo**
+ * (lo guardado o, si no hay, `BRAND`). `Brand` lo extiende, así que el respaldo del
+ * código sigue valiendo sin cambios.
+ */
+export interface BrandTheme {
   palette: BrandPalette;
   typography: BrandTypography;
+  letterhead: BrandLetterhead;
+}
+
+export interface Brand extends BrandTheme {
   /** Fuentes auto-hospedadas que los documentos incrustan (mismos archivos en papel y pantalla). */
   fonts: BrandFonts;
-  letterhead: BrandLetterhead;
   /**
    * Logo del membrete: ruta **relativa a la raíz del repositorio**. Si el archivo
    * no existe, el membrete sale sin logo (y `letterheadMissingFields` avisa).
@@ -224,7 +237,7 @@ export const logoMimeType = (path: string): string => {
  * Es el cuerpo de un bloque `:root { … }`: lo envuelve `brandRootBlock()` para
  * los documentos y lo escribe tal cual el generador de `marca.css`.
  */
-export const brandCssVariables = (brand: Brand = BRAND): string => {
+export const brandCssVariables = (brand: BrandTheme = BRAND): string => {
   const { palette, typography, letterhead } = brand;
   const variables: [string, string | number][] = [
     ['primary', palette.primary],
@@ -256,7 +269,7 @@ export const brandCssVariables = (brand: Brand = BRAND): string => {
 };
 
 /** El bloque `:root { … }` completo, listo para incrustar en un `<style>`. */
-export const brandRootBlock = (brand: Brand = BRAND): string =>
+export const brandRootBlock = (brand: BrandTheme = BRAND): string =>
   `:root {\n${brandCssVariables(brand)}\n}`;
 
 /**
@@ -268,7 +281,7 @@ export const brandRootBlock = (brand: Brand = BRAND): string =>
  * récipe, A4 el reporte y el dossier) y `var()` dentro de un descriptor de
  * `@page` no es fiable en Chromium.
  */
-export const brandStyles = (brand: Brand = BRAND): string =>
+export const brandStyles = (brand: BrandTheme = BRAND): string =>
   `${brandRootBlock(brand)}
 
 body {

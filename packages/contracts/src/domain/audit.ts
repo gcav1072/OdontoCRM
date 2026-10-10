@@ -26,6 +26,13 @@ export const AUDIT_ACTIONS = [
   'dentist_profile_updated',
   'clinic_profile_updated',
   'clinic_logo_updated',
+  // Configuración de la aplicación (panel de administración, ADR 0060)
+  /** Cambio de la marca de los imprimibles (paleta, tipografías, medidas o fuentes). */
+  'brand_updated',
+  /** Cambio del acento de la interfaz o de los textos del kiosko. */
+  'app_settings_updated',
+  /** Cambio de las credenciales o los datos de los canales (Telegram, WhatsApp). */
+  'channel_settings_updated',
   // Pantallas kiosko
   'device_token_created',
   'device_token_revoked',

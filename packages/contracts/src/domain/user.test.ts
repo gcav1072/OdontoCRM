@@ -42,12 +42,23 @@ describe('permisos por rol', () => {
     expect(hasPermission(['odontologo'], 'scheduling:overbook')).toBe(false);
   });
 
-  it('la política de cancelación del paciente es del admin y del odontólogo (ADR 0057)', () => {
-    // El corte de días lo deciden quien lleva la clínica; el mostrador no lo cambia.
+  it('la política de cancelación del paciente pasa a ser solo del admin (ADR 0057/0060)', () => {
+    // ADR 0057 la daba al admin y al odontólogo; con el panel de configuración (ADR
+    // 0060) se mueve a un ajuste de clínica que decide el admin. El titular la conserva
+    // por su rol `admin`.
     expect(hasPermission(['admin'], 'scheduling:cancel_policy')).toBe(true);
-    expect(hasPermission(['odontologo'], 'scheduling:cancel_policy')).toBe(true);
+    expect(hasPermission(['odontologo'], 'scheduling:cancel_policy')).toBe(false);
     expect(hasPermission(['secretario'], 'scheduling:cancel_policy')).toBe(false);
     expect(hasPermission(['pantalla'], 'scheduling:cancel_policy')).toBe(false);
+  });
+
+  it('la configuración de la aplicación es solo del admin (ADR 0060)', () => {
+    expect(hasPermission(['admin'], 'settings:manage')).toBe(true);
+    expect(hasPermission(['odontologo'], 'settings:manage')).toBe(false);
+    expect(hasPermission(['secretario'], 'settings:manage')).toBe(false);
+    expect(hasPermission(['pantalla'], 'settings:manage')).toBe(false);
+    // El titular lleva `odontologo` + `admin`, así que la tiene por el rol admin.
+    expect(hasPermission(['odontologo', 'admin'], 'settings:manage')).toBe(true);
   });
 
   it('odontologo registra y edita pacientes, pero no los borra (2026-10-03)', () => {

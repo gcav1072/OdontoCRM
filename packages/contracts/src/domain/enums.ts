@@ -22,8 +22,9 @@ export const PERMISSIONS = [
   'scheduling:overbook',
   /**
    * Editar la **política de cancelación del paciente** (ADR 0057): el corte de días
-   * que se aplica a una cita ya confirmada. La ven y la editan **solo el `admin` y el
-   * odontólogo**; la secretaría atiende el mostrador y no decide esta regla.
+   * que se aplica a una cita ya confirmada. Con el panel de configuración (ADR 0060)
+   * pasa a ser **solo del `admin`**: el titular la conserva por su rol `admin`, pero
+   * deja de ser una decisión del odontólogo suelto.
    */
   'scheduling:cancel_policy',
   /**
@@ -58,6 +59,12 @@ export const PERMISSIONS = [
   /** Anular facturas y emitir notas de crédito, siempre con motivo. */
   'billing:void',
   'audit:read',
+  /**
+   * Configurar la **aplicación** desde el panel (ADR 0060): marca de los imprimibles,
+   * acento de la interfaz, textos del kiosko y credenciales de los canales. Solo el
+   * `admin`: son ajustes que afectan a toda la clínica, no tareas de mostrador.
+   */
+  'settings:manage',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -110,11 +117,6 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     'patients:edit_sensitive',
     'scheduling:read',
     'scheduling:write',
-    /**
-     * **Política de cancelación del paciente** (ADR 0057): el odontólogo fija el corte
-     * de días igual que el `admin`. La secretaría no: no es una decisión de mostrador.
-     */
-    'scheduling:cancel_policy',
     'screens:display',
     'clinical:read',
     'clinical:write',

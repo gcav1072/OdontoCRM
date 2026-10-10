@@ -172,6 +172,110 @@ const DICCIONARIO = {
     'Bandeja de envíos del bot, plantillas de mensajes y vinculación de pacientes.',
   'modulo.pantallas.titulo': 'Pantallas',
   'modulo.pantallas.descripcion': 'Dispositivos y tokens de las pantallas de sala y consultorio.',
+  'modulo.configuracion.titulo': 'Configuración',
+  'modulo.configuracion.descripcion':
+    'Marca de los imprimibles, acento, textos de pantalla, sillones y canales.',
+
+  // --- Configuración de la aplicación: módulo /configuracion (ADR 0060) -----
+  'config.titulo': 'Configuración de la aplicación',
+  'config.descripcion':
+    'Los ajustes de toda la clínica: cómo se ven los documentos, el color de la interfaz, los textos de las pantallas, los sillones y los canales de mensajería.',
+  'config.soloAdmin': 'Solo el administrador puede ver y cambiar esta configuración.',
+  'config.guardado': 'Configuración guardada.',
+  'config.error': 'No se pudo guardar la configuración',
+  'config.restaurar': 'Restaurar por defecto',
+  'config.desdeCodigo': 'Estos valores vienen del código; se aplican hasta que guardes aquí.',
+  'config.desdeBase': 'Estos valores están guardados en el sistema.',
+
+  'config.marca.titulo': 'Marca de los imprimibles',
+  'config.marca.descripcion':
+    'Colores, tipografías y medidas del membrete de los documentos (récipe, dossier, reporte, factura). El logo se cambia en Mi perfil.',
+  'config.marca.logoAyuda': 'El logo del membrete se sube desde Mi perfil (titular) o /usuarios.',
+  'config.marca.paleta': 'Paleta del papel',
+  'config.paleta.primary': 'Color principal',
+  'config.paleta.primaryInk': 'Texto sobre el principal',
+  'config.paleta.accent': 'Acento',
+  'config.paleta.ink': 'Texto de cuerpo',
+  'config.paleta.inkStrong': 'Texto de detalle',
+  'config.paleta.inkMuted': 'Texto secundario',
+  'config.paleta.inkSubtle': 'Texto menudo',
+  'config.paleta.line': 'Borde de tabla',
+  'config.paleta.lineSoft': 'Línea suave entre filas',
+  'config.paleta.tableHeadBg': 'Fondo del encabezado de tabla',
+  'config.paleta.good': 'Bueno (semántico)',
+  'config.paleta.warn': 'Aviso (semántico)',
+  'config.paleta.bad': 'Crítico (semántico)',
+  'config.marca.tipografia': 'Tipografías',
+  'config.marca.familia': 'Familia de las fuentes',
+  'config.marca.titulos': 'Pila de los títulos',
+  'config.marca.cuerpo': 'Pila del cuerpo',
+  'config.marca.tamanoTitulo': 'Tamaño del título (pt)',
+  'config.marca.tamanoCuerpo': 'Tamaño del cuerpo (pt)',
+  'config.marca.tamanoMenudo': 'Tamaño menudo (pt)',
+  'config.marca.medidas': 'Medidas del membrete',
+  'config.marca.altoLogo': 'Alto del logo (mm)',
+  'config.marca.anchoVelo': 'Ancho de la marca de agua (mm)',
+  'config.marca.opacidadVelo': 'Opacidad de la marca de agua',
+  'config.marca.fuentes': 'Fuentes (.woff2)',
+  'config.marca.fuentesAyuda':
+    'Sube archivos .woff2 (subconjunto latino) indicando su peso y estilo. El papel y la pantalla usan los mismos archivos.',
+  'config.marca.subirFuente': 'Subir fuente',
+  'config.marca.peso': 'Peso',
+  'config.marca.estilo': 'Estilo',
+  'config.marca.estiloNormal': 'Normal',
+  'config.marca.estiloItalic': 'Itálica',
+  'config.marca.fuenteAyuda':
+    'Elige el peso y el estilo del archivo antes de subirlo: los títulos suelen usar 700 y el cuerpo 400.',
+  'config.marca.fuenteReemplaza':
+    'Subir un peso y estilo que ya existen reemplaza el archivo anterior.',
+  'config.marca.quitarFuente': 'Quitar',
+  'config.marca.respaldo': 'De respaldo',
+
+  'config.acento.titulo': 'Color de acento de la interfaz',
+  'config.acento.descripcion':
+    'Cambia el color del cromo de la aplicación. Los colores clínicos del odontograma (rojo y azul) no se tocan.',
+
+  'config.pantallas.titulo': 'Pantallas y consultorios',
+  'config.pantallas.textos': 'Textos de las pantallas',
+  'config.pantallas.textosAyuda':
+    'Personaliza los rótulos del kiosko. Deja el campo vacío para volver al texto de fábrica.',
+  'config.pantallas.sillones': 'Consultorios (sillones)',
+  'config.pantallas.sillonesAyuda':
+    'El sillón es el recurso que ocupa una franja. Su nombre sale en la agenda y en la TV.',
+  'config.pantallas.sillonNombre': 'Nombre',
+  'config.pantallas.sillonCorto': 'Etiqueta corta',
+  'config.pantallas.sillonOrden': 'Orden',
+  'config.pantallas.sillonActivo': 'Activo',
+  'config.pantallas.anadirSillon': 'Añadir consultorio',
+  'config.pantallas.sillonCreado': 'Consultorio creado.',
+  'config.pantallas.sillonGuardado': 'Consultorio actualizado.',
+
+  'config.canales.titulo': 'Canales de mensajería',
+  'config.canales.descripcion':
+    'Tokens del bot de pacientes y del bot de administración, y credenciales de WhatsApp. Los secretos se guardan cifrados y no se vuelven a mostrar.',
+  'config.canales.telegram': 'Bot de pacientes (Telegram)',
+  'config.canales.token': 'Token',
+  'config.canales.usuario': 'Usuario del bot (sin @)',
+  'config.canales.admin': 'Bot de administración',
+  'config.canales.adminChat': 'Chat del administrador',
+  'config.canales.whatsapp': 'WhatsApp (Meta Cloud API)',
+  'config.canales.whatsappToken': 'Token',
+  'config.canales.whatsappPhone': 'Phone ID',
+  'config.canales.whatsappVerify': 'Verify token',
+  'config.canales.whatsappSecret': 'App secret',
+  'config.canales.whatsappBase': 'Base de la API',
+  'config.canales.secretoGuardado': 'Configurado',
+  'config.canales.secretoVacio': 'Sin configurar',
+  'config.canales.secretoAyuda': 'Déjalo vacío para no cambiarlo; escribe «-» para borrarlo.',
+  'config.canales.probar': 'Probar',
+  'config.canales.probando': 'Probando…',
+  'config.canales.testTelegram': 'Probar bot de pacientes',
+  'config.canales.testAdmin': 'Probar bot de administración',
+  'config.canales.destino': 'Destino de la prueba (chat o número)',
+  'config.canales.sinCifrar':
+    'Aviso: la instalación no tiene clave de almacén, así que los secretos se guardan sin cifrar.',
+
+  'config.cancelacion.titulo': 'Política de cancelación del paciente',
 
   // --- Reportes: módulo /reportes (Fase 9) ---------------------------------
   'reportes.titulo': 'Reportes del consultorio',
@@ -962,6 +1066,7 @@ const DICCIONARIO = {
   'permiso.billing:collect': 'Registrar y anular cobros',
   'permiso.billing:rates': 'Fijar la tasa del día y la configuración fiscal',
   'permiso.billing:void': 'Anular facturas y emitir notas de crédito',
+  'permiso.settings:manage': 'Configurar la aplicación (marca, pantallas y canales)',
 
   // --- Acciones de auditoría ----------------------------------------------
   'auditoria.login': 'Inicio de sesión',
@@ -982,6 +1087,10 @@ const DICCIONARIO = {
   'auditoria.dentist_profile_updated': 'Perfil profesional editado',
   'auditoria.clinic_profile_updated': 'Datos del consultorio editados',
   'auditoria.clinic_logo_updated': 'Logo del consultorio actualizado',
+  // Configuración de la aplicación (panel de administración)
+  'auditoria.brand_updated': 'Marca de los imprimibles actualizada',
+  'auditoria.app_settings_updated': 'Configuración de la aplicación actualizada',
+  'auditoria.channel_settings_updated': 'Canales de mensajería actualizados',
   // Identidad del consultorio: entidades y campos del diff
   'auditoria.entidad.dentist_profile': 'Perfil del odontólogo',
   'auditoria.entidad.clinic_profile': 'Identidad del consultorio',
@@ -2821,11 +2930,11 @@ const DICCIONARIO = {
 export type TranslationKey = keyof typeof DICCIONARIO;
 
 /**
- * Traduce una clave del diccionario. Los parámetros se interpolan con la forma
- * `{nombre}`; si falta un valor se deja el marcador para que el error se vea.
+ * Interpola los parámetros `{nombre}` de una plantilla ya resuelta. Si falta un valor se
+ * deja el marcador para que el error se vea. Se exporta porque los **textos del kiosko**
+ * personalizados (ADR 0060) también llevan marcadores y tienen que interpolarse igual.
  */
-export const t = (key: TranslationKey, params?: Record<string, string | number>): string => {
-  const plantilla: string = DICCIONARIO[key];
+export const interpolar = (plantilla: string, params?: Record<string, string | number>): string => {
   if (!params) return plantilla;
 
   return plantilla.replace(/\{(\w+)\}/g, (coincidencia, nombre: string) => {
@@ -2833,6 +2942,13 @@ export const t = (key: TranslationKey, params?: Record<string, string | number>)
     return valor === undefined ? coincidencia : String(valor);
   });
 };
+
+/**
+ * Traduce una clave del diccionario. Los parámetros se interpolan con la forma
+ * `{nombre}`; si falta un valor se deja el marcador para que el error se vea.
+ */
+export const t = (key: TranslationKey, params?: Record<string, string | number>): string =>
+  interpolar(DICCIONARIO[key], params);
 
 export const ROLE_LABELS: Readonly<Record<Role, string>> = {
   admin: t('rol.admin'),
@@ -2874,6 +2990,7 @@ export const PERMISSION_LABELS: Readonly<Record<Permission, string>> = {
   'billing:collect': t('permiso.billing:collect'),
   'billing:rates': t('permiso.billing:rates'),
   'billing:void': t('permiso.billing:void'),
+  'settings:manage': t('permiso.settings:manage'),
 };
 
 const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
@@ -2894,6 +3011,9 @@ const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   dentist_profile_updated: t('auditoria.dentist_profile_updated'),
   clinic_profile_updated: t('auditoria.clinic_profile_updated'),
   clinic_logo_updated: t('auditoria.clinic_logo_updated'),
+  brand_updated: t('auditoria.brand_updated'),
+  app_settings_updated: t('auditoria.app_settings_updated'),
+  channel_settings_updated: t('auditoria.channel_settings_updated'),
   device_token_created: t('auditoria.device_token_created'),
   device_token_revoked: t('auditoria.device_token_revoked'),
   medical_record_created: t('auditoria.medical_record_created'),
