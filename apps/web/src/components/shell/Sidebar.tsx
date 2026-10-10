@@ -32,7 +32,11 @@ export const SidebarNav = ({ collapsed, onNavigate, className }: SidebarNavProps
   return (
     <nav
       aria-label={t('menu.titulo')}
-      className={cn('min-h-0 flex-1 overflow-y-auto px-2 py-3', className)}
+      // `pb-16`: el panel inferior ocultable es fijo y de ancho completo, así que
+      // sin este relleno el último módulo queda tapado por la pestaña «Abrir el
+      // panel de sesión» y no hay forma de alcanzarlo. Con el panel desplegado el
+      // `Sidebar` amplía este relleno (`className`) para dejar sitio a su cuerpo.
+      className={cn('min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-16', className)}
     >
       {NAV_SECTIONS.map((seccion) => {
         const visibles = seccion.modules
@@ -90,6 +94,8 @@ export const SidebarNav = ({ collapsed, onNavigate, className }: SidebarNavProps
 export interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  /** El panel de sesión está desplegado: hay que reservar su altura al pie del menú. */
+  panelAbierto: boolean;
 }
 
 /**
@@ -99,8 +105,11 @@ export interface SidebarProps {
  * ([`MobileNav`](./MobileNav.tsx), `lg:hidden`), que muestra las etiquetas completas.
  * En escritorio se puede colapsar a una banda de iconos; cada enlace lleva `aria-label`
  * para ese modo.
+ *
+ * Con el panel de sesión abierto el menú se desplaza por encima de él (`pb-[20rem]`,
+ * la misma reserva que el contenido usa en `lg`) en vez de quedar debajo.
  */
-export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => (
+export const Sidebar = ({ collapsed, onToggle, panelAbierto }: SidebarProps) => (
   <aside
     className={cn(
       // `print:hidden`: al imprimir un reporte el papel lleva el documento, no el menú.
@@ -133,6 +142,9 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => (
       </button>
     </div>
 
-    <SidebarNav collapsed={collapsed} />
+    {/* Con el panel abierto el relleno crece (tailwind-merge resuelve el conflicto
+        con el `pb-16` base): `pb-[20rem]` es la reserva que el contenido ya usa en
+        `lg`, el único ancho en el que existe este raíl. */}
+    <SidebarNav collapsed={collapsed} className={panelAbierto ? 'pb-[20rem]' : undefined} />
   </aside>
 );

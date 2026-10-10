@@ -53,7 +53,11 @@ export const AppShell = () => {
 
   return (
     <div className="flex min-h-dvh bg-canvas text-ink">
-      <Sidebar collapsed={menuColapsado} onToggle={() => setMenuColapsado((valor) => !valor)} />
+      <Sidebar
+        collapsed={menuColapsado}
+        onToggle={() => setMenuColapsado((valor) => !valor)}
+        panelAbierto={panelAbierto}
+      />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader onOpenMenu={() => setMenuMovilAbierto(true)} />
