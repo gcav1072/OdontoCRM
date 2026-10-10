@@ -97,7 +97,7 @@ export const AuditoriaPage = () => {
       <NoticeBanner notice={notice} onClose={limpiar} />
 
       <Card>
-        <CardHeader className="gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <CardHeader className="gap-3 @2xl:flex-row @2xl:items-end @2xl:justify-between">
           <div className="flex-1">
             <CardTitle as="h2">{t('auditoria.titulo')}</CardTitle>
             <p className="pt-1 text-sm text-ink-muted">{t('auditoria.descripcion')}</p>

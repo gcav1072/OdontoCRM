@@ -39,7 +39,7 @@ export const AuditFilters = ({ value, onChange, onClear }: AuditFiltersProps) =>
     <div
       role="search"
       aria-label={t('auditoria.filtros')}
-      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+      className="grid gap-3 @2xl:grid-cols-2 @5xl:grid-cols-4"
     >
       <Field label={t('auditoria.filtro.desde')} hint={t('auditoria.filtro.fechaAyuda')}>
         <Input

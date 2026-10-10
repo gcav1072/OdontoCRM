@@ -102,7 +102,10 @@ export const AuditDiffDialog = ({
             ) : (
               <ul className="divide-y divide-border overflow-hidden rounded-control border border-border">
                 {filas.map((fila) => (
-                  <li key={fila.field} className="grid gap-1 px-3.5 py-3 sm:grid-cols-[12rem_1fr]">
+                  <li
+                    key={fila.field}
+                    className="grid gap-1 px-3.5 py-3 @2xl:grid-cols-[12rem_minmax(0,1fr)]"
+                  >
                     <span className="text-sm font-medium text-ink">
                       {fieldLabel(fila.field, evento.entityType)}
                     </span>
