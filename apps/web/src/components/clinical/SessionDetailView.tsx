@@ -99,7 +99,7 @@ export const SessionDetailView = ({
         )}
       </div>
 
-      <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <dl className="grid gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3">
         {patientName !== null && (
           <Dato etiqueta={t('clinica.lectura.paciente')} valor={patientName} />
         )}

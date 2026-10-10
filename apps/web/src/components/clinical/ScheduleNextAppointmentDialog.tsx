@@ -130,7 +130,7 @@ export const ScheduleNextAppointmentDialog = ({
           {t('clinica.sesion.agendar.noLaborable')}
         </Alert>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 @2xl:grid-cols-3">
           <Field label={t('clinica.sesion.agendar.fecha')}>
             <Input type="date" value={fecha} onChange={(event) => setFecha(event.target.value)} />
           </Field>

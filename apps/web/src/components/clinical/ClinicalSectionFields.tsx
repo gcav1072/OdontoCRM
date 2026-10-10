@@ -1,4 +1,4 @@
-import { Button, Checkbox, Field, Input, Select, cn } from '@odontocrm/ui';
+import { Button, Checkbox, Field, Input, Select, Textarea, cn } from '@odontocrm/ui';
 import { Plus, Trash2 } from 'lucide-react';
 
 import {
@@ -56,9 +56,6 @@ const asProcedures = (value: unknown): ProcedureValue[] =>
         };
       })
     : [];
-
-const TEXTAREA_CLASSES =
-  'w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-sm text-ink shadow-xs transition-colors placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-muted';
 
 export interface CatalogChecklistProps {
   group: string;
@@ -153,7 +150,7 @@ const ProcedureList = ({
       {value.map((row, index) => (
         <div
           key={index}
-          className="grid grid-cols-1 gap-3 rounded-control border border-border p-3 sm:grid-cols-[1fr_8rem_6rem_8rem_auto]"
+          className="grid grid-cols-1 gap-3 rounded-control border border-border p-3 @2xl:grid-cols-[minmax(0,1fr)_8rem_6rem_8rem_auto]"
         >
           <Field label={t('clinica.plan.descripcion')}>
             <Input
@@ -273,8 +270,7 @@ export const ClinicalSectionFields = ({
               label={clinicalFieldLabel(field.labelKey)}
               required={field.required === true}
             >
-              <textarea
-                className={TEXTAREA_CLASSES}
+              <Textarea
                 rows={field.rows ?? 3}
                 value={asText(value)}
                 disabled={disabled}

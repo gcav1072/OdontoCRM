@@ -1,4 +1,4 @@
-import { Alert, Button, Checkbox, Dialog, Field } from '@odontocrm/ui';
+import { Alert, Button, Checkbox, Dialog, Field, Textarea } from '@odontocrm/ui';
 import { useState } from 'react';
 
 import { t } from '../../lib/i18n';
@@ -10,9 +10,6 @@ import { t } from '../../lib/i18n';
  * enmendada con su motivo (lo explica el diálogo para que nadie se lleve la
  * sorpresa).
  */
-
-const TEXTAREA_CLASSES =
-  'w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-sm text-ink shadow-xs transition-colors placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus';
 
 export interface CloseSessionDialogProps {
   open: boolean;
@@ -87,12 +84,7 @@ export const CloseSessionDialog = ({
         )}
 
         <Field label={t('clinica.sesion.cerrar.nota')} hint={t('clinica.sesion.cerrar.notaAyuda')}>
-          <textarea
-            className={TEXTAREA_CLASSES}
-            rows={3}
-            value={nota}
-            onChange={(event) => setNota(event.target.value)}
-          />
+          <Textarea rows={3} value={nota} onChange={(event) => setNota(event.target.value)} />
         </Field>
       </div>
     </Dialog>

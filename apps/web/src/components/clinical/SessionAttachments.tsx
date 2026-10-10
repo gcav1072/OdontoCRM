@@ -355,7 +355,7 @@ export const SessionAttachments = ({
         )}
 
         {adjuntos.length > 0 && (
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <ul className="grid gap-3 @2xl:grid-cols-2 @6xl:grid-cols-4">
             {adjuntos.map((adjunto) => (
               <Thumbnail
                 key={adjunto.id}
@@ -377,7 +377,7 @@ export const SessionAttachments = ({
         {canWrite && !sessionClosed && (
           <div className="rounded-control border border-dashed border-border-strong p-3">
             <p className="text-sm font-medium text-ink">{t('clinica.adjunto.subir')}</p>
-            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-2 grid gap-3 @2xl:grid-cols-2 @6xl:grid-cols-4">
               <Field label={t('clinica.adjunto.archivo')}>
                 <input
                   ref={selectorRef}
@@ -493,7 +493,7 @@ export const PatientAttachmentsCard = ({ patientId }: { patientId: string }) => 
         )}
 
         {adjuntos.length > 0 && (
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <ul className="grid gap-3 @2xl:grid-cols-2 @6xl:grid-cols-4">
             {adjuntos.map((adjunto) => (
               <Thumbnail
                 key={adjunto.id}

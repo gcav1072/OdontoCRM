@@ -11,7 +11,7 @@ import {
   type PrescriptionSummary,
 } from '@odontocrm/contracts';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Alert, Button, Dialog, Field, Input, Select, Spinner, cn } from '@odontocrm/ui';
+import { Alert, Button, Dialog, Field, Input, Select, Spinner, Textarea } from '@odontocrm/ui';
 import { FileDown, Plus, Printer, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -403,7 +403,7 @@ export const PrescriptionDialog = ({
                   key={`item-${String(indice)}`}
                   className="rounded-control border border-border p-3"
                 >
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="grid gap-3 @2xl:grid-cols-2 @6xl:grid-cols-4">
                     <Field label={t('clinica.recipe.medicamento')}>
                       <Input
                         value={item.medicationName}
@@ -473,7 +473,7 @@ export const PrescriptionDialog = ({
                     </Field>
                   </div>
 
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @6xl:grid-cols-4">
                     <Field label={t('clinica.recipe.dosis')} required>
                       <Input
                         value={item.dose}
@@ -561,12 +561,7 @@ export const PrescriptionDialog = ({
             </Button>
 
             <Field label={t('clinica.recipe.generales')} hint={t('clinica.recipe.generalesAyuda')}>
-              <textarea
-                className={cn(
-                  'w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-sm text-ink',
-                  'shadow-xs transition-colors placeholder:text-ink-subtle focus-visible:outline-2',
-                  'focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus',
-                )}
+              <Textarea
                 rows={3}
                 value={generales}
                 onChange={(evento) => setGenerales(evento.target.value)}

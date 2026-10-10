@@ -5,7 +5,7 @@ import {
   type SessionProcedure,
   type ToothSurface,
 } from '@odontocrm/contracts';
-import { Button, Field, Input, Select, cn } from '@odontocrm/ui';
+import { Button, Field, Input, Select, Textarea, cn } from '@odontocrm/ui';
 import { Plus, Trash2 } from 'lucide-react';
 
 import {
@@ -28,9 +28,6 @@ import { t } from '../../lib/i18n';
  * signos vitales, el catálogo de procedimientos y las caras de cada pieza salen del
  * contrato, que es el mismo que valida el servidor.
  */
-
-const TEXTAREA_CLASSES =
-  'w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-sm text-ink shadow-xs transition-colors placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-muted';
 
 export interface SessionFormProps {
   content: ClinicalSessionContent;
@@ -56,8 +53,7 @@ const AreaField = ({
   onChange: (value: string | null) => void;
 }) => (
   <Field label={label}>
-    <textarea
-      className={TEXTAREA_CLASSES}
+    <Textarea
       rows={rows}
       disabled={disabled}
       placeholder={placeholder}
@@ -87,7 +83,7 @@ const VitalsBlock = ({ props }: { props: SessionFormProps }) => {
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="text-sm font-medium text-ink">{t('clinica.sesion.vitales')}</legend>
       <p className="mt-0.5 text-xs text-ink-subtle">{t('clinica.sesion.vitales.ayuda')}</p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3">
         {SESSION_VITAL_FIELDS.map((field) => {
           const value = content.vitals[field.name as keyof typeof content.vitals];
           return (
@@ -119,7 +115,7 @@ const ExamBlock = ({ props }: { props: SessionFormProps }) => {
   return (
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="text-sm font-medium text-ink">{t('clinica.sesion.examen')}</legend>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @6xl:grid-cols-4">
         {SESSION_EXAM_FIELDS.selects.map((field) => {
           const value = content.exam[field.name as keyof typeof content.exam];
           return (
@@ -147,7 +143,7 @@ const ExamBlock = ({ props }: { props: SessionFormProps }) => {
           );
         })}
       </div>
-      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+      <div className="mt-3 grid gap-3 @5xl:grid-cols-2">
         <Field label={t('clinica.sesion.campo.sondaje')}>
           <Input
             autoComplete="off"
@@ -201,7 +197,7 @@ const ProcedureRow = ({
 
   return (
     <li className="rounded-control border border-border p-3">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_7rem_minmax(0,1fr)_2.5rem] lg:items-end">
+      <div className="grid gap-3 @6xl:grid-cols-[minmax(0,2fr)_7rem_minmax(0,1fr)_2.5rem] @6xl:items-end">
         <Field label={t('clinica.sesion.procedimiento')}>
           <Select
             disabled={disabled}
@@ -395,7 +391,7 @@ const MaterialsBlock = ({ props }: { props: SessionFormProps }) => {
           {content.materiales.map((material, index) => (
             <li
               key={`${String(index)}-${material.code}`}
-              className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_2.5rem] sm:items-center"
+              className="grid gap-2 @2xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_2.5rem] @2xl:items-center"
             >
               <Select
                 disabled={disabled}
@@ -444,7 +440,7 @@ const MaterialsBlock = ({ props }: { props: SessionFormProps }) => {
               </Button>
               {material.code === 'otros' && (
                 <Input
-                  className="sm:col-span-3"
+                  className="@2xl:col-span-3"
                   disabled={disabled}
                   autoComplete="off"
                   aria-label={t('clinica.sesion.detalle')}
@@ -490,7 +486,7 @@ export const SessionForm = (props: SessionFormProps) => {
       <VitalsBlock props={{ ...props, disabled }} />
       <ExamBlock props={{ ...props, disabled }} />
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 @5xl:grid-cols-2">
         <AreaField
           label={t('clinica.sesion.campo.motivo')}
           value={content.motivo}
@@ -511,7 +507,7 @@ export const SessionForm = (props: SessionFormProps) => {
       <ProceduresBlock props={{ ...props, disabled }} />
       <MaterialsBlock props={{ ...props, disabled }} />
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 @5xl:grid-cols-2">
         <AreaField
           label={t('clinica.sesion.campo.diagnostico')}
           value={content.diagnostico}
@@ -528,7 +524,7 @@ export const SessionForm = (props: SessionFormProps) => {
         />
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-3 @5xl:grid-cols-3">
         <Field label={t('clinica.sesion.campo.proximaCitaFecha')}>
           <Input
             type="date"
