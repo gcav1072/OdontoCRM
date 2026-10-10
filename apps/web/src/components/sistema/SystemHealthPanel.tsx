@@ -66,7 +66,7 @@ export const SystemHealthPanel = () => {
 
   return (
     <Card>
-      <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <CardHeader className="gap-3 @2xl:flex-row @2xl:items-start @2xl:justify-between">
         <div className="space-y-1">
           <CardTitle as="h2">{t('sistema.titulo')}</CardTitle>
           <p className="text-sm text-ink-muted">{t('sistema.texto')}</p>

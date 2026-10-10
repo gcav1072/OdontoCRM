@@ -50,7 +50,7 @@ export const ModulePlaceholder = ({ module }: ModulePlaceholderProps) => {
           {t('placeholder.texto')}
         </Alert>
 
-        <dl className="grid gap-3 text-sm sm:grid-cols-2">
+        <dl className="grid gap-3 text-sm @2xl:grid-cols-2">
           <div>
             <dt className="text-xs font-medium tracking-wide text-ink-subtle uppercase">
               {t('placeholder.permiso')}

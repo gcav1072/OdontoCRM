@@ -57,7 +57,7 @@ export const HomePage = () => {
       )}
 
       <Card>
-        <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <CardHeader className="gap-3 @2xl:flex-row @2xl:items-start @2xl:justify-between">
           <div className="min-w-0 space-y-1">
             <CardTitle as="h2">
               {t('inicio.saludo', { nombre: user?.fullName ?? t('comun.sinDato') })}
@@ -90,8 +90,8 @@ export const HomePage = () => {
       {/* Novedades de citas (ADR 0057): lo último que hicieron los pacientes por el bot. */}
       {hasPermission('scheduling:read') && <HomeActivityCard />}
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className="grid gap-5 @5xl:grid-cols-3">
+        <Card className="@5xl:col-span-2">
           <CardHeader>
             <CardTitle as="h2">{t('inicio.modulos')}</CardTitle>
             <CardDescription>{t('modulo.inicio.descripcion')}</CardDescription>
@@ -100,7 +100,7 @@ export const HomePage = () => {
             {modulos.length === 0 ? (
               <p className="text-sm text-ink-muted">{t('inicio.sinModulos')}</p>
             ) : (
-              <ul className="grid gap-3 sm:grid-cols-2">
+              <ul className="grid gap-3 @2xl:grid-cols-2">
                 {modulos.map((modulo) => {
                   const Icono = modulo.icon;
                   return (
@@ -174,7 +174,7 @@ export const HomePage = () => {
             </Alert>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 @2xl:grid-cols-2 @5xl:grid-cols-4">
             <div className="space-y-1">
               <p className="text-xs font-medium tracking-wide text-ink-subtle uppercase">
                 {t('inicio.estado.servidor')}
