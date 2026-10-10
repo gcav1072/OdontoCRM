@@ -4,6 +4,43 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Configuración] — Panel de administración de la aplicación · 2026-10-09
+
+Poner el sistema con otro consultorio tenía una cola de ajustes que **solo se cambiaban por código o
+por `.env`**: la marca de los imprimibles (`brand.ts`), el acento de la interfaz (`tokens.css`), los
+textos de las pantallas (`i18n.ts`), los tokens de Telegram/WhatsApp (el `.env` de notificaciones) y
+el catálogo de sillones (sin interfaz). Nace `/configuracion`, un panel **solo del admin** (permiso
+nuevo `settings:manage`) que lo reúne y lo aplica **en caliente**
+([ADR 0060](docs/adr/0060-configuracion-de-la-aplicacion.md)).
+
+**Dónde vive.** Tres tablas singleton en identity (`brand_settings`, `app_settings`,
+`channel_settings`), vacías de arranque: mientras no haya fila, manda el respaldo del código. La
+**paleta de los imprimibles se edita en hex libre**; el **acento de la interfaz** son **diez presets
+del espectro** (los colores clínicos del odontograma no se tocan); los **textos del kiosko** son un
+conjunto curado; y las **credenciales de canal se guardan cifradas** (AES-256-GCM con la clave del
+almacén) y **nunca vuelven** por el API (solo `configurado` y una pista).
+
+**Cómo se aplica.** Los servicios de documentos **ya no importan `BRAND`**: leen la marca efectiva por
+la ruta interna (`createBrandLookup`, con caché y respaldo a `BRAND`) y las `@font-face` viajan ya
+resueltas con los `.woff2` incrustados, así el PDF del servidor y lo que imprime el navegador usan los
+mismos archivos. Notificaciones lee las credenciales por su ruta interna y **reconstruye los
+adaptadores** cuando cambian, sin reiniciar.
+
+**La política de cancelación** se muda de `/notificaciones` a `/configuracion` y pasa a ser **solo del
+admin**: el odontólogo pierde `scheduling:cancel_policy` (el titular la conserva por su rol `admin`).
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `settings:manage` (solo `admin`) + `/configuracion` | El panel; la API lo vuelve a comprobar |
+| `brand_settings` + `PUT /api/v1/settings/brand` | Paleta (13 hex), tipografías, medidas y fuentes |
+| `POST/DELETE /api/v1/settings/brand/fonts` | Subida y borrado de `.woff2` en el almacén |
+| `app_settings` + `PUT /api/v1/settings/app` | Acento (10 presets) y textos del kiosko |
+| `channel_settings` + `PUT /api/v1/settings/channels` | Tokens cifrados; vista enmascarada y prueba de canal |
+| `createBrandLookup` + `/internal/v1/identity/brand` | La marca efectiva que leen clinical, reporting y billing |
+| `/internal/v1/identity/channels` | Las credenciales en claro, solo por la red interna |
+| `SettingsProvider` (SPA) | Inyecta `--brand-*` y `--color-*` en `<html>` al arrancar |
+| `tools/e2e-config.mjs` (`npm run e2e:config`) | Prueba de extremo a extremo del panel con la pila real |
+
 ## [Agenda] — Varios consultorios y varios odontólogos (multisillón) · 2026-10-09
 
 El sistema nació para **un odontólogo y un sillón** ([ADR 0006](docs/adr/0006-un-odontologo-un-sillon.md)),

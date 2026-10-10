@@ -20,17 +20,21 @@ distintos. Confundirlas es el origen de la mitad de las sorpresas:
 | Capa | Qué es | Dónde vive | Se cambia con |
 | :--- | :--- | :--- | :--- |
 | **Datos del consultorio** | Nombre, razón social, dirección, teléfonos, RIF, correo, sitio web, **logo** y **los odontólogos que firman** (MPPS, especialidad, colegiatura) | `services/identity` (base de datos) — `packages/contracts/src/clinic.ts` es solo **respaldo neutro** (sin datos personales) | Desde la aplicación (§2): el **titular** en su primer acceso, luego en **Mi perfil** y en `/usuarios` |
-| **Marca de los documentos** | Paleta, **dos tipografías** (títulos y cuerpo) y medidas del membrete de los **imprimibles** (récipe, dossier, reporte, factura, historia clínica, odontograma) | `packages/contracts/src/brand.ts` → genera `packages/ui/src/styles/marca.css` | Editar + `npm run marca:css` + `npm run build` (**solo-código**) |
-| **Tema de la pantalla** | Los colores del **cromo de la aplicación** (fondos, botones, estados, tema claro/oscuro) | `packages/ui/src/styles/tokens.css` | Editar y compilar la web |
+| **Marca de los documentos** | Paleta, **dos tipografías** (títulos y cuerpo) y medidas del membrete de los **imprimibles** (récipe, dossier, reporte, factura, historia clínica, odontograma) | Panel `/configuracion` → `brand_settings` (base de identity). Respaldo: `packages/contracts/src/brand.ts` | **Desde la aplicación** (§3.1); `brand.ts` es solo el respaldo y la paleta clínica |
+| **Tema de la pantalla** | Los colores del **cromo de la aplicación** (fondos, botones, estados, tema claro/oscuro) y el **acento** | Panel `/configuracion` → `app_settings` (acento); `packages/ui/src/styles/tokens.css` (el resto) | **El acento, desde la aplicación**; el resto del tema sigue en `tokens.css` |
 
 - Los **datos** (capa 1) se editan **desde la aplicación** desde el ADR 0056. El código solo
   guarda un **respaldo neutro** (sin datos personales): si no hay perfil en la base —una
   instalación recién migrada, la base caída—, el membrete sale **señalando lo que falta** y los
   avisos y el `.ics` que necesitan el consultorio se **difieren** hasta que el titular lo complete.
 - La **marca** (capa 2) es la identidad **impresa**: siempre va sobre papel blanco, por eso no
-  tiene variante oscura. Se edita **solo en el código** (los colores, las dos tipografías y las
-  medidas del velo) y se mueve en pantalla y papel a la vez.
-- El **tema** (capa 3) es el de la aplicación en pantalla, con su modo claro y oscuro.
+tiene variante oscura. Se edita **desde el panel `/configuracion`** (paleta en hex libre, las dos
+tipografías, las medidas del velo y las fuentes) y se guarda en la base; `brand.ts` queda como
+**respaldo** y como fuente de la paleta clínica del odontograma, y `npm run marca:css` sigue generando
+el `marca.css` de la impronta previa a la sesión ([ADR 0060](adr/0060-configuracion-de-la-aplicacion.md)).
+- El **tema** (capa 3) es el de la aplicación en pantalla, con su modo claro y oscuro. Lo que sí se
+edita desde el panel es el **acento** (diez presets del espectro); el resto de los tokens sigue en
+`tokens.css`.
 - Lo que esté en `null` **no se imprime**. El récipe y los demás documentos nunca inventan un
   RIF ni un MPPS: si falta, sale el hueco (y `letterheadMissingFields()` enumera lo que falta).
 
