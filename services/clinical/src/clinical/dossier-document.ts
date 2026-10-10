@@ -8,6 +8,7 @@ import {
   brandWatermarkCss,
   brandWatermarkHtml,
   clinicContactLine,
+  clinicDentistLine,
   clinicFullAddress,
   formatSessionNumber,
   sessionProcedureText,
@@ -124,6 +125,8 @@ const estilos = (fontFaces: string, brand: BrandThemePayload | null | undefined)
   .logo { height: var(--brand-logo-height-mm); width: auto; }
   .clinic-name { font-family: var(--brand-font-doc-title); font-size: 14pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
   .clinic-line { font-size: 8pt; color: var(--brand-ink-muted); margin: 0.6mm 0 0; }
+  /* La línea del especialista va en el membrete, bajo la dirección y el teléfono. */
+  .clinic-dentist { font-size: 8pt; color: var(--brand-ink-strong); margin: 0.8mm 0 0; }
   .doc-meta { text-align: right; font-size: 8pt; color: var(--brand-ink-muted); min-width: 55mm; }
   .doc-number { font-family: var(--brand-font-doc-title); font-size: 12pt; font-weight: 700; color: var(--brand-primary); margin: 0; }
   h1 { font-family: var(--brand-font-doc-title); font-size: 13pt; margin: 4mm 0 0; color: var(--brand-primary); }
@@ -156,7 +159,6 @@ const estilos = (fontFaces: string, brand: BrandThemePayload | null | undefined)
   .firma { font-size: 8.5pt; text-align: center; min-width: 62mm; }
   .firma-line { border-top: 0.3mm solid var(--brand-ink); margin-bottom: 1.5mm; }
   .firma-name { font-weight: 600; }
-  .firma-detail { font-size: 7.5pt; color: var(--brand-ink-muted); }
   .sello { font-size: 7pt; color: var(--brand-ink-muted); max-width: 90mm; }
   .sello code { font-size: 7pt; letter-spacing: 0.2mm; }
   .verify { text-align: center; font-size: 6.5pt; color: var(--brand-ink-muted); }
@@ -285,14 +287,8 @@ export const dossierHtml = async (input: DossierDocumentInput): Promise<string> 
     .join('');
 
   const dentista = input.dentist;
-  const firmaDetalle = [
-    dentista?.mpps ?? null,
-    dentista?.specialty ?? null,
-    dentista?.licenseNumber ?? null,
-  ]
-    .filter((linea): linea is string => linea !== null && linea.trim() !== '')
-    .map(escapeHtml)
-    .join(' · ');
+  // El especialista (nombre · especialidad · MPPS · colegiatura) va en el membrete.
+  const lineaDentista = clinicDentistLine(dentista);
 
   const verificacion =
     input.verificationUrl === null
@@ -314,6 +310,7 @@ export const dossierHtml = async (input: DossierDocumentInput): Promise<string> 
         <p class="clinic-line">${escapeHtml(clinicFullAddress(consultorio))}</p>
         ${consultorio.rif === null ? '' : `<p class="clinic-line">RIF ${escapeHtml(consultorio.rif)}</p>`}
         ${clinicContactLine(consultorio) === '' ? '' : `<p class="clinic-line">${escapeHtml(clinicContactLine(consultorio))}</p>`}
+        ${lineaDentista === '' ? '' : `<p class="clinic-dentist">${escapeHtml(lineaDentista)}</p>`}
       </div>
     </div>
     <div class="doc-meta">
@@ -364,7 +361,6 @@ export const dossierHtml = async (input: DossierDocumentInput): Promise<string> 
     <div class="firma">
       <div class="firma-line"></div>
       <p class="firma-name">${escapeHtml(dentista?.fullName ?? 'Odontólogo tratante')}</p>
-      <p class="firma-detail">${firmaDetalle}</p>
     </div>
   </section>
   </div>
