@@ -10,6 +10,7 @@ import {
   jsonb,
   pgSequence,
   pgTable,
+  primaryKey,
   text,
   time,
   timestamp,
@@ -73,6 +74,30 @@ export const appointmentRequests = pgTable(
 );
 
 /**
+ * Catálogo de **consultorios (sillones)**.
+ *
+ * El sillón es el recurso que ocupa una franja horaria (índice `uq_appointments_slot`):
+ * dos citas pueden coincidir en hora si son en consultorios distintos, pero nunca en el
+ * mismo. El **odontólogo** es un atributo opcional de la cita que **no** bloquea.
+ */
+export const chairs = pgTable(
+  'chairs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Nombre tal como se lee en la interfaz y en la TV: «Consultorio 1». */
+    label: text('label').notNull(),
+    /** Etiqueta corta para pantallas estrechas («C1»). */
+    shortLabel: text('short_label'),
+    /** Un consultorio desactivado no se asigna, pero conserva su histórico. */
+    isActive: boolean('is_active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('uq_chairs_label').on(table.label)],
+);
+
+/**
  * Citas. Una solicitud puede tener varias a lo largo del tiempo (reprogramar crea
  * una nueva y enlaza la anterior con `rescheduled_from_id`: nunca se borra nada).
  */
@@ -95,7 +120,14 @@ export const appointments = pgTable(
     status: text('status').notNull().default('programada'),
     callCount: integer('call_count').notNull().default(0),
     dentistId: uuid('dentist_id'),
-    chairId: uuid('chair_id'),
+    /**
+     * Consultorio que ocupa la franja. **Obligatorio**: es la clave del recurso.
+     * `ON DELETE RESTRICT`: un consultorio con citas no se puede borrar (se
+     * desactiva, `is_active = false`).
+     */
+    chairId: uuid('chair_id')
+      .notNull()
+      .references(() => chairs.id, { onDelete: 'restrict' }),
     checkedInAt: timestamp('checked_in_at', { withTimezone: true }),
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
@@ -138,13 +170,13 @@ export const appointments = pgTable(
   },
   (table) => [
     /**
-     * Una sola silla (ADR 0006): no puede haber dos citas **activas** a la misma
-     * hora. El índice es parcial porque cancelar o reprogramar libera el hueco, y
-     * es la garantía definitiva frente a dos personas asignando a la vez (el
-     * servicio además comprueba el solapamiento y responde 409 con un mensaje claro).
+     * Una sola cita **activa** por consultorio y hora (`uq_appointments_slot`): dos
+     * citas pueden coincidir en hora si son en consultorios distintos, pero nunca en
+     * el mismo. El índice es parcial porque cancelar o reprogramar libera el hueco, y
+     * es la garantía definitiva frente a dos personas asignando a la vez.
      */
     uniqueIndex('uq_appointments_slot')
-      .on(table.appointmentDate, table.startTime)
+      .on(table.appointmentDate, table.startTime, table.chairId)
       .where(
         sql`${table.status} in (${sqlLiteralList([
           'programada',
@@ -180,17 +212,25 @@ export const appointments = pgTable(
 );
 
 /**
- * Cupo del día. Es **editable en cualquier momento**, incluso después de asignar:
- * bajarlo por debajo de lo asignado avisa pero no borra ninguna cita.
+ * Cupo del **consultorio** en un día. Es **editable en cualquier momento**, incluso
+ * después de asignar: bajarlo por debajo de lo asignado avisa pero no borra ninguna
+ * cita. La clave es `(date, chair_id)`: cada sillón lleva su propio cupo.
  */
-export const dayCapacities = pgTable('day_capacities', {
-  date: date('date', { mode: 'string' }).primaryKey(),
-  capacity: integer('capacity').notNull(),
-  notes: text('notes'),
-  updatedBy: uuid('updated_by'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const dayCapacities = pgTable(
+  'day_capacities',
+  {
+    date: date('date', { mode: 'string' }).notNull(),
+    chairId: uuid('chair_id')
+      .notNull()
+      .references(() => chairs.id, { onDelete: 'restrict' }),
+    capacity: integer('capacity').notNull(),
+    notes: text('notes'),
+    updatedBy: uuid('updated_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.date, table.chairId] })],
+);
 
 /** Plantilla de franjas por día de la semana (una jornada; puede haber varias). */
 export const slotTemplates = pgTable(
@@ -198,6 +238,12 @@ export const slotTemplates = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     weekday: integer('weekday').notNull(),
+    /**
+     * Plantilla **por consultorio**. `NULL` = plantilla **común** (la de todos los
+     * sillones); con valor = plantilla propia de ese consultorio, que **reemplaza** a
+     * la común para ese día de la semana.
+     */
+    chairId: uuid('chair_id').references(() => chairs.id, { onDelete: 'cascade' }),
     startTime: time('start_time').notNull(),
     endTime: time('end_time').notNull(),
     slotMinutes: integer('slot_minutes').notNull().default(30),
@@ -207,7 +253,7 @@ export const slotTemplates = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('idx_slot_templates_weekday').on(table.weekday, table.isActive)],
+  (table) => [index('idx_slot_templates_weekday').on(table.weekday, table.isActive, table.chairId)],
 );
 
 /**
@@ -235,6 +281,7 @@ export const statusHistory = pgTable(
 );
 
 export type AppointmentRequestRow = typeof appointmentRequests.$inferSelect;
+export type ChairRow = typeof chairs.$inferSelect;
 export type AppointmentRow = typeof appointments.$inferSelect;
 export type DayCapacityRow = typeof dayCapacities.$inferSelect;
 export type SlotTemplateRow = typeof slotTemplates.$inferSelect;
