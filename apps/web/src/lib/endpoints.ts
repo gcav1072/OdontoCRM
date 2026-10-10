@@ -320,9 +320,10 @@ export const settingsApi = {
   /** Sube una fuente `.woff2` (multipart). El navegador pone el `boundary`. */
   uploadFont: (
     file: File,
-    meta: { weight: number; style: 'normal' | 'italic' },
+    meta: { family: string; weight: number; style: 'normal' | 'italic' },
   ): Promise<BrandSettings> => {
     const cuerpo = new FormData();
+    cuerpo.append('family', meta.family);
     cuerpo.append('weight', String(meta.weight));
     cuerpo.append('style', meta.style);
     cuerpo.append('file', file);

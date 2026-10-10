@@ -28,19 +28,19 @@ const urlPorNombre: Readonly<Record<string, string>> = Object.fromEntries(
   Object.entries(modulos).map(([ruta, url]) => [nombreDeArchivo(ruta), url]),
 );
 
-/** Una regla `@font-face` por archivo declarado en la marca, con la URL que resuelve Vite. */
-const reglaDe = (file: BrandFontFile): string => {
+/** Una regla `@font-face` por archivo de cada familia del catálogo, con la URL que resuelve Vite. */
+const reglaDe = (familia: string, file: BrandFontFile): string => {
   const url = urlPorNombre[nombreDeArchivo(file.path)];
   if (url === undefined) return '';
-  return `@font-face{font-family:'${BRAND.fonts.family}';font-style:${file.style};font-weight:${String(
+  return `@font-face{font-family:'${familia}';font-style:${file.style};font-weight:${String(
     file.weight,
   )};font-display:swap;src:url(${url}) format('woff2');}`;
 };
 
-/** Todas las reglas `@font-face` de la marca, como texto. */
+/** Todas las reglas `@font-face` del catálogo de la marca, como texto. */
 export const fuentesCss = (): string =>
-  BRAND.fonts.files
-    .map(reglaDe)
+  BRAND.fonts.families
+    .flatMap((familia) => familia.files.map((file) => reglaDe(familia.name, file)))
     .filter((regla) => regla !== '')
     .join('\n');
 

@@ -218,7 +218,7 @@ const DICCIONARIO = {
   'config.marca.opacidadVelo': 'Opacidad de la marca de agua',
   'config.marca.fuentes': 'Fuentes (.woff2)',
   'config.marca.fuentesAyuda':
-    'Sube archivos .woff2 (subconjunto latino) indicando su peso y estilo. El papel y la pantalla usan los mismos archivos.',
+    'Sube archivos .woff2 (subconjunto latino) indicando la familia, su peso y su estilo. El papel y la pantalla usan los mismos archivos.',
   'config.marca.subirFuente': 'Subir fuente',
   'config.marca.peso': 'Peso',
   'config.marca.estilo': 'Estilo',
@@ -230,6 +230,17 @@ const DICCIONARIO = {
     'Subir un peso y estilo que ya existen reemplaza el archivo anterior.',
   'config.marca.quitarFuente': 'Quitar',
   'config.marca.respaldo': 'De respaldo',
+  'config.marca.fuenteTitulos': 'Fuente de los títulos',
+  'config.marca.fuenteCuerpo': 'Fuente del cuerpo',
+  'config.marca.personalizada': 'Personalizada…',
+  'config.marca.vistaPrevia': 'Vista previa',
+  'config.marca.avanzado': 'Avanzado: editar la pila de la fuente',
+  'config.marca.pilaPersonalizada': 'Pila de la familia (CSS)',
+  'config.marca.pilaAyuda':
+    'Se aplica tal cual. Elige una familia en el desplegable para generarla automáticamente.',
+  'config.marca.familiaNueva': '➕ Nueva familia…',
+  'config.marca.nombreFamilia': 'Nombre de la familia',
+  'config.marca.faltaFamilia': 'Escribe el nombre de la familia antes de subir la fuente.',
 
   'config.acento.titulo': 'Color de acento de la interfaz',
   'config.acento.descripcion':
