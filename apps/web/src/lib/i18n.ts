@@ -2556,7 +2556,7 @@ const DICCIONARIO = {
   'clinica.sesion.exito.enmendada': 'Sesión corregida: tienes el borrador abierto.',
   'clinica.sesion.exito.atendida': 'Cita marcada como atendida.',
 
-  // ── Fase 7B · adjuntos de la sesión, récipes A5 y verificación (Lead) ──────
+  // ── Fase 7B · adjuntos de la sesión, récipes y verificación (Lead) ─────────
   'clinica.adjunto.titulo': 'Radiografías, fotos y documentos',
   'clinica.adjunto.texto':
     'Lo que se sube aquí queda en la sesión y, si se indica, en su pieza: es la imagen de lo que se vio hoy.',
@@ -2589,7 +2589,7 @@ const DICCIONARIO = {
 
   'clinica.recipe.titulo': 'Récipe de {paciente}',
   'clinica.recipe.texto':
-    'Del catálogo o escrito a mano. Al emitirlo se numera, se archiva el PDF A5 y queda un código para verificarlo.',
+    'Del catálogo o escrito a mano. Al emitirlo se numera, se archiva el PDF (hoja apaisada en dos mitades: farmacia y paciente) y queda un código para verificarlo.',
   'clinica.recipe.buscar': 'Buscar en el catálogo',
   'clinica.recipe.buscarAyuda':
     'Escribe dos letras: al elegir uno se traen presentación, dosis y frecuencia habituales (editables).',
@@ -2634,7 +2634,7 @@ const DICCIONARIO = {
   'clinica.recipe.lista.medicamentos': '{total} medicamento(s)',
   'clinica.recipe.lista.impresiones': '{veces} impresión(es)',
   'clinica.recipe.exito.guardado': 'Borrador del récipe guardado.',
-  'clinica.recipe.exito.emitido': 'Récipe emitido: el PDF A5 quedó archivado.',
+  'clinica.recipe.exito.emitido': 'Récipe emitido: el PDF quedó archivado.',
   'clinica.recipe.exito.anulado': 'Récipe anulado con su motivo.',
 
   'clinica.sesion.cerrar.preguntaRecipe': '¿Desea guardar el récipe?',

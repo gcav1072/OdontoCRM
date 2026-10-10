@@ -30,7 +30,7 @@
  * documento salía pegado al borde y mal encajado en carta. Los documentos no llevan
  * relleno propio al imprimir (`print:px-0 print:py-0`): el margen del papel es este.
  *
- * Carta es el formato que se usa en la clínica. Los PDF del servidor (récipe A5,
+ * Carta es el formato que se usa en la clínica. Los PDF del servidor (récipe apaisado,
  * factura y reportes A4) llevan su propio `@page` y no pasan por aquí.
  */
 @page {

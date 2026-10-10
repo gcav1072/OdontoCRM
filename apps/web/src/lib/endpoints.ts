@@ -1125,7 +1125,7 @@ export const clinicalApi = {
   getPrescription: (id: string, signal?: AbortSignal): Promise<PrescriptionDetail> =>
     api.get<PrescriptionDetail>(`/clinical/prescriptions/${id}`, { signal }),
 
-  /** Emitir: número, PDF A5 archivado y código de verificación. */
+  /** Emitir: número, PDF archivado y código de verificación. */
   issuePrescription: (id: string): Promise<PrescriptionDetail> =>
     api.post<PrescriptionDetail>(`/clinical/prescriptions/${id}/issue`, { confirm: true }),
 

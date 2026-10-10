@@ -27,7 +27,7 @@ import { NoticeBanner } from '../NoticeBanner';
 /**
  * El récipe: se prepara, se **emite** y se imprime.
  *
- * Se emite una sola vez (número `RX-000001`, PDF A5 archivado y código de
+ * Se emite una sola vez (número `RX-000001`, PDF archivado y código de
  * verificación) y a partir de ahí es un documento: lo que se corrige es un récipe
  * nuevo, y el anterior se anula con motivo. El editor avisa si al membrete le falta
  * algún dato **de la identidad guardada** ([ADR 0056](../../../../../docs/adr/0056-la-identidad-del-consultorio-vive-en-la-base.md);
