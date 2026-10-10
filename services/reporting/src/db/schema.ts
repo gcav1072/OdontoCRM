@@ -142,6 +142,9 @@ export const factAppointment = pgTable(
     requestId: uuid('request_id'),
     dentistId: uuid('dentist_id'),
     chairId: uuid('chair_id'),
+    /** Etiquetas resueltas que viajan en el evento (para los reportes por sillón/odontólogo). */
+    chairLabel: text('chair_label'),
+    dentistName: text('dentist_name'),
     requestedAt: timestamp('requested_at', { withTimezone: true }),
     scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
     notifiedAt: timestamp('notified_at', { withTimezone: true }),

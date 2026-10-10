@@ -11,7 +11,9 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { dimPatient, reportRefreshes } from '../db/schema.js';
 import { mvDailyKpis } from '../db/views.js';
 import { buildCapacityReport } from './capacity.js';
+import { buildChairOccupancyReport } from './chair-occupancy.js';
 import { buildClinicalProfileReport } from './clinical-profile.js';
+import { buildDentistProductivityReport } from './dentist-productivity.js';
 import { buildDemographicsReport } from './demographics.js';
 import { buildFunnelReport } from './funnel.js';
 import { buildOralHealthReport } from './oral-health.js';
@@ -27,6 +29,8 @@ const CONSTRUCTORES: Readonly<
 > = {
   funnel: buildFunnelReport,
   capacity: buildCapacityReport,
+  'chair-occupancy': buildChairOccupancyReport,
+  'dentist-productivity': buildDentistProductivityReport,
   demographics: buildDemographicsReport,
   'clinical-profile': buildClinicalProfileReport,
   'oral-health': buildOralHealthReport,
