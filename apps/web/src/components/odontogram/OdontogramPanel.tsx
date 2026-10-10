@@ -1,11 +1,16 @@
 import {
+  CLINICAL_STATE_COLORS,
+  CLINICAL_STATE_LABELS,
   CONDITION_LABELS,
+  PROSTHESIS_ARCH_LABELS,
   archOfTooth,
   archRange,
   archTeeth,
   initialQuickEntryState,
   isPrimaryTooth,
   odontogramSummary,
+  prosthesisSummaryLabel,
+  sameTeeth,
   surfaceLabelFor,
 } from '@odontocrm/contracts';
 import type {
@@ -360,13 +365,20 @@ export const OdontogramPanel = ({
 
   /* ── Prótesis removibles (PPR/PRT): tramo por dos toques y arcada completa ── */
 
-  /** Prótesis ya registrada de un tipo y arcada (para editar en vez de duplicar). */
+  /**
+   * Prótesis ya registrada **con ese mismo tramo** (para editar en vez de duplicar). Una
+   * arcada puede tener varias parciales: hay que casar el tramo, no solo tipo y arcada.
+   */
   const protesisExistenteDe = (
     kind: ProsthesisKind,
     arch: ProsthesisArch,
+    toothNumbers: readonly number[],
   ): ProsthesisRecord | null =>
     (detalleActual()?.prostheses ?? []).find(
-      (prosthesis) => prosthesis.kind === kind && prosthesis.arch === arch,
+      (prosthesis) =>
+        prosthesis.kind === kind &&
+        prosthesis.arch === arch &&
+        sameTeeth(prosthesis.toothNumbers, toothNumbers),
     ) ?? null;
 
   /** Abre la ficha de una prótesis con su borrador (tipo, arcada y piezas). */
@@ -377,7 +389,7 @@ export const OdontogramPanel = ({
     existente: ProsthesisRecord | null = null,
   ): void => {
     setProtesis({ kind, arch, toothNumbers });
-    setProtesisExistente(existente ?? protesisExistenteDe(kind, arch));
+    setProtesisExistente(existente ?? protesisExistenteDe(kind, arch, toothNumbers));
   };
 
   /** Cancela el modo tramo, el menú de la total y la ficha. */
@@ -525,6 +537,8 @@ export const OdontogramPanel = ({
   const resultado = odontogramaQuery.data;
   const detail = resultado.exists ? resultado.odontogram : null;
   const resumen = odontogramSummary(detail ?? BOCA_VACIA);
+  /** Prótesis removibles vivas: se listan bajo el gráfico para abrir su ficha. */
+  const protesisVigentes = detail?.prostheses ?? [];
   const ultima = pila[pila.length - 1];
   const puedeDeshacer = canWrite && ultima !== undefined && pendientes === 0 && !deshaciendo;
 
@@ -758,6 +772,40 @@ export const OdontogramPanel = ({
 
         {detail !== null && detail.empty && (
           <p className="text-sm text-ink-muted">{t('odonto.hallazgos.ninguno')}</p>
+        )}
+
+        {/* Las prótesis registradas, en lista: una arcada puede tener varias (parciales
+            de tramos que no se solapan), así que se eligen aquí en vez de tener que
+            acertarle a la doble línea del gráfico. Al pulsar una se abre su ficha
+            —con sus datos y su botón de eliminar—, sea parcial o total. */}
+        {canWrite && protesisVigentes.length > 0 && (
+          <section className="space-y-2" aria-label={t('odonto.protesis.lista.titulo')}>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+              {t('odonto.protesis.lista.titulo')}
+            </h3>
+            <ul className="flex flex-wrap gap-2">
+              {protesisVigentes.map((protesis) => (
+                <li key={protesis.id}>
+                  <button
+                    type="button"
+                    onClick={() => alPulsarProtesis(protesis)}
+                    className="flex min-h-9 items-center gap-2 rounded-control border border-border px-3 py-1.5 text-sm text-ink transition-colors hover:border-border-strong hover:bg-surface-muted"
+                  >
+                    <span
+                      className="inline-block size-3 shrink-0 rounded-full"
+                      style={{ backgroundColor: CLINICAL_STATE_COLORS[protesis.state] }}
+                      aria-hidden
+                    />
+                    <span className="font-medium">{prosthesisSummaryLabel(protesis)}</span>
+                    <span className="text-ink-muted">
+                      {PROSTHESIS_ARCH_LABELS[protesis.arch]} ·{' '}
+                      {CLINICAL_STATE_LABELS[protesis.state]}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         <ToothFindingSheet

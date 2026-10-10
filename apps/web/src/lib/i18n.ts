@@ -2944,6 +2944,7 @@ const DICCIONARIO = {
 
   // ── Prótesis removibles (PPR/PRT) ─────────────────────────────────────────
   'odonto.protesis.titulo': 'Prótesis removible',
+  'odonto.protesis.lista.titulo': 'Prótesis registradas',
   'odonto.protesis.ppr': 'Prótesis parcial (PPR)',
   'odonto.protesis.prt': 'Prótesis total (PRT)',
   'odonto.protesis.arcada': 'Arcada',
@@ -2958,7 +2959,7 @@ const DICCIONARIO = {
   'odonto.protesis.notasPlaceholder': 'Observación clínica (opcional)',
   'odonto.protesis.guardar': 'Guardar prótesis',
   'odonto.protesis.eliminar': 'Eliminar prótesis',
-  'odonto.protesis.existente': 'Esta arcada ya tiene una prótesis de este tipo: se actualizará.',
+  'odonto.protesis.existente': 'Ya hay una prótesis con ese tramo en la arcada: se actualizará.',
   'odonto.protesis.ppr.activar': 'Prótesis parcial (PPR)',
   'odonto.protesis.ppr.activo': 'Cancelar la prótesis parcial',
   'odonto.protesis.ppr.primera': 'PPR: toca la primera pieza del tramo',
