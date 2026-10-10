@@ -335,7 +335,7 @@ export const OdontogramHistory = ({ entries, sessionOf }: OdontogramHistoryProps
             <div className="flex flex-wrap items-end gap-3">
               <Field
                 label={t('odontograma.historial.filtro.pieza')}
-                className="w-40"
+                className="w-full @2xl:w-40"
                 hint={t('odontograma.historial.filtro.piezaAyuda')}
                 error={pieza.invalid ? t('odontograma.historial.filtro.piezaInvalida') : undefined}
               >

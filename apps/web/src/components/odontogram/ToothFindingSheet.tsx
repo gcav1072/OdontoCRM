@@ -21,7 +21,7 @@ import type {
   ToothProcedure,
   ToothSurface,
 } from '@odontocrm/contracts';
-import { Alert, Badge, Button, Dialog } from '@odontocrm/ui';
+import { Alert, Badge, Button, Dialog, Textarea } from '@odontocrm/ui';
 import { Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -42,10 +42,6 @@ import { odontogramApi } from '../../lib/odontogram-api';
  * tres caras deja tres hallazgos en una sola transacción y las combinaciones
  * imposibles (ADR 0032) se desactivan aquí **y** se rechazan en el servidor.
  */
-
-/** Estilo del campo de notas: el mismo que usan los formularios clínicos. */
-const TEXTAREA_CLASSES =
-  'w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-sm text-ink shadow-xs transition-colors placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-muted';
 
 /** Condiciones de cara que se ofrecen en la hoja, con su acción. */
 const SURFACE_ACTIONS: readonly ToothCondition[] = ['caries', 'restauracion'];
@@ -420,8 +416,7 @@ export const ToothFindingSheet = ({
                       condición se quita y se marca de nuevo. */}
                   {editando === finding.id && (
                     <div className="mt-2 space-y-2">
-                      <textarea
-                        className={TEXTAREA_CLASSES}
+                      <Textarea
                         value={notas}
                         onChange={(event) => setNotas(event.target.value)}
                         rows={2}
@@ -488,7 +483,7 @@ export const ToothFindingSheet = ({
               <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
                 {t('odonto.sheet.caras')}
               </h4>
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="mt-2 grid grid-cols-2 gap-2 @2xl:grid-cols-3">
                 {SURFACE_FORM_ORDER.map((surface) => (
                   <button
                     key={surface}
@@ -544,8 +539,8 @@ export const ToothFindingSheet = ({
               <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
                 {t('odonto.sheet.notas')}
               </h4>
-              <textarea
-                className={`${TEXTAREA_CLASSES} mt-2`}
+              <Textarea
+                className="mt-2"
                 value={notasNuevas}
                 onChange={(event) => setNotasNuevas(event.target.value)}
                 rows={2}
@@ -573,7 +568,7 @@ export const ToothFindingSheet = ({
                   />
                 ))}
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="mt-2 grid grid-cols-2 gap-2 @2xl:grid-cols-3">
                 {WHOLE_TOOTH_CONDITIONS.map((condition) => (
                   <ConditionButton
                     key={condition}

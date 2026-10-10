@@ -8,7 +8,7 @@ import {
   type ProsthesisKind,
   type ProsthesisRecord,
 } from '@odontocrm/contracts';
-import { Alert, Button, Dialog } from '@odontocrm/ui';
+import { Alert, Button, Dialog, Textarea } from '@odontocrm/ui';
 import { Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -25,9 +25,6 @@ import { odontogramApi } from '../../lib/odontogram-api';
  * arcada: la PRT se normaliza a la arcada completa en el servidor) y permite eliminar
  * una existente.
  */
-
-const TEXTAREA_CLASSES =
-  'w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-sm text-ink shadow-xs transition-colors placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-muted';
 
 export interface ProsthesisDialogProps {
   open: boolean;
@@ -162,9 +159,7 @@ export const ProsthesisDialog = ({
       <div className="space-y-5">
         <p className="text-sm text-ink-muted">{resumen(kind, arch, toothNumbers)}</p>
 
-        {existing !== null && (
-          <Alert variant="info">{t('odonto.protesis.existente')}</Alert>
-        )}
+        {existing !== null && <Alert variant="info">{t('odonto.protesis.existente')}</Alert>}
 
         {/* Estado: indicada (rojo) o instalada (azul), a botones grandes. */}
         <section>
@@ -215,8 +210,8 @@ export const ProsthesisDialog = ({
           <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
             {t('odonto.protesis.notas')}
           </h4>
-          <textarea
-            className={`${TEXTAREA_CLASSES} mt-2`}
+          <Textarea
+            className="mt-2"
             value={notas}
             onChange={(event) => setNotas(event.target.value)}
             rows={2}

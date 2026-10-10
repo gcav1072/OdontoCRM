@@ -290,7 +290,7 @@ export const QuickEntryBar = ({
         )}
       </div>
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      <div className="mt-3 grid gap-3 @2xl:grid-cols-2">
         <div>
           <p className="text-xs font-medium text-ink-muted">{t('odonto.rapida.condiciones')}</p>
           <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-ink-muted">
