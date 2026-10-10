@@ -24,7 +24,7 @@ export const ReportKpis = ({ title, kpis, className }: ReportKpisProps) => {
   return (
     <div className={cn('space-y-3', className)}>
       {title !== undefined && <h3 className="text-sm font-semibold text-ink-muted">{title}</h3>}
-      <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <ul className="grid gap-3 @2xl:grid-cols-2 @6xl:grid-cols-4">
         {kpis.map((kpi, indice) => (
           <li key={`${kpi.label}-${String(indice)}`}>
             <Card className="h-full">

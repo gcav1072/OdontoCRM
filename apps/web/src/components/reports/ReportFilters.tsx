@@ -52,7 +52,7 @@ export const ReportFilters = ({
   const set = (parcial: Partial<ReportFiltersState>): void => onChange({ ...value, ...parcial });
 
   return (
-    <div className={cn('grid gap-3 sm:grid-cols-2 lg:grid-cols-4', className)}>
+    <div className={cn('grid gap-3 @2xl:grid-cols-2 @5xl:grid-cols-4', className)}>
       <Field
         label={t('reportes.filtros.desde')}
         error={fechasInvalidas ? t('reportes.filtros.fechasInvalidas') : undefined}

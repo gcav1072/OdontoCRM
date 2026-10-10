@@ -118,7 +118,7 @@ export const ReportesPage = () => {
       {/* Tablero del día: no depende de los filtros y no se imprime (el papel
           lleva el reporte elegido, igual que el PDF que genera el servidor). */}
       <Card className="print:hidden">
-        <CardHeader className="gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <CardHeader className="gap-3 @2xl:flex-row @2xl:items-end @2xl:justify-between">
           <div>
             <CardTitle as="h2">{t('reportes.resumen.titulo')}</CardTitle>
             <p className="pt-1 text-sm text-ink-muted">
@@ -288,7 +288,7 @@ export const ReportesPage = () => {
                         {t('reportes.reporte.graficas')}
                       </h3>
                       {documento.series.some((serie) => serie.points.length > 0) ? (
-                        <div className="grid gap-4 xl:grid-cols-2">
+                        <div className="grid gap-4 @6xl:grid-cols-2">
                           {documento.series
                             .filter((serie) => serie.points.length > 0)
                             .map((serie) => (
