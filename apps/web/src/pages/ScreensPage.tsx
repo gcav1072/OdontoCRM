@@ -124,7 +124,7 @@ export const ScreensPage = () => {
       <NoticeBanner notice={notice} onClose={limpiar} />
 
       <Card>
-        <CardHeader className="gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <CardHeader className="gap-3 @2xl:flex-row @2xl:items-end @2xl:justify-between">
           <div className="flex-1">
             <CardTitle as="h2" className="flex items-center gap-2">
               <Tv className="size-4 text-primary" aria-hidden="true" />

@@ -139,7 +139,7 @@ export const ScreenSettingsDialog = ({ pantalla, onClose, onSaved }: ScreenSetti
         >
           <Switch label={t('pantallas.ajustes.voz')} {...formulario.register('voz')} />
 
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 @2xl:grid-cols-3">
             <Field label={t('pantallas.ajustes.volumen')} error={errors.volumen?.message} required>
               <Input
                 type="number"
