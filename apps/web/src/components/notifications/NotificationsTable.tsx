@@ -126,7 +126,7 @@ export const NotificationsTable = ({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 @2xl:grid-cols-2 @6xl:grid-cols-5">
           <Field label={t('notificaciones.bandeja.filtro.buscar')}>
             <div className="relative">
               <Search

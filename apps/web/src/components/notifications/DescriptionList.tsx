@@ -14,7 +14,7 @@ export interface DescriptionListProps {
 
 export const DescriptionList = ({ items, className, columns = 2 }: DescriptionListProps) => (
   <dl
-    className={className ?? (columns === 2 ? 'grid gap-3 sm:grid-cols-2' : 'flex flex-col gap-3')}
+    className={className ?? (columns === 2 ? 'grid gap-3 @2xl:grid-cols-2' : 'flex flex-col gap-3')}
   >
     {items.map(([etiqueta, valor]) => (
       <div key={etiqueta} className="min-w-0">

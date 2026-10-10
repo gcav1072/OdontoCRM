@@ -240,7 +240,7 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
             )}
 
             {enlace !== null && (
-              <div className="grid gap-4 rounded-control border border-border bg-surface-muted/50 p-4 sm:grid-cols-[auto_minmax(0,1fr)]">
+              <div className="grid gap-4 rounded-control border border-border bg-surface-muted/50 p-4 @2xl:grid-cols-[auto_minmax(0,1fr)]">
                 <div className="flex flex-col items-center gap-2">
                   {qr === null ? (
                     <Alert variant="info" className="max-w-xs">

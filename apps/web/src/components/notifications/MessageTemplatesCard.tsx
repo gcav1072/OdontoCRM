@@ -16,6 +16,7 @@ import {
   EmptyState,
   Field,
   Spinner,
+  Textarea,
 } from '@odontocrm/ui';
 import { FileText, RotateCcw, Save } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -232,7 +233,7 @@ export const MessageTemplatesCard = ({
             description={t('notificaciones.plantillas.vacio')}
           />
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(15rem,19rem)_minmax(0,1fr)]">
+          <div className="grid gap-4 @6xl:grid-cols-[minmax(15rem,19rem)_minmax(0,1fr)]">
             <div className="flex flex-col gap-2">
               <p className="text-xs text-ink-subtle">
                 {t('notificaciones.plantillas.total', { total: plantillas.length })}
@@ -332,21 +333,16 @@ export const MessageTemplatesCard = ({
                   <label htmlFor="plantilla-cuerpo" className="text-sm font-medium text-ink">
                     {t('notificaciones.plantillas.cuerpo')}
                   </label>
-                  <textarea
+                  <Textarea
                     id="plantilla-cuerpo"
                     ref={cuerpoRef}
                     rows={10}
                     maxLength={LARGO_MAXIMO}
                     value={borrador.body}
                     readOnly={!canNotify}
-                    aria-invalid={errorCampo !== null || undefined}
+                    invalid={errorCampo !== null}
                     onChange={(event) => setBorrador({ ...borrador, body: event.target.value })}
-                    className={cn(
-                      'w-full rounded-control border bg-surface px-3 py-2 font-mono text-sm text-ink transition-colors',
-                      'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus',
-                      'read-only:bg-surface-muted',
-                      errorCampo === null ? 'border-border-strong' : 'border-danger',
-                    )}
+                    className="font-mono"
                   />
                   <p className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-subtle">
                     <span>{t('notificaciones.plantillas.cuerpoAyuda', { max: LARGO_MAXIMO })}</span>

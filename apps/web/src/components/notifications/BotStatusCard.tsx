@@ -216,7 +216,7 @@ export const BotStatusCard = ({
           </div>
         )}
 
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-3 @2xl:grid-cols-4">
           {CONTADORES.map((contador) => (
             <div
               key={contador.key}

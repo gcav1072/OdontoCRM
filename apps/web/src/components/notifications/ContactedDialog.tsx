@@ -4,7 +4,7 @@ import {
   type NotificationRecord,
 } from '@odontocrm/contracts';
 import { useMutation } from '@tanstack/react-query';
-import { Alert, Button, Dialog, Field } from '@odontocrm/ui';
+import { Alert, Button, Dialog, Field, Textarea } from '@odontocrm/ui';
 import { useState } from 'react';
 
 import { apiErrorMessage, isApiError } from '../../lib/api';
@@ -84,13 +84,12 @@ export const ContactedDialog = ({ record, onClose, onContacted }: ContactedDialo
           error={errorCampo ?? undefined}
           hint={t('notificaciones.contacto.notaAyuda')}
         >
-          <textarea
+          <Textarea
             value={nota}
             rows={3}
             maxLength={300}
             aria-required
             onChange={(event) => setNota(event.target.value)}
-            className="w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-sm text-ink transition-colors placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-focus"
             placeholder={t('notificaciones.contacto.notaPlaceholder')}
           />
         </Field>
