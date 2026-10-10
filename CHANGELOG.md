@@ -4,6 +4,35 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Odontograma] — La exodoncia realizada y las prótesis removibles · 2026-10-10
+
+Dos estados clínicos que faltaban, anexos al [ADR 0062](docs/adr/0062-exodoncia-y-protesis-removibles.md).
+
+**Exodoncia realizada (`extraida`).** Hasta ahora, cumplir una extracción indicada dejaba la pieza
+`ausente` —el mismo estado que la agenesia—, así que se perdía **cómo** se había perdido el diente.
+Se añade la condición `extraida` (hecho consumado, aspa **azul sólida**, coherente con rojo =
+pendiente / azul = hecho): supera y excluye las caras, no convive con `ausente`, `extraccion_indicada`,
+`corona` ni `endodoncia`, y **sí** con `implante`. La transición `extraer` pasa a producir `extraida`
+y `rehabilitar` admite como origen `ausente` o `extraida`.
+
+**Prótesis removibles (PPR/PRT).** Las prótesis no viven en una pieza: se registran como entidad de
+**tramo** (PPR, elegida con **dos toques** en el gráfico) o de **arcada completa** (PRT, una por
+arcada). Se dibujan como doble línea con retenedores en una franja bajo las piezas, con la misma
+geometría en pantalla, papel y dossier.
+
+**Terminología.** `restauracion` se muestra como **restauración** (antes «obturación») en todo el
+esquema del odontograma.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `odontogram.ts` | `extraida` en condiciones, reglas, símbolo, capas y transiciones; `extraida` en el reporte de salud bucal |
+| `prosthesis.ts` (nuevo) | Tipos, Zod, `prosthesisTrack` y `archRange` de PPR/PRT |
+| Migración `0003` (odontograma) | `extraida` en los CHECK + tablas `prostheses` y `prosthesis_history` |
+| `chart-service.ts` + rutas | `recordProsthesis`/`removeProsthesis`; `extraer`→`extraida`; eventos y auditoría |
+| Web | Barra de prótesis, `ProsthesisDialog`, `ProsthesisOverlay`, `extraida` en la leyenda; leyenda/tabla del imprimible |
+| Migración `0006` (reporting) | `extraida` en `mv_oral_health` y el reporte de salud bucal |
+| `dossier-odontogram.ts` | Doble línea de la prótesis y `extraida` en el SVG del expediente |
+
 ## [Imprimibles] — El récipe en dos mitades y el especialista en el membrete · 2026-10-10
 
 Dos mejoras que tocan **todos** los imprimibles ([ADR 0061](docs/adr/0061-recipe-en-dos-mitades-y-especialista-en-el-membrete.md)).

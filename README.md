@@ -481,7 +481,7 @@ fila**— y motor geométrico SVG sin dependencias. La dentición (permanente 11
 | `POST /api/v1/odontogram/patients/:patientId/printed` | Deja constancia de la impresión (también la secretaría) | `odontogram:read` |
 | `GET /internal/v1/odontogram/patients/:patientId/summary` | Resumen (piezas afectadas, pendientes/completadas) para los reportes | secreto interno |
 
-- **Una cara admite caries u obturación por estado**: `pendiente` se pinta en rojo y `completado`
+- **Una cara admite caries u restauración por estado**: `pendiente` se pinta en rojo y `completado`
   en azul (doc §7.2). **Solo `ausente` manda sobre las caras**: al registrarlo, las caras de esa
   pieza quedan *superadas* (`resolved_at`) en la misma transacción y dejan de leerse, pero **no se
   borran** —el histórico las conserva—. Los **tratamientos** (`corona`, `endodoncia`, `implante`) y
@@ -645,7 +645,7 @@ estado del paciente— y la misma forma: cifras, gráficas y tabla.
 | **Ocupación de la agenda** | Cupo usado por día, días completos, día de mayor demanda y **hora pico** | `reports:read` |
 | **Demografía** | Pirámide por tramos de edad y sexo, con el rango editable | `reports:read` |
 | **Perfil clínico** | Diabéticos, hipertensos, cardiópatas, alérgicos, anticoagulados y bifosfonatos | `reports:clinical` |
-| **Salud bucal** | Caries, obturaciones y piezas ausentes por pieza y por paciente | `reports:clinical` |
+| **Salud bucal** | Caries, restauraciones y piezas ausentes por pieza y por paciente | `reports:clinical` |
 | **Recetas por medicamento** | Lo más recetado en el período, con renglones y porcentaje | `reports:clinical` |
 
 - **Exportación**: `Descargar CSV` (abre en Excel: BOM, `;` y coma decimal), `Descargar PDF`

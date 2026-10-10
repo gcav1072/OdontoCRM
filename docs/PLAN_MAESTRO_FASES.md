@@ -586,7 +586,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 **Objetivo:** que el doctor documente al paciente conforme al formato venezolano.
 
 **Entregables (sesión A):** `clinical` con las 11 secciones de `formato_historia.md`, **catálogos tipificados + «otros» inputable** (alergias, patológicos, medicamentos, cirugías, familiares, hábitos, antecedentes odontológicos) para que los reportes puedan segmentar, estados `BORRADOR → FIRMADA`, adendas, consentimiento con registro de aceptación e impresión A4 · web: aviso obligatorio **«Primera visita del paciente, se debe llenar su historia clínica»**, formulario por pasos con guardado de borrador, validaciones clínicas (p. ej. alergia a penicilina resaltada), y bloqueo de firma sin secciones obligatorias.
-**Entregables (sesión B):** `odontogram` según el doc (FDI, captura por excepción, `tooth_finding_history`, eventos) + componente SVG geométrico de §7 del doc + carga rápida por teclado (número de pieza, caries/obturación/ausente, rojo pendiente / azul completado) + vista histórica de evolución por sesión.
+**Entregables (sesión B):** `odontogram` según el doc (FDI, captura por excepción, `tooth_finding_history`, eventos) + componente SVG geométrico de §7 del doc + carga rápida por teclado (número de pieza, caries/restauración/ausente, rojo pendiente / azul completado) + vista histórica de evolución por sesión.
 
 **Criterios de aceptación:** una historia completa se llena en < 10 min y se puede firmar; al firmar no se puede editar (solo adenda con motivo); el odontograma completo se carga por teclado en < 30 s; un hallazgo nuevo se refleja en `reporting` y en auditoría; diente sano = ausencia de fila (lectura correcta del patrón «por excepción»).
 
@@ -999,12 +999,12 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
 
 1. **La pieza completa y las caras no pueden convivir** ([ADR 0031](adr/0031-odontograma-pieza-completa-sobre-caras.md),
    **corregido por el [ADR 0032](adr/0032-convivencia-de-tratamientos-con-las-caras.md)**): el modelo
-   del documento mezcla condiciones por cara (caries, obturación) con condiciones guardadas por pieza
+   del documento mezcla condiciones por cara (caries, restauración) con condiciones guardadas por pieza
    completa (`ausente`, extracción indicada, corona, implante, endodoncia). Registrarlas juntas deja
    una lectura contradictoria («ausente y con caries»). Se resolvió **superando** las caras (se
    conservan con `resolved_at`, dejan de leerse) en la misma transacción.
    **La primera versión se aplicó de más**: metió los tratamientos en el mismo saco y obligaba a
-   borrar la obturación para poder marcar una corona, que es la boca normal. El ADR 0032 lo corrige
+   borrar la restauración para poder marcar una corona, que es la boca normal. El ADR 0032 lo corrige
    con una regla **declarativa por condición** (`WHOLE_TOOTH_RULES`): solo `ausente` supera las caras;
    los tratamientos conviven con ellas; se bloquean solo las parejas imposibles (`ausente` con
    cualquier otra, `implante` con `endodoncia`). Lección: **«se guarda igual» no es «significa lo
@@ -1014,7 +1014,7 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
    contradecir el propio número FDI (un 16 «temporal»). Ahora el 1.º dígito manda
    (`dentitionOfTooth`) y el servidor la fija él mismo; la arcada temporal no dibuja los molares que
    no existen en vez de pintarlos como permanentes.
-3. **Las teclas de la carga rápida se pisan entre sí.** `o` era «obturación» y también la inicial
+3. **Las teclas de la carga rápida se pisan entre sí.** `o` era «restauración» y también la inicial
    natural de «oclusal»; `Delete`/`Backspace` llegaban en minúsculas por la normalización y no
    coincidían con la tecla. La máquina de teclado vive en el **contrato** (pura y probada) y no en
    el componente: así la regla es una sola para la pantalla y para las pruebas

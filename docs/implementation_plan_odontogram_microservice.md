@@ -237,5 +237,5 @@ Arcada Inferior:
 | :--- | :--- | :--- |
 | **Fase 1: Core & API** | - Setup del servicio Node/TS y migraciones SQL.<br>- Endpoints CRUD de hallazgos y normalización de datos.<br>- Validaciones Zod de número de pieza FDI y caras. | Microservicio funcional con pruebas unitarias de API. |
 | **Fase 2: Componente SVG** | - Implementación de `<GeometricTooth />` en React.<br>- Mapeo de estados clínicos a colores (#ef4444 pendiente, #3b82f6 completado).<br>- Soporte de estados de pieza completa (X de extracción/ausente). | Componente interactivo y aislado en Storybook o app de prueba. |
-| **Fase 3: Flujo de Carga Rápida** | - Formulario de teclado con shortcut de número de pieza.<br>- Switch rápido entre caries/obturación/ausente.<br>- Sincronización optimista en React Query / Zustand. | Carga de odontograma completa en menos de 30 segundos por teclado. |
+| **Fase 3: Flujo de Carga Rápida** | - Formulario de teclado con shortcut de número de pieza.<br>- Switch rápido entre caries/restauración/ausente.<br>- Sincronización optimista en React Query / Zustand. | Carga de odontograma completa en menos de 30 segundos por teclado. |
 | **Fase 4: Integración Microservicios** | - Publicador de eventos en RabbitMQ/Kafka.<br>- Consumo en el servicio de planes de tratamiento para auto-crear presupuestos. | Integración end-to-end completada. |

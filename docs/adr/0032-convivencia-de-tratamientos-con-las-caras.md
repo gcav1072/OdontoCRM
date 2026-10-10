@@ -19,10 +19,10 @@ normal:
 
 - una **corona sobre un diente obturado** (lo habitual: se corona un diente ya restaurado);
 - un **conducto con su restauración** encima (un diente endodonciado casi siempre lleva una
-  obturación o una corona después);
+  restauración o una corona después);
 - una **caries en un diente con la extracción indicada** (precisamente por eso se indica).
 
-En la práctica, el odontólogo tenía que borrar la obturación para poder marcar la corona: el sistema
+En la práctica, el odontólogo tenía que borrar la restauración para poder marcar la corona: el sistema
 le pedía destruir el dato clínico para poder registrar el tratamiento. Eso es un error de modelo, no
 una regla clínica.
 
@@ -49,7 +49,7 @@ regla tiene dos piezas:
   **caries recurrente** en el margen de la corona se registra después y se ve.
 
 - **Solo `ausente` supera las caras** (y las conserva con `resolved_at`, como decía el ADR 0031).
-- Un **tratamiento se registra junto a lo que ya había**: la corona no borra la obturación ni deja
+- Un **tratamiento se registra junto a lo que ya había**: la corona no borra la restauración ni deja
   de leerse; el implante no borra el conducto anterior —aunque un implante **con** conducto vigente
   se rechaza, porque un implante no tiene raíz que endodonciar.
 - **Cara × pieza completa es direccional**, y eso importa: registrar una caries en una pieza
@@ -66,7 +66,7 @@ regla tiene dos piezas:
 ## Consecuencias
 
 - **A favor:** se puede registrar la realidad clínica sin borrar nada; la corona, el conducto y la
-  obturación conviven; las contradicciones de verdad (una pieza ausente con caries, un implante con
+  restauración conviven; las contradicciones de verdad (una pieza ausente con caries, un implante con
   conducto) siguen bloqueadas con un mensaje que dice cuál sobra. El modelo queda declarativo y
   ajustable en un solo sitio (`WHOLE_TOOTH_RULES`) cuando la odontóloga opine sobre un caso nuevo.
 - **En contra:** el odontograma de una pieza puede tener varias filas de pieza completa, así que el
@@ -75,7 +75,7 @@ regla tiene dos piezas:
 - **Sin migración:** las filas y los `CHECK` no cambian (`chk_tooth_findings_scope` solo comprueba la
   forma de cada fila, no qué filas conviven). Lo que cambia es la regla de servicio y de interfaz.
 - Queda **una pregunta abierta para la odontóloga**: si prefiere que marcar `corona` no muestre
-  además la obturación anterior en el gráfico (hoy se muestran las dos, que es lo que pasa en la
+  además la restauración anterior en el gráfico (hoy se muestran las dos, que es lo que pasa en la
   boca), basta con cambiar `WHOLE_TOOTH_RULES.corona.supersedesSurfaces` a `true` y actualizar el
   ADR.
 
@@ -127,14 +127,14 @@ lo que ya está registrado.
 
 ### La corona cubre las caras
 
-Al marcar `corona`, el gráfico **no** debe seguir mostrando la obturación o la caries de debajo:
+Al marcar `corona`, el gráfico **no** debe seguir mostrando la restauración o la caries de debajo:
 
 - **Anatómico:** una corona periférica completa recubre el muñón en sus 360°; en boca ya no se
   inspecciona si debajo había amalgama mesial o resina oclusal.
 - **Ruido diagnóstico:** el círculo de la corona sobre trapecios pintados se lee como «¿caries dentro
   de la corona? ¿filtración?». En la lectura rápida, la corona manda.
-- **El dato no se destruye:** la obturación queda superada con su `resolved_at` y su entrada en el
-  histórico con fecha, que es el respaldo médico-legal (`14/01/2026: Obturación oclusal` ·
+- **El dato no se destruye:** la restauración queda superada con su `resolved_at` y su entrada en el
+  histórico con fecha, que es el respaldo médico-legal (`14/01/2026: Restauración oclusal` ·
   `04/10/2026: Corona completa`).
 - **Excepción:** la **caries recurrente** del margen (cervical o vestibular) se registra *sobre* la
   corona y **se ve**. Sale sola: la superación solo mira lo que había al poner la corona.
@@ -158,7 +158,7 @@ reglas queda documentado en [`docs/ODONTOGRAMA_REGLAS.md`](../ODONTOGRAMA_REGLAS
 
 | Condición | Estados válidos | Por qué |
 | :--- | :--- | :--- |
-| `caries` | `pendiente` | No se «completa»: se trata y pasa a obturación. |
+| `caries` | `pendiente` | No se «completa»: se trata y pasa a restauración. |
 | `restauracion` | `pendiente`, `completado` | Indicada o ya hecha. |
 | `ausente` | `completado` | Hecho consumado: no hay «ausente pendiente». |
 | `extraccion_indicada` | `pendiente` | Es un plan; al cumplirse se transiciona a `ausente`. |
@@ -209,7 +209,7 @@ pantalla dibujan las **mismas** formas, no una versión resumida del papel.
 ### 6. Reparación y blindaje en la base
 
 La migración `0002` repara los datos antes de blindarlos: convierte las extracciones indicadas
-cumplidas en `ausente`, las caries completadas en obturaciones, resuelve las parejas imposibles y
+cumplidas en `ausente`, las caries completadas en restauraciones, resuelve las parejas imposibles y
 clampea los estados, dejando cada cambio en `tooth_finding_history` con el motivo «saneado por
 reglas clínicas». Solo entonces añade `chk_tooth_findings_state_allowed`, que ata el estado a la
 condición. `tools/reparar-odontograma.mjs` queda como red de seguridad (simulación / `--apply`).

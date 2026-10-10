@@ -18,7 +18,7 @@ La Fase 9 entrega estos reportes:
 | **Ocupación de agenda** | Cupos usados frente a disponibles por día y detección de horas pico |
 | **Demografía** | Pirámide de edad y distribución por sexo, con rango de edad editable |
 | **Perfil clínico agregado** | Diabéticos, hipertensos, alérgicos, anticoagulados y embarazadas (pedido original del interesado) |
-| **Salud bucal** | Prevalencia de caries, obturaciones y ausencias por pieza y por paciente (desde el odontograma) |
+| **Salud bucal** | Prevalencia de caries, restauraciones y ausencias por pieza y por paciente (desde el odontograma) |
 | **Recetas** | Medicamentos más recetados por período |
 | **Exportación** | Cualquier reporte a CSV y PDF, listo para imprimir |
 

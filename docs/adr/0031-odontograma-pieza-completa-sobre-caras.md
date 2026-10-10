@@ -17,7 +17,7 @@ fila (`docs/implementation_plan_odontogram_microservice.md` §1 y §4).
 
 El modelo del documento mezcla dos niveles en la misma pieza:
 
-- condiciones **por cara**: caries y obturación (`surface` con valor);
+- condiciones **por cara**: caries y restauración (`surface` con valor);
 - condiciones de **pieza completa**: ausente, extracción indicada, corona, implante y
   endodoncia (`surface` a `null`).
 
@@ -49,7 +49,7 @@ Las alternativas eran tres:
   `superado`, con quién y cuándo.
 - La respuesta de la mutación devuelve `resolvedSurfaces` para que la interfaz lo diga en
   voz alta: «las caras marcadas de la pieza 16 se dieron por superadas por "ausente"».
-- En sentido contrario **no se puede**: registrar una caries o una obturación en una pieza
+- En sentido contrario **no se puede**: registrar una caries o una restauración en una pieza
   con condición de pieza completa vigente devuelve `409` con un mensaje que explica que
   primero hay que quitar esa condición. Así no se reintroduce la contradicción.
 - La invariante vive también en la base (`chk_tooth_findings_scope`): una fila de cara

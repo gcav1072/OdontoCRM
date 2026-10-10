@@ -11,10 +11,10 @@ comandos, las mutaciones de la base y el dibujo. Se escribió a raíz de un fall
 quedó registrada con `extraccion_indicada` **completada** y `implante` **completado**, una
 combinación imposible que el modelo antiguo admitía.
 
-> **Nomenclatura.** El código llama **`restauracion`** a lo que en clínica es la **obturación**, y
-> representa el «superado» con la columna **`resolved_at`** más una entrada en
-> `tooth_finding_history` (no hay `superseded_at`/`superseded_by`). El resto de nombres coinciden con
-> este documento.
+> **Nomenclatura.** El código y la clínica se refieren con **`restauracion`** / **restauración** al
+> tratamiento restaurador (el empaste), y se representa el «superado» con la columna
+> **`resolved_at`** más una entrada en `tooth_finding_history` (no hay
+> `superseded_at`/`superseded_by`). El resto de nombres coinciden con este documento.
 
 ## 1. Ejes ontológicos
 
@@ -48,10 +48,11 @@ la base.
 
 | Condición | Tipo de entidad | ¿`pendiente` (rojo)? | ¿`completado` (azul)? | Justificación clínica |
 | :--- | :--- | :---: | :---: | :--- |
-| `caries` | Patología activa | **Sí** | **No** | Una caries no se «completa»: se elimina el tejido y se sustituye por una obturación (`obturar`). |
+| `caries` | Patología activa | **Sí** | **No** | Una caries no se «completa»: se elimina el tejido y se sustituye por una restauración (`obturar`). |
 | `restauracion` | Tratamiento restaurador | **Sí** | **Sí** | Pendiente: empaste indicado o recambio. Completado: restauración existente en buen estado. |
-| `ausente` | Estado anatómico | **No** | **Sí** | Hecho consumado: la pieza no está. La «ausencia futura» se llama `extraccion_indicada`. |
-| `extraccion_indicada` | Prescripción / plan | **Sí** | **No** | Es un procedimiento por realizar; al cumplirse, la pieza pasa a `ausente`. |
+| `ausente` | Estado anatómico | **No** | **Sí** | Hecho consumado: la pieza no está (agenesia o pérdida no quirúrgica). La «ausencia futura» se llama `extraccion_indicada`. |
+| `extraccion_indicada` | Prescripción / plan | **Sí** | **No** | Es un procedimiento por realizar; al cumplirse, la pieza pasa a `extraida`. |
+| `extraida` | Estado anatómico | **No** | **Sí** | Hecho consumado: la exodoncia **realizada**. El aspa es la misma que `ausente` pero en azul (acto quirúrgico documentado). |
 | `corona` | Prótesis coronal | **Sí** | **Sí** | Pendiente: por fabricar o cementar. Completado: instalada y adaptada. |
 | `endodoncia` | Terapéutica radicular | **Sí** | **Sí** | Pendiente: conducto infectado/indicado. Completado: obturado tridimensionalmente. |
 | `implante` | Terapéutica radicular | **Sí** | **Sí** | Pendiente: fase quirúrgica indicada. Completado: titanio osteointegrado. |
@@ -62,13 +63,14 @@ En código: `allowedStatesFor(condition)` y `isStateAllowed(condition, state)`.
 
 Qué condiciones pueden estar **vigentes a la vez** en la misma pieza.
 
-| Existente ↓ / Nueva → | `ausente` | `extraccion_indicada` | `corona` | `endodoncia` | `implante` | Caras (cara a cara) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `ausente` | — | ❌ | ❌ | ❌ | ✅ (fase quirúrgica) | ❌ excluidas |
-| `extraccion_indicada` | ❌ | — | ✅ (corona fallida) | ✅ (endodoncia fallida) | ❌ | ✅ |
-| `corona` | ❌ | ✅ | — | ✅ (post-endodoncia) | ✅ (fase rehabilitada) | ✅ superadas al ponerla |
-| `endodoncia` | ❌ | ✅ | ✅ | — | ❌ | ✅ |
-| `implante` | ✅ | ❌ | ✅ | ❌ | — | ❌ excluidas |
+| Existente ↓ / Nueva → | `ausente` | `extraccion_indicada` | `extraida` | `corona` | `endodoncia` | `implante` | Caras (cara a cara) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `ausente` | — | ❌ | ❌ | ❌ | ❌ | ✅ (fase quirúrgica) | ❌ excluidas |
+| `extraccion_indicada` | ❌ | — | ❌ | ✅ (corona fallida) | ✅ (endodoncia fallida) | ❌ | ✅ |
+| `extraida` | ❌ | ❌ | — | ❌ | ❌ | ✅ (fase quirúrgica) | ❌ excluidas |
+| `corona` | ❌ | ✅ | ❌ | — | ✅ (post-endodoncia) | ✅ (fase rehabilitada) | ✅ superadas al ponerla |
+| `endodoncia` | ❌ | ✅ | ❌ | ✅ | — | ❌ | ✅ |
+| `implante` | ✅ | ❌ | ✅ | ✅ | ❌ | — | ❌ excluidas |
 
 **Reglas de exclusión:**
 
@@ -79,6 +81,12 @@ Qué condiciones pueden estar **vigentes a la vez** en la misma pieza.
   cámara ni ápice biológico.
 - **`ausente` × `extraccion_indicada` — incompatibilidad absoluta.** No se prescribe la extracción de
   una estructura que ya no está en boca.
+- **`ausente` × `extraida` — incompatibilidad absoluta.** Son dos formas de «no estar»: una pieza no
+  puede ser a la vez congénitamente ausente y extraída.
+- **`extraida` × `corona` / `endodoncia` — incompatibilidad.** Sin diente natural no hay muñón que
+  coronar ni conducto que tratar; la rehabilitación pasa por el `implante`.
+- **`extraida` × `implante` — conviven.** Es la fase quirúrgica: la pieza se extrajo y el tornillo la
+  sustituye (el aspa cede ante el implante, igual que con `ausente`).
 - **`ausente` × `corona` — incompatibilidad.** Una corona protésica no flota en el vacío: o hay
   soporte radicular (corona + implante) o es el póntico de un puente.
 - **`implante` × caras — exclusión.** El implante no conserva caras naturales.
@@ -115,14 +123,23 @@ y `recordingConflicts(existing, next)` (direccional, para registrar).
 - **Cede el aspa de `ausente`:** en la fase quirúrgica (`ausente` + `implante`) el dibujo pinta solo
   el tornillo.
 
+### 4.5 `extraida`
+
+- **Supera y excluye las caras**, como `ausente`: la pieza se extrajo, no hay tejido que tratar. Al
+  registrarla, las caras vigentes quedan superadas y no se admite una caries nueva.
+- **Se distingue de `ausente`** en que documenta **cómo** se perdió el diente (acto quirúrgico): el
+  aspa es la misma, pero en **azul** (hecho consumado) en lugar de la tinta neutra.
+- **Cede ante el `implante`**, igual que `ausente` (fase quirúrgica: la exodoncia y el tornillo que la
+  sustituye conviven).
+
 ## 5. Ciclo de vida y transiciones
 
 Los estados no son estáticos; evolucionan con las citas:
 
 ```
-[ Caries (pendiente) ]        ──(Obturar)──▶  [ Obturación (completado) ]
-[ Extracción indicada ]       ──(Extraer)──▶  [ Ausente (completado) ]
-[ Ausente ] ──(Cirugía)──▶ [ Ausente + Implante ] ──(Rehabilitar)──▶ [ Corona + Implante ]
+[ Caries (pendiente) ]        ──(Restaurar)──▶  [ Restauración (completado) ]
+[ Extracción indicada ]       ──(Extraer)──▶  [ Extraída (completado) ]
+[ Ausente / Extraída ] ──(Cirugía)──▶ [ … + Implante ] ──(Rehabilitar)──▶ [ Corona + Implante ]
 ```
 
 El comando `completeProcedure` (`POST /api/v1/odontogram/patients/:patientId/procedures`) las aplica
@@ -132,21 +149,22 @@ histórico) e inserta el destino con `applyFinding`.
 | Procedimiento | Origen | Destino | Requisito |
 | :--- | :--- | :--- | :--- |
 | `obturar` | `caries` (una cara, o **todas** las de la pieza) | `restauracion` (completado), misma cara | — |
-| `extraer` | `extraccion_indicada` | `ausente` (completado) | — |
-| `rehabilitar` | `ausente` | `corona` (completado) | **implante vigente** |
+| `extraer` | `extraccion_indicada` | `extraida` (completado) | — |
+| `rehabilitar` | `ausente` o `extraida` | `corona` (completado) | **implante vigente** |
 
-**Transición de exodoncia:** al extraer, `extraccion_indicada` se resuelve, se inserta `ausente`
+**Transición de exodoncia:** al extraer, `extraccion_indicada` se resuelve, se inserta `extraida`
 (completado), las caras preexistentes pasan a superadas y la corona/el conducto que hubiera caen con
 el diente.
 
-**Fase quirúrgica → protésica:** sobre el `implante`, `rehabilitar` resuelve el `ausente` e inserta
-`corona` (completado); el `implante` se preserva.
+**Fase quirúrgica → protésica:** sobre el `implante`, `rehabilitar` resuelve la ausencia (congénita
+`ausente` o quirúrgica `extraida`) e inserta `corona` (completado); el `implante` se preserva.
 
 **Resolución de caries:** `obturar` resuelve la `caries` de la cara e inserta `restauracion`
 (completado) en la **misma** cara.
 
-La carga rápida por teclado (`quickEntryKey`) **clampea** la caja al estado válido: `c`/`C` (caries) y
-`x`/`X` (extracción) registran siempre `pendiente`; `a`/`A` (ausente) siempre `completado`.
+La carga rápida por teclado (`quickEntryKey`) **clampea** la caja al estado válido: `c`/`C` (caries)
+y `a`/`A` (ausente) registran su único estado; la `x` es la exodoncia en sus dos fases —`x`
+(extracción **indicada**, `pendiente`) y `X` (**extraída**, `completado`)—.
 
 ## 6. Renderizado por capas
 
@@ -155,12 +173,13 @@ y encogido— (`WHOLE_TOOTH_MARKER_STYLES`, `wholeToothMarkers`):
 
 | Capa | Condición | Trazo |
 | :--- | :--- | :--- |
-| `aspa` | `ausente` | Aspa sólida a tamaño completo (cede ante el implante). |
+| `aspa` | `ausente`, `extraida` | Aspa sólida a tamaño completo (cede ante el implante). Tinta neutra para `ausente`; azul para `extraida`. |
 | `periferia` | `corona` | Círculo que rodea la casilla. |
 | `centro` | `implante`, `endodoncia` | Tornillo / triángulo en el eje; se encogen **solo** si comparten la pieza con la corona. |
 | `overlay` | `extraccion_indicada` | Aspa punteada translúcida **por encima**, dejando ver debajo lo que motivó la extracción. |
 
 - `ausente` + `implante`: el tornillo ocupa el centro; el aspa se **suprime**.
+- `extraida` + `implante`: igual que arriba; el aspa azul de la exodoncia también cede ante el tornillo.
 - `corona` + `implante`: círculo en la periferia y tornillo en el centro, sin encogerse artificialmente.
 - `corona` + `endodoncia`: círculo en la periferia y triángulo en el centro.
 - `extraccion_indicada` + tratamiento previo: el aspa punteada se proyecta sobre el círculo/triángulo
@@ -170,6 +189,20 @@ La **geometría** de los símbolos vive en el contrato (`WHOLE_TOOTH_SYMBOLS`, `
 en un componente: la pantalla la pasa a React y el **dossier del expediente** (que se compone en el
 servidor, sin DOM) la convierte a una cadena de SVG. El dibujo del papel y el de la pantalla no
 pueden separarse.
+
+## 6 bis. Prótesis removibles (PPR/PRT)
+
+Las prótesis removibles **no** se registran cara a cara ni pieza a pieza: son una entidad de **tramo**
+o de **arcada completa** (`ProsthesisRecord`, `prosthesisTrack`, migración `0003`).
+
+- **PPR (parcial):** un **tramo contiguo** de la arcada (p. ej. `14–16`), elegido en el gráfico con
+  **dos toques** (primera y última pieza del tramo).
+- **PRT (total):** la **arcada completa** (18–28 o 48–38); una sola por arcada (índice único parcial).
+- **Estado:** `pendiente` (rojo, indicada / por confeccionar) o `completado` (azul, instalada).
+- **Dibujo:** doble línea con **retenedores** en los extremos de la PPR, en una **franja bajo las
+  piezas** (no tapa aspas ni caras), a la misma altura en pantalla, papel y dossier.
+- **Validación** (`recordProsthesisSchema`): todas las piezas de la misma arcada; tramo contiguo en la
+  PPR; arcada completa en la PRT (el servidor normaliza la PRT a las 16 piezas).
 
 ## 7. Enforcement en tres capas
 
