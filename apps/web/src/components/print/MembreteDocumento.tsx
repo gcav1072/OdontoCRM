@@ -1,6 +1,14 @@
-import { CLINIC, clinicContactLine, clinicFullAddress } from '@odontocrm/contracts';
+import {
+  CLINIC,
+  clinicContactLine,
+  clinicDentistFor,
+  clinicDentistLine,
+  clinicFullAddress,
+  clinicIdentityFromView,
+} from '@odontocrm/contracts';
 import type { ClinicIdentity } from '@odontocrm/contracts';
 
+import { useOptionalAuth } from '../../providers/AuthProvider';
 import { useClinicIdentity } from '../../providers/ClinicIdentityProvider';
 import { clinicLogoUrl } from '../../lib/marca';
 
@@ -14,6 +22,11 @@ import { clinicLogoUrl } from '../../lib/marca';
  * completa el titular y, mientras no exista, el respaldo del código (`CLINIC`). El
  * logo, igual: el subido o el del repositorio. Así el papel del navegador y el PDF del
  * servidor no pueden separarse. Los colores son los de la marca impresa (`--brand-*`).
+ *
+ * La **línea del especialista** (Odontólogo · Especialidad · MPPS · Colegiatura) va
+ * bajo la dirección y el teléfono: es quien responde por el documento. Se resuelve por
+ * el **usuario que imprime**, con el titular como respaldo —la misma regla que usa el
+ * servidor al emitir—.
  */
 export interface MembreteDocumentoProps {
   /** Título del documento, a la derecha del membrete («Historia clínica», «Odontograma»). */
@@ -22,12 +35,11 @@ export interface MembreteDocumentoProps {
 
 export const MembreteDocumento = ({ title }: MembreteDocumentoProps) => {
   const identidad = useClinicIdentity();
-  // La vista trae los campos del perfil; el resto de `ClinicIdentity` no se usa aquí.
-  const clinic: ClinicIdentity = {
-    ...(identidad?.clinic ?? CLINIC),
-    logoPath: null,
-    dentists: [],
-  };
+  // Fuera del shell (pruebas) no hay sesión: el membrete cae al titular sin reventar.
+  const sesion = useOptionalAuth();
+  // La vista trae el perfil del consultorio y sus odontólogos en la forma del contrato,
+  // para reutilizar `clinicDentistFor` / `clinicDentistLine`. Sin vista, el respaldo.
+  const clinic: ClinicIdentity = identidad === null ? CLINIC : clinicIdentityFromView(identidad);
   // El logo efectivo: el subido (viene ya como `data:` URI) o el del repositorio.
   const logo = identidad?.logoDataUri ?? clinicLogoUrl();
 
@@ -38,6 +50,8 @@ export const MembreteDocumento = ({ title }: MembreteDocumentoProps) => {
     contacto === '' ? null : contacto,
     clinic.website,
   ].filter((linea): linea is string => linea !== null && linea.trim() !== '');
+  // El odontólogo que responde por el papel: el que imprime (o el titular).
+  const lineaDentista = clinicDentistLine(clinicDentistFor(sesion?.user?.username, clinic));
 
   return (
     <header
@@ -66,6 +80,11 @@ export const MembreteDocumento = ({ title }: MembreteDocumentoProps) => {
               {linea}
             </p>
           ))}
+          {lineaDentista !== '' && (
+            <p className="text-xs" style={{ color: 'var(--brand-ink-strong)' }}>
+              {lineaDentista}
+            </p>
+          )}
         </div>
       </div>
       <p

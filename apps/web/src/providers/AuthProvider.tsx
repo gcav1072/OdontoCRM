@@ -60,8 +60,16 @@ export interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * La sesión, o `null` si aún no hay `AuthProvider`. Es para los componentes que se
+ * montan **fuera del shell** —los documentos imprimibles, que en las pruebas se pintan
+ * sin proveedores— y que solo quieren *mejorar* si hay sesión (p. ej. el odontólogo que
+ * imprime), sin reventar por no tenerla.
+ */
+export const useOptionalAuth = (): AuthContextValue | null => useContext(AuthContext);
+
 export const useAuth = (): AuthContextValue => {
-  const contexto = useContext(AuthContext);
+  const contexto = useOptionalAuth();
   if (!contexto) throw new Error('useAuth debe usarse dentro de <AuthProvider>');
   return contexto;
 };
