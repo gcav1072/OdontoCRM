@@ -6,13 +6,16 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
 ## [Imprimibles] — El récipe cabe en una hoja y el nombre admite dos líneas · 2026-10-10
 
-Dos arreglos del mismo papel. **(1)** Un récipe con varios medicamentos —o con un membrete alto—
-dejaba la **firma y el QR en una segunda hoja casi vacía**: la hoja apaisada tiene altura fija (ADR
-0061) y, al no caber el contenido, lo que se desbordaba era el pie de cada mitad. Ahora, si el
-documento no cabe a tamaño normal, el servicio lo **recompone con una escala de encaje menor** (1 →
-0,94 → … → 0,7) hasta que sale en **una sola página**; el récipe normal no cambia (sigue a escala 1,
-una sola composición). La escala multiplica todo el documento: membrete (logo incluido), listas,
-tabla y firmas.
+Dos arreglos del mismo papel. **(1)** El récipe dejaba una **segunda hoja casi en blanco** con el
+documento perfecto en la primera. Eran **dos causas**. La de fondo: la hoja tenía **altura fija de
+199 mm** y el área imprimible de una carta apaisada con márgenes de 8 mm mide ≈200 mm — **menos de 1
+mm de holgura** —, así que cualquier diferencia entre navegadores (versión de Chromium, DPI, el margen
+efectivo del sistema) desbordaba **siempre**, y el encaje no lo arreglaba porque **no escala la altura
+de la hoja** (de ahí «letra más pequeña y sigue la doble página»). Ahora la hoja es una **altura
+mínima holgada** (185 mm): nunca roza el borde y, si el contenido pide más, crece hasta el área
+imprimible en vez de partirse. La segunda causa es un récipe **muy largo**: si aun así no cabe, el
+servicio lo recompone con una **escala de encaje** (1 → 0,94 → … → 0,7) hasta que sale en **una sola
+página**. El récipe normal sale a escala 1, sin encoger.
 
 **(2)** El **nombre del consultorio** puede partirse en **dos líneas** desde Mi perfil (y el primer
 acceso): el membrete las imprime tal cual. Se guardan en la **misma columna de texto** con un salto
@@ -21,7 +24,7 @@ pantallas de sala) las unen en **una sola línea** para que el salto no se cuele
 
 | Pieza | Qué hace |
 | :--- | :--- |
-| `prescription-document.ts` | `--rx-fit` escala membrete, listas, tabla y firmas; `withPrescriptionFit` reescribe el valor |
+| `prescription-document.ts` | Hoja con `min-height` holgado (185 mm) en vez de alto fijo al límite; `--rx-fit` escala todo el documento y `withPrescriptionFit` lo reescribe |
 | `prescription-service.ts` | Compone a escala 1 y, si sale en dos hojas, reintenta 0,94…0,7 hasta una página |
 | `clinic.ts` | `clinicNameOneLine`: une las dos líneas del nombre para bot, `.ics` y pantallas |
 | `domain/clinic-profile.ts` | El nombre admite hasta dos líneas (recorta cada una y descarta las vacías) |
