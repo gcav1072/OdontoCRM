@@ -6,6 +6,7 @@ export * from './common/ids.js';
 export * from './common/optional.js';
 export * from './common/pagination.js';
 export * from './common/problem.js';
+export * from './common/zod-es.js';
 export * from './domain/audit.js';
 export * from './domain/alerta-admin.js';
 export * from './domain/auth.js';
