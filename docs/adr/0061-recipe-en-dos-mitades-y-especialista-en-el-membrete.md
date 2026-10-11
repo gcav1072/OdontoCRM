@@ -1,10 +1,18 @@
 # ADR 0061 — El récipe sale en dos mitades (farmacia y paciente) y el especialista va en el membrete
 
-- **Fecha:** 2026-10-10 · **Estado:** aceptada
+- **Fecha:** 2026-10-10 · **Estado:** aceptada (**el papel de la hoja superado por
+  [ADR 0065](0065-el-recipe-cabe-en-el-papel-de-la-clinica.md)**)
 - **Relacionada:** [ADR 0015](0015-recipe-a5-en-pdf.md) (récipe en PDF; **sustituye la A5 de una
   cara**), [ADR 0036](0036-recipe-emitido-documento-archivado.md) (el récipe emitido se archiva),
   [ADR 0054](0054-membrete-unico-en-los-imprimibles.md) (membrete único),
   [ADR 0056](0056-la-identidad-del-consultorio-vive-en-la-base.md) (identidad en la base)
+
+> **Nota (ADR 0065).** El **fondo** de esta decisión sigue vigente: el récipe sale en **una hoja
+> apaisada partida en dos mitades** (farmacia y paciente), con el especialista en el membrete. Lo
+> que cambió es el **papel**: era **carta apaisada** y una hoja carta (215,9 mm de alto) no cabe en
+> una A4 (210 mm), así que la impresora de la clínica sacaba una **segunda hoja en blanco**. Ahora
+> el papel se elige en el panel (`recipePaper`) y se compone **A4 apaisado** de fábrica, con un
+> **encaje medido** que garantiza una sola hoja.
 
 ## Contexto
 
@@ -51,11 +59,13 @@ Los imprimibles tenían, además, dos huecos de coherencia: el **reporte** y los
 - **A favor:** la farmacia y el paciente tienen cada uno su papel en la misma hoja; el especialista
   —el dato que da validez— deja de estar al pie, donde se pierde, y sale igual en los siete
   imprimibles; y el membrete se vuelve el único sitio donde vive la identidad impresa del documento.
-- **A favor:** el papel pasa de A5 a carta apaisada, un formato que cualquier impresora de
-  consultorio maneja y que no obliga a cambiar la bandeja.
-- **En contra / a vigilar:** la firma se ancla al pie de cada mitad (altura fija de la hoja); con
-  muchos medicamentos la mitad puede desbordar a una segunda página. Es el mismo riesgo que tenía el
-  A5 y se revisó a ojo en la prueba de humo.
+- **A favor:** el papel pasa de A5 a **una hoja apaisada** con dos mitades, un formato que cualquier
+  impresora de consultorio maneja y que no obliga a cambiar la bandeja (el **tamaño** de esa hoja lo
+  fija hoy el [ADR 0065](0065-el-recipe-cabe-en-el-papel-de-la-clinica.md): A4 apaisado).
+- **En contra / a vigilar:** la firma se ancla al pie de cada mitad (altura holgada de la hoja); con
+  un récipe **muy** largo la mitad puede continuar en una segunda página. Lo que ya no ocurre es la
+  segunda hoja **en blanco**: el [ADR 0065](0065-el-recipe-cabe-en-el-papel-de-la-clinica.md) mide el
+  documento y lo encaja en una sola hoja hasta ~10 medicamentos.
 - **En contra / a vigilar:** los récipes **ya emitidos** conservan su A5 archivado
   ([ADR 0036](0036-recipe-emitido-documento-archivado.md)); el layout nuevo aplica a los que se
   emitan desde ahora. En los cobros, «el especialista» es el titular: la caja no emite como

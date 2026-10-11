@@ -562,9 +562,10 @@ pasa a `cerrada`, que es inmutable ([ADR 0034](docs/adr/0034-sesion-clinica-evol
 ## API de la Fase 7B (adjuntos, récipes y verificación)
 
 Los **adjuntos** son radiografías, fotos clínicas y documentos de la sesión (con pie). El **récipe**
-es un **PDF de carta apaisada partido en dos mitades** —la copia de la farmacia y la del paciente—,
-con membrete, numerado `RX-000001` y verificable por QR ([ADR 0015](docs/adr/0015-recipe-a5-en-pdf.md),
-[ADR 0036](docs/adr/0036-recipe-emitido-documento-archivado.md), [ADR 0061](docs/adr/0061-recipe-en-dos-mitades-y-especialista-en-el-membrete.md)).
+es un **PDF apaisado partido en dos mitades** —la copia de la farmacia y la del paciente—, con
+membrete, numerado `RX-000001` y verificable por QR ([ADR 0015](docs/adr/0015-recipe-a5-en-pdf.md),
+[ADR 0036](docs/adr/0036-recipe-emitido-documento-archivado.md), [ADR 0061](docs/adr/0061-recipe-en-dos-mitades-y-especialista-en-el-membrete.md),
+[ADR 0065](docs/adr/0065-el-recipe-cabe-en-el-papel-de-la-clinica.md)).
 
 | Método y ruta | Qué hace | Permiso |
 | :--- | :--- | :--- |
@@ -582,11 +583,17 @@ con membrete, numerado `RX-000001` y verificable por QR ([ADR 0015](docs/adr/001
 | `GET /api/v1/clinical/patients/:patientId/prescriptions` | Historial de récipes del paciente | `clinical:read` |
 | `GET /api/v1/clinical/verify/:code` | **Público**: confirma que el récipe es auténtico, sin datos clínicos | — |
 
-- **El PDF lo compone Chromium** (Playwright) desde la plantilla del membrete —carta apaisada con
-dos mitades: la copia de la farmacia y la del paciente—, que sale de la
+- **El PDF lo compone Chromium** (Playwright) desde la plantilla del membrete —una hoja apaisada en
+el **papel de la clínica** (A4 de fábrica, elegible en *Configuración → Marca*), con dos mitades: la
+copia de la farmacia y la del paciente—, que sale de la
   [sección editable del consultorio](packages/contracts/src/clinic.ts); si falta un dato (RIF,
   teléfono, MPPS, especialidad) el editor **avisa antes de emitir** y el récipe sale sin él.
   Se instala una vez: `npx playwright install chromium`.
+- **El récipe sale en una sola hoja**: la plantilla toma su tipografía de los tres tamaños del panel
+  (título, cuerpo y menudo) y el servicio **mide** el documento en Chromium con el ancho y el alto
+  reales del área imprimible, y lo encaja (sin agrandar y sin bajar de 0,7) si hace falta. Un récipe
+  **muy** largo (~10+ medicamentos) continúa en una segunda hoja, pero nunca deja una hoja en blanco
+  ([ADR 0065](docs/adr/0065-el-recipe-cabe-en-el-papel-de-la-clinica.md)).
 - **El récipe emitido es un documento cerrado**: guarda una copia de los datos del paciente y de
   cada medicamento, y el PDF se archiva con su `sha256`. Lo que se descarga después es ese mismo
   archivo; editar el catálogo o la ficha del paciente **no** reescribe lo entregado.

@@ -345,7 +345,7 @@ la sesión: no se crea nada solo.
 
 - La aplicación no abre o va muy lenta.
 - En `/notificaciones` el bot dice **«Modo simulado»** o hay muchos envíos fallidos.
-- Un documento sale raro al imprimir (récipe A5, historia A4, odontograma).
+- Un documento sale raro al imprimir (récipe, historia clínica, odontograma).
 - Se borró algo por error (no se toca nada más: casi todo se puede recuperar del
   respaldo del día).
 - El respaldo de la madrugada no aparece en el registro.

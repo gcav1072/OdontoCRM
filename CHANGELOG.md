@@ -4,6 +4,53 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Imprimibles] — El récipe cabe en el papel de la clínica y sale en una sola hoja · 2026-10-11
+
+En el servidor de la clínica el récipe dejaba **una segunda hoja en blanco**: el documento perfecto
+en la primera y una hoja vacía detrás. Se probaron dos arreglos sobre la **altura de la hoja**
+(199 mm → 185 mm) y una **escala de encaje** a ciegas, sin éxito, y el encaje dejó un efecto
+secundario visible: **la letra salía más pequeña**. Eran tres causas, ninguna la altura de la hoja.
+
+**(1) El papel no era el del consultorio.** El récipe era el **único** imprimible en carta —la
+historia, el odontograma, el reporte, el dossier, la factura y el recibo salen en A4— y una hoja
+**carta apaisada mide 215,9 mm de alto y no cabe en una A4 (210 mm)**: la impresora pagina la franja
+que sobra —que va **en blanco**, porque el contenido muere 8 mm antes del borde— a una segunda hoja.
+Ahora el papel es de la marca (`recipePaper`, **A4** de fábrica) y se elige en *Configuración →
+Marca → Papel del récipe*; el mismo valor fija el `@page` de la plantilla y el tamaño del PDF, así
+que no depende de quién gane. Una marca guardada antes de este ajuste sale en A4 sin migrar nada.
+
+**(2) El encaje no medía.** Probaba escalas fijas (1 → 0,94 → … → 0,7) y contaba las hojas del PDF
+ya compuesto: con un récipe largo, la escala mínima no bastaba y quedaban las dos hojas con la letra
+encogida. Ahora `fit-to-page.ts` **mide**: pone la ventana del navegador con el tamaño del área
+imprimible, mide la hoja a escala 1, calcula la proporción que sobra y la comprueba midiendo otra
+vez. Nunca agranda un récipe corto (escala 1) ni baja del tope de legibilidad (0,7).
+
+**(3) El encaje no escalaba la hoja y medía con el ancho de la ventana.** La altura mínima de la hoja
+no se multiplicaba por la escala —así que el contenido encogía y la página seguía sin caber— y el
+documento se medía en una ventana de 1 280 px, **más ancha que el papel** (263 mm): el texto se
+plegaba en menos renglones al medir que al imprimir, y la cuenta decía «cabe» donde el PDF veía «no
+cabe». Ahora la hoja entera se multiplica por la escala y se mide con el **ancho y el alto reales**
+del área imprimible.
+
+**La tipografía del récipe, por fin, sale del panel.** Los tres tamaños de *Configuración → Marca*
+(título, cuerpo y menudo: 13 / 9 / 7,5 pt de fábrica) alimentan la escala del documento; los
+intermedios son las proporciones que el récipe ya tenía sobre esos tres, así que con los valores de
+fábrica el papel sale **exactamente** como salía y mover uno de los tres mueve su familia entera.
+Antes los tamaños estaban escritos a mano en la plantilla y el panel no los movía.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `domain/settings.ts` (contracts) | `RECIPE_PAPERS` + `recipePaperSchema` (A4 por defecto) en la marca y en el tema efectivo |
+| `brand.ts` (contracts) | `BrandTheme.recipePaper` y `recipePaperGeometry()`: el `@page`, el `format` del PDF y la medida en mm, de una sola fuente |
+| `fit-to-page.ts` (clinical, **nuevo**) | El encaje medido: `fitScale`, `fitToAvailable`, el tope de 0,7 y el margen de seguridad (probado sin navegador) |
+| `pdf-renderer.ts` (clinical) | `fitToPage`: mide el bloque con la **ventana del tamaño del área imprimible** y escribe la escala en `--rx-fit` |
+| `prescription-document.ts` | `@page` según el papel de la marca; la tipografía del récipe sale de los tres pt del panel; la altura mínima de la hoja se multiplica por el encaje |
+| `prescription-service.ts` | Compone con el papel de la marca y pasa el encaje (ancho y alto del área imprimible) |
+| `MarcaSection` / `i18n` | Desplegable «Papel del récipe» (A4 apaisado / carta apaisada) |
+| `brand_settings` (identity) | Columna `recipe_paper` (migración 0007); las filas anteriores salen en A4 |
+| `prescription.integration.test.ts` / `smoke-prescription.mjs` | El PDF emitido se cuenta: **una sola hoja** |
+| `fit-to-page.test.ts`, `prescription-document.test.ts`, `settings.test.ts`, `brand.test.ts` | El encaje, el papel y la tipografía del panel |
+
 ## [Imprimibles] — El récipe cabe en una hoja y el nombre admite dos líneas · 2026-10-10
 
 Dos arreglos del mismo papel. **(1)** El récipe dejaba una **segunda hoja casi en blanco** con el
