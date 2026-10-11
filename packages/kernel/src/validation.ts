@@ -1,7 +1,16 @@
-import type { ProblemFieldError } from '@odontocrm/contracts';
+import { mensajesDeValidacionEnEspanol, type ProblemFieldError } from '@odontocrm/contracts';
 import type { z } from 'zod';
 
 import { ValidationError } from './errors.js';
+
+/**
+ * Los mensajes de Zod, en español, en **este proceso**. Zod no trae textos en español
+ * de fábrica: sin esto, el detalle por campo del RFC 7807 llegaba en inglés («Too
+ * small: expected string to have >=1 characters») y no había forma de entender qué
+ * corregir. Se instala aquí porque este módulo es el que valida en el borde de todos
+ * los servicios; la SPA lo hace al arrancar.
+ */
+mensajesDeValidacionEnEspanol();
 
 interface IssueLike {
   path?: PropertyKey[];

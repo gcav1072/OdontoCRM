@@ -33,9 +33,44 @@ export class AppError extends Error {
   }
 }
 
+/** Cuántos campos se nombran en el `detail` antes de resumir el resto («y N más»). */
+const CAMPOS_EN_EL_MENSAJE = 3;
+
+/**
+ * El **detalle de los campos** que fallaron, para pegarlo al mensaje del error.
+ *
+ * Va en el `detail` —y no solo en `errors[]`— a propósito: el `detail` es lo único que
+ * cualquier cliente pinta tal cual. Sin esto, un 400 de validación llegaba al usuario
+ * como un «Los datos enviados no son válidos» que no decía **qué** campo corregir (la
+ * SPA antigua, que está desplegada, no lee `errors[]`).
+ *
+ * El formato es `campo (motivo)` y **sin dos puntos** después del nombre: `sanitizeMessage`
+ * censura `password: …`, `token: …`, etc., y un nombre de campo seguido de `:` se
+ * confundiría con una credencial.
+ */
+const detalleDeCampos = (errors: readonly ProblemFieldError[]): string => {
+  const visibles = errors.slice(0, CAMPOS_EN_EL_MENSAJE);
+  const resto = errors.length - visibles.length;
+  const partes = visibles.map((campo) => `${campo.path} (${campo.message})`);
+  return resto > 0 ? `${partes.join(' · ')} · y ${String(resto)} más` : partes.join(' · ');
+};
+
+/**
+ * Error de validación (400). Cuando llegan los campos que fallaron, el mensaje los
+ * **nombra** para que se entienda sin abrir el JSON.
+ */
 export class ValidationError extends AppError {
   constructor(message = 'Los datos enviados no son válidos', errors?: ProblemFieldError[]) {
-    super({ status: 400, code: 'validation_error', message, ...(errors ? { errors } : {}) });
+    const conDetalle =
+      errors === undefined || errors.length === 0
+        ? message
+        : `${message} — ${detalleDeCampos(errors)}`;
+    super({
+      status: 400,
+      code: 'validation_error',
+      message: conDetalle,
+      ...(errors === undefined ? {} : { errors }),
+    });
   }
 }
 
