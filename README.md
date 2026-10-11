@@ -453,7 +453,7 @@ reportes de la Fase 9.
 - **La historia firmada es inmutable**: cualquier corrección pasa por una adenda con motivo,
   fechada y firmada por su autor.
 - La interfaz vive en `/consultorio` (aviso obligatorio de **primera visita**, formulario por
-  pasos con autoguardado, alertas clínicas resaltadas y vista de impresión A4 en
+  pasos con autoguardado, alertas clínicas resaltadas y vista de impresión carta en
   `/consultorio/:id/imprimir`).
 - **Pendiente de la sesión B**: la pantalla del consultorio ya recibe datos críticos por
   `POST /internal/v1/screens/room/critical-flags`, pero todavía **nadie los envía**; el servicio
@@ -500,7 +500,7 @@ fila**— y motor geométrico SVG sin dependencias. La dentición (permanente 11
   interactivo (se pulsa la cara, no un botón), **carga rápida por teclado** —«16» + `c` marca
   caries oclusal pendiente, `C` la marca completada; `a` ausente, `x` extracción indicada, `r`
   corona, `i` implante, `e` endodoncia; `v l n s d` eligen cara y `Supr` deja la cara sana—,
-  deshacer, **evolución** en `/consultorio/:patientId/odontograma/historial` e **impresión A4** en
+  deshacer, **evolución** en `/consultorio/:patientId/odontograma/historial` e **impresión carta** en
   `/consultorio/:patientId/odontograma/imprimir` (que la secretaría comparte en solo lectura); el
   informe puede incluir, con una casilla, el **historial de cambios con fechas**.
 - **Se dibuja en posición anatómica** ([ADR 0033](docs/adr/0033-odontograma-en-posicion-anatomica.md)): dos filas con la **línea media** en el centro, la cara vestibular arriba en el maxilar y abajo en la mandíbula, y las piezas de la **derecha del paciente** (cuadrantes 1 y 4, y 5 y 8 temporales) **espejadas**, para que la cara mesial mire siempre a la línea media —es decir, al vecino que de verdad toca—. El número de pieza se lee siempre derecho y cada arcada lleva su nota de orientación. En incisivos y caninos (posiciones 1–3) la cara de masticación se llama **borde incisal** en toda la interfaz, aunque se guarde como `occlusal` (mismo polígono, sin migración).
@@ -584,7 +584,7 @@ membrete, numerado `RX-000001` y verificable por QR ([ADR 0015](docs/adr/0015-re
 | `GET /api/v1/clinical/verify/:code` | **Público**: confirma que el récipe es auténtico, sin datos clínicos | — |
 
 - **El PDF lo compone Chromium** (Playwright) desde la plantilla del membrete —una hoja apaisada en
-el **papel de la clínica** (A4 de fábrica, elegible en *Configuración → Marca*), con dos mitades: la
+el **papel de la clínica** (carta apaisada de fábrica, elegible en *Configuración → Marca*), con dos mitades: la
 copia de la farmacia y la del paciente—, que sale de la
   [sección editable del consultorio](packages/contracts/src/clinic.ts); si falta un dato (RIF,
   teléfono, MPPS, especialidad) el editor **avisa antes de emitir** y el récipe sale sin él.
@@ -656,7 +656,7 @@ estado del paciente— y la misma forma: cifras, gráficas y tabla.
 | **Recetas por medicamento** | Lo más recetado en el período, con renglones y porcentaje | `reports:clinical` |
 
 - **Exportación**: `Descargar CSV` (abre en Excel: BOM, `;` y coma decimal), `Descargar PDF`
-  (A4 con el membrete, compuesto en el servidor con Chromium) e `Imprimir`.
+  (carta con el membrete, compuesto en el servidor con Chromium) e `Imprimir`.
 - **Los reportes clínicos exigen `reports:clinical`** ([ADR 0039](docs/adr/0039-reportes-clinicos-con-permiso-propio.md)):
   los ve el odontólogo y el administrador; la secretaría ve los operativos, y la pantalla le explica
   por qué no ve el resto en vez de ofrecerle un botón que devuelve 403.

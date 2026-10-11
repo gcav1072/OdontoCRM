@@ -4,6 +4,37 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Imprimibles] — El papel de la clínica es carta en todos los imprimibles · 2026-10-11
+
+El papel de la bandeja de la clínica es **carta**, no A4: una hoja A4 que no entra en la bandeja deja
+una franja fuera que la impresora pagina a una **segunda hoja en blanco** —el mismo síntoma que abrió
+el [ADR 0065](docs/adr/0065-el-recipe-cabe-en-el-papel-de-la-clinica.md)—. Ahora **todos los
+imprimibles** salen en carta: la historia clínica y el odontograma (navegador), y el récipe, el
+dossier, el reporte, la factura, el recibo y la nota de crédito (servidor).
+
+El **récipe** cambia su papel de fábrica de A4 a **carta** (`recipePaper`); el panel sigue permitiendo
+elegir A4 para una clínica que imprima en A4. Las hojas del servidor pasan de `@page { size: A4 … }` a
+`letter` y los `page.pdf()` de `format: 'A4'` a `'Letter'`.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `brand.ts` (contracts) | `recipePaper: 'letter'` de fábrica |
+| `domain/settings.ts` (contracts) | `recipePaperSchema` con `letter` por defecto |
+| `invoice-pdf` / `receipt-pdf` / `credit-note-pdf` | `@page { size: letter portrait; … }` y `format: 'Letter'` |
+| `dossier-document.ts` / `dossier-service.ts` | `@page { size: letter; }` y `format: 'Letter'` |
+| `report-html.ts` / `pdf-renderer.ts` (reporting) | `@page { size: letter landscape; … }` y `format: 'Letter'` |
+| `MarcaSection` / `i18n` | La opción de carta primero, con la de A4 como excepción |
+
+## [Interfaz] — El nombre del consultorio admite espacios al escribirlo · 2026-10-11
+
+Al crear la cuenta del **odontólogo titular**, el nombre del consultorio se edita en **dos líneas**,
+pero **no admitía espacios**: el formulario recortaba cada línea **en cada tecla**, así que el espacio
+entre dos palabras desaparecía en cuanto se tecleaba («Clínica Sonrisa» quedaba «ClínicaSonrisa»).
+Ahora el formulario **no recorta mientras se escribe**; el recorte, el tope de dos líneas y el
+descarte de las vacías los hace el esquema al guardar (`clinicProfileSchema.name`), que ya lo hacía.
+El arreglo vive en dos ayudantes compartidos (`clinicNameLines` / `clinicNameFromLines`) que usan el
+alta del titular y Mi perfil.
+
 ## [Imprimibles] — El récipe cabe en el papel de la clínica y sale en una sola hoja · 2026-10-11
 
 En el servidor de la clínica el récipe dejaba **una segunda hoja en blanco**: el documento perfecto

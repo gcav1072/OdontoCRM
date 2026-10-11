@@ -141,7 +141,7 @@ el aviso de primera visita recuerda que hay que completarla y firmarla.
 - Las **alertas clínicas** (diabetes, hipertensión, alergias, anticoagulantes)
   aparecen resaltadas y también en la pantalla del consultorio, para no tener que
   buscar la historia cada vez.
-- La historia se imprime en **A4** con el membrete.
+- La historia se imprime en **carta** con el membrete.
 
 **Odontograma** (pestaña *Odontograma*). Se marca **lo que está mal**, no lo que está
 bien: un diente sano se queda sin marca.
@@ -154,7 +154,7 @@ bien: un diente sano se queda sin marca.
   **carga rápida por teclado**; es un modo aparte, no el de por defecto.
 - Todo lo que se marca queda en la **evolución** del paciente (histórico que no se
   borra) y se puede **deshacer**.
-- Se imprime en **A4** en posición anatómica (como se ve al paciente).
+- Se imprime en **carta** en posición anatómica (como se ve al paciente).
 
 **Sesión clínica** (pestaña *Sesión*): es el documento del día (signos vitales, examen,
 procedimientos, materiales, diagnóstico, indicaciones y la próxima cita). Se cierra al

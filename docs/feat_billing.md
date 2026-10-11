@@ -1200,7 +1200,7 @@ perfil esté incompleto, la factura sale con el aviso de datos faltantes en vez 
   cliente, partidas, totales y leyendas) en las áreas en blanco. Se calibra con una **forma de muestra**
   y se comprueba imprimiendo de verdad antes de cerrar la fase.
 
-**Archivado e impresión** (M1): el PDF se compone una vez con Chromium (`@page { size: A4 }`, como los
+**Archivado e impresión** (M1): el PDF se compone una vez con Chromium (`@page { size: letter }`, como los
 reportes) y se guarda en `storage/billing` con su `sha256`; toda descarga o impresión incrementa
 `print_count`, actualiza `last_printed_at` y deja evento. Lo que se reimprime es **el mismo archivo**.
 *(Con formas libres, la plantilla además tiene que **calzar sobre la forma preimpresa**: márgenes
