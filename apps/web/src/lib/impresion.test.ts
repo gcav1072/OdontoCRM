@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   aplicarTemaClaro,
   cssDePagina,
+  esperarFuentes,
   MARGEN_MAX_MM,
   MARGEN_MIN_MM,
   MARGEN_POR_DEFECTO_MM,
   normalizarMargen,
+  precargarFuentes,
   restaurarTema,
   type RaizConTema,
 } from './impresion';
@@ -99,5 +101,80 @@ describe('el margen de impresión', () => {
   it('la regla también normaliza: nunca sale sin margen ni fuera de rango', () => {
     expect(cssDePagina(0)).toBe(`@page { size: letter; margin: ${String(MARGEN_MIN_MM)}mm; }`);
     expect(cssDePagina(999)).toBe(`@page { size: letter; margin: ${String(MARGEN_MAX_MM)}mm; }`);
+  });
+});
+
+/**
+ * El bug del membrete: las `@font-face` van con `font-display: swap`, así que imprimir en
+ * el hueco de carga sacaba el papel con la sans del sistema mientras la vista previa ya se
+ * veía bien. El papel tiene que esperar a las fuentes (y, pase lo que pase, salir).
+ */
+describe('las fuentes del papel', () => {
+  it('espera a que las fuentes terminen de cargar antes de imprimir', async () => {
+    let cargadas = false;
+    const ready = Promise.resolve().then(() => {
+      cargadas = true;
+    });
+
+    await esperarFuentes({ ready });
+
+    expect(cargadas).toBe(true);
+  });
+
+  it('sin `document.fonts` (pruebas o navegador sin soporte) no se queda esperando', async () => {
+    await expect(esperarFuentes(undefined)).resolves.toBeUndefined();
+  });
+
+  it('si una fuente no carga, el papel sale igual', async () => {
+    const ready = Promise.reject(new Error('la fuente no cargó'));
+    await expect(esperarFuentes({ ready })).resolves.toBeUndefined();
+  });
+
+  it('pide por adelantado cada peso y estilo de cada familia', () => {
+    const pedidas: string[] = [];
+    const load = (font: string): Promise<unknown> => {
+      pedidas.push(font);
+      return Promise.resolve([]);
+    };
+
+    precargarFuentes(
+      [
+        {
+          name: 'Dancing Script',
+          files: [
+            { weight: 400, style: 'normal' },
+            { weight: 700, style: 'normal' },
+          ],
+        },
+        {
+          name: 'Inter',
+          files: [
+            { weight: 400, style: 'italic' },
+            { weight: 400, style: 'normal' },
+          ],
+        },
+      ],
+      { ready: Promise.resolve(), load },
+    );
+
+    expect(pedidas).toEqual([
+      '400 1em "Dancing Script"',
+      '700 1em "Dancing Script"',
+      'italic 400 1em "Inter"',
+      '400 1em "Inter"',
+    ]);
+  });
+
+  it('una familia sin archivos declarados no pide nada', () => {
+    const pedidas: string[] = [];
+    precargarFuentes([{ name: 'Vacía', files: [] }], {
+      ready: Promise.resolve(),
+      load: (font) => {
+        pedidas.push(font);
+        return Promise.resolve([]);
+      },
+    });
+
+    expect(pedidas).toEqual([]);
   });
 });

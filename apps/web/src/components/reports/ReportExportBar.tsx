@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { apiErrorMessage } from '../../lib/api';
 import { reportsApi, type ReportQueryParams } from '../../lib/endpoints';
 import { t } from '../../lib/i18n';
+import { esperarFuentes } from '../../lib/impresion';
 import { reportFileLabel } from '../../lib/reports';
 
 export interface ReportExportBarProps {
@@ -68,6 +69,16 @@ export const ReportExportBar = ({
     }
   };
 
+  /**
+   * Imprime el documento en pantalla. Espera a las fuentes de la marca: con
+   * `font-display: swap`, imprimir antes de que la tipografía cargue sacaba el membrete
+   * con la sans del sistema (ver lib/impresion.ts).
+   */
+  const imprimir = async (): Promise<void> => {
+    await esperarFuentes();
+    window.print();
+  };
+
   return (
     <div
       role="group"
@@ -100,7 +111,7 @@ export const ReportExportBar = ({
 
       <Button
         variant="secondary"
-        onClick={() => window.print()}
+        onClick={() => void imprimir()}
         leadingIcon={<Printer className="size-4" aria-hidden="true" />}
         title={t('reportes.export.imprimirAyuda')}
       >

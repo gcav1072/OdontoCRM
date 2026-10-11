@@ -121,3 +121,64 @@ export const useMargenDeImpresion = (
 
   return [margen, setMargen] as const;
 };
+
+/* ── Las fuentes del papel (que la impresión no caiga al respaldo) ───────────── */
+
+/** Lo mínimo que se necesita de `document.fonts`; en las pruebas se pasa un doble. */
+export interface FuentesDelDocumento {
+  ready: Promise<unknown>;
+  load?: (font: string) => Promise<unknown>;
+}
+
+/** Una familia de la marca tal como la ve la SPA: su nombre y sus archivos con peso/estilo. */
+export interface FamiliaDeFuente {
+  name: string;
+  files: readonly { weight: number; style: string }[];
+}
+
+/**
+ * Espera a que las fuentes del documento terminen de cargar antes de mandar a imprimir.
+ *
+ * Las `@font-face` de la marca van con `font-display: swap`: el navegador pinta el texto
+ * con la **sans del sistema** y lo cambia a la fuente real cuando termina de cargarla. En
+ * pantalla la vista ya se «swap»-eó y se ve bien, pero si se imprime justo en ese hueco el
+ * papel sale con la tipografía equivocada —el bug del membrete—. Esperar a
+ * `document.fonts.ready` cierra el hueco. Si algo falla, se imprime igual: un documento
+ * nunca puede quedarse sin sacar por una fuente.
+ */
+export const esperarFuentes = async (
+  fuentes: FuentesDelDocumento | undefined = globalThis.document?.fonts,
+): Promise<void> => {
+  if (fuentes === undefined) return;
+  try {
+    await fuentes.ready;
+  } catch {
+    /* imprimir igual */
+  }
+};
+
+/**
+ * Pide por adelantado las familias de la marca que ya están declaradas (`@font-face`).
+ *
+ * Con `font-display: swap`, la fuente no se pide hasta que se pinta algo con ella: la
+ * **vista previa** de un documento puede quedarse un instante en el respaldo y el papel
+ * (si se manda a imprimir enseguida) también. Adelantar la carga hace que el cambio de
+ * tipografía llegue cuanto antes. Una familia sin `@font-face` (por ejemplo una subida que
+ * nadie referencia) no se puede cargar: `load` falla y se ignora.
+ */
+export const precargarFuentes = (
+  familias: readonly FamiliaDeFuente[],
+  fuentes: FuentesDelDocumento | undefined = globalThis.document?.fonts,
+): void => {
+  if (fuentes === undefined || fuentes.load === undefined) return;
+  for (const familia of familias) {
+    const variantes = new Set(
+      familia.files.map(
+        (file) => `${file.style === 'italic' ? 'italic ' : ''}${String(file.weight)}`,
+      ),
+    );
+    for (const variante of variantes) {
+      void fuentes.load(`${variante} 1em "${familia.name}"`).catch(() => undefined);
+    }
+  }
+};

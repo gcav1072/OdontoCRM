@@ -8,7 +8,7 @@ import { MedicalRecordDocument } from '../components/clinical/MedicalRecordDocum
 import { MargenDeImpresion } from '../components/print/MargenDeImpresion';
 import { apiErrorMessage } from '../lib/api';
 import { clinicalApi } from '../lib/endpoints';
-import { useMargenDeImpresion, useTemaClaroParaImprimir } from '../lib/impresion';
+import { esperarFuentes, useMargenDeImpresion, useTemaClaroParaImprimir } from '../lib/impresion';
 import { t } from '../lib/i18n';
 
 /**
@@ -45,6 +45,9 @@ export const MedicalRecordPrintPage = () => {
     } catch (fallo) {
       setAviso(apiErrorMessage(fallo));
     }
+    // El papel espera a la tipografía de la marca: con `font-display: swap`, imprimir en el
+    // hueco de carga sacaba el membrete con la sans del sistema (ver lib/impresion.ts).
+    await esperarFuentes();
     window.print();
   };
 

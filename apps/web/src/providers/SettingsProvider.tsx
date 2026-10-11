@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
 
 import { settingsApi } from '../lib/endpoints';
+import { precargarFuentes } from '../lib/impresion';
 import { APP_SETTINGS_QUERY_KEY } from '../lib/queryKeys';
 import { useAuth } from './AuthProvider';
 
@@ -59,7 +60,13 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   });
 
   useEffect(() => {
-    if (consulta.data !== undefined) aplicarAjustes(consulta.data);
+    if (consulta.data === undefined) return;
+    aplicarAjustes(consulta.data);
+    // Las `@font-face` van con `font-display: swap`: la fuente no se pide hasta que se
+    // pinta algo con ella, así que la vista previa (y el papel, si se imprime enseguida)
+    // podían quedarse un instante en el respaldo. Pedirlas aquí hace que el cambio de
+    // tipografía llegue cuanto antes, sin esperar a que alguien pinte un membrete.
+    precargarFuentes(consulta.data.brand.fonts.families);
   }, [consulta.data]);
 
   return (
