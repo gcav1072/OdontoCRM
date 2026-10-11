@@ -123,7 +123,7 @@ export const readBrandSettings = async (
       // Las filas anteriores al membrete configurable no traen las líneas ni el pie: se
       // mezclan con el respaldo campo a campo para no perder la marca guardada.
       letterhead: { ...defaults.letterhead, ...(row.letterhead ?? {}) },
-      // Las filas anteriores al papel configurable no lo traen: el récipe sale en A4.
+      // Las filas anteriores al papel configurable no lo traen: el récipe sale en carta.
       recipePaper: row.recipePaper ?? defaults.recipePaper,
       fonts: normalizarFuentes(row.fonts) ?? defaults.fonts,
     },

@@ -179,11 +179,10 @@ describe('la marca del consultorio', () => {
 });
 
 describe('el papel del récipe', () => {
-  it('la marca de fábrica imprime en A4, el papel de los demás imprimibles', () => {
-    // Regresión del fallo de producción: el récipe salía en carta apaisada (215,9 mm de
-    // alto) y esa hoja no cabe en una A4 (210 mm): la impresora dejaba una segunda hoja
-    // en blanco con el récipe perfecto en la primera.
-    expect(BRAND.recipePaper).toBe('A4');
+  it('la marca de fábrica imprime en carta, el papel de la clínica', () => {
+    // El papel de la bandeja es carta: una hoja A4 apaisada (210 mm de alto) no entra en
+    // ella (215,9 mm) y la impresora deja una segunda hoja —en blanco— detrás.
+    expect(BRAND.recipePaper).toBe('letter');
   });
 
   it('la geometría dice lo mismo para el `@page` y para el PDF', () => {

@@ -141,10 +141,10 @@ describe('validación de la configuración', () => {
     }
   });
 
-  it('el papel del récipe se completa con A4 cuando la marca guardada no lo trae', () => {
-    // Regresión del fallo de producción: el récipe salía en **carta apaisada** (215,9 mm
-    // de alto) y no cabe en una A4 (210 mm), así que la impresora sacaba una segunda hoja
-    // en blanco. Una marca guardada antes del ajuste sale en A4 sin tocar nada.
+  it('el papel del récipe se completa con carta cuando la marca guardada no lo trae', () => {
+    // El papel de la bandeja es carta: una hoja A4 apaisada (210 mm de alto) no entra en
+    // ella y deja una segunda hoja en blanco. Una marca guardada sin el campo sale en
+    // carta sin tocar nada.
     const resultado = brandSettingsSchema.safeParse({
       palette: BRAND.palette,
       typography: {
@@ -158,7 +158,7 @@ describe('validación de la configuración', () => {
       fonts: { families: [] },
     });
     expect(resultado.success).toBe(true);
-    if (resultado.success) expect(resultado.data.recipePaper).toBe('A4');
+    if (resultado.success) expect(resultado.data.recipePaper).toBe('letter');
   });
 
   it('el papel del récipe se elige entre A4 y carta', () => {

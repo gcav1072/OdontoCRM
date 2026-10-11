@@ -374,8 +374,8 @@ export const BRAND: Brand = {
   },
   logoPath: 'assets/clinic/logo.svg',
   watermarkPath: 'assets/clinic/logo.svg',
-  /** A4: el mismo papel que la historia, el reporte, el dossier y los cobros. */
-  recipePaper: 'A4',
+  /** Carta: el mismo papel que la historia, el reporte, el dossier y los cobros. */
+  recipePaper: 'letter',
 };
 
 /* ══════════════════════════════════════════════════════════════════════════════

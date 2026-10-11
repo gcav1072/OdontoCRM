@@ -255,7 +255,7 @@ export const brandSettings = pgTable(
     letterhead: jsonb('letterhead').$type<BrandLetterheadSettings>(),
     /**
      * El papel del récipe (`A4` o `letter`). Nulo en las filas anteriores al
-     * ajuste: al leer se rellena con el papel de fábrica (A4).
+     * ajuste: al leer se rellena con el papel de fábrica (carta).
      */
     recipePaper: text('recipe_paper').$type<RecipePaper>(),
     fonts: jsonb('fonts').$type<BrandFontsSettings>(),
