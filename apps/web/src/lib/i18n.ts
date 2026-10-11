@@ -212,6 +212,11 @@ const DICCIONARIO = {
   'config.marca.tamanoTitulo': 'Tamaño del título (pt)',
   'config.marca.tamanoCuerpo': 'Tamaño del cuerpo (pt)',
   'config.marca.tamanoMenudo': 'Tamaño menudo (pt)',
+  'config.marca.papel': 'Papel del récipe',
+  'config.marca.papelAyuda':
+    'El papel de la bandeja de la impresora. El récipe sale apaisado y partido en dos mitades; una hoja carta (215,9 mm de alto) no cabe en una A4 y deja una segunda hoja en blanco.',
+  'config.marca.papelA4': 'A4 apaisado (el de los demás imprimibles)',
+  'config.marca.papelCarta': 'Carta apaisada (letter)',
   'config.marca.medidas': 'Medidas del membrete',
   'config.marca.altoLogo': 'Alto del logo (mm)',
   'config.marca.anchoVelo': 'Ancho de la marca de agua (mm)',
