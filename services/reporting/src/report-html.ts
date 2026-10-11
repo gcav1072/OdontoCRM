@@ -16,7 +16,7 @@ import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
 /**
  * Plantilla HTML imprimible del reporte: es lo que Chromium convierte en PDF
- * (`page.setContent` + `page.pdf`, A4 **horizontal**).
+ * (`page.setContent` + `page.pdf`, carta **horizontal**).
  *
  * Lleva el membrete del consultorio —el mismo dato editable que usan el récipe y las
  * pantallas (`packages/contracts/src/clinic.ts`)—, los KPIs, las gráficas **no**
@@ -68,7 +68,7 @@ const estilos = (fontFaces: string, brand: BrandThemePayload | null | undefined)
   ${brandStyles(brand ?? BRAND)}
   ${brandWatermarkCss()}
   ${letterheadCss()}
-  @page { size: A4 landscape; margin: 10mm 12mm; }
+  @page { size: letter landscape; margin: 10mm 12mm; }
   * { box-sizing: border-box; }
   /* El cuerpo (fuente y tinta) lo pone brandStyles(): la MISMA marca que el récipe y el
      dossier, para que los documentos del consultorio no salgan cada uno de un color. */

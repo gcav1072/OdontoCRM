@@ -28,7 +28,7 @@ export const reportingEnvSchema = baseEnvSchema.extend({
   REPORTING_REFRESH_HOUR: z.coerce.number().int().min(0).max(23).default(3),
 
   /**
-   * Chromium para el PDF del reporte (A4 horizontal). Vacío = el navegador que
+   * Chromium para el PDF del reporte (carta horizontal). Vacío = el navegador que
    * administra Playwright (`npx playwright install chromium`). Mismo patrón que el
    * servicio clínico, que ya imprime los récipes con él.
    */

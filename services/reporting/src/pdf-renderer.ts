@@ -6,7 +6,7 @@ import { chromium, type Browser } from 'playwright';
  * **Viene de `services/clinical/src/prescriptions/pdf-renderer.ts`** (el récipe A5):
  * mismo patrón —un navegador por proceso, reutilizado entre documentos, y una cola
  * sencilla para no abrir dos páginas a la vez—, cambia solo el formato del papel
- * (A4 **horizontal**, que es lo que pide una tabla de reporte con muchas columnas).
+ * (carta **horizontal**, que es lo que pide una tabla de reporte con muchas columnas).
  *
  * Se copia en vez de compartirse porque el paquete de utilidades comunes no tiene
  * (ni debe tener) dependencia de Playwright: los servicios que imprimen son dos y
@@ -21,7 +21,7 @@ export interface PdfRendererOptions {
 }
 
 export interface PdfRenderer {
-  /** HTML → PDF A4 horizontal (devuelve los bytes). */
+  /** HTML → PDF carta horizontal (devuelve los bytes). */
   render: (html: string) => Promise<Buffer>;
   /** Cierra el navegador (lo llama el apagado del servicio). */
   close: () => Promise<void>;
@@ -67,7 +67,7 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
           await fuentes?.ready;
         });
         return await page.pdf({
-          format: 'A4',
+          format: 'Letter',
           landscape: true,
           printBackground: true,
         });
