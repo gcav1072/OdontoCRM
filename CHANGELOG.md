@@ -4,6 +4,35 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Configuración] — El error de validación dice qué campo está mal · 2026-10-11
+
+Al personalizar el consultorio en `/configuracion`, guardar podía responder **«Los datos enviados no son
+válidos»** y nada más: sin decir qué campo. El mensaje era el `detail` genérico de `parseOrThrow` y el
+detalle por campo viajaba solo en `errors[]`, que nadie pinta. Y había un segundo problema: Zod no trae
+textos en español, así que el motivo salía en inglés («Too small: expected string to have >=1
+characters») en un sistema que está todo en español.
+
+Ahora el 400 **nombra los campos** —`logoHeightMm (no puede ser mayor que 60)`—, hasta tres, y resume el
+resto («y 2 más»). Como el nombre va **sin dos puntos**, la censura de credenciales de `sanitizeMessage`
+(`password: …`, `token: …`) no lo confunde con un secreto. Los mensajes de Zod se instalan en español en
+los servicios y en la SPA, con el límite dicho en palabras, y **un texto escrito a medida en el esquema
+manda**: «El correo no es válido» o «Usa un color en formato #rrggbb» se siguen leyendo igual. De paso, el
+panel **valida antes de enviar** (como ya hacía la paleta): marca el campo en rojo con su rango y
+deshabilita Guardar en vez de mandar algo que el servidor va a rechazar.
+
+En el camino se cerraron dos defectos reales del panel, que eran los que hacían fallar el guardado: la
+entrada de canales rechazaba `null` —la forma en que la vista devuelve un campo sin valor— y la base de
+WhatsApp vacía, que el servicio interpreta como «volver a la de fábrica».
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `common/zod-es.ts` (contratos, nuevo) | Los mensajes de Zod en español, diciendo el límite («no puede ser mayor que 60») y respetando los textos del esquema |
+| `errors.ts` (kernel) | `ValidationError` compone `mensaje — campo (motivo) · y N más`; `errors[]` no cambia |
+| `validation.ts` (kernel) | Instala los mensajes en español en los servicios: el detalle por campo deja de salir en inglés |
+| `domain/settings.ts` (contratos) | Los canales aceptan `null` y `''`; `BRAND_LIMITS` es la única fuente de los mínimos y máximos |
+| `MarcaSection` · `MembreteSection` · `RolTipografico` | Error en línea y Guardar deshabilitado con un valor fuera de rango o una pila vacía |
+| `CanalesSection` · `PantallasSection` · `api.ts` | El aviso añade el `path` que el servidor no hubiera nombrado (una puerta antigua sigue diciendo qué corregir) |
+
 ## [Despliegue] — El build compila en limpio y avisa si el `dist` es viejo · 2026-10-11
 
 El récipe salía en producción con la **letra encogida y en dos hojas** aunque el arreglo
