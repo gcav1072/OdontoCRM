@@ -1,4 +1,9 @@
-import { updateClinicProfileSchema, updateDentistProfileSchema } from '@odontocrm/contracts';
+import {
+  clinicNameFromLines,
+  clinicNameLines,
+  updateClinicProfileSchema,
+  updateDentistProfileSchema,
+} from '@odontocrm/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -76,7 +81,7 @@ export const ProfilePage = () => {
   useEffect(() => {
     if (identidad === null) return;
     // El nombre puede venir en dos líneas (se guardan con un salto); cada una a su campo.
-    const [linea1 = '', linea2 = ''] = identidad.clinic.name.split('\n');
+    const [linea1, linea2] = clinicNameLines(identidad.clinic.name);
     setNombre(linea1);
     setNombreLinea2(linea2);
     setRif(identidad.clinic.rif ?? '');
@@ -114,10 +119,8 @@ export const ProfilePage = () => {
   const guardarConsultorio = async () => {
     limpiar();
     const revision = updateClinicProfileSchema.safeParse({
-      name: [nombre, nombreLinea2]
-        .map((linea) => linea.trim())
-        .filter((linea) => linea !== '')
-        .join('\n'),
+      // Sin recortar aquí: el esquema recorta cada línea y descarta las vacías al validar.
+      name: clinicNameFromLines(nombre, nombreLinea2),
       legalName: identidad?.clinic.legalName ?? null,
       address: direccion,
       city: identidad?.clinic.city ?? null,

@@ -1,4 +1,8 @@
-import { completeOnboardingSchema } from '@odontocrm/contracts';
+import {
+  clinicNameFromLines,
+  clinicNameLines,
+  completeOnboardingSchema,
+} from '@odontocrm/contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -87,16 +91,15 @@ export const CompleteProfilePage = () => {
   // El nombre del consultorio puede partirse en **dos líneas**: se guarda con un salto
   // (misma columna de texto, sin migración) y el membrete lo imprime tal cual.
   const nombreConsultorio = formulario.watch('clinic.name') ?? '';
-  const [nombreLinea1 = '', nombreLinea2 = ''] = nombreConsultorio.split('\n');
+  const [nombreLinea1, nombreLinea2] = clinicNameLines(nombreConsultorio);
+  // **Sin recortar**: el espacio entre dos palabras se teclea y se queda. El recorte y el
+  // tope de dos líneas los hace el esquema al enviar, no cada tecla (si se recortara aquí,
+  // el nombre no admitiría espacios —el fallo del alta del titular—).
   const escribirNombre = (linea1: string, linea2: string): void => {
-    formulario.setValue(
-      'clinic.name',
-      [linea1, linea2]
-        .map((linea) => linea.trim())
-        .filter((linea) => linea !== '')
-        .join('\n'),
-      { shouldValidate: true, shouldDirty: true },
-    );
+    formulario.setValue('clinic.name', clinicNameFromLines(linea1, linea2), {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
   };
 
   const enviar = async (valores: ValoresEnviados) => {
