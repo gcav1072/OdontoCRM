@@ -4,6 +4,32 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Imprimibles] — El récipe cabe en una hoja y el nombre admite dos líneas · 2026-10-10
+
+Dos arreglos del mismo papel. **(1)** Un récipe con varios medicamentos —o con un membrete alto—
+dejaba la **firma y el QR en una segunda hoja casi vacía**: la hoja apaisada tiene altura fija (ADR
+0061) y, al no caber el contenido, lo que se desbordaba era el pie de cada mitad. Ahora, si el
+documento no cabe a tamaño normal, el servicio lo **recompone con una escala de encaje menor** (1 →
+0,94 → … → 0,7) hasta que sale en **una sola página**; el récipe normal no cambia (sigue a escala 1,
+una sola composición). La escala multiplica todo el documento: membrete (logo incluido), listas,
+tabla y firmas.
+
+**(2)** El **nombre del consultorio** puede partirse en **dos líneas** desde Mi perfil (y el primer
+acceso): el membrete las imprime tal cual. Se guardan en la **misma columna de texto** con un salto
+de línea — **sin migración** —, y los textos que **no** son el membrete (el bot, el `.ics` y las
+pantallas de sala) las unen en **una sola línea** para que el salto no se cuele donde no toca.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `prescription-document.ts` | `--rx-fit` escala membrete, listas, tabla y firmas; `withPrescriptionFit` reescribe el valor |
+| `prescription-service.ts` | Compone a escala 1 y, si sale en dos hojas, reintenta 0,94…0,7 hasta una página |
+| `clinic.ts` | `clinicNameOneLine`: une las dos líneas del nombre para bot, `.ics` y pantallas |
+| `domain/clinic-profile.ts` | El nombre admite hasta dos líneas (recorta cada una y descarta las vacías) |
+| `brand.ts` | `.brand-lh-name` con `white-space: pre-line`: el membrete respeta el salto |
+| `ProfilePage` / `CompleteProfilePage` | Dos campos: nombre (línea 1) y línea 2 opcional |
+| `MembreteSection` | La **vista previa** del membrete respeta el salto |
+| `clinic-identity.ts` | `CLINIC_NAME` sale en una línea (bot, `.ics` y cabecera de las pantallas) |
+
 ## [Imprimibles] — El respaldo de la marca deja de ser silencioso · 2026-10-10
 
 Los documentos del servidor (récipe, dossier, reporte, factura, recibo y nota) leen la marca

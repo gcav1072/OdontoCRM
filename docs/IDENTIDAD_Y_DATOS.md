@@ -44,7 +44,7 @@ edita desde el panel es el **acento** (diez presets del espectro); el resto de l
 
 | Dato | Dónde vive | Quién lo edita | Dónde se nota |
 | :--- | :--- | :--- | :--- |
-| Nombre del consultorio | Perfil del consultorio (base) · respaldo `clinic.ts` → `name` | **Titular** (Mi perfil) · admin | Bot, `.ics`, pantallas de sala, membrete de **todos** los imprimibles |
+| Nombre del consultorio | Perfil del consultorio (base) · respaldo `clinic.ts` → `name` | **Titular** (Mi perfil) · admin | Bot, `.ics`, pantallas de sala (en **una línea**) y membrete de **todos** los imprimibles (admite **dos líneas**) |
 | Razón social | Perfil del consultorio · `clinic.ts` → `legalName` | Titular · admin | Membrete de la factura, el recibo, la nota de crédito, el récipe y el dossier |
 | Dirección y ciudad | Perfil del consultorio · `clinic.ts` → `address`, `city` | Titular · admin | Membrete de los imprimibles |
 | Teléfonos y correo | Perfil del consultorio · `clinic.ts` → `phones`, `email` | Titular · admin | Membrete del récipe y las pantallas |
@@ -55,6 +55,11 @@ edita desde el panel es el **acento** (diez presets del espectro); el resto de l
 | Paleta, **tipografías**, medidas del membrete y del velo | `brand.ts` → `palette`, `typography`, `fonts`, `letterhead` | **Solo código** | Colores, fuentes y medidas de los documentos impresos |
 | Archivos de fuente (`.woff2`) | `assets/clinic/fonts/` (`BRAND.fonts`) | **Solo código** | La tipografía de los títulos y del cuerpo en papel y pantalla |
 | Colores de la aplicación | `tokens.css` | Solo código | Todo el cromo de la interfaz (claro y oscuro) |
+
+> **El nombre del consultorio admite dos líneas.** Se escriben en Mi perfil (línea 1 y línea 2,
+> la segunda opcional) y se guardan en la **misma** columna de texto con un salto de línea — **sin
+> migración** —. El membrete imprime las dos; el bot, el `.ics` y las pantallas las unen en una sola
+> (`clinicNameOneLine`).
 
 > **El logo aparece en dos sitios por una razón.** El perfil del consultorio dice **qué archivo**
 > es el logo (el subido en el almacén) y `brand.ts` conserva la ruta del **respaldo** del
