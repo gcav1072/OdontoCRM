@@ -407,7 +407,7 @@ export const dossierExportsNumberSequence = pgSequence('dossier_exports_number_s
 });
 
 /**
- * Exportaciones del **dossier** del expediente: el PDF A4 que reúne filiación,
+ * Exportaciones del **dossier** del expediente: el PDF carta que reúne filiación,
  * odontograma, evolución y farmacia de un paciente.
  *
  * No es un acto clínico y por eso no se «emite» como un récipe, pero sí uno de
@@ -438,7 +438,7 @@ export const dossierExports = pgTable(
     issuedByUsername: text('issued_by_username'),
     /** Código que lleva el QR y resuelve `/verificar-expediente/<código>`. */
     verifyCode: text('verify_code').notNull(),
-    /** PDF A4 archivado (ruta dentro del almacén) y su huella. */
+    /** PDF carta archivado (ruta dentro del almacén) y su huella. */
     pdfPath: text('pdf_path').notNull(),
     pdfSha256: text('pdf_sha256').notNull(),
     /** Hojas que salieron, para el registro (Chromium no lo dice: se mide al componer). */

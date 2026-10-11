@@ -28,7 +28,7 @@ import type { OdontogramChartLookup } from '../shared/odontogram-client.js';
 
 /**
  * El **dossier del expediente**: se reúne todo lo que el consultorio sabe del paciente
- * —filiación, alertas, odontograma, evolución y farmacia— en un PDF A4 foliado, se
+ * —filiación, alertas, odontograma, evolución y farmacia— en un PDF carta foliado, se
  * archiva con su huella y se entrega.
  *
  * El orden de la composición imita al del récipe, y por la misma razón: el PDF se
@@ -192,7 +192,7 @@ export const issueDossier = async (
   });
 
   const pdf = await deps.pdfRenderer.render(html, {
-    format: 'A4',
+    format: 'Letter',
     footerHtml: dossierFooterTemplate(formatted),
     marginMm: { top: 12, bottom: 16, left: 14, right: 14 },
   });

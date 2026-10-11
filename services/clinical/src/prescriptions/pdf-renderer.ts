@@ -57,7 +57,7 @@ export interface PdfFitToPage {
  * Cómo se compone el papel.
  *
  * El **récipe** va **apaisado** (`landscape: true`): su `@page` lleva el tamaño del papel
- * que elige la marca y sus márgenes. El **dossier** necesita A4, folio en cada página y
+ * que elige la marca y sus márgenes. El **dossier** necesita carta, folio en cada página y
  * márgenes que Chromium respete para dejar sitio al folio —y el folio solo existe si el
  * propio PDF lo dibuja (`displayHeaderFooter`); Chromium no soporta `counter(page)` en los
  * márgenes de `@page`, así que no hay forma de hacerlo con CSS.
@@ -74,7 +74,7 @@ export interface PdfRenderOptions {
 }
 
 export interface PdfRenderer {
-  /** HTML → PDF (A5 por defecto; el récipe pide su papel apaisado y el dossier A4 con folio). */
+  /** HTML → PDF (A5 por defecto; el récipe pide su papel apaisado y el dossier carta con folio). */
   render: (html: string, options?: PdfRenderOptions) => Promise<Buffer>;
   /** Cierra el navegador (lo llama el apagado del servicio). */
   close: () => Promise<void>;
@@ -176,7 +176,7 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
         // va a componer el PDF es la que decide cuánto ocupa el documento.
         if (opciones?.fitToPage !== undefined) await encajarEnLaHoja(page, opciones.fitToPage);
         // El récipe va en **carta apaisada** (`landscape: true`) con los márgenes de su
-        // `@page`. El dossier pide A4 y márgenes explícitos (para que quepa el folio del
+        // `@page`. El dossier pide carta y márgenes explícitos (para que quepa el folio del
         // pie).
         const margen = opciones?.marginMm;
         return await page.pdf({

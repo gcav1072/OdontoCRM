@@ -29,7 +29,7 @@ import { qrSvg } from './qr.js';
  * Sale en **una hoja apaisada** partida en dos mitades verticales: a la izquierda la
  * **copia de la farmacia** (qué dispensar) y a la derecha la **copia del paciente** (las
  * indicaciones, con el QR). Las dos mitades llevan membrete, la línea del especialista y
- * su firma. El papel (A4 de fábrica) y la **tipografía** (los tres tamaños del panel)
+ * su firma. El papel (carta de fábrica) y la **tipografía** (los tres tamaños del panel)
  * salen de la marca; el encaje a una sola hoja lo mide `prescriptions/fit-to-page.ts`.
  *
  * Es una plantilla de una sola pieza: el membrete sale de la **sección editable del
@@ -172,9 +172,9 @@ const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined):
   ${brandStyles(marca)}
   ${brandWatermarkCss()}
   ${letterheadCss()}
-  /* El papel lo fija la marca (A4 de fábrica, el mismo de los demás imprimibles): una
-     hoja carta apaisada mide 215,9 mm de alto y no cabe en una A4, así que la impresora
-     parte la última franja —que va en blanco— a una segunda hoja. */
+  /* El papel lo fija la marca (carta de fábrica, el mismo de los demás imprimibles): una
+     hoja A4 apaisada mide 210 mm de alto y no entra en una carta, así que la impresora
+     parte lo que sobra —que va en blanco— a una segunda hoja. */
   @page { size: ${papel.cssSize}; margin: ${String(RECIPE_MARGIN_MM)}mm; }
   * { box-sizing: border-box; }
   /* El cuerpo (fuente y tinta) lo pone brandStyles(), la marca compartida con el

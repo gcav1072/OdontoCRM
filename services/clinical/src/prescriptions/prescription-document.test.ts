@@ -254,23 +254,22 @@ describe('la tipografía del récipe sale del panel', () => {
 });
 
 describe('el papel del récipe', () => {
-  it('sale en A4 apaisada, el mismo papel que los demás imprimibles', async () => {
+  it('sale en carta apaisada, el mismo papel que los demás imprimibles', async () => {
     const html = await prescriptionHtml(base);
-    // Regresión del fallo de producción: el récipe salía en **carta apaisada** (215,9 mm
-    // de alto) y la hoja no cabe en una A4 (210 mm), así que la impresora partía la última
-    // franja —en blanco— a una segunda hoja.
-    expect(html).toContain('@page { size: A4 landscape; margin: 8mm; }');
-  });
-
-  it('el papel se elige en el panel: carta apaisada sigue estando', async () => {
-    const html = await prescriptionHtml({ ...base, brand: { ...BRAND, recipePaper: 'letter' } });
+    // El papel de la bandeja es carta: una hoja A4 apaisada (210 mm de alto) no entra en
+    // ella (215,9 mm), así que la impresora deja una segunda hoja —en blanco— detrás.
     expect(html).toContain('@page { size: letter landscape; margin: 8mm; }');
-    expect(recipePaperOf({ ...BRAND, recipePaper: 'letter' })).toBe('letter');
   });
 
-  it('sin marca (o con una vieja) el papel es el de fábrica: A4', () => {
-    expect(recipePaperOf(null)).toBe('A4');
-    expect(recipePaperOf(undefined)).toBe('A4');
+  it('el papel se elige en el panel: A4 apaisada sigue estando', async () => {
+    const html = await prescriptionHtml({ ...base, brand: { ...BRAND, recipePaper: 'A4' } });
+    expect(html).toContain('@page { size: A4 landscape; margin: 8mm; }');
+    expect(recipePaperOf({ ...BRAND, recipePaper: 'A4' })).toBe('A4');
+  });
+
+  it('sin marca (o con una vieja) el papel es el de fábrica: carta', () => {
+    expect(recipePaperOf(null)).toBe('letter');
+    expect(recipePaperOf(undefined)).toBe('letter');
   });
 });
 

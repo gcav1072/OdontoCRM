@@ -31,7 +31,7 @@ import { odontogramSection } from './dossier-odontogram.js';
 import { qrSvg } from '../prescriptions/qr.js';
 
 /**
- * El **dossier del expediente**: un PDF A4 foliado con la filiación del paciente, sus
+ * El **dossier del expediente**: un PDF carta foliado con la filiación del paciente, sus
  * alertas clínicas, el odontograma, la evolución de todas sus sesiones y su historial
  * farmacológico. Es lo que se entrega cuando el paciente pide su historial o cuando se
  * remite a un especialista: hasta ahora había que imprimir cada pieza por separado.
@@ -121,7 +121,7 @@ const estilos = (fontFaces: string, brand: BrandThemePayload | null | undefined)
   ${brandStyles(brand ?? BRAND)}
   ${brandWatermarkCss()}
   ${letterheadCss()}
-  @page { size: A4; }
+  @page { size: letter; }
   * { box-sizing: border-box; }
   /* Los márgenes del papel los fija el PDF (page.pdf → marginMm): tienen que dejar
      sitio al folio, y el folio solo lo dibuja Chromium (displayHeaderFooter). */

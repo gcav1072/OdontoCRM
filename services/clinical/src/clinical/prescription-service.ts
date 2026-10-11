@@ -337,7 +337,7 @@ const nextPrescriptionNumber = async (db: ClinicalDb): Promise<number> => {
  * trato que le da el PDF de los reportes— para que quien lo vea sepa que es del servidor.
  *
  * El récipe sale en **una sola hoja** (dos mitades: farmacia y paciente) en el **papel de la
- * marca** —A4 de fábrica, el mismo de la historia, el reporte, el dossier y los cobros—. El
+ * marca** —carta de fábrica, el mismo de la historia, el reporte, el dossier y los cobros—. El
  * encaje mide el documento en el propio navegador y lo reduce lo justo si no cabe: así no
  * queda una segunda hoja casi vacía ni la letra encogida de más
  * ([ADR 0065](../../../docs/adr/0065-el-recipe-cabe-en-el-papel-de-la-clinica.md)).

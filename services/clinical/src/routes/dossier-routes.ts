@@ -39,7 +39,7 @@ export const registerDossierRoutes = (app: FastifyInstance, services: ClinicalSe
   const read = requirePermission('clinical:read');
 
   /**
-   * Exporta el expediente: compone el PDF A4, lo archiva con su huella y lo devuelve.
+   * Exporta el expediente: compone el PDF carta, lo archiva con su huella y lo devuelve.
    *
    * Se responde el propio PDF en vez de un enlace para que descarga y visualización sean
    * el mismo acto: el navegador lo abre con el visor integrado y no hay una URL temporal
