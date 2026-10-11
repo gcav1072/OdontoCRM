@@ -1,8 +1,10 @@
 import {
   DEFAULT_MESSAGE_TEMPLATES,
+  ICS_FORMAT_VERSION,
   NOTIFICATION_MAX_ATTEMPTS,
   buildIcsEvent,
   icsFilename,
+  icsFormatVersionOf,
   renderMessage,
   type AppointmentSummary,
   type Channel,
@@ -604,31 +606,8 @@ export interface GeneratedIcs {
   sequence: number;
 }
 
-export const ensureIcsArtifact = async (
-  db: NotificationsDb,
-  config: NotificationsConfig,
-  appointment: AppointmentSummary,
-): Promise<GeneratedIcs> => {
-  const existing = await db
-    .select()
-    .from(icsArtifacts)
-    .where(
-      and(
-        eq(icsArtifacts.appointmentId, appointment.id),
-        eq(icsArtifacts.sequence, appointment.icsSequence),
-      ),
-    )
-    .limit(1);
-  const found: IcsArtifactRow | undefined = existing[0];
-  if (found !== undefined) {
-    return {
-      filename: found.filename,
-      content: found.content,
-      sha256: found.sha256,
-      sequence: found.sequence,
-    };
-  }
-
+/** Compone el `.ics` (y su huella) con los datos de la cita y del consultorio. */
+const composeIcs = (config: NotificationsConfig, appointment: AppointmentSummary): GeneratedIcs => {
   // El `.ics` lleva el nombre y el lugar del consultorio: sin ellos no se compone. El
   // servidor reintenta solo cuando el titular complete el registro.
   if (!clinicReady(config)) throw new ClinicNotConfiguredError();
@@ -650,21 +629,77 @@ export const ensureIcsArtifact = async (
     attendeeName: appointment.patientName,
   });
 
-  const filename = icsFilename(appointment.ticket, appointment.id);
-  const sha256 = icsSha256(content);
+  return {
+    filename: icsFilename(appointment.ticket, appointment.id),
+    content,
+    sha256: icsSha256(content),
+    sequence: appointment.icsSequence,
+  };
+};
+
+export const ensureIcsArtifact = async (
+  db: NotificationsDb,
+  config: NotificationsConfig,
+  appointment: AppointmentSummary,
+): Promise<GeneratedIcs> => {
+  const existing = await db
+    .select()
+    .from(icsArtifacts)
+    .where(
+      and(
+        eq(icsArtifacts.appointmentId, appointment.id),
+        eq(icsArtifacts.sequence, appointment.icsSequence),
+      ),
+    )
+    .limit(1);
+  const found: IcsArtifactRow | undefined = existing[0];
+
+  // El artefacto ya compuesto se reutiliza —es reproducible y auditable—, pero **no** si
+  // lo compuso una versión anterior del generador: el formato cambió (los parámetros
+  // `CN=` sin entrecomillar hacían que el calendario «no abriera» en el celular) y el
+  // archivo guardado seguiría saliendo mal en cada reenvío. Se rehace y se actualiza la
+  // **misma** fila: el número de secuencia no cambia, porque el evento es el mismo.
+  if (found !== undefined && icsFormatVersionOf(found.content) >= ICS_FORMAT_VERSION) {
+    return {
+      filename: found.filename,
+      content: found.content,
+      sha256: found.sha256,
+      sequence: found.sequence,
+    };
+  }
+
+  const generado = composeIcs(config, appointment);
+
+  if (found !== undefined) {
+    await db
+      .update(icsArtifacts)
+      .set({
+        filename: generado.filename,
+        content: generado.content,
+        sha256: generado.sha256,
+        generatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(icsArtifacts.appointmentId, appointment.id),
+          eq(icsArtifacts.sequence, appointment.icsSequence),
+        ),
+      );
+    return generado;
+  }
 
   await db
     .insert(icsArtifacts)
     .values({
       appointmentId: appointment.id,
       sequence: appointment.icsSequence,
-      filename,
-      content,
-      sha256,
+      filename: generado.filename,
+      content: generado.content,
+      sha256: generado.sha256,
     })
     .onConflictDoNothing({ target: [icsArtifacts.appointmentId, icsArtifacts.sequence] });
 
-  return { filename, content, sha256, sequence: appointment.icsSequence };
+  return generado;
 };
 
 export const findIcsArtifact = async (
@@ -844,7 +879,13 @@ export const processQueue = async (
           documento: {
             nombre: ics.filename,
             contenido: Buffer.from(ics.content, 'utf8'),
-            mime: 'text/calendar; charset=utf-8; method=PUBLISH',
+            // El tipo **canónico** del documento. Antes viajaba con parámetros
+            // (`text/calendar; charset=utf-8; method=PUBLISH`): Telegram y WhatsApp usan
+            // esa cadena como `mime_type` del archivo y el teléfono decide con ella qué
+            // aplicación ofrece; un tipo con parámetros deja de reconocerse como
+            // calendario y el `.ics` «no abre». El `METHOD` no hace falta aquí: viaja
+            // **dentro** del archivo, que es quien lo lee.
+            mime: 'text/calendar',
           },
         });
         messageId = attachment.idMensaje;

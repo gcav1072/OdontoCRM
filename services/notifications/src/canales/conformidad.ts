@@ -84,7 +84,7 @@ const esperarA = async (
 const DOCUMENTO = {
   nombre: 'cita-000123.ics',
   contenido: Buffer.from('BEGIN:VCALENDAR\nEND:VCALENDAR\n', 'utf8'),
-  mime: 'text/calendar; charset=utf-8',
+  mime: 'text/calendar',
 };
 
 const BOTONES = [
