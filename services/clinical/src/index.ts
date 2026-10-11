@@ -51,6 +51,18 @@ const main = async (): Promise<void> => {
   await startBoss(boss);
   await ensureDomainEventsQueue(boss);
 
+  /**
+   * Avisos de que los imprimibles están cayendo al **respaldo del código** (la marca o la
+   * identidad del consultorio). Se resuelven por referencia, como el publicador: los
+   * lectores se construyen antes de que exista el servidor (y su logger). Sin esto, un
+   * fallo de la lectura interna dejaría los récipes con colores y membrete de fábrica en
+   * silencio —el fallo de «cambié el color en el panel y el papel salió igual»—.
+   */
+  const avisos: { marca: (motivo: string) => void; identidad: (motivo: string) => void } = {
+    marca: () => undefined,
+    identidad: () => undefined,
+  };
+
   const app = await createClinicalServer({
     config,
     database,
@@ -58,12 +70,29 @@ const main = async (): Promise<void> => {
     odontogramLookup: createOdontogramChartLookup(config),
     // El membrete se refresca en segundos: el logo y los datos salen de «Mi perfil» y no
     // pueden quedarse un minuto rancios mientras el administrador cree que ya aplicó.
-    letterheadLookup: createLetterheadLookup({ ...config, cacheTtlMs: 5_000 }),
-    brandLookup: createBrandLookup(config),
+    letterheadLookup: createLetterheadLookup({
+      ...config,
+      cacheTtlMs: 5_000,
+      onFallback: (motivo) => avisos.identidad(motivo),
+    }),
+    brandLookup: createBrandLookup({ ...config, onFallback: (motivo) => avisos.marca(motivo) }),
     blobStore,
     pdfRenderer,
     kickOutbox: () => publicador.kick(),
   });
+
+  avisos.marca = (motivo) =>
+    app.log.warn(
+      { lectura: 'marca' },
+      `Los imprimibles usan la marca del CÓDIGO (no la del panel): ${motivo}. ` +
+        'Revisa que identity esté arriba, al día y con el INTERNAL_SERVICE_SECRET compartido.',
+    );
+  avisos.identidad = (motivo) =>
+    app.log.warn(
+      { lectura: 'identidad' },
+      `Los imprimibles usan el membrete del CÓDIGO (no el del consultorio): ${motivo}. ` +
+        'Revisa que identity esté arriba, al día y con el INTERNAL_SERVICE_SECRET compartido.',
+    );
 
   const outbox = createOutboxRunner({
     pool: database.pool,
