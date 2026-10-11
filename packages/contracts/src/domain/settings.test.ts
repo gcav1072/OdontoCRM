@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { BRAND } from '../brand.js';
+
 import {
   DEFAULT_UI_ACCENT,
   HEX_COLOR_PATTERN,
@@ -11,6 +13,7 @@ import {
   brandSettingsSchema,
   channelSettingsInputSchema,
   hexColorSchema,
+  recipePaperSchema,
   resolveScreenText,
   screenTextsSchema,
   uiAccentCss,
@@ -136,6 +139,32 @@ describe('validación de la configuración', () => {
       expect(resultado.data.titlePt).toBe(12);
       expect(resultado.data.footer).toBeNull();
     }
+  });
+
+  it('el papel del récipe se completa con A4 cuando la marca guardada no lo trae', () => {
+    // Regresión del fallo de producción: el récipe salía en **carta apaisada** (215,9 mm
+    // de alto) y no cabe en una A4 (210 mm), así que la impresora sacaba una segunda hoja
+    // en blanco. Una marca guardada antes del ajuste sale en A4 sin tocar nada.
+    const resultado = brandSettingsSchema.safeParse({
+      palette: BRAND.palette,
+      typography: {
+        documentTitleSans: BRAND.typography.documentTitleSans,
+        documentBodySans: BRAND.typography.documentBodySans,
+        documentTitlePt: 13,
+        documentBodyPt: 9,
+        documentSmallPt: 7.5,
+      },
+      letterhead: { logoHeightMm: 18, watermarkWidthMm: 90, watermarkOpacity: 0.1 },
+      fonts: { families: [] },
+    });
+    expect(resultado.success).toBe(true);
+    if (resultado.success) expect(resultado.data.recipePaper).toBe('A4');
+  });
+
+  it('el papel del récipe se elige entre A4 y carta', () => {
+    expect(recipePaperSchema.safeParse('letter').success).toBe(true);
+    expect(recipePaperSchema.safeParse('A4').success).toBe(true);
+    expect(recipePaperSchema.safeParse('carta').success).toBe(false);
   });
 
   it('la entrada de canales es opcional: un campo ausente no se toca', () => {

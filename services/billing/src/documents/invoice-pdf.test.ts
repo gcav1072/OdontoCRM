@@ -122,6 +122,7 @@ describe('la plantilla de la factura', () => {
           palette: { ...BRAND.palette, primary: '#c81e1e', accent: '#f97316' },
           typography: BRAND.typography,
           letterhead: BRAND.letterhead,
+          recipePaper: BRAND.recipePaper,
         },
       }),
     );

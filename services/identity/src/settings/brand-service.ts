@@ -53,6 +53,7 @@ export const defaultBrandSettings = (): BrandSettings => ({
     // Copia profunda de las líneas: la marca de fábrica no comparte arreglo con `BRAND`.
     lines: BRAND.letterhead.lines.map((line) => ({ ...line })),
   },
+  recipePaper: BRAND.recipePaper,
   fonts: {
     families: BRAND.fonts.families.map((familia) => ({
       name: familia.name,
@@ -122,6 +123,8 @@ export const readBrandSettings = async (
       // Las filas anteriores al membrete configurable no traen las líneas ni el pie: se
       // mezclan con el respaldo campo a campo para no perder la marca guardada.
       letterhead: { ...defaults.letterhead, ...(row.letterhead ?? {}) },
+      // Las filas anteriores al papel configurable no lo traen: el récipe sale en A4.
+      recipePaper: row.recipePaper ?? defaults.recipePaper,
       fonts: normalizarFuentes(row.fonts) ?? defaults.fonts,
     },
     fromDatabase: true,
@@ -145,6 +148,7 @@ const themeOf = (settings: BrandSettings): BrandThemePayload => ({
     documentSmallPt: settings.typography.documentSmallPt,
   },
   letterhead: settings.letterhead,
+  recipePaper: settings.recipePaper,
 });
 
 /**
@@ -237,6 +241,7 @@ export const updateBrandSettings = async (
     palette: input.palette,
     typography: input.typography,
     letterhead: input.letterhead,
+    recipePaper: input.recipePaper,
     fonts: input.fonts,
     updatedAt: new Date(),
     updatedBy: actorId,

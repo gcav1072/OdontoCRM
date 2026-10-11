@@ -25,7 +25,12 @@ const describeWithDatabase = connectionString === undefined ? describe.skip : de
 const PASSWORD = 'prueba-odontocrm-2026';
 const suffix = String(Date.now()).slice(-6);
 const INTERNAL = 'secreto-interno-de-prueba-para-configuracion';
-const TOKEN = '1234567890:token-del-panel-de-configuracion-de-prueba';
+/**
+ * Token de mentira del panel. **A propósito no tiene forma de token real**
+ * (`<ocho-diez dígitos>:<35 caracteres>`): `npm run check-secrets` lo leería como un
+ * secreto y el revisor no sabría distinguirlo de uno de verdad.
+ */
+const TOKEN = 'token-de-prueba-del-panel-de-configuracion';
 /** Clave de 32 bytes en base64url para probar el **cifrado** de los secretos en reposo. */
 const STORAGE_KEY = Buffer.alloc(32, 42).toString('base64url');
 
@@ -220,6 +225,8 @@ describeWithDatabase('configuración de la aplicación (PostgreSQL real)', () =>
         // su `@font-face` tiene que viajar igual en el `themeCss` (el bug del membrete).
         titleSans: "'Dancing Script', sans-serif",
       },
+      // El papel del récipe viaja con la marca: es lo que decide el `@page` de la plantilla.
+      recipePaper: 'letter',
       fonts: {
         families: [
           {
@@ -263,6 +270,9 @@ describeWithDatabase('configuración de la aplicación (PostgreSQL real)', () =>
     });
     expect(interna.statusCode).toBe(200);
     expect(interna.json().theme.palette.primary).toBe('#7f1d1d');
+    // El papel del récipe lo sirve la marca efectiva: el servicio de documentos lo lee de
+    // aquí para el `@page` y para el tamaño del PDF.
+    expect(interna.json().theme.recipePaper).toBe('letter');
     expect(interna.json().fontFaceCss).toContain("font-family: 'Dancing Script';");
   });
 

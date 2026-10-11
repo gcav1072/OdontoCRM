@@ -113,6 +113,7 @@ describe('plantilla HTML del reporte', () => {
       palette: { ...BRAND.palette, primary: '#c81e1e', accent: '#f97316' },
       typography: BRAND.typography,
       letterhead: BRAND.letterhead,
+      recipePaper: BRAND.recipePaper,
     };
     const html = await reportHtml(documentoDePrueba(), undefined, marca);
     expect(html).toContain('--brand-primary: #c81e1e;');

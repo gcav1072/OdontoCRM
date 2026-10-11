@@ -38,6 +38,7 @@ import type {
   BrandLetterheadSettings,
   BrandPaletteSettings,
   BrandTypographyInput,
+  RecipePaper,
   ScreenTexts,
 } from '@odontocrm/contracts';
 
@@ -252,6 +253,11 @@ export const brandSettings = pgTable(
     palette: jsonb('palette').$type<BrandPaletteSettings>(),
     typography: jsonb('typography').$type<BrandTypographyInput>(),
     letterhead: jsonb('letterhead').$type<BrandLetterheadSettings>(),
+    /**
+     * El papel del récipe (`A4` o `letter`). Nulo en las filas anteriores al
+     * ajuste: al leer se rellena con el papel de fábrica (A4).
+     */
+    recipePaper: text('recipe_paper').$type<RecipePaper>(),
     fonts: jsonb('fonts').$type<BrandFontsSettings>(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     updatedBy: uuid('updated_by'),

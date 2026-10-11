@@ -53,6 +53,7 @@ const themeOf = (brand: BrandTheme): EffectiveBrand['theme'] => ({
   palette: brand.palette,
   typography: brand.typography,
   letterhead: brand.letterhead,
+  recipePaper: brand.recipePaper,
 });
 
 /**

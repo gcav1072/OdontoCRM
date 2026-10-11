@@ -29,10 +29,11 @@ import type {
   LetterheadLineKey,
   LogoHorizontalAlign,
   LogoVerticalAlign,
+  RecipePaper,
 } from './domain/settings.js';
 
 /* Se reexportan para que quien lee la marca tenga los tipos del membrete a mano. */
-export type { LetterheadLineKey, LogoHorizontalAlign, LogoVerticalAlign };
+export type { LetterheadLineKey, LogoHorizontalAlign, LogoVerticalAlign, RecipePaper };
 
 /** Familias tipográficas y tamaños base de los documentos impresos (en pt). */
 export interface BrandTypography {
@@ -197,6 +198,11 @@ export interface BrandTheme {
   palette: BrandPalette;
   typography: BrandTypography;
   letterhead: BrandLetterhead;
+  /**
+   * El papel en el que sale el **récipe apaisado**. Los demás imprimibles salen en
+   * A4; el récipe era el único en carta, y una carta apaisada no cabe en una A4.
+   */
+  recipePaper: RecipePaper;
 }
 
 export interface Brand extends BrandTheme {
@@ -368,11 +374,52 @@ export const BRAND: Brand = {
   },
   logoPath: 'assets/clinic/logo.svg',
   watermarkPath: 'assets/clinic/logo.svg',
+  /** A4: el mismo papel que la historia, el reporte, el dossier y los cobros. */
+  recipePaper: 'A4',
 };
 
 /* ══════════════════════════════════════════════════════════════════════════════
    ▲▲▲  FIN DE LA SECCIÓN EDITABLE  ▲▲▲  Debajo solo hay ayudas de lectura.
    ══════════════════════════════════════════════════════════════════════════════ */
+
+/** El margen del récipe en los cuatro bordes (mm): lo fija su plantilla. */
+export const RECIPE_MARGIN_MM = 8;
+
+/**
+ * El papel del récipe ya resuelto: lo que hay que escribir en el `@page` de la
+ * plantilla, lo que espera Chromium al componer el PDF y su medida en milímetros
+ * (ya apaisada). Una sola fuente para las dos cosas: el `@page` y el PDF tienen que
+ * decir lo mismo, o el tamaño de la hoja dependerá de quién gane.
+ */
+export interface RecipePaperGeometry {
+  /** Valor para el `@page` del récipe (`A4 landscape`). */
+  cssSize: string;
+  /** Formato que espera Chromium al componer el PDF. */
+  format: 'A4' | 'Letter';
+  /** Ancho del papel, en milímetros y ya apaisado. */
+  widthMm: number;
+  /** Alto del papel, en milímetros y ya apaisado. */
+  heightMm: number;
+}
+
+/** La medida de cada papel en horizontal (mm). */
+const RECIPE_PAPER_MEASURE: Readonly<
+  Record<RecipePaper, { format: 'A4' | 'Letter'; css: string; widthMm: number; heightMm: number }>
+> = {
+  A4: { format: 'A4', css: 'A4 landscape', widthMm: 297, heightMm: 210 },
+  letter: { format: 'Letter', css: 'letter landscape', widthMm: 279.4, heightMm: 215.9 },
+};
+
+/** La geometría del papel del récipe: `A4 landscape`, `letter landscape`… */
+export const recipePaperGeometry = (paper: RecipePaper): RecipePaperGeometry => {
+  const medida = RECIPE_PAPER_MEASURE[paper];
+  return {
+    cssSize: medida.css,
+    format: medida.format,
+    widthMm: medida.widthMm,
+    heightMm: medida.heightMm,
+  };
+};
 
 /** Extensiones que el membrete sabe incrustar como data URI y su tipo MIME. */
 const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {

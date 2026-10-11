@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BRAND,
+  RECIPE_MARGIN_MM,
   brandCssVariables,
   brandRootBlock,
   brandStyles,
@@ -13,6 +14,7 @@ import {
   fontStackFor,
   letterheadCss,
   logoMimeType,
+  recipePaperGeometry,
 } from './brand.js';
 
 /**
@@ -173,5 +175,32 @@ describe('la marca del consultorio', () => {
     expect(brandWatermarkHtml('data:image/svg+xml;base64,AAAA')).toBe(
       '<img class="brand-watermark" src="data:image/svg+xml;base64,AAAA" alt="" aria-hidden="true">',
     );
+  });
+});
+
+describe('el papel del récipe', () => {
+  it('la marca de fábrica imprime en A4, el papel de los demás imprimibles', () => {
+    // Regresión del fallo de producción: el récipe salía en carta apaisada (215,9 mm de
+    // alto) y esa hoja no cabe en una A4 (210 mm): la impresora dejaba una segunda hoja
+    // en blanco con el récipe perfecto en la primera.
+    expect(BRAND.recipePaper).toBe('A4');
+  });
+
+  it('la geometría dice lo mismo para el `@page` y para el PDF', () => {
+    const a4 = recipePaperGeometry('A4');
+    expect(a4.cssSize).toBe('A4 landscape');
+    expect(a4.format).toBe('A4');
+    // Medida apaisada y real de la hoja (mm): la que decide si cabe en el papel.
+    expect(a4.widthMm).toBe(297);
+    expect(a4.heightMm).toBe(210);
+
+    const carta = recipePaperGeometry('letter');
+    expect(carta.cssSize).toBe('letter landscape');
+    expect(carta.format).toBe('Letter');
+    expect(carta.widthMm).toBeCloseTo(279.4, 1);
+    expect(carta.heightMm).toBeCloseTo(215.9, 1);
+    // El área imprimible no puede ser cero: el margen de la plantilla es menor que el papel.
+    expect(RECIPE_MARGIN_MM).toBeGreaterThan(0);
+    expect(RECIPE_MARGIN_MM * 2).toBeLessThan(a4.heightMm);
   });
 });

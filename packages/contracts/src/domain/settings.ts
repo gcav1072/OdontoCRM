@@ -141,6 +141,26 @@ export const brandLetterheadSchema = z.object({
 
 export type BrandLetterheadSettings = z.infer<typeof brandLetterheadSchema>;
 
+/* ── Papel del récipe ──────────────────────────────────────────────────────── */
+
+/**
+ * Los papeles en los que puede salir el **récipe apaisado**. El resto de los
+ * imprimibles (historia clínica, odontograma, reporte, dossier, factura y recibo)
+ * salen en A4, así que es el papel que hay en la bandeja del consultorio.
+ */
+export const RECIPE_PAPERS = ['A4', 'letter'] as const;
+
+export type RecipePaper = (typeof RECIPE_PAPERS)[number];
+
+/**
+ * El papel del récipe. Por defecto **A4**, el mismo de los demás imprimibles.
+ *
+ * La hoja **carta apaisada mide 215,9 mm de alto y no cabe en una A4** (210 mm): la
+ * impresora parte la última franja —que va en blanco— a una segunda hoja, y el récipe
+ * sale acompañado de una hoja vacía. Con el papel bien puesto, la hoja entra entera.
+ */
+export const recipePaperSchema = z.enum(RECIPE_PAPERS).default('A4');
+
 /**
  * Una fuente declarada en la marca. Las **subidas** desde el panel viven en el
  * almacén (`source: 'subido'`); las de **respaldo** son las del repositorio
@@ -189,6 +209,8 @@ export const brandSettingsSchema = z.object({
   palette: brandPaletteSchema,
   typography: brandTypographyInputSchema,
   letterhead: brandLetterheadSchema,
+  /** El papel del récipe apaisado (A4 por defecto). */
+  recipePaper: recipePaperSchema,
   fonts: brandFontsSchema,
 });
 
@@ -633,6 +655,8 @@ export const brandThemePayloadSchema = z.object({
     documentSmallPt: z.number(),
   }),
   letterhead: brandLetterheadSchema,
+  /** El papel en el que se compone el récipe apaisado. */
+  recipePaper: recipePaperSchema,
 });
 
 export type BrandThemePayload = z.infer<typeof brandThemePayloadSchema>;

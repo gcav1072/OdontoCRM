@@ -14,6 +14,7 @@ const marca: BrandThemePayload = {
   palette: { ...BRAND.palette, primary: '#c81e1e', accent: '#f97316' },
   typography: BRAND.typography,
   letterhead: BRAND.letterhead,
+  recipePaper: BRAND.recipePaper,
 };
 
 const recibo = (extra: Partial<ReceiptPdfInput> = {}): ReceiptPdfInput => ({
