@@ -19,7 +19,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, Send, ShieldAlert } from 'lucide-react';
 import { useEffect, useState, type ReactElement } from 'react';
 
-import { apiErrorMessage } from '../../lib/api';
+import { apiErrorMessageConCampos } from '../../lib/api';
 import { settingsApi } from '../../lib/endpoints';
 import { t } from '../../lib/i18n';
 import { APP_SETTINGS_QUERY_KEY } from '../../lib/queryKeys';
@@ -126,7 +126,7 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
       });
       onNotice('success', t('config.guardado'));
     },
-    onError: (fallo) => onNotice('danger', apiErrorMessage(fallo)),
+    onError: (fallo) => onNotice('danger', apiErrorMessageConCampos(fallo)),
   });
 
   const probar = async (canal: 'telegram' | 'admin'): Promise<void> => {
@@ -140,7 +140,7 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
       });
       onNotice(resultado.ok ? 'success' : 'danger', resultado.detalle);
     } catch (fallo) {
-      onNotice('danger', apiErrorMessage(fallo));
+      onNotice('danger', apiErrorMessageConCampos(fallo));
     } finally {
       setProbando(null);
     }

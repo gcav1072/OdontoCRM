@@ -16,7 +16,7 @@ import { PantallasSection } from '../components/config/PantallasSection';
 import { NoticeBanner } from '../components/NoticeBanner';
 import { CancellationPolicyCard } from '../components/notifications/CancellationPolicyCard';
 import { useNotice } from '../hooks/useNotice';
-import { apiErrorMessage } from '../lib/api';
+import { apiErrorMessage, apiErrorMessageConCampos } from '../lib/api';
 import { settingsApi } from '../lib/endpoints';
 import { t } from '../lib/i18n';
 import { APP_SETTINGS_QUERY_KEY } from '../lib/queryKeys';
@@ -61,7 +61,7 @@ export const ConfiguracionPage = () => {
       void consultas.invalidateQueries({ queryKey: APP_SETTINGS_QUERY_KEY });
       exito(t('config.guardado'));
     },
-    onError: (fallo) => mostrar({ variant: 'danger', message: apiErrorMessage(fallo) }),
+    onError: (fallo) => mostrar({ variant: 'danger', message: apiErrorMessageConCampos(fallo) }),
   });
 
   return (

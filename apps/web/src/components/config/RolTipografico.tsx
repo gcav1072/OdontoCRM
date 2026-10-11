@@ -29,6 +29,8 @@ export interface RolTipograficoProps {
   muestra: ReactNode;
   onPila: (pila: string) => void;
   onPeso: (peso: number) => void;
+  /** Error de validación de la pila (p. ej. vacía), para no enviarla al servidor. */
+  error?: string;
 }
 
 /**
@@ -49,6 +51,7 @@ export const RolTipografico = ({
   muestra,
   onPila,
   onPeso,
+  error,
 }: RolTipograficoProps): ReactNode => {
   const familia = familiaDeLaPila(pila);
   const conocida = familias.some((una) => una.name === familia);
@@ -105,7 +108,11 @@ export const RolTipografico = ({
           {t('config.marca.avanzado')}
         </summary>
         <div className="pt-2">
-          <Field label={t('config.marca.pilaPersonalizada')} hint={t('config.marca.pilaAyuda')}>
+          <Field
+            label={t('config.marca.pilaPersonalizada')}
+            hint={error === undefined ? t('config.marca.pilaAyuda') : undefined}
+            error={error}
+          >
             <Input
               value={pila}
               onChange={(event) => onPila(event.target.value)}

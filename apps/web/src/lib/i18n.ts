@@ -246,6 +246,9 @@ const DICCIONARIO = {
   'config.marca.familiaNueva': '➕ Nueva familia…',
   'config.marca.nombreFamilia': 'Nombre de la familia',
   'config.marca.faltaFamilia': 'Escribe el nombre de la familia antes de subir la fuente.',
+  'config.marca.pilaRequerida':
+    'La pila no puede quedar vacía: elige una familia o escribe la pila de respaldo.',
+  'config.marca.rangoInvalido': 'Fuera de rango: de {min} a {max}.',
 
   'config.membrete.titulo': 'Membrete de los imprimibles',
   'config.membrete.descripcion':
@@ -300,6 +303,9 @@ const DICCIONARIO = {
     'El sillón es el recurso que ocupa una franja. Su nombre sale en la agenda y en la TV.',
   'config.pantallas.sillonNombre': 'Nombre',
   'config.pantallas.sillonCorto': 'Etiqueta corta',
+  'config.pantallas.sillonCortoAyuda':
+    'Para la pantalla estrecha del consultorio (máximo 12 caracteres).',
+  'config.pantallas.sillonCortoInvalido': 'La etiqueta corta admite 12 caracteres como máximo.',
   'config.pantallas.sillonOrden': 'Orden',
   'config.pantallas.sillonActivo': 'Activo',
   'config.pantallas.anadirSillon': 'Añadir consultorio',

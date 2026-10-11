@@ -93,6 +93,26 @@ export const isApiError = (error: unknown): error is ApiError => error instanceo
 export const apiErrorMessage = (error: unknown): string =>
   isApiError(error) ? error.detail : t('api.error.generico');
 
+/**
+ * Como `apiErrorMessage`, pero añade el **detalle por campo** del RFC 7807 (`errors`).
+ *
+ * Existe para los paneles con muchos campos —como `/configuracion`—: allí el `detail`
+ * del servidor era siempre «Los datos enviados no son válidos» y no decía **qué** campo
+ * ni por qué, así que un valor fuera de rango o vacío parecía un fallo del panel.
+ *
+ * Desde que el servidor nombra los campos en su propio `detail`, aquí solo se añade lo
+ * que **falte** (el `path` de cada campo): así un servidor nuevo no se repite y uno
+ * viejo —o una respuesta cacheada— sigue diciendo qué corregir.
+ */
+export const apiErrorMessageConCampos = (error: unknown): string => {
+  const base = apiErrorMessage(error);
+  if (!isApiError(error) || error.fieldErrorList.length === 0) return base;
+  const faltantes = error.fieldErrorList.filter((campo) => !base.includes(campo.path));
+  if (faltantes.length === 0) return base;
+  const detalle = faltantes.map((campo) => `${campo.path}: ${campo.message}`).join(' · ');
+  return `${base} — ${detalle}`;
+};
+
 // --- Estado de sesión en memoria ------------------------------------------
 
 let accessToken: string | null = null;

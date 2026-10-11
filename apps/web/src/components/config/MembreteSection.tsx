@@ -1,4 +1,5 @@
 import {
+  BRAND_LIMITS,
   buildLetterheadView,
   CLINIC,
   clinicDentistFor,
@@ -61,6 +62,16 @@ const VALIGN_CSS: Readonly<Record<LogoVerticalAlign, string>> = {
   bottom: 'flex-end',
 };
 
+/** ¿El número cae dentro de los límites que aplica el esquema? */
+const enRango = (valor: number, rango: { min: number; max: number }): boolean =>
+  Number.isFinite(valor) && valor >= rango.min && valor <= rango.max;
+
+/** Mensaje de «fuera de rango» con los límites, para no enviarlo y recibir un 400 genérico. */
+const errorRango = (valor: number, rango: { min: number; max: number }): string | undefined =>
+  enRango(valor, rango)
+    ? undefined
+    : t('config.marca.rangoInvalido', { min: rango.min, max: rango.max });
+
 /**
  * La **subsección «Membrete»** del panel (ADR 0064): todo lo que decide cómo se ve el
  * bloque de identidad de los imprimibles —alto y posición del logo, tipografía propia del
@@ -118,12 +129,15 @@ export const MembreteSection = ({ form, setForm }: MembreteSectionProps) => {
 
       {/* Logo: alto y posición */}
       <div className="grid gap-4 @2xl:grid-cols-3">
-        <Field label={t('config.membrete.altoLogo')}>
+        <Field
+          label={t('config.membrete.altoLogo')}
+          error={errorRango(v.logoHeightMm, BRAND_LIMITS.logoHeightMm)}
+        >
           <Input
             type="number"
             step="1"
-            min={6}
-            max={60}
+            min={BRAND_LIMITS.logoHeightMm.min}
+            max={BRAND_LIMITS.logoHeightMm.max}
             value={v.logoHeightMm}
             onChange={(event) => setLetterhead({ logoHeightMm: Number(event.target.value) })}
           />
@@ -168,26 +182,37 @@ export const MembreteSection = ({ form, setForm }: MembreteSectionProps) => {
         peso={v.titleWeight ?? form.typography.documentTitleWeight}
         familias={form.fonts.families}
         muestra={previa.name === '' ? t('config.membrete.sinNombre') : previa.name}
+        error={
+          v.titleSans !== null && v.titleSans.trim() === ''
+            ? t('config.marca.pilaRequerida')
+            : undefined
+        }
         onPila={(pila) => setLetterhead({ titleSans: pila })}
         onPeso={(peso) => setLetterhead({ titleWeight: peso })}
       />
       <div className="grid gap-4 @2xl:grid-cols-2">
-        <Field label={t('config.membrete.tamanoNombre')}>
+        <Field
+          label={t('config.membrete.tamanoNombre')}
+          error={errorRango(v.titlePt, BRAND_LIMITS.titlePt)}
+        >
           <Input
             type="number"
             step="0.5"
-            min={6}
-            max={24}
+            min={BRAND_LIMITS.titlePt.min}
+            max={BRAND_LIMITS.titlePt.max}
             value={v.titlePt}
             onChange={(event) => setLetterhead({ titlePt: Number(event.target.value) })}
           />
         </Field>
-        <Field label={t('config.membrete.tamanoLineas')}>
+        <Field
+          label={t('config.membrete.tamanoLineas')}
+          error={errorRango(v.linePt, BRAND_LIMITS.linePt)}
+        >
           <Input
             type="number"
             step="0.5"
-            min={5}
-            max={14}
+            min={BRAND_LIMITS.linePt.min}
+            max={BRAND_LIMITS.linePt.max}
             value={v.linePt}
             onChange={(event) => setLetterhead({ linePt: Number(event.target.value) })}
           />
@@ -270,22 +295,28 @@ export const MembreteSection = ({ form, setForm }: MembreteSectionProps) => {
 
       {/* Marca de agua (el mismo logo, de fondo) */}
       <div className="grid gap-4 @2xl:grid-cols-2">
-        <Field label={t('config.marca.anchoVelo')}>
+        <Field
+          label={t('config.marca.anchoVelo')}
+          error={errorRango(v.watermarkWidthMm, BRAND_LIMITS.watermarkWidthMm)}
+        >
           <Input
             type="number"
             step="1"
-            min={20}
-            max={200}
+            min={BRAND_LIMITS.watermarkWidthMm.min}
+            max={BRAND_LIMITS.watermarkWidthMm.max}
             value={v.watermarkWidthMm}
             onChange={(event) => setLetterhead({ watermarkWidthMm: Number(event.target.value) })}
           />
         </Field>
-        <Field label={t('config.marca.opacidadVelo')}>
+        <Field
+          label={t('config.marca.opacidadVelo')}
+          error={errorRango(v.watermarkOpacity, BRAND_LIMITS.watermarkOpacity)}
+        >
           <Input
             type="number"
             step="0.01"
-            min={0}
-            max={0.6}
+            min={BRAND_LIMITS.watermarkOpacity.min}
+            max={BRAND_LIMITS.watermarkOpacity.max}
             value={v.watermarkOpacity}
             onChange={(event) => setLetterhead({ watermarkOpacity: Number(event.target.value) })}
           />

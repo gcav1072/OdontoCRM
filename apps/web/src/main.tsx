@@ -1,8 +1,8 @@
+import { mensajesDeValidacionEnEspanol } from '@odontocrm/contracts';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { z } from 'zod';
 
 import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -28,7 +28,7 @@ import './index.css';
  * lo que ocurría cuando el servidor de desarrollo que se estaba mirando no era el
  * que se acababa de arrancar.
  */
-z.config(z.locales.es());
+mensajesDeValidacionEnEspanol();
 
 const contenedor = document.getElementById('root');
 

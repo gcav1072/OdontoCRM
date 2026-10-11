@@ -1,4 +1,5 @@
 import {
+  BRAND_LIMITS,
   HEX_COLOR_PATTERN,
   type AppSettingsView,
   type BrandPaletteSettings,
@@ -21,7 +22,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Paintbrush, Trash2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import { apiErrorMessage } from '../../lib/api';
+import { apiErrorMessageConCampos } from '../../lib/api';
 import { settingsApi } from '../../lib/endpoints';
 import { t } from '../../lib/i18n';
 import { APP_SETTINGS_QUERY_KEY } from '../../lib/queryKeys';
@@ -56,6 +57,13 @@ const PALETA: readonly { key: keyof BrandPaletteSettings; label: string }[] = [
 /** ¿Todos los colores de la paleta son hex válidos? */
 const paletaValida = (palette: BrandPaletteSettings): boolean =>
   Object.values(palette).every((color) => HEX_COLOR_PATTERN.test(color));
+
+/** ¿La pila de un rol es válida? Una pila vacía deja el papel sin tipografía. */
+const pilaValida = (pila: string): boolean => pila.trim() !== '';
+
+/** ¿El número cae dentro de los límites del esquema? */
+const enRango = (valor: number, rango: { min: number; max: number }): boolean =>
+  Number.isFinite(valor) && valor >= rango.min && valor <= rango.max;
 
 /**
  * **Marca de los imprimibles** (ADR 0060): paleta, tipografías, medidas y fuentes.
@@ -93,7 +101,7 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
       void consultas.invalidateQueries({ queryKey: APP_SETTINGS_QUERY_KEY });
       onNotice('success', t('config.guardado'));
     },
-    onError: (fallo) => onNotice('danger', apiErrorMessage(fallo)),
+    onError: (fallo) => onNotice('danger', apiErrorMessageConCampos(fallo)),
   });
 
   const subirFuente = async (file: File): Promise<void> => {
@@ -115,7 +123,7 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
       setNombreNuevaFamilia('');
       setFamiliaFuente(familia);
     } catch (fallo) {
-      onNotice('danger', apiErrorMessage(fallo));
+      onNotice('danger', apiErrorMessageConCampos(fallo));
     } finally {
       setSubiendo(false);
       if (inputFuente.current !== null) inputFuente.current.value = '';
@@ -128,11 +136,36 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
       await consultas.invalidateQueries({ queryKey: APP_SETTINGS_QUERY_KEY });
       onNotice('success', t('config.guardado'));
     } catch (fallo) {
-      onNotice('danger', apiErrorMessage(fallo));
+      onNotice('danger', apiErrorMessageConCampos(fallo));
     }
   };
 
   const paletaOk = paletaValida(form.palette);
+  /** La pila de los títulos y del cuerpo no puede quedar vacía (el papel saldría sin fuente). */
+  const tituloOk = pilaValida(form.typography.documentTitleSans);
+  const cuerpoOk = pilaValida(form.typography.documentBodySans);
+  /** `null` = «la de los títulos»; una cadena vacía sí es un error. */
+  const membreteOk = form.letterhead.titleSans === null || pilaValida(form.letterhead.titleSans);
+  /**
+   * Todas las medidas del esquema: si una sale del rango, el servidor devolvería un 400
+   * genérico. Se valida aquí para poder señalarla antes de enviar.
+   */
+  const medidasOk =
+    enRango(form.typography.documentTitlePt, BRAND_LIMITS.documentTitlePt) &&
+    enRango(form.typography.documentBodyPt, BRAND_LIMITS.documentBodyPt) &&
+    enRango(form.typography.documentSmallPt, BRAND_LIMITS.documentSmallPt) &&
+    enRango(form.letterhead.logoHeightMm, BRAND_LIMITS.logoHeightMm) &&
+    enRango(form.letterhead.titlePt, BRAND_LIMITS.titlePt) &&
+    enRango(form.letterhead.linePt, BRAND_LIMITS.linePt) &&
+    enRango(form.letterhead.watermarkWidthMm, BRAND_LIMITS.watermarkWidthMm) &&
+    enRango(form.letterhead.watermarkOpacity, BRAND_LIMITS.watermarkOpacity);
+  const marcaOk = paletaOk && tituloOk && cuerpoOk && membreteOk && medidasOk;
+
+  /** Mensaje de «fuera de rango» con los límites que aplica el esquema. */
+  const errorRango = (valor: number, rango: { min: number; max: number }): string | undefined =>
+    enRango(valor, rango)
+      ? undefined
+      : t('config.marca.rangoInvalido', { min: rango.min, max: rango.max });
 
   return (
     <Card>
@@ -194,6 +227,7 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
               peso={form.typography.documentTitleWeight}
               familias={form.fonts.families}
               muestra="Dr. Juan Pérez · RÉCIPE"
+              error={tituloOk ? undefined : t('config.marca.pilaRequerida')}
               onPila={(pila) =>
                 setForm((prev) => ({
                   ...prev,
@@ -213,6 +247,7 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
               peso={form.typography.documentBodyWeight}
               familias={form.fonts.families}
               muestra="La paciente acude a consulta por dolor en el primer molar superior derecho."
+              error={cuerpoOk ? undefined : t('config.marca.pilaRequerida')}
               onPila={(pila) =>
                 setForm((prev) => ({
                   ...prev,
@@ -228,10 +263,15 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
             />
           </div>
           <div className="grid gap-2 @2xl:grid-cols-3">
-            <Field label={t('config.marca.tamanoTitulo')}>
+            <Field
+              label={t('config.marca.tamanoTitulo')}
+              error={errorRango(form.typography.documentTitlePt, BRAND_LIMITS.documentTitlePt)}
+            >
               <Input
                 type="number"
                 step="0.5"
+                min={BRAND_LIMITS.documentTitlePt.min}
+                max={BRAND_LIMITS.documentTitlePt.max}
                 value={form.typography.documentTitlePt}
                 onChange={(event) =>
                   setForm((prev) => ({
@@ -244,10 +284,15 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
                 }
               />
             </Field>{' '}
-            <Field label={t('config.marca.tamanoCuerpo')}>
+            <Field
+              label={t('config.marca.tamanoCuerpo')}
+              error={errorRango(form.typography.documentBodyPt, BRAND_LIMITS.documentBodyPt)}
+            >
               <Input
                 type="number"
                 step="0.5"
+                min={BRAND_LIMITS.documentBodyPt.min}
+                max={BRAND_LIMITS.documentBodyPt.max}
                 value={form.typography.documentBodyPt}
                 onChange={(event) =>
                   setForm((prev) => ({
@@ -260,10 +305,15 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
                 }
               />
             </Field>
-            <Field label={t('config.marca.tamanoMenudo')}>
+            <Field
+              label={t('config.marca.tamanoMenudo')}
+              error={errorRango(form.typography.documentSmallPt, BRAND_LIMITS.documentSmallPt)}
+            >
               <Input
                 type="number"
                 step="0.5"
+                min={BRAND_LIMITS.documentSmallPt.min}
+                max={BRAND_LIMITS.documentSmallPt.max}
                 value={form.typography.documentSmallPt}
                 onChange={(event) =>
                   setForm((prev) => ({
@@ -429,7 +479,7 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
         <Button
           loading={guardar.isPending}
           loadingLabel={t('comun.guardando')}
-          disabled={!paletaOk}
+          disabled={!marcaOk}
           onClick={() => guardar.mutate()}
         >
           {t('comun.guardar')}

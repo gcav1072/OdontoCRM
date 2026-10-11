@@ -21,7 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MonitorPlay, Plus } from 'lucide-react';
 import { useState } from 'react';
 
-import { apiErrorMessage } from '../../lib/api';
+import { apiErrorMessageConCampos } from '../../lib/api';
 import { agendaApi } from '../../lib/endpoints';
 import { t } from '../../lib/i18n';
 
@@ -121,7 +121,7 @@ const Sillones = ({
       setNuevo('');
       onNotice('success', t('config.pantallas.sillonCreado'));
     },
-    onError: (fallo) => onNotice('danger', apiErrorMessage(fallo)),
+    onError: (fallo) => onNotice('danger', apiErrorMessageConCampos(fallo)),
   });
 
   const sillones = query.data?.items ?? [];
@@ -133,7 +133,7 @@ const Sillones = ({
 
       {query.isError ? (
         <Alert variant="danger" title={t('config.error')}>
-          {apiErrorMessage(query.error)}
+          {apiErrorMessageConCampos(query.error)}
         </Alert>
       ) : query.isPending ? (
         <Spinner label={t('comun.cargando')} showLabel />
@@ -149,6 +149,7 @@ const Sillones = ({
         <Field label={t('config.pantallas.sillonNombre')}>
           <Input
             value={nuevo}
+            maxLength={60}
             onChange={(event) => setNuevo(event.target.value)}
             className="max-w-64"
           />
@@ -190,7 +191,7 @@ const FilaSillon = ({
       void consultas.invalidateQueries({ queryKey: CHAIRS_KEY });
       onNotice('success', t('config.pantallas.sillonGuardado'));
     },
-    onError: (fallo) => onNotice('danger', apiErrorMessage(fallo)),
+    onError: (fallo) => onNotice('danger', apiErrorMessageConCampos(fallo)),
   });
 
   const activar = useMutation({
@@ -199,26 +200,35 @@ const FilaSillon = ({
       void consultas.invalidateQueries({ queryKey: CHAIRS_KEY });
       onNotice('success', t('config.pantallas.sillonGuardado'));
     },
-    onError: (fallo) => onNotice('danger', apiErrorMessage(fallo)),
+    onError: (fallo) => onNotice('danger', apiErrorMessageConCampos(fallo)),
   });
 
   const cambiado =
     label !== sillon.label ||
     shortLabel !== (sillon.shortLabel ?? '') ||
     sortOrder !== sillon.sortOrder;
+  /** El contrato admite 60 en el nombre y 12 en la etiqueta corta (pantallas estrechas). */
+  const labelOk = label.trim() !== '' && label.trim().length <= 60;
+  const cortoOk = shortLabel.trim().length <= 12;
 
   return (
     <li className="flex flex-wrap items-end gap-3 rounded-control border border-border px-3 py-2">
       <Field label={t('config.pantallas.sillonNombre')}>
         <Input
           value={label}
+          maxLength={60}
           onChange={(event) => setLabel(event.target.value)}
           className="max-w-56"
         />
       </Field>
-      <Field label={t('config.pantallas.sillonCorto')}>
+      <Field
+        label={t('config.pantallas.sillonCorto')}
+        hint={t('config.pantallas.sillonCortoAyuda')}
+        error={cortoOk ? undefined : t('config.pantallas.sillonCortoInvalido')}
+      >
         <Input
           value={shortLabel}
+          maxLength={12}
           onChange={(event) => setShortLabel(event.target.value)}
           className="max-w-24"
         />
@@ -237,7 +247,7 @@ const FilaSillon = ({
       <Button
         size="sm"
         loading={guardar.isPending}
-        disabled={!cambiado || label.trim() === ''}
+        disabled={!cambiado || !labelOk || !cortoOk}
         onClick={() => guardar.mutate()}
       >
         {t('comun.guardar')}
