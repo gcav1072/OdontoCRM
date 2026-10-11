@@ -14,6 +14,12 @@
   `services/clinical/src/prescriptions/pdf-renderer.ts` (`fitToPage`),
   `apps/web/src/components/config/MarcaSection.tsx` (el desplegable «Papel del récipe»)
 
+> **Actualización (2026-10-11).** La marca de fábrica imprime en **carta**, no en A4: el papel de la
+> bandeja de la clínica es carta, y el resto de los imprimibles (historia clínica, odontograma,
+> reporte, dossier, factura, recibo y nota de crédito) también pasaron de A4 a **carta**. El
+> `recipePaper` sigue eligiéndose en el panel (**carta** de fábrica; `A4` queda para una clínica que
+> imprima en A4), y el **encaje medido** de una sola hoja no cambia.
+
 ## Contexto
 
 El récipe salía en **una hoja carta apaisada** partida en dos mitades
@@ -40,17 +46,16 @@ Tres causas, ninguna de ellas la altura de la hoja:
 
 ## Decisión
 
-**El papel del récipe se configura (A4 de fábrica, el de los demás imprimibles) y el encaje se mide
+**El papel del récipe se configura (carta de fábrica, el de los demás imprimibles) y el encaje se mide
 en el navegador, con el ancho y el alto reales del área imprimible. La hoja entera se escala, así
 que el récipe sale en una sola hoja, con la letra lo más grande que quepa y nunca por debajo del
 tope de legibilidad.**
 
-- **El papel** (`recipePaper`: `A4` | `letter`) vive en la marca y se elige en
+- **El papel** (`recipePaper`: `letter` | `A4`) vive en la marca y se elige en
   *Configuración → Marca → Papel del récipe*. El **mismo** valor decide el `@page` de la plantilla y
   el tamaño que se le pide a Chromium (`recipePaperGeometry`): una sola fuente, sin que el tamaño
-  dependa de quién gane. De fábrica **A4**, el papel de los otros seis imprimibles —el que la clínica
-  ya tiene en la bandeja, porque si fuera carta los demás documentos también dejarían hojas en
-  blanco—. Una marca guardada antes de este ajuste sale en A4 sin migrar nada.
+  dependa de quién gane. De fábrica **carta**, el papel de los otros seis imprimibles y el de la
+  bandeja de la clínica. Una marca guardada sin el campo sale en carta sin migrar nada.
 - **La tipografía del récipe sale del panel.** Los tres tamaños de *Configuración → Marca*
   (título, cuerpo y menudo: 13 / 9 / 7,5 pt de fábrica) alimentan la escala del documento; los
   tamaños intermedios son las proporciones que el récipe ya tenía sobre esos tres, así que con los
@@ -80,5 +85,6 @@ tope de legibilidad.**
 - **En contra / a vigilar:** un récipe **muy** largo sigue ocupando una segunda hoja (legible, con
   contenido). Bajar el tope de 0,7 lo metería en una hoja a costa de imprimir a 5–6 pt.
 - **Documentación:** el [ADR 0061](0061-recipe-en-dos-mitades-y-especialista-en-el-membrete.md)
-  queda **superado en el papel de la hoja** (carta apaisada → A4 apaisado configurable); sigue
+  queda **superado en el papel de la hoja** (carta apaisada fija → papel configurable, hoy **carta**
+  de fábrica); sigue
   vigente en el resto (las dos mitades, el especialista en el membrete, la línea para cortar).

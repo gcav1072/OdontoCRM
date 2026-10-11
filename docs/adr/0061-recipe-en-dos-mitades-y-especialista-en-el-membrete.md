@@ -9,10 +9,8 @@
 
 > **Nota (ADR 0065).** El **fondo** de esta decisión sigue vigente: el récipe sale en **una hoja
 > apaisada partida en dos mitades** (farmacia y paciente), con el especialista en el membrete. Lo
-> que cambió es el **papel**: era **carta apaisada** y una hoja carta (215,9 mm de alto) no cabe en
-> una A4 (210 mm), así que la impresora de la clínica sacaba una **segunda hoja en blanco**. Ahora
-> el papel se elige en el panel (`recipePaper`) y se compone **A4 apaisado** de fábrica, con un
-> **encaje medido** que garantiza una sola hoja.
+> que cambió es el **papel**: se compone en el **papel de la clínica** —**carta** de fábrica, elegible
+> en el panel (`recipePaper`)— con un **encaje medido** que garantiza una sola hoja.
 
 ## Contexto
 
@@ -61,7 +59,8 @@ Los imprimibles tenían, además, dos huecos de coherencia: el **reporte** y los
   imprimibles; y el membrete se vuelve el único sitio donde vive la identidad impresa del documento.
 - **A favor:** el papel pasa de A5 a **una hoja apaisada** con dos mitades, un formato que cualquier
   impresora de consultorio maneja y que no obliga a cambiar la bandeja (el **tamaño** de esa hoja lo
-  fija hoy el [ADR 0065](0065-el-recipe-cabe-en-el-papel-de-la-clinica.md): A4 apaisado).
+  fija hoy el [ADR 0065](0065-el-recipe-cabe-en-el-papel-de-la-clinica.md): **carta** apaisada de
+  fábrica).
 - **En contra / a vigilar:** la firma se ancla al pie de cada mitad (altura holgada de la hoja); con
   un récipe **muy** largo la mitad puede continuar en una segunda página. Lo que ya no ocurre es la
   segunda hoja **en blanco**: el [ADR 0065](0065-el-recipe-cabe-en-el-papel-de-la-clinica.md) mide el
