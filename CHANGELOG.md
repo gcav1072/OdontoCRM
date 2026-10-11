@@ -4,6 +4,32 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Imprimibles] — El respaldo de la marca deja de ser silencioso · 2026-10-10
+
+Los documentos del servidor (récipe, dossier, reporte, factura, recibo y nota) leen la marca
+efectiva de identity por la red interna (`createBrandLookup`, ADR 0060). Si esa lectura falla
+—identity caído, un despliegue con la ruta vieja, el `INTERNAL_SERVICE_SECRET` distinto, una
+respuesta que no cumple el contrato—, el servicio **degradaba a `BRAND` sin decir nada**: el panel
+cambiaba los colores y las fuentes y el papel salía con los **del código**, que se lee como «el color
+no se aplica». Ahora ese respaldo **avisa** (una vez por minuto) en el log del servicio, con el motivo.
+
+**Verificación de la cadena.** `npm run e2e:config` comprueba ahora que el **PDF** que compone el
+servidor sale con el primario del panel (infla los flujos del PDF y lee los operadores RGB), no solo
+el CSS de la SPA: era el tramo que ninguna prueba miraba. Se añadieron además pruebas de que una
+paleta propia llega a **las seis** plantillas (recibo y nota de crédito no tenían ninguna).
+
+**Fallo corregido de la propia prueba.** El e2e comprobaba que la fuente subida desaparecía por
+`weight === 500`, pero la familia **Inter** trae de fábrica una fuente con ese peso: la aserción era
+cierta siempre y fallaba aunque la baja fuera correcta. Ahora se compara por **ruta**.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `brand-lookup.ts` / `clinic-identity.ts` | `onFallback`: el respaldo del código avisa con el motivo (máximo uno por minuto) en vez de degradar en silencio |
+| `clinical`/`reporting`/`billing` (`index.ts`) | Conectan el aviso al log del servicio (logger resuelto por referencia, como el publicador) |
+| `brand-lookup.test.ts` (nuevo) | La marca buena no avisa; el 404, el cuerpo inválido, el fallo de red y la falta de secreto degradan **y avisan**; el aviso no se repite |
+| `invoice-pdf`, `receipt-pdf`, `credit-note-pdf`, `prescription-document`, `dossier-document`, `report-html` | Prueba de que una paleta propia sale en el papel |
+| `e2e-config.mjs` | Comprueba el color del primario **dentro del PDF** del reporte; la baja de fuente pasa a compararse por ruta |
+
 ## [Imprimibles] — La tipografía del membrete llega al papel · 2026-10-10
 
 El nombre del membrete se podía configurar con una **familia propia** (ADR 0064), pero al **imprimir**

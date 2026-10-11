@@ -431,6 +431,7 @@ porque el consultorio cambió de nombre.
 | El CSS de la marca está al día | `npm run marca:css -- --check` |
 | La marca y las fuentes no se desfasaron | `npm test` (corre `brand.test.ts`, que también comprueba que los `.woff2` existen) |
 | Todo el repositorio sigue sano | `npm run verify` (secretos + lint + formato + tipos + build + pruebas) |
+| El **color** y las **fuentes** del panel llegan al papel | `npm run e2e:config` (mira el **PDF** del reporte, no el CSS de la pantalla) |
 | El membrete sale en el papel | Emitir un **récipe**: logo, nombre, RIF, teléfonos y el MPPS del firmante, con las dos tipografías |
 
 ---
@@ -467,6 +468,7 @@ no duplicados de la paleta.
 | «Completa tu perfil profesional antes de usar el sistema» | El odontólogo no pasó por el asistente | Entrar: el sistema lleva a `/completar-perfil`; o el admin lo rellena en `/usuarios` |
 | El odontólogo no puede entrar a ningún módulo | Es lo esperado: `needsProfile` blinda el sistema igual que la contraseña temporal | Completar el perfil (§2.1) |
 | El membrete sale con los datos viejos tras editarlos | La caché del membrete (60 s) o la del navegador | Esperar un minuto y recargar; en los PDF sale en la siguiente emisión |
+| El color o la fuente del panel cambian en pantalla pero el **papel sale igual** | El servicio de documentos no pudo leer la marca de identity y cayó al **respaldo del código** (`BRAND`) | Ya **avisa** en su log («Los imprimibles usan la marca del CÓDIGO…»): revisa que identity esté arriba, que el `INTERNAL_SERVICE_SECRET` sea el mismo y que el despliegue esté al día (`tsc -b --clean`) |
 | El récipe sale con el membrete del **código** y no el de la aplicación | No hay perfil guardado (nadie completó el asistente), o identity no respondió | Completar el perfil; revisar que `identity` esté arriba |
 | Los avisos de cita quedan en la cola con «consultorio sin configurar» | El titular todavía no completó los datos del consultorio | Completarlos en Mi perfil: la cola los envía sola al reintentar |
 | El récipe sale sin MPPS o sin especialidad | El titular no completó su perfil profesional | Completarlo en Mi perfil (`letterheadMissingFields` lo enumera) |
