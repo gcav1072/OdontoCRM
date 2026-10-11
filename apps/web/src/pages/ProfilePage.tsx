@@ -44,6 +44,7 @@ export const ProfilePage = () => {
   const [guardandoPerfil, setGuardandoPerfil] = useState(false);
 
   const [nombre, setNombre] = useState('');
+  const [nombreLinea2, setNombreLinea2] = useState('');
   const [rif, setRif] = useState('');
   const [direccion, setDireccion] = useState('');
   const [telefono, setTelefono] = useState('');
@@ -74,7 +75,10 @@ export const ProfilePage = () => {
 
   useEffect(() => {
     if (identidad === null) return;
-    setNombre(identidad.clinic.name);
+    // El nombre puede venir en dos líneas (se guardan con un salto); cada una a su campo.
+    const [linea1 = '', linea2 = ''] = identidad.clinic.name.split('\n');
+    setNombre(linea1);
+    setNombreLinea2(linea2);
     setRif(identidad.clinic.rif ?? '');
     setDireccion(identidad.clinic.address);
     setTelefono(identidad.clinic.phones[0] ?? '');
@@ -110,7 +114,10 @@ export const ProfilePage = () => {
   const guardarConsultorio = async () => {
     limpiar();
     const revision = updateClinicProfileSchema.safeParse({
-      name: nombre,
+      name: [nombre, nombreLinea2]
+        .map((linea) => linea.trim())
+        .filter((linea) => linea !== '')
+        .join('\n'),
       legalName: identidad?.clinic.legalName ?? null,
       address: direccion,
       city: identidad?.clinic.city ?? null,
@@ -205,8 +212,18 @@ export const ProfilePage = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 @2xl:grid-cols-2">
-              <Field label={t('perfil.consultorio.nombre')} required>
+              <Field
+                label={t('perfil.consultorio.nombre')}
+                hint={t('perfil.consultorio.nombreAyuda')}
+                required
+              >
                 <Input value={nombre} onChange={(event) => setNombre(event.target.value)} />
+              </Field>
+              <Field label={t('perfil.consultorio.nombreLinea2')}>
+                <Input
+                  value={nombreLinea2}
+                  onChange={(event) => setNombreLinea2(event.target.value)}
+                />
               </Field>
               <Field label={t('perfil.consultorio.rif')}>
                 <Input

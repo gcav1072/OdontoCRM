@@ -322,6 +322,8 @@ export const MembreteSection = ({ form, setForm }: MembreteSectionProps) => {
                   fontWeight: v.titleWeight ?? form.typography.documentTitleWeight,
                   fontSize: `${String(v.titlePt)}pt`,
                   color: form.palette.primary,
+                  // El nombre puede venir en dos líneas (se parten en Mi perfil).
+                  whiteSpace: 'pre-line',
                 }}
               >
                 {previa.name === '' ? t('config.membrete.sinNombre') : previa.name}

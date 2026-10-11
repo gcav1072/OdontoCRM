@@ -513,7 +513,10 @@ const DICCIONARIO = {
   'perfil.consultorio.titulo': 'Datos del consultorio',
   'perfil.consultorio.ayuda':
     'Eres el titular: estos datos encabezan todos los documentos del consultorio.',
-  'perfil.consultorio.nombre': 'Nombre del consultorio',
+  'perfil.consultorio.nombre': 'Nombre del consultorio (línea 1)',
+  'perfil.consultorio.nombreLinea2': 'Nombre del consultorio (línea 2)',
+  'perfil.consultorio.nombreAyuda':
+    'El membrete imprime el nombre tal como lo escribas: parte lo que haga falta en dos líneas. La línea 2 es opcional.',
   'perfil.consultorio.direccion': 'Dirección',
   'perfil.consultorio.ciudad': 'Ciudad y estado',
   'perfil.consultorio.rif': 'RIF',

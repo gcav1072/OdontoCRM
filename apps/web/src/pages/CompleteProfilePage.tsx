@@ -84,6 +84,21 @@ export const CompleteProfilePage = () => {
     },
   });
 
+  // El nombre del consultorio puede partirse en **dos líneas**: se guarda con un salto
+  // (misma columna de texto, sin migración) y el membrete lo imprime tal cual.
+  const nombreConsultorio = formulario.watch('clinic.name') ?? '';
+  const [nombreLinea1 = '', nombreLinea2 = ''] = nombreConsultorio.split('\n');
+  const escribirNombre = (linea1: string, linea2: string): void => {
+    formulario.setValue(
+      'clinic.name',
+      [linea1, linea2]
+        .map((linea) => linea.trim())
+        .filter((linea) => linea !== '')
+        .join('\n'),
+      { shouldValidate: true, shouldDirty: true },
+    );
+  };
+
   const enviar = async (valores: ValoresEnviados) => {
     limpiar();
     try {
@@ -187,10 +202,21 @@ export const CompleteProfilePage = () => {
 
                 <Field
                   label={t('perfil.consultorio.nombre')}
+                  hint={t('perfil.consultorio.nombreAyuda')}
                   error={errors.clinic?.name?.message}
                   required
                 >
-                  <Input {...formulario.register('clinic.name')} />
+                  <Input
+                    value={nombreLinea1}
+                    onChange={(event) => escribirNombre(event.target.value, nombreLinea2)}
+                  />
+                </Field>
+
+                <Field label={t('perfil.consultorio.nombreLinea2')}>
+                  <Input
+                    value={nombreLinea2}
+                    onChange={(event) => escribirNombre(nombreLinea1, event.target.value)}
+                  />
                 </Field>
 
                 <Field
