@@ -48,7 +48,11 @@ export const defaultBrandSettings = (): BrandSettings => ({
     documentBodyPt: BRAND.typography.documentBodyPt,
     documentSmallPt: BRAND.typography.documentSmallPt,
   },
-  letterhead: { ...BRAND.letterhead },
+  letterhead: {
+    ...BRAND.letterhead,
+    // Copia profunda de las líneas: la marca de fábrica no comparte arreglo con `BRAND`.
+    lines: BRAND.letterhead.lines.map((line) => ({ ...line })),
+  },
   fonts: {
     families: BRAND.fonts.families.map((familia) => ({
       name: familia.name,
@@ -115,7 +119,9 @@ export const readBrandSettings = async (
       palette: row.palette ?? defaults.palette,
       // La fila antigua pudo guardarse sin los pesos por rol: se rellenan con el respaldo.
       typography: { ...defaults.typography, ...(row.typography ?? {}) },
-      letterhead: row.letterhead ?? defaults.letterhead,
+      // Las filas anteriores al membrete configurable no traen las líneas ni el pie: se
+      // mezclan con el respaldo campo a campo para no perder la marca guardada.
+      letterhead: { ...defaults.letterhead, ...(row.letterhead ?? {}) },
       fonts: normalizarFuentes(row.fonts) ?? defaults.fonts,
     },
     fromDatabase: true,

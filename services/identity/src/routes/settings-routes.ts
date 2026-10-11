@@ -5,6 +5,7 @@ import {
   channelSettingsInputSchema,
   channelTestInputSchema,
   DEFAULT_UI_ACCENT,
+  letterheadCss,
   type AppSettingsView,
   type ChannelTestResult,
 } from '@odontocrm/contracts';
@@ -99,7 +100,7 @@ export const registerSettingsRoutes = (app: FastifyInstance, services: IdentityS
     const vista: AppSettingsView = {
       brand: marca.settings,
       brandFromDatabase: marca.fromDatabase,
-      themeCss: `${brandRootBlock(efectiva.theme)}\n${efectiva.fontFaceCss}`,
+      themeCss: `${brandRootBlock(efectiva.theme)}\n${efectiva.fontFaceCss}\n${letterheadCss()}`,
       accent: app_.accent,
       accentEffective: effectiveAccent(app_.accent),
       screenTexts: app_.screenTexts,
