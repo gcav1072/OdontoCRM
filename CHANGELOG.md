@@ -4,6 +4,37 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Despliegue] — El build compila en limpio y avisa si el `dist` es viejo · 2026-10-11
+
+El récipe salía en producción con la **letra encogida y en dos hojas** aunque el arreglo
+([ADR 0065](docs/adr/0065-el-recipe-cabe-en-el-papel-de-la-clinica.md)) ya estaba en el repositorio. No era
+el código: era el **despliegue**. `npm run build` usa `tsc -b`, que es **incremental** (`composite` +
+`.tsbuildinfo` dentro de `dist/`) y puede dar por compilado un proyecto del que **no emitió todos sus
+módulos**; y un `git reset --hard` (o un `checkout`) en `/opt/odontocrm` cambia el **fuente** pero **no
+recompila**, así que el servicio sigue corriendo el `dist` viejo. En el servidor faltaba justo
+`services/clinical/dist/prescriptions/fit-to-page.js` —el módulo nuevo del encaje— y el récipe volvía al
+comportamiento anterior.
+
+Ahora el build de la raíz **compila en limpio** (`prebuild` borra cada `dist/` y cada `*.tsbuildinfo` de
+los paquetes, sin tocar `node_modules`) y deja una **marca del commit compilado** (`.odontocrm-build-commit`,
+`postbuild`). El despliegue **comprueba que existen** el `index.js` de cada servicio y el del gateway (si
+falta alguno, **falla** con el mensaje), y `odontocrm verificar` (Fedora) y `40-verificar.ps1` (Windows)
+**avisan** cuando el `dist` desplegado no es el del código del disco. Todos los caminos —Fedora
+(`compilar`/`recompilar`/`actualizar`/`30-desplegar.sh`) y Windows (`odontocrm.ps1`/`30-desplegar.ps1`)—
+llaman a `npm run build`, así que heredan el arreglo sin duplicarlo.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `tools/limpiar-dist.mjs` (nuevo) | Borra todo `dist/` y `*.tsbuildinfo` del monorepo (ignora `node_modules`); lo llama `prebuild` |
+| `tools/marcar-build.mjs` (nuevo) | Escribe `.odontocrm-build-commit` con el `HEAD` compilado; lo llama `postbuild` |
+| `package.json` (raíz) | `prebuild` (limpia) + `postbuild` (marca) + `limpiar:dist` |
+| `.gitignore` | Ignora `.odontocrm-build-commit` |
+| `infra/fedora/instalar/30-desplegar.sh` | Tras compilar, exige el `dist/index.js` de cada servicio y del gateway |
+| `infra/fedora/odontocrm` | Misma comprobación en `compilar`/`recompilar`; aviso de `dist` viejo en `verificar` |
+| `infra/windows/instalar/comun.ps1` | `Get-EntrypointsFaltantes` y `Get-AvisoDistViejo` (compartidos) |
+| `infra/windows/odontocrm.ps1` · `30-desplegar.ps1` · `40-verificar.ps1` | La comprobación y el aviso, espejo de Fedora |
+| `docs/COMANDOS_PRODUCCION.md` | Nota: un `git reset/checkout` en `/opt` no recompila |
+
 ## [Interfaz] — El «teléfono alternativo» del paciente pasa a llamarse «teléfono de emergencias» · 2026-10-11
 
 Cambio **solo de texto visible**: el campo del paciente que se rotulaba «Teléfono alternativo» ahora

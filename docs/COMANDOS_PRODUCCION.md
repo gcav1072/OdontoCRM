@@ -125,6 +125,14 @@ sudo odontocrm recompilar    # compilar + reiniciar (código ya en /opt, sin mig
 sudo odontocrm actualizar    # traer del repositorio + compilar + migrar + reiniciar
 ```
 
+> **Un `git reset`/`checkout` en `/opt` NO recompila.** Revertir el código con
+> `git -C /opt/odontocrm reset --hard` (o `checkout`) cambia el **fuente**, pero el servicio sigue
+> corriendo el `dist/` **viejo** hasta que se recompile: hay que `sudo odontocrm recompilar` (o
+> `actualizar`). Por eso `odontocrm verificar` avisa «el código compilado NO es el del disco: dist
+> <sha>, disco <sha>» si el `dist` no cuadra con el fuente —la marca `.odontocrm-build-commit` la
+> escribe `npm run postbuild`—. `npm run build` **compila en limpio** (borra los `dist/` y los
+> `.tsbuildinfo` antes): es lo que evita que un `tsc -b` incremental deje fuera un módulo nuevo.
+
 **Bloque de parada y arranque de emergencia** (si el comando no estuviera instalado):
 
 ```bash
