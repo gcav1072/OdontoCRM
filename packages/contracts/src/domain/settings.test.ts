@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { BRAND } from '../brand.js';
 
 import {
+  BRAND_LIMITS,
   DEFAULT_UI_ACCENT,
   HEX_COLOR_PATTERN,
   SCREEN_TEXT_DEFINITIONS,
@@ -177,5 +178,76 @@ describe('validación de la configuración', () => {
     expect(channelSettingsInputSchema.safeParse({ whatsappApiBase: 'no-es-url' }).success).toBe(
       false,
     );
+  });
+
+  it('la entrada de canales acepta la forma que devuelve la vista (null) y la base vacía', () => {
+    // La vista devuelve `null` en un campo sin valor y el panel ofrece vaciar la base de
+    // la Graph API («volver a la de fábrica»). Ninguna de las dos cosas puede ser un 400.
+    const conNulos = channelSettingsInputSchema.safeParse({
+      telegramBotUsername: null,
+      adminTelegramChatId: null,
+      whatsappPhoneId: null,
+    });
+    expect(conNulos.success).toBe(true);
+
+    const baseVacia = channelSettingsInputSchema.safeParse({ whatsappApiBase: '' });
+    expect(baseVacia.success).toBe(true);
+
+    const baseNula = channelSettingsInputSchema.safeParse({ whatsappApiBase: null });
+    expect(baseNula.success).toBe(true);
+
+    // Una URL completa sigue valiendo; una incompleta, no.
+    expect(
+      channelSettingsInputSchema.safeParse({ whatsappApiBase: 'https://graph.facebook.com/v21.0' })
+        .success,
+    ).toBe(true);
+    expect(
+      channelSettingsInputSchema.safeParse({ whatsappApiBase: 'graph.facebook.com' }).success,
+    ).toBe(false);
+  });
+
+  it('los límites numéricos de la marca son los que aplica el esquema', () => {
+    const base = {
+      palette: BRAND.palette,
+      typography: {
+        documentTitleSans: BRAND.typography.documentTitleSans,
+        documentBodySans: BRAND.typography.documentBodySans,
+        documentTitlePt: 13,
+        documentBodyPt: 9,
+        documentSmallPt: 7.5,
+      },
+      letterhead: { ...BRAND.letterhead },
+      fonts: { families: [] },
+    };
+    expect(brandSettingsSchema.safeParse(base).success).toBe(true);
+    for (const [campo, limite] of [
+      ['documentTitlePt', BRAND_LIMITS.documentTitlePt],
+      ['documentBodyPt', BRAND_LIMITS.documentBodyPt],
+      ['documentSmallPt', BRAND_LIMITS.documentSmallPt],
+    ] as const) {
+      const fuera = {
+        ...base,
+        typography: { ...base.typography, [campo]: limite.max + 1 },
+      };
+      expect(brandSettingsSchema.safeParse(fuera).success, `${campo} por encima`).toBe(false);
+      const vaciado = { ...base, typography: { ...base.typography, [campo]: 0 } };
+      expect(brandSettingsSchema.safeParse(vaciado).success, `${campo} a cero`).toBe(false);
+    }
+
+    expect(
+      brandSettingsSchema.safeParse({
+        ...base,
+        letterhead: { ...BRAND.letterhead, logoHeightMm: BRAND_LIMITS.logoHeightMm.max + 1 },
+      }).success,
+    ).toBe(false);
+    expect(
+      brandSettingsSchema.safeParse({
+        ...base,
+        letterhead: {
+          ...BRAND.letterhead,
+          watermarkOpacity: BRAND_LIMITS.watermarkOpacity.max + 0.1,
+        },
+      }).success,
+    ).toBe(false);
   });
 });

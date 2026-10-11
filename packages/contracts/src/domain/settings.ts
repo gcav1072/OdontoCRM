@@ -55,6 +55,25 @@ export const brandPaletteSchema = z.object({
 
 export type BrandPaletteSettings = z.infer<typeof brandPaletteSchema>;
 
+/**
+ * Los **límites numéricos** de la marca en un solo sitio: el esquema los impone y el
+ * panel los usa para **validar antes de guardar**, de modo que no se envía un valor que
+ * el servidor rechazaría con un 400 genérico («los datos enviados no son válidos»).
+ * Antes vivían escritos a mano dentro del `min`/`max` de cada esquema y el panel no los
+ * conocía: teclear un valor fuera de rango —o vaciar el campo— fallaba al guardar sin
+ * decir **qué** campo.
+ */
+export const BRAND_LIMITS = {
+  logoHeightMm: { min: 6, max: 60 },
+  titlePt: { min: 6, max: 24 },
+  linePt: { min: 5, max: 14 },
+  watermarkWidthMm: { min: 20, max: 200 },
+  watermarkOpacity: { min: 0, max: 0.6 },
+  documentTitlePt: { min: 6, max: 24 },
+  documentBodyPt: { min: 6, max: 18 },
+  documentSmallPt: { min: 5, max: 14 },
+} as const;
+
 /** Las dos tipografías de los documentos y sus tamaños (pt). */
 export const brandTypographyInputSchema = z.object({
   /** Pila de los **títulos** (el nombre del consultorio, «RÉCIPE», encabezados). */
@@ -65,9 +84,18 @@ export const brandTypographyInputSchema = z.object({
   documentTitleWeight: z.number().int().min(100).max(900).default(700),
   /** Peso del cuerpo (`font-weight`); por defecto 400. */
   documentBodyWeight: z.number().int().min(100).max(900).default(400),
-  documentTitlePt: z.number().min(6).max(24),
-  documentBodyPt: z.number().min(6).max(18),
-  documentSmallPt: z.number().min(5).max(14),
+  documentTitlePt: z
+    .number()
+    .min(BRAND_LIMITS.documentTitlePt.min)
+    .max(BRAND_LIMITS.documentTitlePt.max),
+  documentBodyPt: z
+    .number()
+    .min(BRAND_LIMITS.documentBodyPt.min)
+    .max(BRAND_LIMITS.documentBodyPt.max),
+  documentSmallPt: z
+    .number()
+    .min(BRAND_LIMITS.documentSmallPt.min)
+    .max(BRAND_LIMITS.documentSmallPt.max),
 });
 
 export type BrandTypographyInput = z.infer<typeof brandTypographyInputSchema>;
@@ -115,7 +143,7 @@ export const DEFAULT_LETTERHEAD_LINES: readonly LetterheadLineSettings[] = [
  * `clinic_profiles`). Esto solo decide cómo se **pinta** esa identidad en el papel.
  */
 export const brandLetterheadSchema = z.object({
-  logoHeightMm: z.number().min(6).max(60),
+  logoHeightMm: z.number().min(BRAND_LIMITS.logoHeightMm.min).max(BRAND_LIMITS.logoHeightMm.max),
   /** Posición horizontal del logo (por defecto a la izquierda). */
   logoAlign: z.enum(LOGO_HORIZONTAL_ALIGNMENTS).default('left'),
   /** Posición vertical del logo respecto al bloque de datos (por defecto centrado). */
@@ -125,9 +153,9 @@ export const brandLetterheadSchema = z.object({
   /** Peso del nombre del membrete; `null` = el de los títulos del documento. */
   titleWeight: z.number().int().min(100).max(900).nullable().default(null),
   /** Tamaño del nombre del membrete (pt). */
-  titlePt: z.number().min(6).max(24).default(12),
+  titlePt: z.number().min(BRAND_LIMITS.titlePt.min).max(BRAND_LIMITS.titlePt.max).default(12),
   /** Tamaño de las líneas del membrete (dirección, RIF, contacto…), en pt. */
-  linePt: z.number().min(5).max(14).default(8),
+  linePt: z.number().min(BRAND_LIMITS.linePt.min).max(BRAND_LIMITS.linePt.max).default(8),
   /** Las líneas del membrete, en el orden en que se imprimen. */
   lines: z
     .array(letterheadLineSchema)
@@ -135,8 +163,14 @@ export const brandLetterheadSchema = z.object({
     .default([...DEFAULT_LETTERHEAD_LINES]),
   /** Pie propio del membrete (lema, eslogan); `null` = sin pie. */
   footer: z.string().trim().max(300).nullable().default(null),
-  watermarkWidthMm: z.number().min(20).max(200),
-  watermarkOpacity: z.number().min(0).max(0.6),
+  watermarkWidthMm: z
+    .number()
+    .min(BRAND_LIMITS.watermarkWidthMm.min)
+    .max(BRAND_LIMITS.watermarkWidthMm.max),
+  watermarkOpacity: z
+    .number()
+    .min(BRAND_LIMITS.watermarkOpacity.min)
+    .max(BRAND_LIMITS.watermarkOpacity.max),
 });
 
 export type BrandLetterheadSettings = z.infer<typeof brandLetterheadSchema>;
@@ -553,6 +587,39 @@ export const resolveScreenText = (
 export const DEFAULT_WHATSAPP_API_BASE = 'https://graph.facebook.com/v21.0';
 
 /**
+ * Un campo de texto de los canales. La semántica es la de la entrada: `undefined` = no
+ * tocar, `''` = borrar. Se acepta además `null` porque es la forma en que la **vista**
+ * devuelve un campo sin valor: así reenviar lo leído (o un formulario que solo copia la
+ * vista) nunca es un 400. `null` se normaliza a «no tocar», que para un campo que ya
+ * venía vacío es lo mismo.
+ */
+const channelTextInput = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullable()
+    .transform((valor) => valor ?? undefined)
+    .optional();
+
+/**
+ * La **base de la Graph API**: una URL completa, la cadena vacía («volver a la de
+ * fábrica», que es lo que hace el servicio) o `null` por la misma razón que los demás
+ * campos. Antes exigía una URL y `''` fallaba, así que **vaciar el campo en el panel
+ * rompía el guardado** aunque el servicio ya sabía interpretarlo.
+ */
+const channelApiBaseInput = z
+  .string()
+  .trim()
+  .max(200)
+  .refine((valor) => valor === '' || z.url().safeParse(valor).success, {
+    message: 'Debe ser una URL completa',
+  })
+  .nullable()
+  .transform((valor) => valor ?? undefined)
+  .optional();
+
+/**
  * Credenciales y datos de los canales. Los **secretos** viajan hacia el servidor
  * (nunca de vuelta tal cual: la vista los enmascara) y se guardan **cifrados** en la
  * base con la clave del almacén (`STORAGE_ENCRYPTION_KEY`).
@@ -562,15 +629,15 @@ export const DEFAULT_WHATSAPP_API_BASE = 'https://graph.facebook.com/v21.0';
  * el token.
  */
 export const channelSettingsInputSchema = z.object({
-  telegramBotToken: z.string().trim().max(200).optional(),
-  telegramBotUsername: z.string().trim().max(80).optional(),
-  adminTelegramBotToken: z.string().trim().max(200).optional(),
-  adminTelegramChatId: z.string().trim().max(80).optional(),
-  whatsappToken: z.string().trim().max(1000).optional(),
-  whatsappPhoneId: z.string().trim().max(60).optional(),
-  whatsappVerifyToken: z.string().trim().max(200).optional(),
-  whatsappAppSecret: z.string().trim().max(200).optional(),
-  whatsappApiBase: z.string().trim().url('Debe ser una URL completa').max(200).optional(),
+  telegramBotToken: channelTextInput(200),
+  telegramBotUsername: channelTextInput(80),
+  adminTelegramBotToken: channelTextInput(200),
+  adminTelegramChatId: channelTextInput(80),
+  whatsappToken: channelTextInput(1000),
+  whatsappPhoneId: channelTextInput(60),
+  whatsappVerifyToken: channelTextInput(200),
+  whatsappAppSecret: channelTextInput(200),
+  whatsappApiBase: channelApiBaseInput,
 });
 
 export type ChannelSettingsInput = z.infer<typeof channelSettingsInputSchema>;
