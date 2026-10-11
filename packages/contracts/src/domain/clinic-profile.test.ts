@@ -65,3 +65,29 @@ describe('la identidad de la vista en la forma del contrato', () => {
     expect(letterheadMissingFields(clinic)).toContain('odontólogo');
   });
 });
+
+describe('el nombre del consultorio en dos líneas', () => {
+  const conNombre = (name: string) =>
+    clinicIdentityViewSchema.parse({
+      ...identidadCompleta,
+      clinic: { ...identidadCompleta.clinic, name },
+    });
+
+  it('admite dos líneas separadas por un salto', () => {
+    expect(conNombre('Clínica Sonrisa\nSucursal Centro').clinic.name).toBe(
+      'Clínica Sonrisa\nSucursal Centro',
+    );
+  });
+
+  it('recorta cada línea y descarta las vacías', () => {
+    expect(conNombre('  Clínica  \n\n  Sucursal  ').clinic.name).toBe('Clínica\nSucursal');
+  });
+
+  it('no deja pasar de dos líneas', () => {
+    expect(conNombre('Clínica\nSucursal\nAnexo').clinic.name).toBe('Clínica\nSucursal');
+  });
+
+  it('un nombre sin nada que imprimir se rechaza', () => {
+    expect(() => conNombre('   \n  ')).toThrow(/nombre del consultorio/i);
+  });
+});

@@ -79,6 +79,8 @@ describe('la marca del consultorio', () => {
     expect(css).toContain('justify-content: var(--brand-lh-logo-align)');
     expect(css).toContain('height: var(--brand-logo-height-mm)');
     expect(css).toContain('font-size: var(--brand-lh-line-pt)');
+    // El nombre del membrete puede ir en dos líneas: el CSS respeta el salto.
+    expect(css).toContain('white-space: pre-line');
   });
 
   it('declara las dos tipografías sobre familias del catálogo, con su peso', () => {

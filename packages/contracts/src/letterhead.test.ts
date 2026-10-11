@@ -100,4 +100,15 @@ describe('letterheadHtml', () => {
     const view = buildLetterheadView(clinica, 'Od. A · Endodoncia');
     expect(letterheadHtml(view, null)).toContain('class="brand-lh-line brand-lh-dentist"');
   });
+
+  it('conserva el salto del nombre en dos líneas (lo respeta el CSS, no un <br>)', () => {
+    const view = buildLetterheadView(
+      { ...clinica, name: 'Clínica Sonrisa\nSucursal Centro' },
+      null,
+    );
+    expect(view.name).toBe('Clínica Sonrisa\nSucursal Centro');
+    const html = letterheadHtml(view, null);
+    expect(html).toContain('Clínica Sonrisa\nSucursal Centro');
+    expect(html).not.toContain('<br');
+  });
 });

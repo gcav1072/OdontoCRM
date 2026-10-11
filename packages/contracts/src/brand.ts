@@ -579,6 +579,9 @@ export const letterheadCss = (): string => `
   font-size: var(--brand-lh-title-pt);
   color: var(--brand-primary);
   margin: 0;
+  /* El nombre puede venir en dos líneas (se parte en Mi perfil): «pre-line» respeta el
+     salto que escribe el consultorio y sigue plegando los espacios sobrantes. */
+  white-space: pre-line;
 }
 .brand-lh-line {
   font-size: var(--brand-lh-line-pt);

@@ -8,6 +8,7 @@ import {
   clinicDentistLine,
   clinicFullAddress,
   clinicLeadDentist,
+  clinicNameOneLine,
   letterheadMissingFields,
   type ClinicIdentity,
 } from './clinic.js';
@@ -159,5 +160,23 @@ describe('la línea del especialista en el membrete', () => {
 
   it('sin odontólogo no hay línea que imprimir', () => {
     expect(clinicDentistLine(null)).toBe('');
+  });
+});
+
+describe('el nombre del consultorio en una sola línea', () => {
+  it('colapsa el salto de línea que parte el membrete en dos', () => {
+    expect(clinicNameOneLine('Clínica Sonrisa\nSucursal Centro')).toBe(
+      'Clínica Sonrisa Sucursal Centro',
+    );
+  });
+
+  it('recorta los espacios sobrantes de cada línea', () => {
+    expect(clinicNameOneLine('  Clínica  Sonrisa  \n  Sucursal  ')).toBe(
+      'Clínica Sonrisa Sucursal',
+    );
+  });
+
+  it('un nombre de una sola línea queda igual', () => {
+    expect(clinicNameOneLine('Consultorio Sonrisa')).toBe('Consultorio Sonrisa');
   });
 });

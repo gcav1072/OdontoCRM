@@ -98,6 +98,20 @@ export const clinicFullAddress = (clinic: ClinicIdentity = CLINIC): string =>
   clinic.city === null ? clinic.address : `${clinic.address}, ${clinic.city}`;
 
 /**
+ * El nombre del consultorio en **una sola línea**.
+ *
+ * El titular puede partir el nombre del membrete en dos líneas desde Mi perfil (se
+ * guardan con un salto de línea, sin migración: la columna es texto). El membrete lo
+ * respeta, pero los textos que **no** son el membrete —el bot, las pantallas de sala y
+ * el `.ics`— no llevan saltos: aquí se colapsan los saltos y los espacios sobrantes.
+ */
+export const clinicNameOneLine = (name: string): string =>
+  name
+    .replace(/\s*\n\s*/g, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+
+/**
  * ¿Hay datos de consultorio suficientes para componer un documento o un aviso?
  *
  * Se exige **nombre y dirección** (lo que aparece en el membrete, el `.ics` y el texto

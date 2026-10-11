@@ -38,10 +38,32 @@ export const dentistProfileSchema = z.object({
 
 export type DentistProfile = z.infer<typeof dentistProfileSchema>;
 
+/**
+ * Deja el nombre del consultorio en **hasta dos líneas**: cada una sin espacios sobrantes,
+ * sin líneas vacías y con un salto de línea entre ellas. El membrete las imprime tal cual;
+ * los textos que no son el membrete las unen con `clinicNameOneLine`.
+ */
+const normalizarNombreConsultorio = (valor: string): string =>
+  valor
+    .split('\n')
+    .map((linea) => linea.trim())
+    .filter((linea) => linea !== '')
+    .slice(0, 2)
+    .join('\n');
+
 /** Datos del consultorio que alimentan el membrete de todos los imprimibles. */
 export const clinicProfileSchema = z.object({
-  /** Nombre visible: membrete, bot y pantallas de sala. */
-  name: z.string().trim().min(1, 'Escribe el nombre del consultorio').max(120),
+  /**
+   * Nombre visible: membrete, bot y pantallas de sala. Se admite en **hasta dos
+   * líneas** —el titular puede partirlo desde Mi perfil— separadas por un salto de
+   * línea. No hay migración: la misma columna de texto guarda las dos líneas, y los
+   * textos que no son el membrete las colapsan con `clinicNameOneLine`.
+   */
+  name: z
+    .string()
+    .max(120, 'El nombre del consultorio no puede pasar de 120 caracteres')
+    .transform(normalizarNombreConsultorio)
+    .refine((valor) => valor !== '', 'Escribe el nombre del consultorio'),
   /** Razón social o nombre del propietario, si el documento lo lleva aparte. */
   legalName: z.string().trim().max(160).nullable().default(null),
   /** Dirección en una línea. */
