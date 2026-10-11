@@ -8,10 +8,13 @@ import {
   clinicDentistLine,
   clinicFullAddress,
   clinicLeadDentist,
+  clinicNameFromLines,
+  clinicNameLines,
   clinicNameOneLine,
   letterheadMissingFields,
   type ClinicIdentity,
 } from './clinic.js';
+import { clinicProfileSchema } from './domain/clinic-profile.js';
 
 const consultorioCompleto: ClinicIdentity = {
   name: 'Consultorio Sonrisa',
@@ -116,6 +119,65 @@ describe('ayudas de lectura del consultorio', () => {
     expect(faltantes).toContain('nombre del consultorio');
     expect(faltantes).toContain('dirección');
     expect(faltantes).toContain('MPPS del odontólogo');
+  });
+});
+
+/**
+ * El nombre del consultorio se edita en **dos líneas**. El fallo del alta del titular era
+ * que cada tecla recortaba la línea, así que el espacio entre dos palabras desaparecía y el
+ * nombre «no admitía espacios». Estos ayudantes son el cable entre los dos campos y la
+ * columna (una sola línea de texto con un salto en medio): **no recortan** al escribir; la
+ * normalización la hace el esquema al guardar.
+ */
+describe('el nombre del consultorio en dos líneas', () => {
+  it('parte el nombre en sus dos líneas, tal cual se escribieron', () => {
+    expect(clinicNameLines('Clínica Sonrisa\nSucursal Centro')).toEqual([
+      'Clínica Sonrisa',
+      'Sucursal Centro',
+    ]);
+  });
+
+  it('un nombre de una línea deja la segunda vacía', () => {
+    expect(clinicNameLines('Clínica Sonrisa')).toEqual(['Clínica Sonrisa', '']);
+    expect(clinicNameLines('')).toEqual(['', '']);
+  });
+
+  it('conserva el espacio que se está tecleando (no recorta al unir)', () => {
+    // El bug: recortar en cada tecla borraba el espacio recién escrito.
+    expect(clinicNameFromLines('Clínica Sonrisa', 'Sucursal Centro')).toBe(
+      'Clínica Sonrisa\nSucursal Centro',
+    );
+    expect(clinicNameFromLines('Clínica ', '')).toBe('Clínica \n');
+  });
+
+  it('partir y volver a unir devuelve lo mismo', () => {
+    const nombre = 'Clínica Sonrisa\nSucursal Centro';
+    const [linea1, linea2] = clinicNameLines(nombre);
+    expect(clinicNameFromLines(linea1, linea2)).toBe(nombre);
+  });
+
+  it('lo que se teclea se recorta al guardar, no antes', () => {
+    const crudo = clinicNameFromLines('  Clínica Sonrisa ', 'Sucursal Centro');
+    // Mientras se escribe se conserva tal cual (con los espacios de sobra)…
+    expect(crudo).toBe('  Clínica Sonrisa \nSucursal Centro');
+    // …y ya guardado por el esquema, recortado y en dos líneas.
+    expect(clinicProfileSchema.shape.name.parse(crudo)).toBe('Clínica Sonrisa\nSucursal Centro');
+  });
+
+  it('teclear «Clínica Sonrisa» letra a letra conserva el espacio (regresión)', () => {
+    // El bug del alta del titular: el formulario recortaba cada tecla, así que al escribir
+    // el espacio entre «Clínica» y «Sonrisa» el espacio desaparecía y el nombre quedaba
+    // «ClínicaSonrisa». Aquí se simula el formulario: el valor es el nombre en dos líneas y
+    // cada tecla lo recompone; con el recorte viejo, este test fallaría.
+    let valor = '';
+    const teclear = (texto: string): void => {
+      const [linea1, linea2] = clinicNameLines(valor);
+      valor = clinicNameFromLines(linea1 + texto, linea2);
+    };
+    for (const caracter of 'Clínica Sonrisa') teclear(caracter);
+
+    expect(clinicNameLines(valor)[0]).toBe('Clínica Sonrisa');
+    expect(clinicProfileSchema.shape.name.parse(valor)).toBe('Clínica Sonrisa');
   });
 });
 

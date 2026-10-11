@@ -112,6 +112,28 @@ export const clinicNameOneLine = (name: string): string =>
     .trim();
 
 /**
+ * El nombre del consultorio partido en sus **dos líneas**, para los dos campos del
+ * formulario que lo editan (Mi perfil y el alta del titular). Cada línea va **tal cual**,
+ * sin recortar: recortar mientras se escribe borra el espacio que se acaba de teclear
+ * entre dos palabras, así que el nombre no admitiría espacios —el fallo del alta del
+ * titular—. El recorte, el tope de dos líneas y el descarte de las vacías los hace el
+ * esquema al guardar (`clinicProfileSchema.name`).
+ */
+export const clinicNameLines = (name: string): readonly [string, string] => {
+  const [linea1 = '', linea2 = ''] = name.split('\n');
+  return [linea1, linea2];
+};
+
+/**
+ * Las dos líneas del nombre unidas con el salto que guarda la columna (la columna es
+ * texto, sin migración). Es la operación inversa de {@link clinicNameLines} y la que
+ * alimenta el formulario **mientras se escribe**: no recorta, para no comerse el espacio
+ * que se teclea. La normalización la hace el esquema al guardar.
+ */
+export const clinicNameFromLines = (linea1: string, linea2: string): string =>
+  [linea1, linea2].join('\n');
+
+/**
  * ¿Hay datos de consultorio suficientes para componer un documento o un aviso?
  *
  * Se exige **nombre y dirección** (lo que aparece en el membrete, el `.ics` y el texto
