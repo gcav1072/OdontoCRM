@@ -427,6 +427,11 @@ switch ($Orden) {
         Morir "falló la compilación (registro: $registro)"
       }
       Escribir-Ok 'compilado (TypeScript → dist/ y la SPA en apps/web/dist)'
+      $faltan = Get-EntrypointsFaltantes
+      if (@($faltan).Count -gt 0) {
+        foreach ($f in $faltan) { Escribir-Error "no se compiló: $f" }
+        Morir 'la compilación quedó incompleta: vuelve a ejecutar «odontocrm compilar»'
+      }
       Escribir-Aviso 'los servicios siguen con el código anterior hasta que se reinicien: usa «odontocrm reiniciar»'
     }
     finally { Pop-Location }
@@ -446,6 +451,11 @@ switch ($Orden) {
         Morir "falló la compilación (registro: $registro)"
       }
       Escribir-Ok 'compilado (TypeScript → dist/)'
+      $faltan = Get-EntrypointsFaltantes
+      if (@($faltan).Count -gt 0) {
+        foreach ($f in $faltan) { Escribir-Error "no se compiló: $f" }
+        Morir 'la compilación quedó incompleta: vuelve a ejecutar «odontocrm recompilar»'
+      }
     }
     finally { Pop-Location }
     & pm2 restart all *> $null

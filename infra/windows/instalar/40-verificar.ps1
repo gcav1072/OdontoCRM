@@ -203,6 +203,19 @@ else {
   else { Escribir-Ok "el código de $OdontoCode no contiene secretos (ni un .env)" }
 }
 
+# ── ¿El código compilado es el del disco? ───────────────────────────────────
+# Un `git reset --hard` (o un `checkout`) en el código cambia el FUENTE pero no recompila: el
+# servicio sigue con el `dist` viejo. La marca la escribe `npm run postbuild`; si no cuadra,
+# se avisa (no es un fallo: el servidor funciona, pero con el código de otro commit).
+$avisoDist = Get-AvisoDistViejo
+if ($avisoDist) {
+  Escribir-Aviso "el código compilado NO es el del disco: $avisoDist"
+  Escribir-Detalle 'recompila:  odontocrm recompilar   (o «npm run build» en el código)'
+}
+elseif (Test-Path (Join-Path $OdontoCode '.odontocrm-build-commit')) {
+  Escribir-Ok 'el código compilado es el del disco'
+}
+
 # ── 7/7 · Cifrado del almacén y respaldos restaurables ───────────────────────
 # Dos comprobaciones que **no** cambian nada: informan de en qué estado está lo que protege
 # los datos. El cifrado del almacén se activa solo; migrar los archivos viejos lo decide el

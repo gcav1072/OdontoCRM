@@ -143,6 +143,12 @@ else {
       Morir "falló la compilación (registro: $registro)"
     }
     Escribir-Ok 'compilado: servicios, paquetes y la interfaz web'
+    $faltan = Get-EntrypointsFaltantes
+    if (@($faltan).Count -gt 0) {
+      foreach ($f in $faltan) { Escribir-Error "no se compiló: $f" }
+      Morir "la compilación quedó incompleta (registro: $registro): prueba «npm run build» a mano"
+    }
+    Escribir-Ok "los $($info.servicios.Count) servicios y el gateway tienen su dist/index.js"
   }
   finally { Pop-Location }
 }

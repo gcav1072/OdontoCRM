@@ -332,6 +332,45 @@ function Get-Info {
   return $OdontoInfo
 }
 
+# ── ¿Compiló TODO? ───────────────────────────────────────────────────────────
+# Comprueba que, tras `npm run build`, existe el punto de entrada de cada servicio y el del
+# gateway. Un `tsc -b` incremental puede dar por bueno un proyecto del que no emitió todos sus
+# módulos, y el servicio arranca con el código viejo (pasó con el módulo del encaje del récipe:
+# salía encogido y en dos hojas). `npm run prebuild` compila en limpio; esto lo verifica.
+# Devuelve la lista de rutas que FALTAN (vacía = todo bien).
+function Get-EntrypointsFaltantes {
+  $info = Get-Info
+  $faltan = @()
+  foreach ($s in $info.servicios) {
+    $ruta = Join-Path $OdontoCode "services\$($s.nombre)\dist\index.js"
+    if (-not (Test-Path $ruta)) { $faltan += "services/$($s.nombre)/dist/index.js" }
+  }
+  if (-not (Test-Path (Join-Path $OdontoCode 'apps\gateway\dist\index.js'))) {
+    $faltan += 'apps/gateway/dist/index.js'
+  }
+  return $faltan
+}
+
+# ── ¿El código compilado es el del disco? ────────────────────────────────────
+# Un `git reset --hard` (o un `checkout`) en el código cambia el FUENTE pero NO recompila: el
+# servicio sigue corriendo el `dist` viejo sin que nadie se entere hasta que algo falla en el
+# papel. La marca `.odontocrm-build-commit` la escribe `npm run postbuild`. Devuelve $null si
+# cuadra (o si no se puede saber), y si no, el motivo del aviso.
+function Get-AvisoDistViejo {
+  $marca = Join-Path $OdontoCode '.odontocrm-build-commit'
+  if (-not (Test-Path $marca)) { return $null }
+  $compilado = (Get-Content $marca -Raw -ErrorAction SilentlyContinue).Trim()
+  if (-not $compilado) { return $null }
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return $null }
+  $head = (& git -C $OdontoCode rev-parse HEAD 2>$null)
+  if ($LASTEXITCODE -ne 0 -or -not $head) { return $null }
+  $head = $head.Trim()
+  if ($compilado -eq $head) { return $null }
+  $col = [Math]::Min(7, $compilado.Length)
+  $headCol = [Math]::Min(7, $head.Length)
+  return "el dist se compiló del commit $($compilado.Substring(0, $col)), no del actual ($($head.Substring(0, $headCol)))"
+}
+
 # Nombre con el que entran los equipos. Sin mDNS en Windows, se entra por IP; esto queda
 # para el certificado y para WEB_ORIGIN (y por si algún día se añade el nombre al hosts).
 function Get-Nombre {
