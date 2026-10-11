@@ -4,6 +4,40 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Configuración] — El membrete se configura aparte y se aplica en caliente · 2026-10-10
+
+El membrete de los imprimibles deja de estar cosido al código y gana su **subsección** en
+`/configuracion`: alto y posición del logo, tipografía propia del nombre, qué líneas salen y en qué
+orden, un pie y el velo, con **vista previa en vivo**. Y un cambio llega al papel en segundos, **sin
+reiniciar** ([ADR 0064](docs/adr/0064-membrete-configurable-y-aplicado-en-caliente.md)).
+
+**El bug que lo abrió.** El récipe fijaba `.logo { height: 12mm }` a mano y **no** seguía
+`--brand-logo-height-mm`: el alto de logo del panel no tenía ningún efecto sobre él. Ahora las
+**seis** plantillas —récipe, dossier, reporte, factura, recibo y nota de crédito— y el membrete de la
+**SPA** salen del **mismo** helper, así que no puede volver a haber una copia desviada.
+
+**El logo va a la izquierda y centrado en vertical** respecto al bloque de datos, con el alto de la
+marca; el **nombre** tiene su tipografía propia (familia, peso y tamaño) y las **líneas** su tamaño.
+Se puede elegir qué líneas se imprimen (dirección, RIF, teléfonos/correo, web, especialista) y
+**reordenarlas**. Los **datos** siguen en Mi perfil: aquí solo se decide cómo se pintan.
+
+**Aplicar en caliente.** La marca se lee con una caché de **1 s** (`createBrandLookup`) y el membrete
+—que lleva el logo y los datos— de **5 s** en clinical, reporting y billing: guardar en el panel se
+ve en el papel en segundos, sin reiniciar. El resto de servicios (pantallas, agenda, bot) conservan el
+minuto: no componen papel.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `letterhead.ts` (nuevo, contracts) | `buildLetterheadView` + `letterheadHtml`: compone el bloque (nombre, subtítulo, líneas en orden y sin las vacías, pie) y escapa el texto |
+| `brand.ts` | `BrandLetterhead` con alineación, tipografía propia, líneas y pie; `letterheadCss()` con las clases `.brand-lh*`; variables 25 → **31** |
+| `domain/settings.ts` | `brandLetterheadSchema` ampliado (sin migración: `letterhead` es JSONB) y `DEFAULT_LETTERHEAD_LINES` |
+| `prescription-document.ts` | **Quita `.logo { height: 12mm }`**; el récipe sigue la marca |
+| `dossier-document.ts`, `report-html.ts`, `invoice-pdf.ts`, `receipt-pdf.ts`, `credit-note-pdf.ts` | Adoptan el helper compartido |
+| `MembreteSection.tsx` (nuevo) | Subsección con logo, tipografía, líneas ordenables, pie, velo y **vista previa en vivo** |
+| `MarcaSection.tsx` | Deja de duplicar `RolTipografico` (a su propio archivo) y cede «Medidas» al membrete |
+| `MembreteDocumento.tsx` | El membrete de la SPA sale de `useSettings()` y de las clases `.brand-lh` |
+| `brand-lookup.ts` / servicios | Caché de la marca 60 s → **1 s**; el membrete a 5 s en los tres servicios de documentos |
+
 ## [Configuración] — Las fuentes de los imprimibles se eligen por rol · 2026-10-10
 
 La marca de los imprimibles pasa de **una sola familia** a un **catálogo de familias**, y el panel

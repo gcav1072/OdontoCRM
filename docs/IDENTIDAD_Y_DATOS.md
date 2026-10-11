@@ -170,7 +170,19 @@ export const BRAND: Brand = {
       // … Inter, Poppins (sans) y Lobster, Pacifico, Dancing Script (script).
     ],
   },
-  letterhead: { logoHeightMm: 18, watermarkWidthMm: 90, watermarkOpacity: 0.1 },
+  letterhead: {
+    // Membrete (subsección «Membrete» del panel, ADR 0064): el logo va a la izquierda y
+    // **centrado en vertical**; el nombre tiene su propia tipografía y las líneas, su orden.
+    logoHeightMm: 18, logoAlign: 'left', logoVerticalAlign: 'center',
+    titleSans: null, titleWeight: null, titlePt: 12, linePt: 8,
+    lines: [
+      { key: 'address', visible: true }, { key: 'rif', visible: true },
+      { key: 'contact', visible: true }, { key: 'website', visible: true },
+      { key: 'dentist', visible: true },
+    ],
+    footer: null,
+    watermarkWidthMm: 90, watermarkOpacity: 0.1,
+  },
   logoPath: 'assets/clinic/logo.svg',       // respaldo si no hay logo subido
   watermarkPath: 'assets/clinic/logo.svg',  // respaldo del velo
 };
@@ -193,6 +205,16 @@ que cubre el español) con su licencia OFL.
 **La marca de agua** es el **logo efectivo** (el subido, o el del repositorio), centrado y
 translúcido, detrás del contenido de **todos** los imprimibles. Se repite en cada hoja. **Su
 ancho y su opacidad son de la marca** (`brand.ts`): el titular cambia el logo, no el velo.
+
+**El membrete** (ADR 0064). La **presentación** del bloque de identidad —alto y posición del logo
+(centrado en vertical por defecto), tipografía propia del nombre, tamaño de las líneas, qué líneas
+salen y en qué orden, y un pie— se edita en la subsección «Membrete» de `/configuracion`, con
+**vista previa en vivo** con los datos reales. Los **datos** (nombre, RIF, dirección, teléfonos,
+logo) siguen siendo la identidad del consultorio (§2). Los seis imprimibles y el membrete de la SPA
+lo componen con **el mismo helper** (`packages/contracts/src/letterhead.ts` y `letterheadCss()`),
+así que no hay copias que se desvíen —un alto de logo fijo en el récipe era el síntoma—. Un cambio
+llega al papel en segundos: la marca se lee con una caché de 1 s y el membrete con una de 5 s en los
+servicios de documentos (el resto de servicios conservan el minuto: no componen papel).
 
 ### Regenerar el CSS de la web (`npm run marca:css`)
 
