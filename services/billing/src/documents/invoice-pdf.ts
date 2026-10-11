@@ -20,7 +20,7 @@ import {
 import { brandFontFaceCss, readImageDataUri } from '@odontocrm/kernel';
 
 /**
- * La **factura** en A4, compuesta una sola vez y archivada (ADR 0048).
+ * La **factura** en carta, compuesta una sola vez y archivada (ADR 0048).
  *
  * Todo lo que exige la Providencia SNAT/2011/0071, Art. 13, está en el papel: la denominación, la
  * **numeración consecutiva y única** y el **número de control preimpreso** con su rango, los datos del
@@ -162,7 +162,7 @@ export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string>
   ${brandWatermarkCss()}
   ${letterheadCss()}
   /* Una factura = una página (Art. 33). Los márgenes se miden sobre la forma física. */
-  @page { size: A4 portrait; margin: 14mm 12mm 12mm 12mm; }
+  @page { size: letter portrait; margin: 14mm 12mm 12mm 12mm; }
   * { box-sizing: border-box; }
   body { font-family: var(--brand-font-doc-body); font-size: 9.5pt; color: var(--brand-ink); margin: 0; }
   h1 { font-family: var(--brand-font-doc-title); font-size: 13pt; font-weight: var(--brand-font-doc-title-weight); margin: 0; letter-spacing: .04em; color: var(--brand-primary); }

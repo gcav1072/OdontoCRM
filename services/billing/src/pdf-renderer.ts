@@ -5,7 +5,7 @@ import { chromium, type Browser } from 'playwright';
  *
  * **Viene de `services/reporting/src/pdf-renderer.ts`** (que a su vez vino del récipe A5): mismo
  * patrón —un navegador por proceso, reutilizado entre documentos, y una cola sencilla para no abrir
- * dos páginas a la vez—, cambia solo el papel: **A4 vertical**, que es la forma de la factura.
+ * dos páginas a la vez—, cambia solo el papel: **carta vertical**, que es la forma de la factura.
  *
  * Se copia en vez de compartirse porque el paquete de utilidades comunes no tiene (ni debe tener)
  * dependencia de Playwright.
@@ -19,7 +19,7 @@ export interface PdfRendererOptions {
 }
 
 export interface PdfRenderer {
-  /** HTML → PDF A4 vertical (devuelve los bytes). */
+  /** HTML → PDF carta vertical (devuelve los bytes). */
   render: (html: string) => Promise<Buffer>;
   /** Cierra el navegador (lo llama el apagado del servicio). */
   close: () => Promise<void>;
@@ -61,7 +61,7 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
           await fuentes?.ready;
         });
         return await page.pdf({
-          format: 'A4',
+          format: 'Letter',
           landscape: false,
           printBackground: true,
         });

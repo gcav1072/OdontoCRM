@@ -82,7 +82,7 @@ export const renderCreditNoteHtml = async (input: CreditNotePdfInput): Promise<s
   ${input.fontFaceCss ?? (await brandFontFaceCss())}
   ${brandWatermarkCss()}
   ${letterheadCss()}
-  @page { size: A4 portrait; margin: 16mm 14mm; }
+  @page { size: letter portrait; margin: 16mm 14mm; }
   body { font-family: var(--brand-font-doc-body); font-size: 10pt; color: var(--brand-ink); margin: 0; }
   h1 { font-family: var(--brand-font-doc-title); font-size: 14pt; font-weight: var(--brand-font-doc-title-weight); margin: 0 0 1mm; letter-spacing: .04em; color: var(--brand-primary); }
   .cabecera { display: flex; justify-content: space-between; border-bottom: 1.2pt solid var(--brand-ink); padding-bottom: 3mm; }
