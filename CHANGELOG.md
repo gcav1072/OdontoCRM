@@ -4,6 +4,29 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Arreglo] — El récipe vuelve a una sola hoja: la marca de agua desbordaba · 2026-10-11
+
+Con la marca de la clínica (logo del membrete a 30 mm, velo de 110 mm, nombre a 24 pt) el récipe
+seguía saliendo en **dos hojas** aunque el arreglo del
+[ADR 0065](docs/adr/0065-el-recipe-cabe-en-el-papel-de-la-clinica.md) ya estaba desplegado. La causa
+**no** era el papel ni la altura de la hoja: era la **marca de agua**. La marca se centra con
+`top: 50%` + `transform: translateY(-50%)`, y ese `transform` solo la mueve **a la vista**: su **caja
+de layout** queda anclada al 50 % de la mitad y **se extiende hacia abajo** por toda su altura. Con un
+velo grande esa caja pasaba del área imprimible y Chromium añadía una **segunda hoja en blanco** —algo
+que la medición del encaje no veía, porque mide la caja de `.sheet`, no los elementos fuera de flujo—.
+
+Ahora la marca se centra **sin transform** (`inset: 0` + `margin: auto`, con `max-height/max-width:
+100 %`), de modo que su caja queda **dentro** de la mitad (misma posición a la vista) y encoge con la
+hoja (`--rx-fit`). Y el encaje queda **blindado**: tras medir, el servicio **cuenta las hojas del PDF
+ya compuesto** y, si el documento se pasó (una marca más alta, un membrete más grande), **aprieta la
+escala y recompone** hasta que quepa en una. Así un membrete modificado ya no puede dejar la segunda
+hoja.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `prescription-document.ts` (clinical) | La marca de agua se centra sin transform, con su caja dentro de la mitad |
+| `pdf-renderer.ts` (clinical) | `maxPages` (por defecto 1): comprueba las hojas del PDF y aprieta la escala si se pasa |
+
 ## [Notificaciones] — El `.ics` de la cita vuelve a abrirse en el celular · 2026-10-11
 
 El calendario que el paciente recibe por Telegram o WhatsApp dejó de abrirse en el teléfono. No era la

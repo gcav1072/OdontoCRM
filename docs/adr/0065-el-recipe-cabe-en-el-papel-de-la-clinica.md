@@ -20,6 +20,22 @@
 > `recipePaper` sigue eligiéndose en el panel (**carta** de fábrica; `A4` queda para una clínica que
 > imprima en A4), y el **encaje medido** de una sola hoja no cambia.
 
+> **Actualización (2026-10-11) · la marca de agua era la que desbordaba.** Una marca guardada con el
+> **logo del membrete a 30 mm y el velo a 110 mm** seguía sacando **dos hojas** con el encaje medido ya
+> desplegado. La causa no era el papel ni la altura de la hoja (el bloque medía 185 mm, dentro del área
+> imprimible): era la **marca de agua** (`.brand-watermark`). Se centra con `top: 50%` +
+> `transform: translateY(-50%)`, y el `transform` solo la mueve **a la vista**: su **caja de layout**
+> queda anclada al 50 % de la mitad y **se extiende hacia abajo** por toda su altura, así que con un velo
+> grande pasaba del área imprimible y Chromium añadía la segunda hoja. La medición del encaje no lo veía
+> porque mide la caja de `.sheet`, y la marca es un elemento fuera de flujo.
+>
+> El arreglo (en `prescription-document.ts`) centra la marca **sin transform** (`inset: 0` +
+> `margin: auto`, con `max-height/max-width: 100 %`): la caja queda **dentro** de la mitad —misma
+> posición a la vista— y encoge con la hoja (`--rx-fit`). Y el encaje queda **blindado** (en
+> `pdf-renderer.ts`, opción `maxPages`, por defecto 1): tras medir, el servicio **cuenta las hojas del
+> PDF compuesto** y, si se pasó, **aprieta la escala y recompone** hasta que quepa en una. Así una marca
+> —membrete o velo— modificada no puede volver a dejar la segunda hoja.
+
 ## Contexto
 
 El récipe salía en **una hoja carta apaisada** partida en dos mitades

@@ -217,10 +217,29 @@ const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined):
   .half { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
   /* La marca de agua va **una vez por mitad**, no sobre el pliego entero: el récipe son
      dos copias en una sola hoja apaisada, y una marca centrada en la página caería justo
-     sobre la línea divisoria. Dentro de la mitad se reancla a «absolute» (la marca
-     compartida usa «fixed», que la cuelga de la hoja) y el contenido sube a una capa
-     superior para quedar por encima del velo. */
-  .half > .brand-watermark { position: absolute; }
+     sobre la línea divisoria. Además el contenido sube a una capa superior para quedar
+     por encima del velo.
+
+     Se centra **sin transform**: la marca compartida se centra con top:50% +
+     translateY(-50%), y ese transform solo la mueve *a la vista*: su **caja de layout**
+     queda anclada al 50% y **se extiende hacia abajo** por toda su altura. Con un velo
+     grande —o con el membrete alto, que alarga la mitad— esa caja pasaba del área
+     imprimible y Chromium añadía una **segunda hoja en blanco**. Con inset:0 y
+     margin:auto la caja queda centrada *dentro* de la mitad (misma posición a la vista)
+     y, con max-height/max-width al 100%, nunca la desborda. El velo encoge con la hoja,
+     igual que el resto del documento (--rx-fit). */
+  .half > .brand-watermark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: auto;
+    transform: none;
+    width: calc(var(--brand-watermark-width-mm) * ${f});
+    max-width: 100%;
+    max-height: 100%;
+  }
   .half > *:not(.brand-watermark) { position: relative; z-index: 1; }
   .half + .half { border-left: 0.3mm dashed var(--brand-line); padding-left: 6mm; }
   .half:first-child { padding-right: 6mm; }

@@ -136,6 +136,14 @@ describe('el récipe en dos mitades apaisadas', () => {
     expect(html.match(/class="brand-watermark"/g)).toHaveLength(2);
     // Cada marca va **dentro** de su mitad, no antes de `.brand-doc` en el cuerpo.
     expect(html).toContain('.half > .brand-watermark');
+    // Y se centra **sin transform**: con `top:50%` + `translateY(-50%)` la caja de
+    // layout queda colgando por debajo de la mitad, desborda el área imprimible y
+    // Chromium añade una **segunda hoja en blanco** (la medición no lo veía porque mide
+    // `.sheet`, no lo que está fuera de flujo). Se centra con `inset` + `margin:auto`.
+    const reglaVelo = /\.half > \.brand-watermark\s*\{([^}]*)\}/.exec(html)?.[1] ?? '';
+    expect(reglaVelo).toContain('margin: auto');
+    expect(reglaVelo).toContain('transform: none');
+    expect(reglaVelo).not.toContain('translate');
   });
 
   it('la copia de la farmacia lleva medicamento (negrita y subrayado), presentación, vía y dosis', async () => {

@@ -50,8 +50,13 @@ export interface PdfFitToPage {
    */
   availableWidthMm: number;
   /** Tope inferior de la escala; por defecto `MIN_FIT_SCALE`. */
-  minScale?: number | undefined;
-}
+  minScale?: number | undefined;  /**
+   * Hojas máximas que admite el documento; por defecto **1**. Tras medir, el encaje se
+   * **comprueba** contando las hojas del PDF ya compuesto: si el documento se pasa (una
+   * marca —membrete o velo— más alta, por ejemplo), se aprieta la escala y se vuelve a
+   * componer. Es el blindaje contra la segunda hoja. `0` desactiva la comprobación.
+   */
+  maxPages?: number | undefined;}
 
 /**
  * Cómo se compone el papel.
@@ -88,6 +93,19 @@ interface EncajeDom {
   querySelector: (selector: string) => { getBoundingClientRect: () => { height: number } } | null;
 }
 
+/**
+ * Cuenta las hojas de un PDF (`/Type /Page`; `/Type /Pages` es el nodo raíz del árbol).
+ * Es la comprobación **real**: lo que el navegador paginó, no lo que la caja midió.
+ */
+const countPdfPages = (pdf: Buffer): number =>
+  (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length;
+
+/** Intentos del blindaje de una sola hoja: aprieta la escala y vuelve a componer. */
+const MAX_FIT_ATTEMPTS = 6;
+
+/** Cuánto se aprieta la escala en cada intento (un pelo menos para no oscilar). */
+const FIT_STEP = 0.94;
+
 /** El alto (px) del bloque que tiene que caber; `0` si la plantilla no lo trae. */
 const medirBloque = async (page: Page, selector: string): Promise<number> =>
   await page.evaluate((sel) => {
@@ -110,9 +128,10 @@ const aplicarEscala = async (page: Page, variable: string, escala: number): Prom
  * Deja el documento **encajado en la hoja**: pone la ventana con el tamaño del área
  * imprimible (para medir con el **ancho del papel**, que es como pagina el PDF), mide el
  * bloque con la escala en 1, calcula la escala que lo hace caber (nunca agranda) y la
- * comprueba midiendo otra vez.
+ * comprueba midiendo otra vez. Devuelve la escala que dejó aplicada, para que quien llame
+ * pueda apretarla si la comprobación real de hojas (en {@link createPdfRenderer}) no bastó.
  */
-const encajarEnLaHoja = async (page: Page, fit: PdfFitToPage): Promise<void> => {
+const encajarEnLaHoja = async (page: Page, fit: PdfFitToPage): Promise<number> => {
   // Sin esto la medida sale **corta**: el navegador mide contra su ventana (1 280 px, más
   // ancha que el papel) y el texto se pliega en menos renglones de los que tendrá en el
   // PDF, así que la hoja «cabía» en la cuenta y seguía partiéndose al imprimir.
@@ -132,6 +151,7 @@ const encajarEnLaHoja = async (page: Page, fit: PdfFitToPage): Promise<void> => 
     fit.minScale ?? MIN_FIT_SCALE,
   );
   await aplicarEscala(page, fit.scaleVariable, escala);
+  return escala;
 };
 
 export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
@@ -174,12 +194,12 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
         });
         // El encaje se mide **después** de las fuentes: la misma tipografía con la que se
         // va a componer el PDF es la que decide cuánto ocupa el documento.
-        if (opciones?.fitToPage !== undefined) await encajarEnLaHoja(page, opciones.fitToPage);
+        const fit = opciones?.fitToPage;
         // El récipe va en **carta apaisada** (`landscape: true`) con los márgenes de su
         // `@page`. El dossier pide carta y márgenes explícitos (para que quepa el folio del
         // pie).
         const margen = opciones?.marginMm;
-        return await page.pdf({
+        const parametros = {
           format: opciones?.format ?? 'A5',
           landscape: opciones?.landscape ?? false,
           printBackground: true,
@@ -200,7 +220,35 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
                 headerTemplate: '<span></span>',
                 footerTemplate: opciones.footerHtml,
               }),
-        });
+        } satisfies Parameters<Page['pdf']>[0];
+
+        // Sin encaje, una sola composición: los demás documentos (dossier, cobros) no pagan
+        // ni la medición ni la comprobación.
+        if (fit === undefined) return await page.pdf(parametros);
+
+        const escalaMedida = await encajarEnLaHoja(page, fit);
+        let pdf = await page.pdf(parametros);
+
+        // **Blindaje**: la medida del navegador es una estimación —mide cajas, y Chromium
+        // pagina el flujo (una marca con `transform`, un elemento fuera de flujo, un
+        // membrete alto…)—. Lo que de verdad decide las hojas es el PDF compuesto, así que
+        // se **cuenta** y, si se pasa de `maxPages`, se aprieta la escala y se recompone
+        // hasta que quepa o hasta el tope de legibilidad. Así una marca modificada no puede
+        // dejar una segunda hoja.
+        let escala = escalaMedida;
+        const maxPaginas = fit.maxPages ?? 1;
+        const minimo = fit.minScale ?? MIN_FIT_SCALE;
+        for (
+          let intento = 0;
+          intento < MAX_FIT_ATTEMPTS && maxPaginas > 0 && countPdfPages(pdf) > maxPaginas;
+          intento += 1
+        ) {
+          if (escala <= minimo) break;
+          escala = Math.max(minimo, escala * FIT_STEP);
+          await aplicarEscala(page, fit.scaleVariable, escala);
+          pdf = await page.pdf(parametros);
+        }
+        return pdf;
       } finally {
         await page.close().catch(() => undefined);
       }
