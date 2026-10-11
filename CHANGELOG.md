@@ -4,6 +4,14 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Interfaz] — El «teléfono alternativo» del paciente pasa a llamarse «teléfono de emergencias» · 2026-10-11
+
+Cambio **solo de texto visible**: el campo del paciente que se rotulaba «Teléfono alternativo» ahora
+se muestra como **«Teléfono de emergencias»**, con la ayuda «A quién avisar en caso de emergencia».
+No cambia ningún identificador ni dato: la clave interna sigue siendo `phoneAlt` y la columna de la
+base `phone_alt`, así que **no hace falta migración** y los datos guardados se conservan tal cual.
+El cambio vive en el diccionario (`i18n.ts`) y en el formulario de paciente (`PatientFields.tsx`).
+
 ## [Imprimibles] — El papel de la clínica es carta en todos los imprimibles · 2026-10-11
 
 El papel de la bandeja de la clínica es **carta**, no A4: una hoja A4 que no entra en la bandeja deja

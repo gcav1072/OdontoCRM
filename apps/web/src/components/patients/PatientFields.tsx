@@ -351,7 +351,7 @@ export const PatientFields = ({
 
           <Field
             label={t('pacientes.campo.phoneAlt')}
-            hint={t('pacientes.form.telefonoAyuda')}
+            hint={t('pacientes.form.telefonoEmergenciaAyuda')}
             error={errors.phoneAlt?.message}
           >
             <Input
