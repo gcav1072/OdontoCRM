@@ -24,6 +24,7 @@
 import { readFile } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { inflateSync } from 'node:zlib';
 
 import { chromium } from 'playwright';
 
@@ -39,7 +40,7 @@ const ACENTO_ID = 'azul';
 const ACENTO_PRIMARIO_CLARO = '#1d4ed8';
 const MARCA_PRIMARIO = '#7f1d1d';
 const TEXTO_KIOSKO = 'Recepción E2E';
-/** Peso que **no** usa ninguna fuente del repositorio (así el alta no pisa la de fábrica). */
+/** Peso con el que se sube la fuente de prueba a Montserrat (que trae 400 y 700 de fábrica). */
 const PESO_FUENTE = 500;
 /** `.woff2` real del repositorio, para subirlo como si fuera del consultorio. */
 const FUENTE_REPO = fileURLToPath(
@@ -185,6 +186,55 @@ check('el admin entra por el API', token !== '');
 /* ── 2) La configuración por el API ────────────────────────────────────────── */
 
 const settings = async () => (await call('/api/v1/settings')).body;
+
+/** Descarga binaria por el gateway (para mirar el PDF del reporte, no JSON). */
+const descargarPdf = async (path) => {
+  const response = await fetch(`${GATEWAY}${path}`, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(60_000),
+  });
+  return { status: response.status, buffer: Buffer.from(await response.arrayBuffer()) };
+};
+
+/**
+ * Los colores de **relleno** (`r g b rg`) que Chromium estampó en los flujos del PDF, en
+ * hex. El PDF va comprimido, así que se inflan los flujos y se leen los operadores `rg` con
+ * tolerancia (Chromium escribe `.498`, sin el cero de delante).
+ *
+ * Es como se comprueba que el **papel** lleva los colores del panel: la marca llega al PDF
+ * por la ruta interna de identity, y si esa lectura fallara el servicio degradaría al
+ * respaldo del código **en silencio** —el fallo de «cambié el color y el papel salió igual»—.
+ */
+const coloresRgDePdf = (buffer) => {
+  const crudo = buffer.toString('latin1');
+  const flujos = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+  const textos = [];
+  let m;
+  while ((m = flujos.exec(crudo)) !== null) {
+    try {
+      textos.push(inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'));
+    } catch {
+      /* flujo sin comprimir */
+    }
+  }
+  const operador = /(1|0|\.\d+|0?\.\d+)\s+(1|0|\.\d+|0?\.\d+)\s+(1|0|\.\d+|0?\.\d+)\s+rg/g;
+  const colores = new Set();
+  for (const texto of textos) {
+    let op;
+    while ((op = operador.exec(texto)) !== null) {
+      colores.add(
+        [op[1], op[2], op[3]]
+          .map((v) =>
+            Math.round(Number(v) * 255)
+              .toString(16)
+              .padStart(2, '0'),
+          )
+          .join(''),
+      );
+    }
+  }
+  return colores;
+};
 const inicial = await settings();
 check('el API de configuración responde', inicial?.themeCss !== undefined);
 
@@ -262,6 +312,18 @@ check(
   String(trasMembrete?.brand?.letterhead?.logoVerticalAlign),
 );
 
+/* El PANEL → PAPEL: el PDF que compone el servidor (no el navegador) tiene que salir con
+   el primario del panel. Es la comprobación que vigila que la marca llegue de verdad al
+   imprimible: el PDF lo arma `reporting` leyendo la marca a identity por la red interna. */
+const pdfReporte = await descargarPdf('/api/v1/reports/funnel/export.pdf');
+check('descarga el PDF del reporte', pdfReporte.status === 200, `status ${pdfReporte.status}`);
+const coloresPdf = coloresRgDePdf(pdfReporte.buffer);
+check(
+  'el PDF del reporte sale con el primario del panel (no el del código)',
+  coloresPdf.has(MARCA_PRIMARIO.slice(1).toLowerCase()),
+  [...coloresPdf].join(' '),
+);
+
 /* Fuente subida con familia, peso y estilo elegidos: se comprueba que entra en la marca,
    que el `@font-face` sale con ese peso y que quitarla la devuelve a como estaba. La
    familia es una del catálogo (Montserrat), que las pilas ya referencian, así que su
@@ -297,9 +359,12 @@ if (typeof rutaSubida === 'string') {
     { method: 'DELETE' },
   );
   check('quita la fuente subida', quitada.status === 200, `status ${quitada.status}`);
+  // Por **ruta**, no por peso: la familia Inter trae una fuente de fábrica con peso 500, así
+  // que `weight === 500` era cierto siempre y la comprobación fallaba aunque la baja fuera
+  // correcta (un falso negativo que ya estaba ahí).
   check(
     'la fuente subida deja de estar en la marca',
-    archivosFuente(quitada.body).some((file) => file.weight === PESO_FUENTE) === false,
+    archivosFuente(quitada.body).some((file) => file.path === rutaSubida) === false,
   );
 } else {
   check('la fuente subida tiene ruta para quitarla', false);
