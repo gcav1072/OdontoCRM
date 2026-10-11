@@ -1,15 +1,16 @@
 import {
+  BRAND,
   CLINIC,
-  clinicContactLine,
+  buildLetterheadView,
   clinicDentistFor,
   clinicDentistLine,
-  clinicFullAddress,
   clinicIdentityFromView,
 } from '@odontocrm/contracts';
 import type { ClinicIdentity } from '@odontocrm/contracts';
 
 import { useOptionalAuth } from '../../providers/AuthProvider';
 import { useClinicIdentity } from '../../providers/ClinicIdentityProvider';
+import { useSettings } from '../../providers/SettingsProvider';
 import { clinicLogoUrl } from '../../lib/marca';
 
 /**
@@ -35,6 +36,9 @@ export interface MembreteDocumentoProps {
 
 export const MembreteDocumento = ({ title }: MembreteDocumentoProps) => {
   const identidad = useClinicIdentity();
+  // La **presentación** del membrete (alto del logo, tipografía del nombre, líneas y pie)
+  // sale del panel; sin proveedor (pruebas) se cae al respaldo de la marca.
+  const ajustes = useSettings();
   // Fuera del shell (pruebas) no hay sesión: el membrete cae al titular sin reventar.
   const sesion = useOptionalAuth();
   // La vista trae el perfil del consultorio y sus odontólogos en la forma del contrato,
@@ -43,48 +47,38 @@ export const MembreteDocumento = ({ title }: MembreteDocumentoProps) => {
   // El logo efectivo: el subido (viene ya como `data:` URI) o el del repositorio.
   const logo = identidad?.logoDataUri ?? clinicLogoUrl();
 
-  const contacto = clinicContactLine(clinic);
-  const lineas = [
-    clinicFullAddress(clinic),
-    clinic.rif === null ? null : `RIF ${clinic.rif}`,
-    contacto === '' ? null : contacto,
-    clinic.website,
-  ].filter((linea): linea is string => linea !== null && linea.trim() !== '');
   // El odontólogo que responde por el papel: el que imprime (o el titular).
   const lineaDentista = clinicDentistLine(clinicDentistFor(sesion?.user?.username, clinic));
+  // El mismo helper que usan el récipe, el dossier, el reporte y los documentos de cobro:
+  // el membrete de la pantalla no puede separarse del papel (ADR 0064).
+  const membrete = buildLetterheadView(
+    clinic,
+    lineaDentista === '' ? null : lineaDentista,
+    ajustes?.brand.letterhead ?? BRAND.letterhead,
+    { subtitle: clinic.legalName },
+  );
 
   return (
     <header
       className="flex flex-wrap items-start justify-between gap-4 border-b pb-3"
       style={{ borderColor: 'var(--brand-accent)' }}
     >
-      <div className="flex items-start gap-4">
-        {logo !== null && (
-          // El alto lo fija la marca (`--brand-logo-height-mm`), la misma medida del PDF.
-          <img
-            src={logo}
-            alt=""
-            aria-hidden
-            className="h-[var(--brand-logo-height-mm)] w-auto shrink-0"
-          />
-        )}
-        <div>
-          <p
-            className="text-lg font-bold"
-            style={{ color: 'var(--brand-primary)', fontFamily: 'var(--brand-font-doc-title)' }}
-          >
-            {clinic.name}
-          </p>
-          {lineas.map((linea) => (
-            <p key={linea} className="text-xs" style={{ color: 'var(--brand-ink-muted)' }}>
-              {linea}
+      <div className="brand-lh">
+        {logo !== null && <img src={logo} alt="" aria-hidden className="brand-lh-logo" />}
+        <div className="brand-lh-body">
+          <p className="brand-lh-name">{membrete.name}</p>
+          {membrete.subtitle !== null && <p className="brand-lh-line">{membrete.subtitle}</p>}
+          {membrete.lines.map((linea) => (
+            <p
+              key={linea.key}
+              className={
+                linea.key === 'dentist' ? 'brand-lh-line brand-lh-dentist' : 'brand-lh-line'
+              }
+            >
+              {linea.text}
             </p>
           ))}
-          {lineaDentista !== '' && (
-            <p className="text-xs" style={{ color: 'var(--brand-ink-strong)' }}>
-              {lineaDentista}
-            </p>
-          )}
+          {membrete.footer !== null && <p className="brand-lh-footer">{membrete.footer}</p>}
         </div>
       </div>
       <p

@@ -132,7 +132,7 @@ describe('documento imprimible del odontograma', () => {
     // La identidad del consultorio la sirve el registro del titular. Sin ella, el respaldo
     // `CLINIC` es neutro (sin datos personales): no se imprime ningún nombre ni dirección.
     // El logo sí sale: es el del repositorio (`BRAND.logoPath`), resuelto por Vite.
-    expect(html).toContain('h-[var(--brand-logo-height-mm)]');
+    expect(html).toContain('brand-lh-logo');
     // Sin identidad no se inventa ningún dato del consultorio (ni siquiera el RIF).
     expect(html).not.toContain('RIF ');
   });
