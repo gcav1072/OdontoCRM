@@ -67,7 +67,13 @@ export const fallbackBrand = (): EffectiveBrand => ({
  */
 export const createBrandLookup = (config: BrandLookupConfig): BrandLookup => {
   const timeoutMs = config.timeoutMs ?? 5_000;
-  const cacheTtlMs = config.cacheTtlMs ?? 60_000;
+  /*
+   * La marca se pide con una caché **muy corta**: un cambio en el panel de configuración
+   * tiene que llegar a los imprimibles en segundos, sin reiniciar nada (ADR 0064). El
+   * coste por documento es despreciable —la identidad resuelve fuentes y logo de su lado—,
+   * y con un minuto de caché «guardé el cambio» y «el papel sigue igual» convivían.
+   */
+  const cacheTtlMs = config.cacheTtlMs ?? 1_000;
   const secret = config.INTERNAL_SERVICE_SECRET;
 
   let cache: { brand: EffectiveBrand; expiresAt: number } | null = null;
