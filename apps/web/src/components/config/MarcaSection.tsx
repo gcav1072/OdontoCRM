@@ -1,12 +1,10 @@
 import {
-  fontStackFor,
   HEX_COLOR_PATTERN,
   type AppSettingsView,
   type BrandPaletteSettings,
   type BrandSettings,
 } from '@odontocrm/contracts';
 import {
-  Alert,
   Badge,
   Button,
   Card,
@@ -20,130 +18,22 @@ import {
 } from '@odontocrm/ui';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Paintbrush, Trash2, Upload } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { apiErrorMessage } from '../../lib/api';
 import { settingsApi } from '../../lib/endpoints';
 import { t } from '../../lib/i18n';
 import { APP_SETTINGS_QUERY_KEY } from '../../lib/queryKeys';
+import { MembreteSection } from './MembreteSection';
+import { PESOS_FUENTE, RolTipografico } from './RolTipografico';
 
 export interface MarcaSectionProps {
   vista: AppSettingsView;
   onNotice: (variant: 'success' | 'danger', message: string) => void;
 }
 
-/**
- * Pesos que se ofrecen al subir una fuente. Son los múltiplos de 100 de la
- * especificación `font-weight`: 400 es el cuerpo normal y 700 el de los títulos.
- */
-const PESOS_FUENTE = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
-
-/** La opción del desplegable cuando la pila no es ninguna familia declarada. */
-const FAMILIA_PERSONALIZADA = '__personalizada__';
-
 /** La opción del desplegable de subida para dar de alta una familia nueva. */
 const FAMILIA_NUEVA = '__nueva__';
-
-/** El nombre de la familia que abre una pila (`'Montserrat', …` → `Montserrat`). */
-const familiaDeLaPila = (pila: string): string =>
-  (pila.split(',')[0] ?? '').trim().replace(/^['"]|['"]$/g, '');
-
-/** Las familias que el panel ofrece en los desplegables. */
-type FamiliasVista = BrandSettings['fonts']['families'];
-
-/** La muestra que se dibuja con la fuente y el peso elegidos. */
-interface RolTipograficoProps {
-  etiqueta: string;
-  pila: string;
-  peso: number;
-  familias: FamiliasVista;
-  muestra: ReactNode;
-  onPila: (pila: string) => void;
-  onPeso: (peso: number) => void;
-}
-
-/**
- * Un **rol** de la tipografía (títulos o cuerpo): desplegable de familia, desplegable de
- * peso, **vista previa** con la elección al instante y un bloque **avanzado** para editar
- * la pila CSS a mano. Elegir una familia escribe `fontStackFor(familia)` en la pila; si la
- * pila no es ninguna familia declarada, el desplegable se pone en «Personalizada».
- */
-const RolTipografico = ({
-  etiqueta,
-  pila,
-  peso,
-  familias,
-  muestra,
-  onPila,
-  onPeso,
-}: RolTipograficoProps): ReactNode => {
-  const familia = familiaDeLaPila(pila);
-  const conocida = familias.some((una) => una.name === familia);
-  const elegida = familias.find((una) => una.name === familia);
-  const pesos =
-    elegida === undefined
-      ? [...PESOS_FUENTE]
-      : [...new Set(elegida.files.map((file) => file.weight))].sort((a, b) => a - b);
-
-  return (
-    <div className="space-y-3 rounded-control border border-border p-3">
-      <h4 className="text-sm font-semibold text-ink">{etiqueta}</h4>
-      <div className="grid gap-3 @2xl:grid-cols-2">
-        <Field label={t('config.marca.familia')}>
-          <Select
-            value={conocida ? familia : FAMILIA_PERSONALIZADA}
-            onChange={(event) => {
-              const valor = event.target.value;
-              if (valor !== FAMILIA_PERSONALIZADA) onPila(fontStackFor(valor));
-            }}
-          >
-            {familias.map((una) => (
-              <option key={una.name} value={una.name}>
-                {una.name}
-              </option>
-            ))}
-            <option value={FAMILIA_PERSONALIZADA}>{t('config.marca.personalizada')}</option>
-          </Select>
-        </Field>
-        <Field label={t('config.marca.peso')}>
-          <Select value={String(peso)} onChange={(event) => onPeso(Number(event.target.value))}>
-            {pesos.map((valor) => (
-              <option key={valor} value={valor}>
-                {valor}
-                {valor === 400 ? ' · normal' : valor === 700 ? ' · negrita' : ''}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      </div>
-
-      <div>
-        <p className="mb-1 text-xs text-ink-subtle">{t('config.marca.vistaPrevia')}</p>
-        <div
-          className="rounded-control border border-dashed border-border bg-surface-muted px-3 py-2 text-ink"
-          style={{ fontFamily: pila, fontWeight: peso }}
-        >
-          {muestra}
-        </div>
-      </div>
-
-      <details>
-        <summary className="cursor-pointer text-xs text-ink-muted">
-          {t('config.marca.avanzado')}
-        </summary>
-        <div className="pt-2">
-          <Field label={t('config.marca.pilaPersonalizada')} hint={t('config.marca.pilaAyuda')}>
-            <Input
-              value={pila}
-              onChange={(event) => onPila(event.target.value)}
-              className="font-mono"
-            />
-          </Field>
-        </div>
-      </details>
-    </div>
-  );
-};
 
 /** Los trece colores de la paleta con su rótulo. */
 const PALETA: readonly { key: keyof BrandPaletteSettings; label: string }[] = [
@@ -388,59 +278,9 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
           </div>
         </section>
 
-        {/* Medidas */}
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-ink">{t('config.marca.medidas')}</h3>
-          <div className="grid gap-4 @2xl:grid-cols-3">
-            <Field label={t('config.marca.altoLogo')}>
-              <Input
-                type="number"
-                step="1"
-                value={form.letterhead.logoHeightMm}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    letterhead: { ...prev.letterhead, logoHeightMm: Number(event.target.value) },
-                  }))
-                }
-              />
-            </Field>
-            <Field label={t('config.marca.anchoVelo')}>
-              <Input
-                type="number"
-                step="1"
-                value={form.letterhead.watermarkWidthMm}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    letterhead: {
-                      ...prev.letterhead,
-                      watermarkWidthMm: Number(event.target.value),
-                    },
-                  }))
-                }
-              />
-            </Field>
-            <Field label={t('config.marca.opacidadVelo')}>
-              <Input
-                type="number"
-                step="0.01"
-                min={0}
-                max={0.6}
-                value={form.letterhead.watermarkOpacity}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    letterhead: {
-                      ...prev.letterhead,
-                      watermarkOpacity: Number(event.target.value),
-                    },
-                  }))
-                }
-              />
-            </Field>
-          </div>
-        </section>
+        {/* Medidas del logo y del velo, tipografía del nombre, líneas y pie: la
+            subsección «Membrete» los agrupa y añade una vista previa en vivo. */}
+        <MembreteSection form={form} setForm={setForm} />
 
         {/* Fuentes */}
         <section className="space-y-3">
@@ -564,8 +404,6 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
           </div>
           <p className="text-xs text-ink-subtle">{t('config.marca.fuenteReemplaza')}</p>
         </section>
-
-        <Alert variant="info">{t('config.marca.logoAyuda')}</Alert>
 
         <Button
           loading={guardar.isPending}

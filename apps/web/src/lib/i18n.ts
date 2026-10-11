@@ -242,6 +242,46 @@ const DICCIONARIO = {
   'config.marca.nombreFamilia': 'Nombre de la familia',
   'config.marca.faltaFamilia': 'Escribe el nombre de la familia antes de subir la fuente.',
 
+  'config.membrete.titulo': 'Membrete de los imprimibles',
+  'config.membrete.descripcion':
+    'Cómo se pinta el bloque del consultorio en el papel: logo, tipografía del nombre, líneas, pie y marca de agua. Los datos (nombre, RIF, dirección, teléfonos, logo) se editan en Mi perfil.',
+  'config.membrete.altoLogo': 'Alto del logo (mm)',
+  'config.membrete.alineacionLogo': 'Posición del logo',
+  'config.membrete.alineacionVertical': 'Alineación vertical del logo',
+  'config.membrete.alineacionVerticalAyuda':
+    'Centro lo deja a media altura del bloque de datos; útil cuando el logo es alto.',
+  'config.membrete.logo.izquierda': 'Izquierda',
+  'config.membrete.logo.centro': 'Centro',
+  'config.membrete.logo.derecha': 'Derecha',
+  'config.membrete.logo.arriba': 'Arriba',
+  'config.membrete.logo.medio': 'Centrado en vertical',
+  'config.membrete.logo.abajo': 'Abajo',
+  'config.membrete.tipografiaNombre': 'Tipografía del nombre',
+  'config.membrete.tamanoNombre': 'Tamaño del nombre (pt)',
+  'config.membrete.tamanoLineas': 'Tamaño de las líneas (pt)',
+  'config.membrete.lineas': 'Líneas del membrete',
+  'config.membrete.lineasAyuda':
+    'Elige qué datos salen y en qué orden (de arriba abajo). Una línea sin dato no se imprime.',
+  'config.membrete.linea.direccion': 'Dirección y ciudad',
+  'config.membrete.linea.rif': 'RIF del consultorio',
+  'config.membrete.linea.contacto': 'Teléfonos y correo',
+  'config.membrete.linea.web': 'Sitio web',
+  'config.membrete.linea.especialista': 'Especialista que firma',
+  'config.membrete.subir': 'Subir la línea',
+  'config.membrete.bajar': 'Bajar la línea',
+  'config.membrete.mostrar': 'Mostrar la línea',
+  'config.membrete.ocultar': 'Ocultar la línea',
+  'config.membrete.sinLineasOcultas':
+    'Se ocultó una línea. Deja al menos una visible para que el membrete no salga vacío.',
+  'config.membrete.pie': 'Pie del membrete',
+  'config.membrete.pieAyuda': 'Una nota o lema propio bajo las líneas. Vacío = sin pie.',
+  'config.membrete.vistaPrevia': 'Vista previa del membrete',
+  'config.membrete.sinNombre': 'Nombre del consultorio',
+  'config.membrete.previaSinDatos':
+    'Todavía no hay datos del consultorio; la vista previa usa valores de ejemplo. Complétalos en Mi perfil.',
+  'config.membrete.logoAyuda':
+    'El logo del membrete y de la marca de agua es el mismo: se sube desde Mi perfil (titular) o /usuarios.',
+
   'config.acento.titulo': 'Color de acento de la interfaz',
   'config.acento.descripcion':
     'Cambia el color del cromo de la aplicación. Los colores clínicos del odontograma (rojo y azul) no se tocan.',
