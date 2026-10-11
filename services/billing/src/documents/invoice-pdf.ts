@@ -4,8 +4,11 @@ import {
   brandRootBlock,
   brandWatermarkCss,
   brandWatermarkHtml,
+  buildLetterheadView,
   clinicDentistLine,
   formatRateMicros,
+  letterheadCss,
+  letterheadHtml,
   rateToMicros,
   vesCentimosFromUsd,
   type BillingDraftItem,
@@ -124,6 +127,17 @@ export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string>
   const fecha = fechaFiscal(input.issuedAt);
   // El odontólogo que responde por el documento, en el membrete.
   const lineaDentista = clinicDentistLine(input.dentist ?? null);
+  // El bloque de identidad sale del membrete compartido (ADR 0064); la factura pone la
+  // razón social como nombre y el nombre comercial como subtítulo.
+  const membrete = buildLetterheadView(
+    clinic,
+    lineaDentista,
+    input.brand?.letterhead ?? BRAND.letterhead,
+    {
+      name: clinic.legalName ?? clinic.name,
+      subtitle: clinic.legalName === null ? null : clinic.name,
+    },
+  );
   const enBs = (cents: number): number => vesCentimosFromUsd(cents, input.rateMicros);
 
   // La base gravada se desglosa **por alícuota** (Art. 13 num. 10); hoy solo hay una general.
@@ -146,18 +160,14 @@ export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string>
   ${brandRootBlock(input.brand ?? BRAND)}
   ${input.fontFaceCss ?? (await brandFontFaceCss())}
   ${brandWatermarkCss()}
+  ${letterheadCss()}
   /* Una factura = una página (Art. 33). Los márgenes se miden sobre la forma física. */
   @page { size: A4 portrait; margin: 14mm 12mm 12mm 12mm; }
   * { box-sizing: border-box; }
   body { font-family: var(--brand-font-doc-body); font-size: 9.5pt; color: var(--brand-ink); margin: 0; }
   h1 { font-family: var(--brand-font-doc-title); font-size: 13pt; font-weight: var(--brand-font-doc-title-weight); margin: 0; letter-spacing: .04em; color: var(--brand-primary); }
   .cabecera { display: flex; justify-content: space-between; gap: 8mm; border-bottom: 1.2pt solid var(--brand-ink); padding-bottom: 3mm; }
-  .emisor { display: flex; align-items: flex-start; gap: 5mm; max-width: 95mm; }
-  .emisor .logo { height: var(--brand-logo-height-mm); width: auto; }
-  .emisor .nombre { font-family: var(--brand-font-doc-title); font-weight: var(--brand-font-doc-title-weight); font-size: 11pt; color: var(--brand-primary); }
-  .emisor .dato { color: var(--brand-ink-muted); }
-  /* La línea del especialista va en el membrete, bajo la dirección y el teléfono. */
-  .emisor .dentista { color: var(--brand-ink-strong); }
+  .cabecera > .brand-lh { max-width: 95mm; min-width: 0; }
   .documento { text-align: right; min-width: 60mm; }
   .documento .numero { font-family: var(--brand-font-doc-title); font-size: 12pt; font-weight: var(--brand-font-doc-title-weight); color: var(--brand-primary); }
   .documento .control { font-weight: 600; }
@@ -183,16 +193,7 @@ export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string>
   ${marcaDeAgua}
   <div class="brand-doc">
   <div class="cabecera">
-    <div class="emisor">
-      ${logo === null ? '' : `<img class="logo" src="${logo}" alt="Logo del consultorio">`}
-      <div>
-        <div class="nombre">${escapar(clinic.legalName)}</div>
-        <div class="dato">${escapar(clinic.name)}</div>
-        <div class="dato">RIF: ${escapar(clinic.rif)}</div>
-        <div class="dato">${escapar(`${clinic.address}, ${clinic.city}`)}</div>
-        ${lineaDentista === '' ? '' : `<div class="dentista">${escapar(lineaDentista)}</div>`}
-      </div>
-    </div>
+    ${letterheadHtml(membrete, logo, { rule: false })}
     <div class="documento">
       <h1>FACTURA</h1>
       <div class="numero">N° ${escapar(input.numberLabel)}</div>

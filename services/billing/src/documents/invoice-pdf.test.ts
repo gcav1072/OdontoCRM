@@ -127,6 +127,8 @@ describe('la plantilla de la factura', () => {
       }),
     );
     expect(html).toContain('Consultorio, C.A.');
-    expect(html).toContain('RIF:');
+    // Las líneas vacías del membrete se omiten: no queda un «RIF: » huérfano.
+    expect(html).toContain('class="brand-lh"');
+    expect(html).not.toContain('RIF: ');
   });
 });

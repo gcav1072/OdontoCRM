@@ -4,8 +4,11 @@ import {
   brandRootBlock,
   brandWatermarkCss,
   brandWatermarkHtml,
+  buildLetterheadView,
   clinicDentistLine,
   formatRateMicros,
+  letterheadCss,
+  letterheadHtml,
   paymentMethodLabel,
   type ClinicDentist,
   type ClinicIdentity,
@@ -76,6 +79,16 @@ export const renderReceiptHtml = async (input: ReceiptPdfInput): Promise<string>
   const marcaDeAgua = brandWatermarkHtml(logo ?? (await readImageDataUri(BRAND.watermarkPath)));
   // El odontólogo que responde por el documento, en el membrete.
   const lineaDentista = clinicDentistLine(input.dentist ?? null);
+  // El bloque de identidad sale del membrete compartido (ADR 0064).
+  const membrete = buildLetterheadView(
+    clinic,
+    lineaDentista,
+    input.brand?.letterhead ?? BRAND.letterhead,
+    {
+      name: clinic.legalName ?? clinic.name,
+      subtitle: clinic.legalName === null ? null : clinic.name,
+    },
+  );
   const enBs = (cents: number): string =>
     dinero(Math.round((cents * input.rateMicros) / 1_000_000));
 
@@ -88,16 +101,13 @@ export const renderReceiptHtml = async (input: ReceiptPdfInput): Promise<string>
   ${brandRootBlock(input.brand ?? BRAND)}
   ${input.fontFaceCss ?? (await brandFontFaceCss())}
   ${brandWatermarkCss()}
+  ${letterheadCss()}
   @page { size: A4 portrait; margin: 16mm 14mm; }
   body { font-family: var(--brand-font-doc-body); font-size: 10pt; color: var(--brand-ink); margin: 0; }
   h1 { font-family: var(--brand-font-doc-title); font-size: 14pt; font-weight: var(--brand-font-doc-title-weight); margin: 0 0 1mm; letter-spacing: .04em; color: var(--brand-primary); }
   .cabecera { display: flex; justify-content: space-between; border-bottom: 1.2pt solid var(--brand-ink); padding-bottom: 3mm; }
-  .emisor { display: flex; align-items: flex-start; gap: 5mm; }
-  .emisor .logo { height: var(--brand-logo-height-mm); width: auto; }
-  .emisor .nombre { font-family: var(--brand-font-doc-title); font-weight: var(--brand-font-doc-title-weight); color: var(--brand-primary); }
+  .cabecera > .brand-lh { min-width: 0; }
   .dato { color: var(--brand-ink-muted); }
-  /* La línea del especialista va en el membrete, bajo la dirección y el teléfono. */
-  .dentista { color: var(--brand-ink-strong); }
   table { width: 100%; border-collapse: collapse; margin-top: 5mm; }
   td { padding: 1.6mm 1mm; border-bottom: .5pt solid var(--brand-line-soft); }
   td.etiqueta { color: var(--brand-ink-muted); width: 55mm; }
@@ -112,16 +122,7 @@ export const renderReceiptHtml = async (input: ReceiptPdfInput): Promise<string>
   ${marcaDeAgua}
   <div class="brand-doc">
   <div class="cabecera">
-    <div class="emisor">
-      ${logo === null ? '' : `<img class="logo" src="${logo}" alt="Logo del consultorio">`}
-      <div>
-        <div class="nombre">${escapar(clinic.legalName)}</div>
-        <div class="dato">${escapar(clinic.name)}</div>
-        <div class="dato">RIF: ${escapar(clinic.rif)}</div>
-        <div class="dato">${escapar(`${clinic.address}, ${clinic.city}`)}</div>
-        ${lineaDentista === '' ? '' : `<div class="dentista">${escapar(lineaDentista)}</div>`}
-      </div>
-    </div>
+    ${letterheadHtml(membrete, logo, { rule: false })}
     <div style="text-align:right">
       <h1>RECIBO</h1>
       <div class="dato">N° ${escapar(input.receiptLabel)}</div>

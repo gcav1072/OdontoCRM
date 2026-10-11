@@ -49,7 +49,7 @@ const main = async (): Promise<void> => {
     patientLookup,
     blobStore,
     pdf,
-    letterheadLookup: createLetterheadLookup(config),
+    letterheadLookup: createLetterheadLookup({ ...config, cacheTtlMs: 5_000 }),
     brandLookup: createBrandLookup(config),
     kickOutbox: () => kick(),
     lastError: null,
