@@ -12,6 +12,7 @@ import { auditEvents, userRoles, users } from './db/schema.js';
 import { loadIdentityConfig } from './config.js';
 import { createIdentityDatabase, type IdentityDatabaseHandle } from './db/client.js';
 import { createIdentityServer } from './server.js';
+import { defaultBrandSettings } from './settings/brand-service.js';
 
 /**
  * Pruebas de integración del **panel de configuración** (ADR 0060) contra PostgreSQL real:
@@ -99,6 +100,12 @@ describeWithDatabase('configuración de la aplicación (PostgreSQL real)', () =>
   afterAll(async () => {
     if (connectionString === undefined) return;
     // Se deja la configuración **de fábrica**: la base de integración es la de desarrollo.
+    await app.inject({
+      method: 'PUT',
+      url: '/api/v1/settings/brand',
+      headers: comoAdmin(),
+      payload: defaultBrandSettings(),
+    });
     await app.inject({
       method: 'PUT',
       url: '/api/v1/settings/app',
@@ -205,8 +212,28 @@ describeWithDatabase('configuración de la aplicación (PostgreSQL real)', () =>
         documentBodyPt: 9,
         documentSmallPt: 7.5,
       },
-      letterhead: { logoHeightMm: 18, watermarkWidthMm: 90, watermarkOpacity: 0.1 },
-      fonts: { families: [{ name: 'Montserrat', files: [] }] },
+      letterhead: {
+        logoHeightMm: 18,
+        watermarkWidthMm: 90,
+        watermarkOpacity: 0.1,
+        // El nombre del membrete con una familia **propia** (no la de los títulos ni el cuerpo):
+        // su `@font-face` tiene que viajar igual en el `themeCss` (el bug del membrete).
+        titleSans: "'Dancing Script', sans-serif",
+      },
+      fonts: {
+        families: [
+          {
+            name: 'Dancing Script',
+            files: [
+              {
+                path: 'assets/clinic/fonts/dancing-script-latin-400-normal.woff2',
+                weight: 400,
+                style: 'normal',
+              },
+            ],
+          },
+        ],
+      },
     };
 
     const guardado = await app.inject({
@@ -224,6 +251,10 @@ describeWithDatabase('configuración de la aplicación (PostgreSQL real)', () =>
     });
     expect(vista.json().brandFromDatabase).toBe(true);
     expect(vista.json().themeCss).toContain('--brand-primary: #7f1d1d;');
+    // La familia del **nombre del membrete** no es la de los títulos ni el cuerpo, y aun así
+    // su `@font-face` tiene que venir en el CSS: si falta, el papel del récipe salía con la
+    // sans del sistema aunque en la vista previa se viera bien (el bug del membrete).
+    expect(vista.json().themeCss).toContain("font-family: 'Dancing Script';");
 
     const interna = await app.inject({
       method: 'GET',
@@ -232,6 +263,7 @@ describeWithDatabase('configuración de la aplicación (PostgreSQL real)', () =>
     });
     expect(interna.statusCode).toBe(200);
     expect(interna.json().theme.palette.primary).toBe('#7f1d1d');
+    expect(interna.json().fontFaceCss).toContain("font-family: 'Dancing Script';");
   });
 
   it('los secretos se guardan cifrados aparte y no vuelven por la API', async () => {

@@ -148,19 +148,34 @@ const themeOf = (settings: BrandSettings): BrandThemePayload => ({
 });
 
 /**
+ * Las **pilas** de la marca que de verdad pueden acabar en el papel o en la pantalla:
+ * la de los títulos del documento, la del cuerpo y la del **nombre del membrete**, que
+ * puede ser una familia propia distinta (ADR 0064). De todas ellas se incrusta su
+ * `@font-face`.
+ *
+ * La del membrete faltaba: si el nombre usaba una familia que no fuera la de los
+ * títulos ni el cuerpo (por ejemplo un script), su `@font-face` no viajaba en el
+ * `themeCss` y el papel salía con la pila de respaldo —la sans del sistema— aunque en
+ * pantalla se viera bien, porque la SPA declara todo el catálogo al arrancar.
+ */
+const pilasDeLaMarca = (settings: BrandSettings): string[] =>
+  [
+    settings.typography.documentTitleSans,
+    settings.typography.documentBodySans,
+    settings.letterhead.titleSans,
+  ].filter((pila): pila is string => typeof pila === 'string' && pila.trim() !== '');
+
+/**
  * Resuelve a su `data:` URI los archivos de las familias **referenciadas** por las
- * pilas de título y cuerpo (las que de verdad usa el papel). El resto del catálogo no
- * se incrusta: mantiene pequeño el `themeCss` que sirve el panel. Del almacén salen las
- * subidas y del repositorio las de respaldo.
+ * pilas de título, cuerpo y nombre del membrete (las que de verdad usa el papel). El
+ * resto del catálogo no se incrusta: mantiene pequeño el `themeCss` que sirve el panel.
+ * Del almacén salen las subidas y del repositorio las de respaldo.
  */
 const resolveFaces = async (
   blobStore: BlobStore | null,
   settings: BrandSettings,
 ): Promise<ResolvedFontFace[]> => {
-  const referenciadas = new Set([
-    familiaDeLaPila(settings.typography.documentTitleSans),
-    familiaDeLaPila(settings.typography.documentBodySans),
-  ]);
+  const referenciadas = new Set(pilasDeLaMarca(settings).map(familiaDeLaPila));
 
   const faces = await Promise.all(
     settings.fonts.families
