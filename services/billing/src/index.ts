@@ -45,17 +45,44 @@ const main = async (): Promise<void> => {
     executablePath: config.PDF_CHROMIUM_PATH,
     timeoutMs: config.PDF_TIMEOUT_MS,
   });
+  /**
+   * Avisos de que los imprimibles caen al respaldo del código (marca o identidad). Se
+   * resuelven por referencia: los lectores se construyen antes de que exista el servidor
+   * (y su logger). Ver `services/clinical/src/index.ts` para el porqué.
+   */
+  const avisos: { marca: (motivo: string) => void; identidad: (motivo: string) => void } = {
+    marca: () => undefined,
+    identidad: () => undefined,
+  };
+
   const services: Omit<BillingServices, 'config' | 'db' | 'pool'> = {
     patientLookup,
     blobStore,
     pdf,
-    letterheadLookup: createLetterheadLookup({ ...config, cacheTtlMs: 5_000 }),
-    brandLookup: createBrandLookup(config),
+    letterheadLookup: createLetterheadLookup({
+      ...config,
+      cacheTtlMs: 5_000,
+      onFallback: (motivo) => avisos.identidad(motivo),
+    }),
+    brandLookup: createBrandLookup({ ...config, onFallback: (motivo) => avisos.marca(motivo) }),
     kickOutbox: () => kick(),
     lastError: null,
   };
 
   const app = await createBillingServer({ config, database, services });
+
+  avisos.marca = (motivo) =>
+    app.log.warn(
+      { lectura: 'marca' },
+      `Facturas, recibos y notas usan la marca del CÓDIGO (no la del panel): ${motivo}. ` +
+        'Revisa que identity esté arriba, al día y con el INTERNAL_SERVICE_SECRET compartido.',
+    );
+  avisos.identidad = (motivo) =>
+    app.log.warn(
+      { lectura: 'identidad' },
+      `Facturas, recibos y notas usan el membrete del CÓDIGO (no el del consultorio): ${motivo}. ` +
+        'Revisa que identity esté arriba, al día y con el INTERNAL_SERVICE_SECRET compartido.',
+    );
 
   const boss = createBoss({
     connectionString: config.EVENTS_DATABASE_URL ?? config.DATABASE_URL,
