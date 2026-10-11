@@ -56,7 +56,9 @@ const main = async (): Promise<void> => {
     database,
     patientLookup: createPatientSnapshotLookup(config),
     odontogramLookup: createOdontogramChartLookup(config),
-    letterheadLookup: createLetterheadLookup(config),
+    // El membrete se refresca en segundos: el logo y los datos salen de «Mi perfil» y no
+    // pueden quedarse un minuto rancios mientras el administrador cree que ya aplicó.
+    letterheadLookup: createLetterheadLookup({ ...config, cacheTtlMs: 5_000 }),
     brandLookup: createBrandLookup(config),
     blobStore,
     pdfRenderer,

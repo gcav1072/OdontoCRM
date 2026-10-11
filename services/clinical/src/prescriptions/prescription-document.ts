@@ -5,9 +5,10 @@ import {
   brandStyles,
   brandWatermarkCss,
   brandWatermarkHtml,
-  clinicContactLine,
+  buildLetterheadView,
   clinicDentistLine,
-  clinicFullAddress,
+  letterheadCss,
+  letterheadHtml,
   medicationRouteLabel,
   type BrandThemePayload,
   type ClinicDentist,
@@ -152,6 +153,7 @@ const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined):
   ${fontFaces}
   ${brandStyles(brand ?? BRAND)}
   ${brandWatermarkCss()}
+  ${letterheadCss()}
   @page { size: letter landscape; margin: 8mm; }
   * { box-sizing: border-box; }
   /* El cuerpo (fuente y tinta) lo pone brandStyles(), la marca compartida con el
@@ -171,13 +173,9 @@ const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined):
   .half > *:not(.brand-watermark) { position: relative; z-index: 1; }
   .half + .half { border-left: 0.3mm dashed var(--brand-line); padding-left: 6mm; }
   .half:first-child { padding-right: 6mm; }
-  .letterhead { display: flex; align-items: flex-start; gap: 4mm; border-bottom: 0.6mm solid var(--brand-accent); padding-bottom: 2.5mm; }
-  .logo { height: 12mm; width: auto; }
-  .letterhead-text { flex: 1; min-width: 0; }
-  .clinic-name { font-family: var(--brand-font-doc-title); font-size: 11pt; font-weight: var(--brand-font-doc-title-weight); color: var(--brand-primary); margin: 0; }
-  .clinic-line { font-size: 7.5pt; color: var(--brand-ink-muted); margin: 0.5mm 0 0; }
-  /* La línea del especialista va en el membrete, bajo la dirección y el teléfono. */
-  .clinic-dentist { font-size: 7.5pt; color: var(--brand-ink-strong); margin: 0.8mm 0 0; }
+  /* El bloque de identidad del consultorio (logo + datos) sale del helper compartido
+     (letterheadCss): el alto del logo es el de la marca —no un 12 mm fijo—, el logo se
+     centra en vertical y las líneas siguen el orden y la tipografía del panel. */
   .rx { display: flex; justify-content: space-between; align-items: baseline; gap: 3mm; margin-top: 3mm; }
   .rx-title { font-family: var(--brand-font-doc-title); font-size: 13pt; font-weight: var(--brand-font-doc-title-weight); letter-spacing: 0.4mm; margin: 0; color: var(--brand-primary); }
   .rx-number { font-size: 8pt; color: var(--brand-ink-muted); text-align: right; }
@@ -226,32 +224,19 @@ export const prescriptionHtml = async (input: PrescriptionDocumentInput): Promis
   // La marca de agua usa el **logo efectivo** (el subido o el del repositorio): si no
   // hay ninguno, `brandWatermarkHtml` devuelve cadena vacía y el récipe sale sin velo.
   const marcaDeAgua = brandWatermarkHtml(logo ?? (await readImageDataUri(BRAND.watermarkPath)));
-  const telefono = clinicContactLine(consultorio);
   const odontologo = input.dentist;
   const lineaDentista = clinicDentistLine(odontologo);
 
-  const lineasMembrete = [
-    clinicFullAddress(consultorio),
-    consultorio.rif === null ? null : `RIF ${consultorio.rif}`,
-    telefono === '' ? null : telefono,
-    consultorio.website,
-  ]
-    .filter((line): line is string => line !== null && line.trim() !== '')
-    .map((line) => `<p class="clinic-line">${escapeHtml(line)}</p>`)
-    .join('');
-
   // El membrete se repite en cada mitad: cada copia se puede desprender y sigue siendo
-  // un documento con su identidad. La línea del especialista va bajo dirección/teléfono.
-  const membrete = `
-  <header class="letterhead">
-    ${logo === null ? '' : `<img class="logo" src="${logo}" alt="Logo del consultorio">`}
-    <div class="letterhead-text">
-      <p class="clinic-name">${escapeHtml(consultorio.name)}</p>
-      ${consultorio.legalName === null ? '' : `<p class="clinic-line">${escapeHtml(consultorio.legalName)}</p>`}
-      ${lineasMembrete}
-      ${lineaDentista === '' ? '' : `<p class="clinic-dentist">${escapeHtml(lineaDentista)}</p>`}
-    </div>
-  </header>`;
+  // un documento con su identidad. Sale del **helper compartido**: el mismo bloque —con
+  // el alto del logo, la tipografía, las líneas y el pie que elige el panel— en la SPA y
+  // en el PDF del servidor.
+  const membrete = letterheadHtml(
+    buildLetterheadView(consultorio, lineaDentista, input.brand?.letterhead ?? BRAND.letterhead, {
+      subtitle: consultorio.legalName,
+    }),
+    logo,
+  );
 
   const paciente = [
     input.patientAge === null ? null : `${String(input.patientAge)} años`,

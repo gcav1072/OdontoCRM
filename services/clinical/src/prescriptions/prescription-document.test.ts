@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { BRAND } from '@odontocrm/contracts';
+
 import {
   birthLine,
   prescriptionHtml,
@@ -128,7 +130,7 @@ describe('el récipe en dos mitades apaisadas', () => {
     // Dos medias hojas: la farmacia (izquierda) y el paciente (derecha).
     expect(html.match(/class="half"/g)).toHaveLength(2);
     // El membrete, la firma y la marca de agua se repiten en las dos.
-    expect(html.match(/class="letterhead"/g)).toHaveLength(2);
+    expect(html.match(/class="brand-lh brand-lh--rule"/g)).toHaveLength(2);
     expect(html.match(/class="signature-name"/g)).toHaveLength(2);
     expect(html.match(/class="brand-watermark"/g)).toHaveLength(2);
     // Cada marca va **dentro** de su mitad, no antes de `.brand-doc` en el cuerpo.
@@ -158,7 +160,7 @@ describe('el récipe en dos mitades apaisadas', () => {
 
   it('el especialista va en el membrete, no bajo la firma', async () => {
     const html = await prescriptionHtml(base);
-    expect(html).toContain('class="clinic-dentist"');
+    expect(html).toContain('class="brand-lh-line brand-lh-dentist"');
     expect(html).toContain('Odontólogo prueba · Odontología general · MPPS 12345');
     // Se quitó el detalle que estaba bajo el nombre del firmante.
     expect(html).not.toContain('signature-detail');
@@ -166,9 +168,30 @@ describe('el récipe en dos mitades apaisadas', () => {
 
   it('sin odontólogo el membrete no añade la línea del especialista', async () => {
     const html = await prescriptionHtml({ ...base, dentist: null });
-    expect(html).not.toContain('class="clinic-dentist"');
+    expect(html).not.toContain('brand-lh-dentist"');
     // La firma sigue saliendo (la raya para firmar a mano).
     expect(html.match(/class="signature-line"/g)).toHaveLength(2);
+  });
+
+  it('el logo del récipe sigue el alto de la marca, no un valor fijo', async () => {
+    // Regresión: el récipe tenía `.logo { height: 12mm }` y no seguía la marca. Ahora el
+    // alto sale de `--brand-logo-height-mm` (el bloque compartido del membrete).
+    const html = await prescriptionHtml(base);
+    expect(html).toContain('--brand-logo-height-mm: 18mm');
+    expect(html).toContain('.brand-lh-logo');
+    expect(html).not.toContain('height: 12mm');
+  });
+
+  it('acepta la marca efectiva y la aplica al membrete', async () => {
+    const html = await prescriptionHtml({
+      ...base,
+      brand: {
+        palette: BRAND.palette,
+        typography: BRAND.typography,
+        letterhead: { ...BRAND.letterhead, logoHeightMm: 30 },
+      },
+    });
+    expect(html).toContain('--brand-logo-height-mm: 30mm');
   });
 });
 
