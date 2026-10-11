@@ -52,6 +52,14 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
         // Esquema de color EXPLÍCITO: el PDF es papel, no pantalla.
         await page.emulateMedia({ colorScheme: 'light' });
         await page.setContent(html, { waitUntil: 'load', timeout: options.timeoutMs });
+        // El evento `load` NO espera a que las `@font-face` se decodifiquen: sin esperar a
+        // `document.fonts.ready`, la factura podía salir con la pila de respaldo.
+        await page.evaluate(async () => {
+          // En la página (Chromium) existe `document.fonts`; el servicio compila sin la lib DOM.
+          const fuentes = (globalThis as { document?: { fonts?: { ready?: Promise<unknown> } } })
+            .document?.fonts;
+          await fuentes?.ready;
+        });
         return await page.pdf({
           format: 'A4',
           landscape: false,
