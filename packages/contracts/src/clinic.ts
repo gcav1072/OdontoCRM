@@ -109,8 +109,12 @@ export const clinicContactReady = (clinic: ClinicIdentity = CLINIC): boolean =>
   clinic.name.trim() !== '' && clinic.address.trim() !== '';
 
 /** Teléfonos y correo en una línea, sin repetir el que falte. */
-export const clinicContactLine = (clinic: ClinicIdentity = CLINIC): string =>
-  [...clinic.phones, ...(clinic.email === null ? [] : [clinic.email])].join(' · ');
+export const clinicContactLine = (clinic: ClinicIdentity = CLINIC): string => {
+  // Defensivo a propósito: un membrete a medias (perfil sin teléfonos) no puede romper
+  // un documento; `phones` puede llegar ausente desde datos incompletos.
+  const phones = Array.isArray(clinic.phones) ? clinic.phones : [];
+  return [...phones, ...(clinic.email == null ? [] : [clinic.email])].join(' · ');
+};
 
 /** Odontólogo titular (el primero de la lista), o `null` si no hay ninguno. */
 export const clinicLeadDentist = (clinic: ClinicIdentity = CLINIC): ClinicDentist | null =>

@@ -72,9 +72,69 @@ export const brandTypographyInputSchema = z.object({
 
 export type BrandTypographyInput = z.infer<typeof brandTypographyInputSchema>;
 
-/** Medidas del membrete y de la marca de agua (mm y opacidad). */
+/* ── Membrete: alineación, tipografía propia, líneas y pie (subsección «Membrete») ── */
+
+/** Posición horizontal del logo dentro de la cabecera del membrete. */
+export const LOGO_HORIZONTAL_ALIGNMENTS = ['left', 'center', 'right'] as const;
+/** Posición vertical del logo respecto al bloque de datos (nombre y líneas). */
+export const LOGO_VERTICAL_ALIGNMENTS = ['top', 'center', 'bottom'] as const;
+
+export type LogoHorizontalAlign = (typeof LOGO_HORIZONTAL_ALIGNMENTS)[number];
+export type LogoVerticalAlign = (typeof LOGO_VERTICAL_ALIGNMENTS)[number];
+
+/** Línea del membrete que se puede mostrar u ocultar y reordenar. */
+export const LETTERHEAD_LINE_KEYS = ['address', 'rif', 'contact', 'website', 'dentist'] as const;
+
+export type LetterheadLineKey = (typeof LETTERHEAD_LINE_KEYS)[number];
+
+export const letterheadLineSchema = z.object({
+  /** Qué dato imprime la línea. */
+  key: z.enum(LETTERHEAD_LINE_KEYS),
+  /** Si la línea se imprime; el **orden del arreglo** es el orden en el papel. */
+  visible: z.boolean(),
+});
+
+export type LetterheadLineSettings = z.infer<typeof letterheadLineSchema>;
+
+/** El orden de fábrica de las líneas del membrete (el del membrete de siempre). */
+export const DEFAULT_LETTERHEAD_LINES: readonly LetterheadLineSettings[] = [
+  { key: 'address', visible: true },
+  { key: 'rif', visible: true },
+  { key: 'contact', visible: true },
+  { key: 'website', visible: true },
+  { key: 'dentist', visible: true },
+];
+
+/**
+ * El **membrete** de los imprimibles: las medidas del logo y el velo más la
+ * **presentación** del bloque (alineación del logo, tipografía propia del nombre, qué
+ * líneas salen y en qué orden, y un pie opcional).
+ *
+ * Los **datos** (nombre, RIF, dirección, teléfonos, logo) NO viven aquí: son la
+ * identidad del consultorio ([ADR 0056](../../../../docs/adr/0056-la-identidad-del-consultorio-vive-en-la-base.md),
+ * `clinic_profiles`). Esto solo decide cómo se **pinta** esa identidad en el papel.
+ */
 export const brandLetterheadSchema = z.object({
   logoHeightMm: z.number().min(6).max(60),
+  /** Posición horizontal del logo (por defecto a la izquierda). */
+  logoAlign: z.enum(LOGO_HORIZONTAL_ALIGNMENTS).default('left'),
+  /** Posición vertical del logo respecto al bloque de datos (por defecto centrado). */
+  logoVerticalAlign: z.enum(LOGO_VERTICAL_ALIGNMENTS).default('center'),
+  /** Pila del **nombre** del membrete; `null` = la misma de los títulos del documento. */
+  titleSans: z.string().trim().max(300).nullable().default(null),
+  /** Peso del nombre del membrete; `null` = el de los títulos del documento. */
+  titleWeight: z.number().int().min(100).max(900).nullable().default(null),
+  /** Tamaño del nombre del membrete (pt). */
+  titlePt: z.number().min(6).max(24).default(12),
+  /** Tamaño de las líneas del membrete (dirección, RIF, contacto…), en pt. */
+  linePt: z.number().min(5).max(14).default(8),
+  /** Las líneas del membrete, en el orden en que se imprimen. */
+  lines: z
+    .array(letterheadLineSchema)
+    .max(5)
+    .default([...DEFAULT_LETTERHEAD_LINES]),
+  /** Pie propio del membrete (lema, eslogan); `null` = sin pie. */
+  footer: z.string().trim().max(300).nullable().default(null),
   watermarkWidthMm: z.number().min(20).max(200),
   watermarkOpacity: z.number().min(0).max(0.6),
 });

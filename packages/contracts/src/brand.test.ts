@@ -11,6 +11,7 @@ import {
   brandWatermarkCss,
   brandWatermarkHtml,
   fontStackFor,
+  letterheadCss,
   logoMimeType,
 } from './brand.js';
 
@@ -38,7 +39,7 @@ const bloqueRoot = (css: string): string => {
 describe('la marca del consultorio', () => {
   it('declara todas las variables de paleta, tipografía y membrete', () => {
     const variables = brandCssVariables().split('\n');
-    expect(variables).toHaveLength(25);
+    expect(variables).toHaveLength(31);
     expect(variables.every((linea) => linea.startsWith('  --brand-'))).toBe(true);
     expect(brandRootBlock()).toContain(`--brand-primary: ${BRAND.palette.primary};`);
     // Los documentos tienen DOS tipografías: la de los títulos y la del cuerpo.
@@ -58,6 +59,26 @@ describe('la marca del consultorio', () => {
     expect(brandRootBlock()).toContain(
       `--brand-logo-height-mm: ${String(BRAND.letterhead.logoHeightMm)}mm;`,
     );
+  });
+
+  it('publica las variables del membrete configurable (alineación, tipografía, líneas)', () => {
+    const raiz = brandRootBlock();
+    expect(raiz).toContain('--brand-lh-logo-align: flex-start;');
+    expect(raiz).toContain('--brand-lh-logo-valign: center;');
+    expect(raiz).toContain(`--brand-lh-title-pt: ${String(BRAND.letterhead.titlePt)}pt;`);
+    expect(raiz).toContain(`--brand-lh-line-pt: ${String(BRAND.letterhead.linePt)}pt;`);
+    // La tipografía del nombre cae en la de los títulos cuando no se elige una propia.
+    expect(raiz).toContain(`--brand-lh-title-font: ${BRAND.typography.documentTitleSans};`);
+  });
+
+  it('el CSS del bloque de identidad comparte clases y lee las variables de la marca', () => {
+    const css = letterheadCss();
+    expect(css).toContain('.brand-lh');
+    expect(css).toContain('.brand-lh--rule');
+    expect(css).toContain('align-items: var(--brand-lh-logo-valign)');
+    expect(css).toContain('justify-content: var(--brand-lh-logo-align)');
+    expect(css).toContain('height: var(--brand-logo-height-mm)');
+    expect(css).toContain('font-size: var(--brand-lh-line-pt)');
   });
 
   it('declara las dos tipografías sobre familias del catálogo, con su peso', () => {

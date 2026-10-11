@@ -25,6 +25,15 @@
  * también aquí porque el papel no puede depender del tema del navegador.
  */
 
+import type {
+  LetterheadLineKey,
+  LogoHorizontalAlign,
+  LogoVerticalAlign,
+} from './domain/settings.js';
+
+/* Se reexportan para que quien lee la marca tenga los tipos del membrete a mano. */
+export type { LetterheadLineKey, LogoHorizontalAlign, LogoVerticalAlign };
+
 /** Familias tipográficas y tamaños base de los documentos impresos (en pt). */
 export interface BrandTypography {
   /** Pila de la interfaz en pantalla. La misma que `--font-sans` de los tokens. */
@@ -137,10 +146,37 @@ export interface BrandPalette {
   bad: string;
 }
 
-/** Medidas del membrete y la marca de agua. */
+/** Una línea del membrete: qué dato imprime y si se imprime. El orden del arreglo manda. */
+export interface LetterheadLine {
+  key: LetterheadLineKey;
+  visible: boolean;
+}
+
+/**
+ * Medidas del membrete (logo y velo) y **presentación** del bloque de identidad:
+ * alineación del logo, tipografía propia del nombre, líneas y su orden, y pie.
+ *
+ * Los **datos** del consultorio no viven aquí: son la identidad (ADR 0056).
+ */
 export interface BrandLetterhead {
   /** Alto del logo en el membrete (mm). */
   logoHeightMm: number;
+  /** Posición horizontal del logo en la cabecera. */
+  logoAlign: LogoHorizontalAlign;
+  /** Posición vertical del logo respecto al bloque de datos. */
+  logoVerticalAlign: LogoVerticalAlign;
+  /** Pila del nombre del membrete; `null` = la de los títulos del documento. */
+  titleSans: string | null;
+  /** Peso del nombre del membrete; `null` = el de los títulos del documento. */
+  titleWeight: number | null;
+  /** Tamaño del nombre del membrete (pt). */
+  titlePt: number;
+  /** Tamaño de las líneas del membrete (pt). */
+  linePt: number;
+  /** Las líneas del membrete, en el orden en que se imprimen. */
+  lines: LetterheadLine[];
+  /** Pie propio del membrete; `null` = sin pie. */
+  footer: string | null;
   /** Ancho de la marca de agua centrada (mm). */
   watermarkWidthMm: number;
   /** Opacidad de la marca de agua (0–1): tiene que leerse el documento detrás. */
@@ -309,6 +345,23 @@ export const BRAND: Brand = {
   },
   letterhead: {
     logoHeightMm: 18,
+    /** Logo a la izquierda, centrado en vertical respecto al bloque de datos. */
+    logoAlign: 'left',
+    logoVerticalAlign: 'center',
+    /** `null`: el nombre sale con la tipografía de los títulos del documento. */
+    titleSans: null,
+    titleWeight: null,
+    titlePt: 12,
+    linePt: 8,
+    /** Membrete de siempre: dirección, RIF, contacto, web y especialista, en ese orden. */
+    lines: [
+      { key: 'address', visible: true },
+      { key: 'rif', visible: true },
+      { key: 'contact', visible: true },
+      { key: 'website', visible: true },
+      { key: 'dentist', visible: true },
+    ],
+    footer: null,
     watermarkWidthMm: 90,
     /** Opacidad de la marca de agua (0.1 es un velo suave que deja leer el texto encima). */
     watermarkOpacity: 0.1,
@@ -345,6 +398,20 @@ export const logoMimeType = (path: string): string => {
   );
 };
 
+/** Traducción de la alineación del logo a `justify-content` (eje horizontal). */
+const LOGO_ALIGN_CSS: Readonly<Record<LogoHorizontalAlign, string>> = {
+  left: 'flex-start',
+  center: 'center',
+  right: 'flex-end',
+};
+
+/** Traducción de la alineación del logo a `align-items` (eje vertical del bloque). */
+const LOGO_VALIGN_CSS: Readonly<Record<LogoVerticalAlign, string>> = {
+  top: 'flex-start',
+  center: 'center',
+  bottom: 'flex-end',
+};
+
 /**
  * Variables CSS de marca (`--brand-*`), una por línea y ya indentadas.
  *
@@ -377,6 +444,14 @@ export const brandCssVariables = (brand: BrandTheme = BRAND): string => {
     ['doc-body-pt', `${String(typography.documentBodyPt)}pt`],
     ['doc-small-pt', `${String(typography.documentSmallPt)}pt`],
     ['logo-height-mm', `${String(letterhead.logoHeightMm)}mm`],
+    ['lh-logo-align', LOGO_ALIGN_CSS[letterhead.logoAlign]],
+    ['lh-logo-valign', LOGO_VALIGN_CSS[letterhead.logoVerticalAlign]],
+    /* La tipografía del nombre del membrete cae en la de los títulos del documento
+       cuando no se ha elegido una propia (`titleSans`/`titleWeight` en `null`). */
+    ['lh-title-font', letterhead.titleSans ?? typography.documentTitleSans],
+    ['lh-title-weight', letterhead.titleWeight ?? typography.documentTitleWeight],
+    ['lh-title-pt', `${String(letterhead.titlePt)}pt`],
+    ['lh-line-pt', `${String(letterhead.linePt)}pt`],
     ['watermark-width-mm', `${String(letterhead.watermarkWidthMm)}mm`],
     ['watermark-opacity', String(letterhead.watermarkOpacity)],
   ];
@@ -463,3 +538,60 @@ export const brandWatermarkHtml = (dataUri: string | null): string =>
   dataUri === null || dataUri.trim() === ''
     ? ''
     : `<img class="brand-watermark" src="${dataUri}" alt="" aria-hidden="true">`;
+
+/**
+ * CSS del **bloque de identidad del membrete**: la fila `logo + datos` que comparten
+ * el récipe, el dossier, el reporte y los documentos de cobro, y que la SPA reutiliza al
+ * imprimir desde el navegador. La aplican las clases `.brand-lh*`.
+ *
+ * Es lo que hace **configurable** el membrete sin tocar cada plantilla: la alineación del
+ * logo, la tipografía del nombre y el espacio salen de las variables de la marca, así que
+ * el panel los mueve en pantalla y en papel a la vez.
+ *
+ * `.brand-lh--rule` añade la regla de acento bajo el bloque: la llevan los documentos cuya
+ * cabecera **es** el membrete (récipe, dossier, reporte); los de cobro la dejan porque su
+ * regla abarca toda la cabecera (identidad + número de documento).
+ */
+export const letterheadCss = (): string => `
+.brand-lh {
+  display: flex;
+  justify-content: var(--brand-lh-logo-align);
+  align-items: var(--brand-lh-logo-valign);
+  gap: 4mm;
+}
+.brand-lh--rule {
+  width: 100%;
+  border-bottom: 0.6mm solid var(--brand-accent);
+  padding-bottom: 2.5mm;
+}
+.brand-lh-logo {
+  height: var(--brand-logo-height-mm);
+  width: auto;
+  flex: 0 0 auto;
+}
+.brand-lh-body {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.brand-lh-name {
+  font-family: var(--brand-lh-title-font);
+  font-weight: var(--brand-lh-title-weight);
+  font-size: var(--brand-lh-title-pt);
+  color: var(--brand-primary);
+  margin: 0;
+}
+.brand-lh-line {
+  font-size: var(--brand-lh-line-pt);
+  color: var(--brand-ink-muted);
+  margin: 0.5mm 0 0;
+}
+.brand-lh-dentist {
+  font-size: var(--brand-lh-line-pt);
+  color: var(--brand-ink-strong);
+  margin: 0.8mm 0 0;
+}
+.brand-lh-footer {
+  font-size: 7pt;
+  color: var(--brand-ink-subtle);
+  margin: 1mm 0 0;
+}`;

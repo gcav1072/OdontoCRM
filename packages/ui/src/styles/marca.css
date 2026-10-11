@@ -30,6 +30,12 @@
   --brand-doc-body-pt: 9pt;
   --brand-doc-small-pt: 7.5pt;
   --brand-logo-height-mm: 18mm;
+  --brand-lh-logo-align: flex-start;
+  --brand-lh-logo-valign: center;
+  --brand-lh-title-font: 'Montserrat', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --brand-lh-title-weight: 700;
+  --brand-lh-title-pt: 12pt;
+  --brand-lh-line-pt: 8pt;
   --brand-watermark-width-mm: 90mm;
   --brand-watermark-opacity: 0.1;
 }

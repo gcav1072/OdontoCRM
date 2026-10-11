@@ -7,6 +7,7 @@ import {
   SCREEN_TEXT_KEYS,
   UI_ACCENTS,
   UI_ACCENT_IDS,
+  brandLetterheadSchema,
   brandSettingsSchema,
   channelSettingsInputSchema,
   hexColorSchema,
@@ -116,6 +117,24 @@ describe('validación de la configuración', () => {
     expect(valida.success).toBe(true);
     if (valida.success) {
       expect(valida.data.palette.primary).toBe('#14504d');
+    }
+  });
+
+  it('el membrete se completa con el respaldo cuando faltan los campos nuevos', () => {
+    // Una fila guardada antes del membrete configurable solo trae las medidas: al parsear
+    // se rellenan la alineación, la tipografía, las líneas y el pie con el respaldo.
+    const resultado = brandLetterheadSchema.safeParse({
+      logoHeightMm: 20,
+      watermarkWidthMm: 80,
+      watermarkOpacity: 0.2,
+    });
+    expect(resultado.success).toBe(true);
+    if (resultado.success) {
+      expect(resultado.data.logoAlign).toBe('left');
+      expect(resultado.data.logoVerticalAlign).toBe('center');
+      expect(resultado.data.lines).toHaveLength(5);
+      expect(resultado.data.titlePt).toBe(12);
+      expect(resultado.data.footer).toBeNull();
     }
   });
 
