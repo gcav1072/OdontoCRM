@@ -1,4 +1,5 @@
 import {
+  BRAND,
   clinicalSessionContentSchema,
   formatPrescriptionNumber,
   formatSessionNumber,
@@ -351,5 +352,19 @@ describe('el dossier del expediente', () => {
     expect(pie).toContain('pageNumber');
     expect(pie).toContain('totalPages');
     expect(pie).toContain('EXP-000003');
+  });
+
+  it('los COLORES del papel salen de la marca del panel, no del código', async () => {
+    const html = await dossierHtml({
+      ...base(),
+      brand: {
+        palette: { ...BRAND.palette, primary: '#c81e1e', accent: '#f97316' },
+        typography: BRAND.typography,
+        letterhead: BRAND.letterhead,
+      },
+    });
+    expect(html).toContain('--brand-primary: #c81e1e;');
+    expect(html).toContain('--brand-accent: #f97316;');
+    expect(html).not.toContain(`--brand-primary: ${BRAND.palette.primary};`);
   });
 });

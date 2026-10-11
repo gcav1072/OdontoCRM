@@ -193,6 +193,24 @@ describe('el récipe en dos mitades apaisadas', () => {
     });
     expect(html).toContain('--brand-logo-height-mm: 30mm');
   });
+
+  it('los COLORES del papel salen de la marca del panel, no del código', async () => {
+    // Regresión del fallo «cambié el color en el panel y el papel salió igual»: la paleta
+    // del panel tiene que llegar al `:root { --brand-* }` de la plantilla.
+    const html = await prescriptionHtml({
+      ...base,
+      brand: {
+        palette: { ...BRAND.palette, primary: '#c81e1e', accent: '#f97316', ink: '#123456' },
+        typography: BRAND.typography,
+        letterhead: BRAND.letterhead,
+      },
+    });
+    expect(html).toContain('--brand-primary: #c81e1e;');
+    expect(html).toContain('--brand-accent: #f97316;');
+    expect(html).toContain('--brand-ink: #123456;');
+    // El color de fábrica no se queda pegado en el CSS.
+    expect(html).not.toContain(`--brand-primary: ${BRAND.palette.primary};`);
+  });
 });
 
 describe('la vía como se imprime', () => {
