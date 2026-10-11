@@ -1,5 +1,7 @@
 import {
+  BRAND,
   reportFiltersSchema,
+  type BrandThemePayload,
   type LetterheadSnapshot,
   type ReportDocument,
 } from '@odontocrm/contracts';
@@ -103,5 +105,18 @@ describe('plantilla HTML del reporte', () => {
     const html = await reportHtml({ ...documento, table: { ...documento.table, rows: [] } });
     expect(html).toContain('Sin filas que imprimir');
     expect(html).not.toContain('<tbody>');
+  });
+
+  it('los COLORES del papel salen de la marca del panel, no del código', async () => {
+    // Regresión del fallo «cambié el color en el panel y el papel salió igual».
+    const marca: BrandThemePayload = {
+      palette: { ...BRAND.palette, primary: '#c81e1e', accent: '#f97316' },
+      typography: BRAND.typography,
+      letterhead: BRAND.letterhead,
+    };
+    const html = await reportHtml(documentoDePrueba(), undefined, marca);
+    expect(html).toContain('--brand-primary: #c81e1e;');
+    expect(html).toContain('--brand-accent: #f97316;');
+    expect(html).not.toContain(`--brand-primary: ${BRAND.palette.primary};`);
   });
 });
