@@ -1,7 +1,7 @@
 import type { LetterheadSnapshot } from '@odontocrm/contracts';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { aplicarDatosDelConsultorio } from './clinic-identity.js';
+import { aplicarDatosDelConsultorio, createLetterheadLookup } from './clinic-identity.js';
 
 /**
  * `aplicarDatosDelConsultorio` es el **cable** entre el registro del consultorio
@@ -96,5 +96,63 @@ describe('aplicarDatosDelConsultorio', () => {
 
     expect(config.CLINIC_NAME).toBeUndefined();
     expect(config.CLINIC_ADDRESS).toBeUndefined();
+  });
+});
+
+/**
+ * La lectura del **membrete** degrada a `CLINIC` cuando identity no responde. Como la
+ * marca, ese respaldo **avisa**: si no, el papel saldría con la identidad de fábrica sin
+ * que nadie se enterara.
+ */
+describe('createLetterheadLookup', () => {
+  const cfg = (extra: Record<string, unknown> = {}) => ({
+    IDENTITY_URL: 'http://127.0.0.1:4001',
+    INTERNAL_SERVICE_SECRET: 'secreto-de-prueba-de-membrete',
+    ...extra,
+  });
+
+  const respuesta = (status: number, body: unknown): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('devuelve la instantánea de identity y no avisa', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(respuesta(200, snapshot({ name: 'Consultorio real' }))),
+    );
+    const onFallback = vi.fn();
+
+    const leida = await createLetterheadLookup(cfg({ onFallback }))();
+
+    expect(leida.clinic.name).toBe('Consultorio real');
+    expect(onFallback).not.toHaveBeenCalled();
+  });
+
+  it('si identity responde 403 degrada al respaldo del código y AVISA', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuesta(403, { title: 'Sin permiso' })));
+    const onFallback = vi.fn();
+
+    const leida = await createLetterheadLookup(cfg({ onFallback }))();
+
+    expect(leida.version).toBe('seed');
+    expect(onFallback).toHaveBeenCalledTimes(1);
+    expect(String(onFallback.mock.calls[0]?.[0])).toContain('403');
+  });
+
+  it('sin secreto interno avisa y no pregunta', async () => {
+    const fetchFalso = vi.fn();
+    vi.stubGlobal('fetch', fetchFalso);
+    const onFallback = vi.fn();
+
+    await createLetterheadLookup(cfg({ INTERNAL_SERVICE_SECRET: undefined, onFallback }))();
+
+    expect(fetchFalso).not.toHaveBeenCalled();
+    expect(onFallback).toHaveBeenCalledTimes(1);
   });
 });

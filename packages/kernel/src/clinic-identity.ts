@@ -39,6 +39,12 @@ export interface LetterheadLookupConfig {
   timeoutMs?: number;
   /** Vida de la caché (ms). `0` la desactiva. */
   cacheTtlMs?: number;
+  /**
+   * Aviso de que **no** se pudo leer la identidad y se está usando el respaldo del código
+   * (`CLINIC`). Se llama como mucho una vez por minuto. Sin esto, un fallo de la lectura
+   * interna dejaría el membrete con los datos del código sin que nadie se entere.
+   */
+  onFallback?: ((motivo: string) => void) | undefined;
 }
 
 /** El respaldo: el membrete de `CLINIC` (el código), con el logo del repositorio. */
@@ -69,14 +75,28 @@ export const createLetterheadLookup = (config: LetterheadLookupConfig): Letterhe
   const timeoutMs = config.timeoutMs ?? 5_000;
   const cacheTtlMs = config.cacheTtlMs ?? 60_000;
   const secret = config.INTERNAL_SERVICE_SECRET;
+  const onFallback = config.onFallback;
+
+  /** Una lectura: la instantánea o el motivo por el que no se pudo leer (para el aviso). */
+  type Lectura = { ok: true; snapshot: LetterheadSnapshot } | { ok: false; motivo: string };
 
   /** Caché por usuario (`''` = sin usuario, el titular). */
   const cache = new Map<string, { snapshot: LetterheadSnapshot; expiresAt: number }>();
   /** Lecturas en vuelo: dos peticiones simultáneas comparten una sola. */
-  const inFlight = new Map<string, Promise<LetterheadSnapshot | null>>();
+  const inFlight = new Map<string, Promise<Lectura>>();
+  /** Última vez que se avisó del respaldo (como mucho una vez por minuto). */
+  let ultimoAviso = 0;
 
-  const fetchOnce = async (dentist: string | null): Promise<LetterheadSnapshot | null> => {
-    if (secret === undefined) return null;
+  const avisar = (motivo: string): void => {
+    if (onFallback === undefined || Date.now() - ultimoAviso < 60_000) return;
+    ultimoAviso = Date.now();
+    onFallback(motivo);
+  };
+
+  const fetchOnce = async (dentist: string | null): Promise<Lectura> => {
+    if (secret === undefined) {
+      return { ok: false, motivo: 'no hay INTERNAL_SERVICE_SECRET configurado' };
+    }
     const url = new URL('/internal/v1/identity/letterhead', config.IDENTITY_URL);
     if (dentist !== null && dentist.trim() !== '') url.searchParams.set('dentist', dentist);
 
@@ -85,12 +105,24 @@ export const createLetterheadLookup = (config: LetterheadLookupConfig): Letterhe
         headers: { 'x-internal-token': secret },
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        return {
+          ok: false,
+          motivo: `identity respondió ${String(response.status)} en /internal/v1/identity/letterhead`,
+        };
+      }
 
       const parsed = letterheadSchema.safeParse(await response.json());
-      return parsed.success ? parsed.data : null;
-    } catch {
-      return null;
+      return parsed.success
+        ? { ok: true, snapshot: parsed.data }
+        : { ok: false, motivo: 'la identidad que sirvió identity no cumple el contrato' };
+    } catch (error) {
+      return {
+        ok: false,
+        motivo: `no se pudo leer la identidad de identity: ${
+          error instanceof Error ? error.message : 'error de red'
+        }`,
+      };
     }
   };
 
@@ -112,7 +144,9 @@ export const createLetterheadLookup = (config: LetterheadLookupConfig): Letterhe
         return lectura;
       })();
 
-    const snapshot = (await pendiente) ?? (await fallbackLetterhead(username));
+    const leida = await pendiente;
+    if (!leida.ok) avisar(leida.motivo);
+    const snapshot = leida.ok ? leida.snapshot : await fallbackLetterhead(username);
     if (cacheTtlMs > 0) {
       cache.set(clave, { snapshot, expiresAt: Date.now() + cacheTtlMs });
     }

@@ -35,6 +35,17 @@ export interface BrandLookupConfig {
   timeoutMs?: number;
   /** Vida de la caché (ms). `0` la desactiva. */
   cacheTtlMs?: number;
+  /**
+   * Aviso de que **no** se pudo leer la marca efectiva y se está usando el respaldo del
+   * código (`BRAND`). Se llama como mucho una vez por minuto.
+   *
+   * Existe para que el respaldo **no sea silencioso**: si la lectura interna falla
+   * —identity caído, un despliegue con la ruta vieja, un secreto distinto, una respuesta
+   * que no cumple el contrato— los imprimibles salen con los **colores, las fuentes y el
+   * membrete del código**, y sin este aviso nadie se entera. Es el fallo de «cambié el
+   * color en el panel y el papel salió igual».
+   */
+  onFallback?: ((motivo: string) => void) | undefined;
 }
 
 /** El tema del contrato a partir de un `BrandTheme` (paleta, tipografías y medidas). */
@@ -75,24 +86,50 @@ export const createBrandLookup = (config: BrandLookupConfig): BrandLookup => {
    */
   const cacheTtlMs = config.cacheTtlMs ?? 1_000;
   const secret = config.INTERNAL_SERVICE_SECRET;
+  const onFallback = config.onFallback;
+
+  /** Una lectura: la marca o el motivo por el que no se pudo leer (para el aviso). */
+  type Lectura = { ok: true; brand: EffectiveBrand } | { ok: false; motivo: string };
 
   let cache: { brand: EffectiveBrand; expiresAt: number } | null = null;
-  let inFlight: Promise<EffectiveBrand | null> | null = null;
+  let inFlight: Promise<Lectura> | null = null;
+  /** Última vez que se avisó del respaldo: el aviso va como mucho una vez por minuto. */
+  let ultimoAviso = 0;
 
-  const fetchOnce = async (): Promise<EffectiveBrand | null> => {
-    if (secret === undefined) return null;
+  const avisar = (motivo: string): void => {
+    if (onFallback === undefined || Date.now() - ultimoAviso < 60_000) return;
+    ultimoAviso = Date.now();
+    onFallback(motivo);
+  };
+
+  const fetchOnce = async (): Promise<Lectura> => {
+    if (secret === undefined) {
+      return { ok: false, motivo: 'no hay INTERNAL_SERVICE_SECRET configurado' };
+    }
 
     try {
       const response = await fetch(new URL('/internal/v1/identity/brand', config.IDENTITY_URL), {
         headers: { 'x-internal-token': secret },
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        return {
+          ok: false,
+          motivo: `identity respondió ${String(response.status)} en /internal/v1/identity/brand`,
+        };
+      }
 
       const parsed = effectiveBrandSchema.safeParse(await response.json());
-      return parsed.success ? parsed.data : null;
-    } catch {
-      return null;
+      return parsed.success
+        ? { ok: true, brand: parsed.data }
+        : { ok: false, motivo: 'la marca que sirvió identity no cumple el contrato' };
+    } catch (error) {
+      return {
+        ok: false,
+        motivo: `no se pudo leer la marca de identity: ${
+          error instanceof Error ? error.message : 'error de red'
+        }`,
+      };
     }
   };
 
@@ -103,7 +140,9 @@ export const createBrandLookup = (config: BrandLookupConfig): BrandLookup => {
       inFlight = null;
     });
 
-    const brand = (await inFlight) ?? fallbackBrand();
+    const lectura = await inFlight;
+    if (!lectura.ok) avisar(lectura.motivo);
+    const brand = lectura.ok ? lectura.brand : fallbackBrand();
     if (cacheTtlMs > 0) cache = { brand, expiresAt: Date.now() + cacheTtlMs };
     return brand;
   };
