@@ -278,9 +278,9 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
             </Field>
           </div>
 
-          {/* El papel del récipe: tiene que ser el de la bandeja. Una hoja carta apaisada
-              mide 215,9 mm de alto y no cabe en una A4 (210 mm): la impresora parte la
-              última franja —en blanco— a una segunda hoja. */}
+          {/* El papel del récipe: tiene que ser el de la bandeja. Una hoja A4 apaisada mide
+              210 mm de alto y no entra en una carta (215,9 mm): la impresora parte lo que
+              sobra —en blanco— a una segunda hoja. */}
           <div className="grid gap-2 @2xl:grid-cols-3">
             <Field label={t('config.marca.papel')} hint={t('config.marca.papelAyuda')}>
               <Select
@@ -292,8 +292,8 @@ export const MarcaSection = ({ vista, onNotice }: MarcaSectionProps) => {
                   }))
                 }
               >
-                <option value="A4">{t('config.marca.papelA4')}</option>
                 <option value="letter">{t('config.marca.papelCarta')}</option>
+                <option value="A4">{t('config.marca.papelA4')}</option>
               </Select>
             </Field>
           </div>
