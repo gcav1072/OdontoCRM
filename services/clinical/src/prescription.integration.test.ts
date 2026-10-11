@@ -47,6 +47,7 @@ import { loadClinicalConfig } from './config.js';
 import { createClinicalDatabase } from './db/client.js';
 import { prescriptions } from './db/schema.js';
 import { createPdfRenderer, type PdfRenderer } from './prescriptions/pdf-renderer.js';
+import { countPdfPages } from './prescriptions/prescription-document.js';
 
 /**
  * Pruebas de integración de la Fase 7 (sesión B) contra PostgreSQL real y **con
@@ -320,6 +321,9 @@ describeWithDatabases('récipes y adjuntos: número, PDF, QR y auditoría', () =
     expect(pdf.buffer.subarray(0, 5).toString()).toBe('%PDF-');
     expect(pdf.buffer.byteLength).toBeGreaterThan(15_000);
     expect(pdf.sha256).toMatch(/^[a-f0-9]{64}$/);
+    // El récipe es **una hoja**: el encaje la mide y la deja caber, así que no sale la
+    // segunda hoja (casi en blanco) que dejaba el desborde (ADR 0065).
+    expect(countPdfPages(pdf.buffer)).toBe(1);
 
     await flushOutbox();
     const rows = await waitForAudit((current) =>

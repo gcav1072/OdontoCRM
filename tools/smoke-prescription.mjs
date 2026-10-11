@@ -253,12 +253,18 @@ check(
 
 const pdf = await descargar(`/api/v1/clinical/prescriptions/${prescriptionId}/pdf`);
 check(
-  'el PDF A5 queda archivado y se descarga',
+  'el PDF queda archivado y se descarga',
   pdf.status === 200 &&
     pdf.buffer.subarray(0, 5).toString() === '%PDF-' &&
     pdf.buffer.byteLength > 15_000,
   `${String(pdf.buffer.byteLength)} bytes`,
 );
+
+// La hoja: el récipe es **una**, sin la segunda hoja (casi en blanco) que dejaba el
+// desborde. Se cuentan las páginas dentro del PDF (`/Type /Page`; `/Type /Pages` es el
+// árbol). El encaje mide el documento en el navegador (ADR 0065).
+const hojas = (pdf.buffer.toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length;
+check('el récipe sale en una sola hoja', hojas === 1, `${String(hojas)} hoja(s)`);
 
 const dosVeces = await call(`/api/v1/clinical/prescriptions/${prescriptionId}/issue`, {
   method: 'POST',

@@ -1,4 +1,6 @@
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser, type Page } from 'playwright';
+
+import { MIN_FIT_SCALE, fitToAvailable, mmToPx } from './fit-to-page.js';
 
 /**
  * El PDF del récipe, con Chromium ([ADR 0015](../../../docs/adr/0015-recipe-a5-en-pdf.md)).
@@ -25,14 +27,40 @@ export interface PdfMarginMm {
 }
 
 /**
+ * **Encaje a una sola hoja.** El bloque `selector` se mide dentro del navegador con la
+ * escala en 1 y, si no cabe en el alto útil de la hoja, se reduce la escala escrita en la
+ * variable CSS `scaleVariable` hasta que cabe. Es lo que garantiza que el récipe salga en
+ * **una hoja** —sin la segunda hoja en blanco que deja el desborde— mida lo que mida el
+ * membrete o traiga los medicamentos que traiga, y sin encoger la letra más de lo justo
+ * ([ADR 0065](../../../docs/adr/0065-el-recipe-cabe-en-el-papel-de-la-clinica.md)).
+ *
+ * La escala **nunca** sube de 1 (no agranda un récipe corto) ni baja de `minScale`.
+ */
+export interface PdfFitToPage {
+  /** Selector del bloque que tiene que caber en la hoja (el `.sheet` del récipe). */
+  selector: string;
+  /** Variable CSS de la escala, sin los guiones (`rx-fit`); se escribe en `<html>`. */
+  scaleVariable: string;
+  /** Alto útil de la hoja, en milímetros: el del papel menos sus márgenes. */
+  availableHeightMm: number;
+  /**
+   * Ancho útil de la hoja, en milímetros (el del papel menos sus márgenes). Se usa para
+   * **medir con el ancho del papel**: el navegador mide contra su ventana, y en una
+   * ventana más ancha que la hoja el texto se pliega en menos renglones.
+   */
+  availableWidthMm: number;
+  /** Tope inferior de la escala; por defecto `MIN_FIT_SCALE`. */
+  minScale?: number | undefined;
+}
+
+/**
  * Cómo se compone el papel.
  *
- * El **récipe** va en **carta apaisada** con `landscape: true`: su `@page` ya lleva el
- * tamaño y los márgenes, y esa es la firma que ya usaban las pruebas. El **dossier**
- * necesita A4, folio en cada página y márgenes que Chromium respete para dejar sitio al
- * folio —y el folio solo existe si el propio PDF lo dibuja (`displayHeaderFooter`);
- * Chromium no soporta `counter(page)` en los márgenes de `@page`, así que no hay forma
- * de hacerlo con CSS.
+ * El **récipe** va **apaisado** (`landscape: true`): su `@page` lleva el tamaño del papel
+ * que elige la marca y sus márgenes. El **dossier** necesita A4, folio en cada página y
+ * márgenes que Chromium respete para dejar sitio al folio —y el folio solo existe si el
+ * propio PDF lo dibuja (`displayHeaderFooter`); Chromium no soporta `counter(page)` en los
+ * márgenes de `@page`, así que no hay forma de hacerlo con CSS.
  */
 export interface PdfRenderOptions {
   format?: 'A5' | 'A4' | 'Letter';
@@ -41,16 +69,70 @@ export interface PdfRenderOptions {
   /** Pie repetido en cada página (HTML; admite `class="pageNumber"` y `"totalPages"`). */
   footerHtml?: string;
   marginMm?: PdfMarginMm;
+  /** Encaje medido a una sola hoja (el récipe lo pide). */
+  fitToPage?: PdfFitToPage;
 }
 
 export interface PdfRenderer {
-  /** HTML → PDF (A5 por defecto; el récipe pide carta apaisada y el dossier A4 con folio). */
+  /** HTML → PDF (A5 por defecto; el récipe pide su papel apaisado y el dossier A4 con folio). */
   render: (html: string, options?: PdfRenderOptions) => Promise<Buffer>;
   /** Cierra el navegador (lo llama el apagado del servicio). */
   close: () => Promise<void>;
   /** `true` cuando el navegador ya está levantado (diagnóstico y pruebas). */
   isRunning: () => boolean;
 }
+
+/** Lo mínimo del DOM que necesita el encaje: el servicio compila sin la librería DOM. */
+interface EncajeDom {
+  documentElement: { style: { setProperty: (nombre: string, valor: string) => void } };
+  querySelector: (selector: string) => { getBoundingClientRect: () => { height: number } } | null;
+}
+
+/** El alto (px) del bloque que tiene que caber; `0` si la plantilla no lo trae. */
+const medirBloque = async (page: Page, selector: string): Promise<number> =>
+  await page.evaluate((sel) => {
+    const doc = (globalThis as { document?: EncajeDom }).document;
+    return doc?.querySelector(sel)?.getBoundingClientRect().height ?? 0;
+  }, selector);
+
+/** Escribe la escala en `<html>`: los `calc()` del documento la leen por herencia. */
+const aplicarEscala = async (page: Page, variable: string, escala: number): Promise<void> => {
+  await page.evaluate(
+    ({ nombre, valor }) => {
+      const doc = (globalThis as { document?: EncajeDom }).document;
+      doc?.documentElement.style.setProperty(`--${nombre}`, String(valor));
+    },
+    { nombre: variable, valor: escala },
+  );
+};
+
+/**
+ * Deja el documento **encajado en la hoja**: pone la ventana con el tamaño del área
+ * imprimible (para medir con el **ancho del papel**, que es como pagina el PDF), mide el
+ * bloque con la escala en 1, calcula la escala que lo hace caber (nunca agranda) y la
+ * comprueba midiendo otra vez.
+ */
+const encajarEnLaHoja = async (page: Page, fit: PdfFitToPage): Promise<void> => {
+  // Sin esto la medida sale **corta**: el navegador mide contra su ventana (1 280 px, más
+  // ancha que el papel) y el texto se pliega en menos renglones de los que tendrá en el
+  // PDF, así que la hoja «cabía» en la cuenta y seguía partiéndose al imprimir.
+  await page.setViewportSize({
+    width: Math.floor(mmToPx(fit.availableWidthMm)),
+    height: Math.floor(mmToPx(fit.availableHeightMm)),
+  });
+  await aplicarEscala(page, fit.scaleVariable, 1);
+  const requerido = await medirBloque(page, fit.selector);
+  const escala = await fitToAvailable(
+    async (valor) => {
+      await aplicarEscala(page, fit.scaleVariable, valor);
+      return await medirBloque(page, fit.selector);
+    },
+    requerido,
+    mmToPx(fit.availableHeightMm),
+    fit.minScale ?? MIN_FIT_SCALE,
+  );
+  await aplicarEscala(page, fit.scaleVariable, escala);
+};
 
 export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
   let browser: Browser | null = null;
@@ -90,6 +172,9 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
             .document?.fonts;
           await fuentes?.ready;
         });
+        // El encaje se mide **después** de las fuentes: la misma tipografía con la que se
+        // va a componer el PDF es la que decide cuánto ocupa el documento.
+        if (opciones?.fitToPage !== undefined) await encajarEnLaHoja(page, opciones.fitToPage);
         // El récipe va en **carta apaisada** (`landscape: true`) con los márgenes de su
         // `@page`. El dossier pide A4 y márgenes explícitos (para que quepa el folio del
         // pie).

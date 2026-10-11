@@ -4,11 +4,9 @@ import { BRAND } from '@odontocrm/contracts';
 
 import {
   birthLine,
-  countPdfPages,
   prescriptionHtml,
-  renderPrescriptionFitted,
+  recipePaperOf,
   routeText,
-  withPrescriptionFit,
   type PrescriptionDocumentInput,
 } from './prescription-document.js';
 import { qrSvg } from './qr.js';
@@ -192,6 +190,7 @@ describe('el récipe en dos mitades apaisadas', () => {
         palette: BRAND.palette,
         typography: BRAND.typography,
         letterhead: { ...BRAND.letterhead, logoHeightMm: 30 },
+        recipePaper: BRAND.recipePaper,
       },
     });
     expect(html).toContain('--brand-logo-height-mm: 30mm');
@@ -206,6 +205,7 @@ describe('el récipe en dos mitades apaisadas', () => {
         palette: { ...BRAND.palette, primary: '#c81e1e', accent: '#f97316', ink: '#123456' },
         typography: BRAND.typography,
         letterhead: BRAND.letterhead,
+        recipePaper: BRAND.recipePaper,
       },
     });
     expect(html).toContain('--brand-primary: #c81e1e;');
@@ -216,78 +216,73 @@ describe('el récipe en dos mitades apaisadas', () => {
   });
 });
 
-describe('la escala de encaje del récipe', () => {
-  it('el HTML nace en escala 1 y todas las medidas la respetan', async () => {
+describe('la tipografía del récipe sale del panel', () => {
+  it('los tres tamaños del panel (título, cuerpo y menudo) son los del papel', async () => {
     const html = await prescriptionHtml(base);
-    // El valor por defecto que `withPrescriptionFit` reescribe si el récipe no cabe.
+    // La escala de encaje nace en 1 y todas las medidas la respetan.
     expect(html).toContain('--rx-fit: 1;');
-    // Las medidas caen al valor 1 si la variable no está: la escala nunca rompe el papel.
     expect(html).toContain('var(--rx-fit, 1)');
-    // El membrete también encoge (tipografía del nombre, líneas y alto del logo).
+    // Cada tamaño del récipe cuelga de uno de los tres que se configuran en la app.
+    expect(html).toContain('--rx-title: calc(var(--brand-doc-title-pt) * var(--rx-fit, 1))');
+    expect(html).toContain('--rx-body: calc(var(--brand-doc-body-pt) * var(--rx-fit, 1))');
+    expect(html).toContain('--rx-small: calc(var(--brand-doc-small-pt) * var(--rx-fit, 1))');
+    // Los intermedios son proporciones de esos tres (así el récipe no cambia de aspecto).
+    expect(html).toContain('--rx-med: calc(var(--brand-doc-body-pt) * 7 / 6 * var(--rx-fit, 1))');
+    expect(html).toContain('--rx-th: calc(var(--brand-doc-small-pt) * 14 / 15 * var(--rx-fit, 1))');
+    // Y el papel lee esas medidas en vez de un pt escrito a mano.
+    expect(html).toContain('font-size: var(--rx-title)');
+    expect(html).toContain('font-size: var(--rx-med)');
+    expect(html).not.toContain('font-size: calc(10.5pt');
+    // El membrete sigue con su propia tipografía (la del panel de membrete).
     expect(html).toContain('calc(var(--brand-lh-title-pt) * var(--rx-fit, 1))');
     expect(html).toContain('calc(var(--brand-logo-height-mm) * var(--rx-fit, 1))');
   });
 
-  it('withPrescriptionFit reescribe solo el valor por defecto', async () => {
+  it('un tamaño distinto en el panel llega al papel', async () => {
+    const html = await prescriptionHtml({
+      ...base,
+      brand: {
+        ...BRAND,
+        typography: { ...BRAND.typography, documentTitlePt: 18, documentBodyPt: 12 },
+      },
+    });
+    // Regresión del fallo reportado («las letras salen con otro tamaño»): lo que se
+    // configura en el panel es lo que se imprime.
+    expect(html).toContain('--brand-doc-title-pt: 18pt;');
+    expect(html).toContain('--brand-doc-body-pt: 12pt;');
+  });
+});
+
+describe('el papel del récipe', () => {
+  it('sale en A4 apaisada, el mismo papel que los demás imprimibles', async () => {
     const html = await prescriptionHtml(base);
-    const escalado = withPrescriptionFit(html, 0.85);
-    expect(escalado).toContain('--rx-fit: 0.85;');
-    expect(escalado).not.toContain('--rx-fit: 1;');
-    // Los respaldos de las medidas siguen en 1: cambiar la escala no los toca.
-    expect(escalado).toContain('var(--rx-fit, 1)');
+    // Regresión del fallo de producción: el récipe salía en **carta apaisada** (215,9 mm
+    // de alto) y la hoja no cabe en una A4 (210 mm), así que la impresora partía la última
+    // franja —en blanco— a una segunda hoja.
+    expect(html).toContain('@page { size: A4 landscape; margin: 8mm; }');
+  });
+
+  it('el papel se elige en el panel: carta apaisada sigue estando', async () => {
+    const html = await prescriptionHtml({ ...base, brand: { ...BRAND, recipePaper: 'letter' } });
+    expect(html).toContain('@page { size: letter landscape; margin: 8mm; }');
+    expect(recipePaperOf({ ...BRAND, recipePaper: 'letter' })).toBe('letter');
+  });
+
+  it('sin marca (o con una vieja) el papel es el de fábrica: A4', () => {
+    expect(recipePaperOf(null)).toBe('A4');
+    expect(recipePaperOf(undefined)).toBe('A4');
   });
 });
 
-describe('el récipe cabe en una sola hoja', () => {
-  const pdfDe = (paginas: number): Buffer => Buffer.from('/Type /Page '.repeat(paginas));
-  const escalaDe = (documento: string): number => {
-    const encontrado = /--rx-fit: ([\d.]+);/.exec(documento);
-    return encontrado === null ? 1 : Number(encontrado[1]);
-  };
-
-  it('no reintenta si ya cabe a tamaño normal', async () => {
-    const intentos: string[] = [];
-    const pdf = await renderPrescriptionFitted(async (documento) => {
-      intentos.push(documento);
-      return pdfDe(1);
-    }, 'HTML --rx-fit: 1;');
-    // Una sola composición: el récipe normal no paga el bucle.
-    expect(intentos).toHaveLength(1);
-    expect(countPdfPages(pdf)).toBe(1);
-  });
-
-  it('baja la escala hasta que cabe y deja de intentar', async () => {
-    const escalas: number[] = [];
-    await renderPrescriptionFitted(async (documento) => {
-      const escala = escalaDe(documento);
-      escalas.push(escala);
-      // A 1 y 0,94 el récipe sale en dos hojas; a 0,88 ya cabe.
-      return pdfDe(escala <= 0.88 ? 1 : 2);
-    }, 'HTML --rx-fit: 1;');
-    expect(escalas).toEqual([1, 0.94, 0.88]);
-  });
-
-  it('si ni con la escala mínima cabe, devuelve la última composición', async () => {
-    const escalas: number[] = [];
-    const pdf = await renderPrescriptionFitted(async (documento) => {
-      escalas.push(escalaDe(documento));
-      return pdfDe(2);
-    }, 'HTML --rx-fit: 1;');
-    expect(escalas).toEqual([1, 0.94, 0.88, 0.82, 0.76, 0.7]);
-    expect(countPdfPages(pdf)).toBe(2);
-  });
-});
-
-describe('la hoja no roza el borde de la página', () => {
-  it('usa una altura mínima con holgura, no un alto fijo pegado al área imprimible', async () => {
+describe('la hoja', () => {
+  it('es una altura mínima que se encoge con el encaje, no un alto fijo', async () => {
     const html = await prescriptionHtml(base);
     const regla = /\.sheet \{[^}]*\}/.exec(html)?.[0] ?? '';
-    // Regresión del fallo reportado: la hoja tenía `height: 199mm` y el área imprimible
-    // de una carta apaisada con márgenes de 8 mm mide ≈200 mm — menos de 1 mm de
-    // holgura. Cualquier diferencia entre navegadores (versión de Chromium, DPI, el
-    // margen efectivo) desbordaba a una segunda hoja casi en blanco. Ahora es una
-    // `min-height` holgada: nunca roza el borde y, si hace falta, la hoja crece.
-    expect(regla).toContain('min-height: 185mm');
+    // Regresión del fallo reportado: la hoja tenía un alto fijo pegado al área imprimible
+    // (199 mm) y el encaje no lo escalaba —solo el contenido—, así que el récipe salía con
+    // la letra encogida **y** con la segunda hoja. Ahora la altura mínima se multiplica por
+    // la escala: si el documento se encoge, la hoja se encoge con él.
+    expect(regla).toContain('min-height: calc(185mm * var(--rx-fit, 1))');
     expect(regla).not.toContain('height: 199mm');
   });
 });
