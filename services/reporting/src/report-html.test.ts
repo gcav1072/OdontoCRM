@@ -67,7 +67,7 @@ describe('plantilla HTML del reporte', () => {
   it('estampa el logo y la marca de agua del consultorio en el papel', async () => {
     const html = await reportHtml(documentoDePrueba());
     // El logo se incrusta como data URI (el PDF no depende de rutas al abrirse).
-    expect(html).toContain('class="logo" src="data:image/svg+xml;base64,');
+    expect(html).toContain('class="brand-lh-logo" src="data:image/svg+xml;base64,');
     expect(html).toContain('class="brand-watermark"');
     expect(html).toContain('class="brand-doc"');
   });

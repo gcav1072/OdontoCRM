@@ -4,9 +4,10 @@ import {
   brandStyles,
   brandWatermarkCss,
   brandWatermarkHtml,
-  clinicContactLine,
+  buildLetterheadView,
   clinicDentistLine,
-  clinicFullAddress,
+  letterheadCss,
+  letterheadHtml,
   type LetterheadSnapshot,
   type ReportDocument,
   type BrandThemePayload,
@@ -66,18 +67,15 @@ const estilos = (fontFaces: string, brand: BrandThemePayload | null | undefined)
   ${fontFaces}
   ${brandStyles(brand ?? BRAND)}
   ${brandWatermarkCss()}
+  ${letterheadCss()}
   @page { size: A4 landscape; margin: 10mm 12mm; }
   * { box-sizing: border-box; }
   /* El cuerpo (fuente y tinta) lo pone brandStyles(): la MISMA marca que el récipe y el
      dossier, para que los documentos del consultorio no salgan cada uno de un color. */
   .letterhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; border-bottom: 0.6mm solid var(--brand-accent); padding-bottom: 3mm; }
-  .letterhead-brand { display: flex; align-items: flex-start; gap: 6mm; }
-  .logo { height: var(--brand-logo-height-mm); width: auto; }
-  .clinic-name { font-family: var(--brand-font-doc-title); font-size: 14pt; font-weight: var(--brand-font-doc-title-weight); color: var(--brand-primary); margin: 0; }
-  .clinic-line { font-size: 8pt; color: var(--brand-ink-muted); margin: 0.6mm 0 0; }
-  /* La línea del especialista va en el membrete, bajo la dirección y el teléfono. */
-  .clinic-dentist { font-size: 8pt; color: var(--brand-ink-strong); margin: 0.8mm 0 0; }
+  .letterhead > .brand-lh { flex: 1 1 auto; min-width: 0; }
   .doc-meta { text-align: right; font-size: 8pt; color: var(--brand-ink-muted); min-width: 60mm; }
+  .doc-meta .clinic-line { margin: 0.6mm 0 0; }
   h1 { font-family: var(--brand-font-doc-title); font-size: 13pt; font-weight: var(--brand-font-doc-title-weight); margin: 4mm 0 0; color: var(--brand-primary); }
   .subtitle { font-size: 8.5pt; color: var(--brand-ink-muted); margin: 1mm 0 0; }
   .kpis { display: flex; flex-wrap: wrap; gap: 3mm; margin-top: 4mm; }
@@ -112,17 +110,15 @@ export const reportHtml = async (
   const consultorio = letterhead?.clinic ?? CLINIC;
   const logo = letterhead?.logoDataUri ?? (await readImageDataUri(BRAND.logoPath));
   const marcaDeAgua = brandWatermarkHtml(logo ?? (await readImageDataUri(BRAND.watermarkPath)));
-  const contactos = clinicContactLine(consultorio);
-  const lineasMembrete = [
-    clinicFullAddress(consultorio),
-    consultorio.rif === null ? null : `RIF ${consultorio.rif}`,
-    contactos === '' ? null : contactos,
-  ]
-    .filter((linea): linea is string => linea !== null)
-    .map((linea) => `<p class="clinic-line">${escapeHtml(linea)}</p>`)
-    .join('');
   // El especialista que responde por el documento, en el membrete.
   const lineaDentista = clinicDentistLine(letterhead?.dentist ?? null);
+  // El membrete sale del helper compartido (ADR 0064): alto del logo, tipografía, orden
+  // de líneas y pie son los del panel, iguales que en el récipe y el dossier.
+  const membrete = buildLetterheadView(
+    consultorio,
+    lineaDentista,
+    brand?.letterhead ?? BRAND.letterhead,
+  );
 
   const kpis = documento.kpis
     .map(
@@ -180,14 +176,7 @@ export const reportHtml = async (
   ${marcaDeAgua}
   <div class="brand-doc">
   <header class="letterhead">
-    <div class="letterhead-brand">
-      ${logo === null ? '' : `<img class="logo" src="${logo}" alt="Logo del consultorio">`}
-      <div>
-        <p class="clinic-name">${escapeHtml(consultorio.name)}</p>
-        ${lineasMembrete}
-        ${lineaDentista === '' ? '' : `<p class="clinic-dentist">${escapeHtml(lineaDentista)}</p>`}
-      </div>
-    </div>
+    ${letterheadHtml(membrete, logo, { rule: false })}
     <div class="doc-meta">
       <p class="clinic-line">Generado el ${escapeHtml(fechaHora(documento.generatedAt))}</p>
       <p class="clinic-line">Del ${escapeHtml(fecha(documento.range.from))} al ${escapeHtml(fecha(documento.range.to))}</p>

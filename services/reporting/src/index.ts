@@ -36,7 +36,7 @@ const main = async (): Promise<void> => {
 
   const services: Omit<ReportingServices, 'config' | 'db' | 'pool'> = {
     pdf,
-    letterheadLookup: createLetterheadLookup(config),
+    letterheadLookup: createLetterheadLookup({ ...config, cacheTtlMs: 5_000 }),
     brandLookup: createBrandLookup(config),
     lastError: null,
   };
