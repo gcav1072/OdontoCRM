@@ -475,6 +475,7 @@ no duplicados de la paleta.
 | El color o la tipografía nuevos se ven en unos documentos y en otros no | Cambiaste `brand.ts` y **no** regeneraste `marca.css` (o no recompilaste la web) | `npm run build:node && npm run marca:css && npm run build` |
 | `npm test` falla en `brand.test.ts` | Cambiaste `brand.ts` sin regenerar el CSS, o falta un `.woff2` declarado | `npm run marca:css` / poner el archivo |
 | Los títulos salen con la fuente del sistema | Falta el `.woff2` en `assets/clinic/fonts/` o no recompilaste la web | Reponer el archivo y recompilar la web |
+| El **nombre del membrete** sale con la fuente del sistema **al imprimir** (en pantalla se ve bien) | La familia del nombre del membrete no viajaba en el `themeCss` (solo se incrustaban títulos y cuerpo) o se imprimió antes de que la fuente cargara | Corregido: identity incrusta la familia del membrete y el papel espera a `document.fonts.ready` antes de imprimir |
 | `CLINIC_NAME` del `.env` «no hace nada» en el récipe | Solo lo leen bot, `.ics` y pantallas | Para el récipe y la interfaz, edítalo en la aplicación (§2) |
 
 ---

@@ -88,6 +88,10 @@ instante porque el panel invalida la consulta al guardar.
   ajustaron (`class="brand-lh …"`, `brand-lh-logo`, `brand-lh-dentist`).
 - **El velo y el logo siguen siendo el mismo dato:** la marca de agua usa el logo efectivo; el
   membrete solo cambia su ancho y su opacidad.
+- **La tipografía del nombre viaja al papel:** identity incrusta el `@font-face` de la familia del
+  **nombre del membrete** (además de las de títulos y cuerpo), y el papel —SPA y PDF del servidor—
+  espera a que las fuentes carguen antes de imprimir. Sin lo primero, el nombre salía con la sans del
+  sistema al imprimir aunque en pantalla se viera bien.
 - **Datos incompletos:** `buildLetterheadView` descarta las líneas sin dato (incluida una dirección
   a medias, que produce `", "`), y `clinicContactLine` tolera un perfil sin `phones`: un membrete a
   medias nunca rompe un documento.

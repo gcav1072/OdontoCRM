@@ -4,6 +4,28 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Imprimibles] — La tipografía del membrete llega al papel · 2026-10-10
+
+El nombre del membrete se podía configurar con una **familia propia** (ADR 0064), pero al **imprimir**
+salía con la sans del sistema aunque en la **vista previa** se viera bien: su `@font-face` no viajaba en
+el CSS porque identity solo incrustaba las familias de los **títulos y el cuerpo**, no la del **nombre
+del membrete**. El bug de las impresiones del membrete, en una línea.
+
+**Dos causas, las dos cerradas.** (1) `resolveFaces` de identity ahora incrusta también la familia del
+nombre del membrete —cualquier rol que de verdad use el papel—. (2) Las `@font-face` van con
+`font-display: swap`: el navegador (y Chromium) pintan el texto con el respaldo y lo cambian al cargar,
+así que **imprimir en ese hueco** sacaba el papel con la letra equivocada. Ahora se espera a
+`document.fonts.ready` antes de `window.print()` (SPA) y antes de `page.pdf()` (récipe, factura y
+reporte), y la SPA **precarga** las familias de la marca al aplicar el tema.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `brand-service.ts` (identity) | `pilasDeLaMarca`: incrusta el `@font-face` de la familia del **nombre del membrete**, no solo la de títulos y cuerpo |
+| `pdf-renderer.ts` (clinical, billing, reporting) | Espera a `document.fonts.ready` antes de `page.pdf()` |
+| `impresion.ts` (SPA) | `esperarFuentes()` y `precargarFuentes()`: el papel y la vista previa esperan a la tipografía |
+| `MedicalRecordPrintPage`, `OdontogramPrintPage`, `ReportExportBar` | Esperan a las fuentes antes de `window.print()` |
+| `SettingsProvider.tsx` | Precarga las familias de la marca al aplicar el tema |
+
 ## [Configuración] — El membrete se configura aparte y se aplica en caliente · 2026-10-10
 
 El membrete de los imprimibles deja de estar cosido al código y gana su **subsección** en
