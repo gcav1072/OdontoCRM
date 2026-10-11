@@ -150,7 +150,10 @@ const ProsthesesTable = ({ prostheses }: { prostheses: readonly ProsthesisRecord
     </thead>
     <tbody>
       {prostheses.map((prosthesis) => (
-        <tr key={prosthesis.id} className="border-b border-[color:var(--brand-line-soft)] align-top">
+        <tr
+          key={prosthesis.id}
+          className="border-b border-[color:var(--brand-line-soft)] align-top"
+        >
           <td className="py-1.5 pr-3 font-medium text-[color:var(--brand-ink)]">
             {PROSTHESIS_KIND_LABELS[prosthesis.kind]}
           </td>

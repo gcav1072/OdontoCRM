@@ -1209,33 +1209,35 @@ export const wholeToothMarkers = (findings: readonly ToothFindingRecord[]): Toot
   const hayImplante = enteras.some((finding) => finding.condition === 'implante');
   const hayCorona = enteras.some((finding) => finding.condition === 'corona');
 
-  return enteras
-    // El aspa de la ausencia —`ausente` o la exodoncia `extraida`— cede ante el
-    // implante: con tornillo puesto, el aspa sobra (fase quirúrgica ya resuelta).
-    .filter(
-      (finding) =>
-        !(hayImplante && (finding.condition === 'ausente' || finding.condition === 'extraida')),
-    )
-    .map((finding) => {
-      const estilo = WHOLE_TOOTH_MARKER_STYLES[finding.condition];
-      // El marcador de centro solo se encoge si comparte la pieza con el círculo de
-      // la corona; solo, ocupa la pieza entera.
-      const scale = estilo.layer === 'centro' && !hayCorona ? 1 : estilo.scaleWhenCrowned;
-      return {
-        id: finding.id,
-        condition: finding.condition,
-        state: finding.state,
-        layer: estilo.layer,
-        cx: 50,
-        cy: 50,
-        scale,
-      };
-    })
-    .sort(
-      (a, b) =>
-        WHOLE_TOOTH_MARKER_DRAW_ORDER.indexOf(a.layer) -
-        WHOLE_TOOTH_MARKER_DRAW_ORDER.indexOf(b.layer),
-    );
+  return (
+    enteras
+      // El aspa de la ausencia —`ausente` o la exodoncia `extraida`— cede ante el
+      // implante: con tornillo puesto, el aspa sobra (fase quirúrgica ya resuelta).
+      .filter(
+        (finding) =>
+          !(hayImplante && (finding.condition === 'ausente' || finding.condition === 'extraida')),
+      )
+      .map((finding) => {
+        const estilo = WHOLE_TOOTH_MARKER_STYLES[finding.condition];
+        // El marcador de centro solo se encoge si comparte la pieza con el círculo de
+        // la corona; solo, ocupa la pieza entera.
+        const scale = estilo.layer === 'centro' && !hayCorona ? 1 : estilo.scaleWhenCrowned;
+        return {
+          id: finding.id,
+          condition: finding.condition,
+          state: finding.state,
+          layer: estilo.layer,
+          cx: 50,
+          cy: 50,
+          scale,
+        };
+      })
+      .sort(
+        (a, b) =>
+          WHOLE_TOOTH_MARKER_DRAW_ORDER.indexOf(a.layer) -
+          WHOLE_TOOTH_MARKER_DRAW_ORDER.indexOf(b.layer),
+      )
+  );
 };
 
 /** Orden de las caras en la ficha de una pieza (formulario y accesos rápidos). */

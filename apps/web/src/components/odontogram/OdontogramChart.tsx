@@ -213,10 +213,38 @@ const Legend = () => (
       {/* Prótesis removibles: la doble línea que une un tramo (PPR) o la arcada (PRT). */}
       <li className="flex items-center gap-1.5">
         <svg viewBox="0 0 40 24" className="h-4 w-8 shrink-0" aria-hidden>
-          <line x1={2} y1={9} x2={38} y2={9} stroke={CLINICAL_STATE_COLORS.pendiente} strokeWidth={3} />
-          <line x1={2} y1={15} x2={38} y2={15} stroke={CLINICAL_STATE_COLORS.pendiente} strokeWidth={3} />
-          <line x1={2} y1={4} x2={2} y2={20} stroke={CLINICAL_STATE_COLORS.pendiente} strokeWidth={3} />
-          <line x1={38} y1={4} x2={38} y2={20} stroke={CLINICAL_STATE_COLORS.pendiente} strokeWidth={3} />
+          <line
+            x1={2}
+            y1={9}
+            x2={38}
+            y2={9}
+            stroke={CLINICAL_STATE_COLORS.pendiente}
+            strokeWidth={3}
+          />
+          <line
+            x1={2}
+            y1={15}
+            x2={38}
+            y2={15}
+            stroke={CLINICAL_STATE_COLORS.pendiente}
+            strokeWidth={3}
+          />
+          <line
+            x1={2}
+            y1={4}
+            x2={2}
+            y2={20}
+            stroke={CLINICAL_STATE_COLORS.pendiente}
+            strokeWidth={3}
+          />
+          <line
+            x1={38}
+            y1={4}
+            x2={38}
+            y2={20}
+            stroke={CLINICAL_STATE_COLORS.pendiente}
+            strokeWidth={3}
+          />
         </svg>
         {t('odonto.protesis.leyenda')}
       </li>
