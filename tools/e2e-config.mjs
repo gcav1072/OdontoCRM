@@ -233,6 +233,35 @@ check(
   String(trasMarca?.themeCss).includes(`--brand-primary: ${MARCA_PRIMARIO};`),
 );
 
+/* El membrete se configura aparte (ADR 0064): un cambio en su alto de logo tiene que salir
+   en el `themeCss` que sirve el panel —el mismo CSS que usan el papel y la pantalla— y las
+   clases compartidas `.brand-lh` tienen que viajar ahí. */
+const ALTO_LOGO = 26;
+const guardarMembrete = await call('/api/v1/settings/brand', {
+  method: 'PUT',
+  body: JSON.stringify({
+    ...defaults.brand,
+    palette: { ...defaults.brand.palette, primary: MARCA_PRIMARIO },
+    letterhead: { ...defaults.brand.letterhead, logoHeightMm: ALTO_LOGO },
+  }),
+});
+check('guarda el membrete', guardarMembrete.status === 200, `status ${guardarMembrete.status}`);
+
+const trasMembrete = await settings();
+check(
+  'el alto de logo del membrete sale en el CSS',
+  String(trasMembrete?.themeCss).includes(`--brand-logo-height-mm: ${String(ALTO_LOGO)}mm;`),
+);
+check(
+  'el CSS del membrete comparte clases (.brand-lh)',
+  String(trasMembrete?.themeCss).includes('.brand-lh'),
+);
+check(
+  'el membrete guarda la alineación vertical del logo',
+  trasMembrete?.brand?.letterhead?.logoVerticalAlign === 'center',
+  String(trasMembrete?.brand?.letterhead?.logoVerticalAlign),
+);
+
 /* Fuente subida con familia, peso y estilo elegidos: se comprueba que entra en la marca,
    que el `@font-face` sale con ese peso y que quitarla la devuelve a como estaba. La
    familia es una del catálogo (Montserrat), que las pilas ya referencian, así que su
