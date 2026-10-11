@@ -204,6 +204,23 @@ else
     morir "falló la compilación (registro: $registro)"
   fi
   ok 'compilado: servicios, paquetes y la interfaz web'
+
+  # ¿Compiló TODO? Un `tsc -b` incremental puede dar por bueno un proyecto del que no
+  # emitió todos sus módulos (o un `dist/` a medias de un intento anterior), y entonces el
+  # servicio arranca con el código viejo. Pasó de verdad: faltaba
+  # `services/clinical/dist/prescriptions/fit-to-page.js` y el récipe salía encogido y en dos
+  # hojas. `npm run prebuild` compila en limpio, y aquí se comprueba que el punto de entrada
+  # de cada servicio (y el del gateway) existe de verdad.
+  faltan_entrypoints=()
+  for s in "${SERVICIOS[@]}"; do
+    [[ -f "$CODE_DIR/services/$s/dist/index.js" ]] || faltan_entrypoints+=("services/$s/dist/index.js")
+  done
+  [[ -f "$CODE_DIR/apps/gateway/dist/index.js" ]] || faltan_entrypoints+=('apps/gateway/dist/index.js')
+  if (( ${#faltan_entrypoints[@]} > 0 )); then
+    for falta in "${faltan_entrypoints[@]}"; do err "no se compiló: $falta"; done
+    morir "la compilación quedó incompleta (registro: $registro): prueba «cd $CODE_DIR && npm run build»"
+  fi
+  ok "los ${#SERVICIOS[@]} servicios y el gateway tienen su dist/index.js"
 fi
 
 # --- Chromium para los PDF (récipe A5, factura y reportes) -------------------
