@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildIcsEvent, escapeIcsText, foldIcsLine, icsFilename, toIcsDate } from './ics.js';
+import {
+  ICS_FORMAT_VERSION,
+  ICS_PRODID,
+  buildIcsEvent,
+  escapeIcsParam,
+  escapeIcsText,
+  foldIcsLine,
+  icsFilename,
+  icsFormatVersionOf,
+  toIcsDate,
+} from './ics.js';
 import {
   ANTI_FLOOD_MAX_MESSAGES,
   DEFAULT_MESSAGE_TEMPLATES,
@@ -169,6 +179,9 @@ describe('.ics de la cita', () => {
     const ics = buildIcsEvent(input);
     expect(ics).toContain('DESCRIPTION:Paciente: María Pérez\\nMotivo: limpieza');
     expect(escapeIcsText('uno; dos, tres\\cuatro')).toBe('uno\\; dos\\, tres\\\\cuatro');
+    // Un `\r` suelto también: crudo partiría la línea por la mitad.
+    expect(escapeIcsText('uno\rdos')).toBe('uno\\ndos');
+    expect(escapeIcsParam('sin nada raro')).toBe('"sin nada raro"');
   });
 
   it('pliega las líneas largas a 75 octetos', () => {
@@ -199,7 +212,83 @@ describe('.ics de la cita', () => {
     expect(ics).toContain('SEQUENCE:2');
   });
 
+  it('el `PRODID` lleva la versión del formato, y se puede leer de un archivo guardado', () => {
+    // La versión es lo que permite rehacer un `.ics` que quedó guardado con un formato
+    // viejo (si no, un arreglo no llegaría a las citas que ya lo tienen).
+    const ics = buildIcsEvent(input);
+    expect(ics).toContain(`PRODID:${ICS_PRODID}`);
+    expect(ics).toContain(`Agenda ${String(ICS_FORMAT_VERSION)}//ES`);
+    expect(icsFormatVersionOf(ics)).toBe(ICS_FORMAT_VERSION);
+
+    // Un archivo de antes de la marca: hay que rehacerlo.
+    expect(icsFormatVersionOf('PRODID:-//OdontoCRM//Agenda//ES\r\n')).toBe(0);
+    expect(icsFormatVersionOf('BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n')).toBe(0);
+  });
+
   it('el formato de fecha UTC es el de la norma', () => {
     expect(toIcsDate(new Date('2026-01-02T03:04:05Z'))).toBe('20260102T030405Z');
+  });
+
+  it('entrecomilla los parámetros con coma, punto y coma o dos puntos', () => {
+    // El defecto que hacía que el `.ics` «no abriera» en el celular: el nombre del
+    // consultorio real suele traer coma («…, C.A.») y se escapaba con barras, que es la
+    // regla de los **valores**, no la de los **parámetros** (RFC 5545 §3.2).
+    const ics = buildIcsEvent({ ...input, organizerName: 'Clínica Sonrisa, C.A.' });
+    expect(ics).toContain('ORGANIZER;CN="Clínica Sonrisa, C.A.":mailto:citas@odontocrm.local');
+    expect(ics).not.toContain('CN=Clínica Sonrisa\\, C.A.');
+  });
+
+  it('un punto y coma o dos puntos en el nombre no rompe la propiedad', () => {
+    const ics = buildIcsEvent({
+      ...input,
+      organizerName: 'Odontología: Dra. Gómez; y asociados',
+    });
+    // Sin comillas, el primer `:` cortaría la línea y el `;` crearía un parámetro falso.
+    expect(ics).toContain('ORGANIZER;CN="Odontología: Dra. Gómez; y asociados":mailto:');
+    expect(ics).not.toContain('CN=Odontología:');
+  });
+
+  it('el nombre del paciente con coma también va entrecomillado', () => {
+    const ics = buildIcsEvent({ ...input, attendeeName: 'Pérez, Ana' });
+    expect(ics).toContain('ATTENDEE;CN="Pérez, Ana";ROLE=REQ-PARTICIPANT:mailto:');
+  });
+
+  it('codifica comillas y acentos del nombre según RFC 6868', () => {
+    const ics = buildIcsEvent({ ...input, organizerName: 'Clínica "Sonrisa" ^ Ñandú' });
+    expect(ics).toContain('ORGANIZER;CN="Clínica ^\'Sonrisa^\' ^^ Ñandú":mailto:');
+  });
+
+  it('un salto de línea en el nombre no parte el archivo en dos', () => {
+    // El nombre del consultorio puede venir en dos líneas (ADR 0064): en un parámetro no
+    // cabe un salto. Y un `\r` suelto en un valor tampoco (partiría la línea).
+    const ics = buildIcsEvent({
+      ...input,
+      organizerName: 'Consultorio\nOdontológico',
+      description: 'Paciente: Ana\rMotivo: control',
+    });
+    expect(ics).toContain('ORGANIZER;CN="Consultorio Odontológico":mailto:');
+    expect(ics).toContain('DESCRIPTION:Paciente: Ana\\nMotivo: control');
+    // La estructura sobrevive: al desplegar, cada línea es una propiedad.
+    for (const linea of ics.replace(/\r\n /g, '').split('\r\n').slice(0, -1)) {
+      expect(linea).toMatch(/^[A-Z0-9-]+(;[^:]*)?:/);
+    }
+  });
+
+  it('un organizador sin correo no deja un mailto vacío', () => {
+    const ics = buildIcsEvent({ ...input, organizerEmail: '  ' });
+    expect(ics).toContain(':mailto:noreply@odontocrm.local');
+    expect(ics).not.toContain(':mailto:\r\n');
+  });
+
+  it('todas las líneas quedan dentro de los 75 octetos con un nombre largo', () => {
+    const ics = buildIcsEvent({
+      ...input,
+      organizerName: `Clínica Odontológica ${'Sonrisa, C.A. '.repeat(6)}`,
+    });
+    for (const linea of ics.split('\r\n').slice(0, -1)) {
+      expect(Buffer.from(linea, 'utf8').byteLength).toBeLessThanOrEqual(75);
+    }
+    // Y al desplegar, el nombre entrecomillado sigue entero.
+    expect(ics.replace(/\r\n /g, '')).toContain('Sonrisa, C.A.":mailto:');
   });
 });

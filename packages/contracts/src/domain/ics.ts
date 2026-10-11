@@ -12,6 +12,32 @@
  * - Un recordatorio (`VALARM`) 30 minutos antes.
  */
 
+/**
+ * **Versión del formato** del `.ics`.
+ *
+ * Sube cuando cambia **cómo se compone** el archivo (no cuando cambian los datos). El
+ * servicio guarda un artefacto por cita y secuencia y lo reutiliza al reenviar, así que
+ * sin esta marca un arreglo del formato no llegaría a las citas que **ya tienen su
+ * archivo**: seguirían descargando el que «no abre». Va dentro del `PRODID`, que existe
+ * justo para identificar al generador (RFC 5545 §3.7.3).
+ *
+ * 2 — los parámetros (`CN=`) se entrecomillan y se codifican según RFC 6868; un `\r`
+ * suelto ya no parte un valor en dos.
+ */
+export const ICS_FORMAT_VERSION = 2;
+
+/** El `PRODID` de este generador, con su versión de formato. */
+export const ICS_PRODID = `-//OdontoCRM//Agenda ${String(ICS_FORMAT_VERSION)}//ES`;
+
+/**
+ * Con qué versión de formato se compuso un `.ics` **guardado**. Devuelve `0` si es
+ * anterior a la marca (los generados antes de que existiera), que es «hay que rehacerlo».
+ */
+export const icsFormatVersionOf = (content: string): number => {
+  const encontrada = /^PRODID:-\/\/OdontoCRM\/\/Agenda (\d+)\/\//m.exec(content);
+  return encontrada?.[1] === undefined ? 0 : Number(encontrada[1]);
+};
+
 export interface IcsEventInput {
   /** Identificador estable del evento (se usa el de la cita). */
   uid: string;
@@ -31,9 +57,39 @@ export interface IcsEventInput {
   status?: 'CONFIRMED' | 'CANCELLED';
 }
 
-/** Escapa texto según RFC 5545 (barras, comas, puntos y comas y saltos de línea). */
+/**
+ * Escapa texto según RFC 5545 (barras, comas, puntos y comas y saltos de línea).
+ *
+ * Es para **valores de propiedad** (`SUMMARY`, `DESCRIPTION`, `LOCATION`…). Un `\r`
+ * suelto también se convierte en `\n`: si quedara crudo, partiría la línea por la mitad
+ * y corrompería la estructura del archivo.
+ */
 export const escapeIcsText = (value: string): string =>
-  value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  value
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r\n|\r|\n/g, '\\n');
+
+/**
+ * Escapa un **valor de parámetro** (`CN=…` del organizador y del invitado).
+ *
+ * No se rige por las reglas del texto: RFC 5545 §3.2 obliga a **entrecomillar** el valor
+ * cuando lleva `,`, `;`, `:` o `"`, y **no** admite el escapado con barras (eso es de los
+ * valores de propiedad). Escribir `CN=Clínica Sonrisa\, C.A.` es inválido —la coma queda
+ * suelta y un analizador estricto puede rechazar el calendario entero— y con `;` o `:`
+ * el propio parámetro se rompe, porque el analizador corta ahí.
+ *
+ * Se entrecomilla **siempre** (lo mismo que hace Google Calendar) y dentro se codifica
+ * según **RFC 6868**: `^` se duplica, `"` pasa a `^'` y los saltos de línea se quitan,
+ * que en un nombre no pintan nada.
+ */
+export const escapeIcsParam = (value: string): string =>
+  `"${value
+    .replace(/\r\n|\r|\n/g, ' ')
+    .replace(/\^/g, '^^')
+    .replace(/"/g, "^'")
+    .trim()}"`;
 
 /** Formato de fecha UTC: `20261005T123000Z`. */
 export const toIcsDate = (date: Date): string =>
@@ -69,10 +125,14 @@ export const foldIcsLine = (line: string): string => {
 
 export const buildIcsEvent = (input: IcsEventInput): string => {
   const stamp = input.stamp ?? new Date();
+  // Un `mailto:` sin dirección no es un organizador válido: si el consultorio no tiene
+  // correo, se pone el de respaldo en vez de dejar la propiedad a medias.
+  const correo =
+    input.organizerEmail.trim() === '' ? 'noreply@odontocrm.local' : input.organizerEmail.trim();
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//OdontoCRM//Agenda//ES',
+    `PRODID:${ICS_PRODID}`,
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',
@@ -85,8 +145,8 @@ export const buildIcsEvent = (input: IcsEventInput): string => {
     `SUMMARY:${escapeIcsText(input.summary)}`,
     `DESCRIPTION:${escapeIcsText(input.description)}`,
     `LOCATION:${escapeIcsText(input.location)}`,
-    `ORGANIZER;CN=${escapeIcsText(input.organizerName)}:mailto:${input.organizerEmail}`,
-    `ATTENDEE;CN=${escapeIcsText(input.attendeeName)};ROLE=REQ-PARTICIPANT:mailto:noreply@odontocrm.local`,
+    `ORGANIZER;CN=${escapeIcsParam(input.organizerName)}:mailto:${correo}`,
+    `ATTENDEE;CN=${escapeIcsParam(input.attendeeName)};ROLE=REQ-PARTICIPANT:mailto:noreply@odontocrm.local`,
     'BEGIN:VALARM',
     'TRIGGER:-PT30M',
     'ACTION:DISPLAY',
