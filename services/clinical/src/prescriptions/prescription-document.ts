@@ -181,10 +181,16 @@ const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined):
   .brand-lh-dentist { margin-top: calc(0.8mm * ${f}); }
   .brand-lh-footer { margin-top: calc(1mm * ${f}); }
   /* La hoja va **apaisada y partida en dos mitades verticales**: a la izquierda la
-     copia de la farmacia, a la derecha la del paciente. La altura es la imprimible de
-     una carta apaisada con márgenes de 8 mm (215,9 − 16 ≈ 200 mm); fijarla permite
-     anclar la firma abajo en cada mitad (margin-top: auto). */
-  .sheet { display: flex; height: 199mm; }
+     copia de la farmacia, a la derecha la del paciente. La altura que necesita la
+     ancla de la firma abajo (margin-top: auto) es una **altura mínima**, no fija.
+     Antes era un alto fijo de 199 mm: el área imprimible de una carta apaisada con
+     márgenes de 8 mm mide 215,9 − 16 ≈ 200 mm, así que quedaban menos de 1 mm de
+     holgura y cualquier diferencia entre navegadores (versión de Chromium, DPI, el
+     margen efectivo del sistema) desbordaba a una **segunda hoja casi en blanco** con
+     el récipe perfecto en la primera. Con una altura mínima holgada (185 mm, ~15 mm de
+     holgura) la hoja nunca roza el borde de la página, y si el contenido pide más alto
+     crece hasta el área imprimible en vez de partirse. */
+  .sheet { display: flex; min-height: 185mm; }
   .half { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
   /* La marca de agua va **una vez por mitad**, no sobre el pliego entero: el récipe son
      dos copias en una sola hoja apaisada, y una marca centrada en la página caería justo

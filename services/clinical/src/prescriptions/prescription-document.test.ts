@@ -278,6 +278,20 @@ describe('el récipe cabe en una sola hoja', () => {
   });
 });
 
+describe('la hoja no roza el borde de la página', () => {
+  it('usa una altura mínima con holgura, no un alto fijo pegado al área imprimible', async () => {
+    const html = await prescriptionHtml(base);
+    const regla = /\.sheet \{[^}]*\}/.exec(html)?.[0] ?? '';
+    // Regresión del fallo reportado: la hoja tenía `height: 199mm` y el área imprimible
+    // de una carta apaisada con márgenes de 8 mm mide ≈200 mm — menos de 1 mm de
+    // holgura. Cualquier diferencia entre navegadores (versión de Chromium, DPI, el
+    // margen efectivo) desbordaba a una segunda hoja casi en blanco. Ahora es una
+    // `min-height` holgada: nunca roza el borde y, si hace falta, la hoja crece.
+    expect(regla).toContain('min-height: 185mm');
+    expect(regla).not.toContain('height: 199mm');
+  });
+});
+
 describe('la vía como se imprime', () => {
   it('traduce el código del catálogo a su etiqueta', () => {
     expect(routeText('oral')).toBe('Vía oral');
