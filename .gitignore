@@ -7,6 +7,8 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+# Marca del commit compilado (la lee `odontocrm verificar` para avisar del `dist` viejo)
+.odontocrm-build-commit
 
 # ─── Entorno y secretos (ver docs/SEGURIDAD_SECRETOS.md) ─────────────────────
 .env
