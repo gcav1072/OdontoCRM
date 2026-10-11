@@ -97,6 +97,17 @@ describe('aplicarDatosDelConsultorio', () => {
     expect(config.CLINIC_NAME).toBeUndefined();
     expect(config.CLINIC_ADDRESS).toBeUndefined();
   });
+
+  it('une las dos líneas del nombre en una sola (bot, .ics y pantallas no llevan saltos)', async () => {
+    const config: { CLINIC_NAME?: string | undefined } = {};
+
+    await aplicarDatosDelConsultorio(
+      config,
+      lookupDe(snapshot({ name: 'Clínica Sonrisa\nSucursal Centro', address: 'Calle 1' })),
+    );
+
+    expect(config.CLINIC_NAME).toBe('Clínica Sonrisa Sucursal Centro');
+  });
 });
 
 /**

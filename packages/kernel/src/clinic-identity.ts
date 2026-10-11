@@ -3,6 +3,7 @@ import {
   CLINIC,
   clinicDentistFor,
   clinicFullAddress,
+  clinicNameOneLine,
   letterheadSchema,
   type ClinicIdentity,
   type LetterheadSnapshot,
@@ -189,7 +190,9 @@ export const aplicarDatosDelConsultorio = async (
   lookup: LetterheadLookup,
 ): Promise<void> => {
   const snapshot = await lookup();
-  const nombre = snapshot.clinic.name.trim();
+  // El nombre va en **una línea** en estos textos (bot, .ics, encabezado de las pantallas):
+  // el membrete es lo único que respeta el salto de línea que parte el nombre en dos.
+  const nombre = clinicNameOneLine(snapshot.clinic.name);
   const direccion = clinicFullAddress(snapshot.clinic).trim();
   const correo = (snapshot.clinic.email ?? '').trim();
 
