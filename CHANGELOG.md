@@ -4,6 +4,37 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Notificaciones] — El `.ics` de la cita vuelve a abrirse en el celular · 2026-10-11
+
+El calendario que el paciente recibe por Telegram o WhatsApp dejó de abrirse en el teléfono. No era la
+entrega: era el **archivo**. `CN=` —el parámetro con el nombre del consultorio— se escapaba con las reglas
+de los **valores de propiedad** (`\,`), y en un **parámetro** la norma es otra (RFC 5545 §3.2): cuando el
+valor lleva `,`, `;` o `:` hay que **entrecomillarlo**. El nombre real del titular («Clínica Odontológica
+Sonrisa, C.A.») producía `CN=Clínica Sonrisa\, C.A.`; la coma queda suelta y un analizador estricto
+rechaza el calendario entero, así que el móvil ni lo ofrece. Con `;` o `:` es peor: el parámetro se corta.
+Antes no se notaba porque el nombre era una constante del código; desde que la identidad vive en la base
+([ADR 0056](docs/adr/0056-la-identidad-del-consultorio-vive-en-la-base.md)) es el que escriba el titular.
+
+Ahora los parámetros se entrecomillan **siempre** —lo que hace Google Calendar— y dentro se codifica
+según RFC 6868 (`^`→`^^`, `"`→`^'`); un `\r` suelto en un valor ya no parte la línea por la mitad. Y el
+documento viaja con el tipo **canónico** `text/calendar`: Telegram y WhatsApp usan esa cadena como
+`mime_type` y el teléfono decide con ella qué aplicación ofrece, así que un tipo con parámetros
+(`…; charset=utf-8; method=PUBLISH`) dejaba de reconocerse como calendario. El `METHOD` no se pierde: va
+**dentro** del archivo, que es quien lo lee.
+
+El arreglo llegaba a medias: el `.ics` se guarda por cita y secuencia y se **reutiliza** al reenviar, así
+que las citas que ya tenían su archivo habrían seguido con el roto. La marca de **versión de formato** en
+el `PRODID` resuelve eso sin migración: el servicio mira la versión guardada y, si es anterior, rehace el
+archivo y actualiza **la misma fila** (la secuencia no cambia: el evento es el mismo).
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `domain/ics.ts` (contratos) | `escapeIcsParam` entrecomilla y codifica (RFC 6868); `escapeIcsText` convierte un `\r` suelto |
+| `domain/ics.ts` (contratos) | `ICS_FORMAT_VERSION` / `ICS_PRODID` / `icsFormatVersionOf`: el formato queda versionado en el archivo |
+| `messaging.ts` (notificaciones) | Rehace el artefacto guardado con un formato anterior; `composeIcs` evita duplicar la composición |
+| `messaging.ts` (notificaciones) | El documento sale con `mime: 'text/calendar'` (sin parámetros) |
+| `notification.test.ts` · `messaging.ics.test.ts` | Coma, `;`, `:`, comillas, dos líneas, versión del formato y reutilización del artefacto |
+
 ## [Configuración] — El error de validación dice qué campo está mal · 2026-10-11
 
 Al personalizar el consultorio en `/configuracion`, guardar podía responder **«Los datos enviados no son
