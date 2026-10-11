@@ -81,6 +81,15 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
         // páginas que imprime el navegador.
         await page.emulateMedia({ colorScheme: 'light' });
         await page.setContent(html, { waitUntil: 'load', timeout: options.timeoutMs });
+        // El evento `load` NO espera a que las `@font-face` se decodifiquen: sin esperar a
+        // `document.fonts.ready`, un récipe podía salir con la pila de respaldo (sans del
+        // sistema) si la fuente aún no había resuelto —el membrete con la letra equivocada—.
+        await page.evaluate(async () => {
+          // En la página (Chromium) existe `document.fonts`; el servicio compila sin la lib DOM.
+          const fuentes = (globalThis as { document?: { fonts?: { ready?: Promise<unknown> } } })
+            .document?.fonts;
+          await fuentes?.ready;
+        });
         // El récipe va en **carta apaisada** (`landscape: true`) con los márgenes de su
         // `@page`. El dossier pide A4 y márgenes explícitos (para que quepa el folio del
         // pie).
