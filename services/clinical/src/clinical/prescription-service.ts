@@ -36,6 +36,7 @@ import { requireSession } from './session-service.js';
 import type { PdfRenderer } from '../prescriptions/pdf-renderer.js';
 import {
   prescriptionHtml,
+  renderPrescriptionFitted,
   type PrescriptionDocumentInput,
 } from '../prescriptions/prescription-document.js';
 import type { PatientSnapshotLookup } from '../shared/patient-client.js';
@@ -332,12 +333,20 @@ const nextPrescriptionNumber = async (db: ClinicalDb): Promise<number> => {
  * `playwright` lanza un error de bajo nivel que, sin esto, llegaría al mostrador como un **500
  * opaco** («error interno del servidor»). Aquí se convierte en un **503 explicado** —el mismo
  * trato que le da el PDF de los reportes— para que quien lo vea sepa que es del servidor.
+ *
+ * El récipe está pensado para **una sola hoja** (dos mitades: farmacia y paciente):
+ * `renderPrescriptionFitted` lo reintenta con escalas menores si no cabe, en vez de dejar la
+ * firma y el QR en una segunda hoja casi vacía.
+ * ([ADR 0061](../../../docs/adr/0061-recipe-en-dos-mitades-y-especialista-en-el-membrete.md))
  */
 const renderPrescriptionPdf = async (pdfRenderer: PdfRenderer, html: string): Promise<Buffer> => {
   try {
     // Carta apaisada: dos mitades verticales (farmacia a la izquierda, paciente a la
     // derecha). El tamaño y el margen los fija el `@page` de la plantilla.
-    return await pdfRenderer.render(html, { format: 'Letter', landscape: true });
+    return await renderPrescriptionFitted(
+      (documento) => pdfRenderer.render(documento, { format: 'Letter', landscape: true }),
+      html,
+    );
   } catch (error) {
     throw new ServiceUnavailableError(
       'No se pudo generar el PDF del récipe: revisa el navegador (Chromium) del servidor. ' +

@@ -149,7 +149,18 @@ const longDate = (value: Date): string =>
     timeZone: 'America/Caracas',
   }).format(value);
 
-const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined): string => `
+/**
+ * Valor por defecto de la **escala de encaje** del récipe. `withPrescriptionFit` lo
+ * reescribe cuando el documento no cabe en una sola hoja, para no dejar los medicamentos
+ * o la firma en una segunda página casi vacía.
+ */
+const RX_FIT_DEFAULT = '--rx-fit: 1;';
+
+const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined): string => {
+  // La escala `--rx-fit` multiplica todas las medidas del récipe (membrete, listas,
+  // tabla, firmas). Vale 1 en tamaño normal; el servicio la baja si el documento no cabe.
+  const f = 'var(--rx-fit, 1)';
+  return `
   ${fontFaces}
   ${brandStyles(brand ?? BRAND)}
   ${brandWatermarkCss()}
@@ -158,6 +169,17 @@ const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined):
   * { box-sizing: border-box; }
   /* El cuerpo (fuente y tinta) lo pone brandStyles(), la marca compartida con el
      reporte y el dossier: el membrete del consultorio no sale de dos colores. */
+  /* La escala de encaje vive en el contenedor del documento y la leen todas las reglas
+     de abajo (y las del membrete): así se reduce el récipe entero de una vez. */
+  .brand-doc { ${RX_FIT_DEFAULT} }
+  /* El membrete también encoge (tipografía, alto del logo y espaciado de las líneas): la
+     identidad del consultorio no debe ser lo que empuje el documento a una segunda hoja. */
+  .brand-lh--rule { padding-bottom: calc(2.5mm * ${f}); }
+  .brand-lh-logo { height: calc(var(--brand-logo-height-mm) * ${f}); }
+  .brand-lh-name { font-size: calc(var(--brand-lh-title-pt) * ${f}); }
+  .brand-lh-line { font-size: calc(var(--brand-lh-line-pt) * ${f}); margin-top: calc(0.5mm * ${f}); }
+  .brand-lh-dentist { margin-top: calc(0.8mm * ${f}); }
+  .brand-lh-footer { margin-top: calc(1mm * ${f}); }
   /* La hoja va **apaisada y partida en dos mitades verticales**: a la izquierda la
      copia de la farmacia, a la derecha la del paciente. La altura es la imprimible de
      una carta apaisada con márgenes de 8 mm (215,9 − 16 ≈ 200 mm); fijarla permite
@@ -176,43 +198,90 @@ const styles = (fontFaces: string, brand: BrandThemePayload | null | undefined):
   /* El bloque de identidad del consultorio (logo + datos) sale del helper compartido
      (letterheadCss): el alto del logo es el de la marca —no un 12 mm fijo—, el logo se
      centra en vertical y las líneas siguen el orden y la tipografía del panel. */
-  .rx { display: flex; justify-content: space-between; align-items: baseline; gap: 3mm; margin-top: 3mm; }
-  .rx-title { font-family: var(--brand-font-doc-title); font-size: 13pt; font-weight: var(--brand-font-doc-title-weight); letter-spacing: 0.4mm; margin: 0; color: var(--brand-primary); }
-  .rx-number { font-size: 8pt; color: var(--brand-ink-muted); text-align: right; }
-  .patient { margin-top: 2mm; font-size: 8.5pt; }
+  .rx { display: flex; justify-content: space-between; align-items: baseline; gap: 3mm; margin-top: calc(3mm * ${f}); }
+  .rx-title { font-family: var(--brand-font-doc-title); font-size: calc(13pt * ${f}); font-weight: var(--brand-font-doc-title-weight); letter-spacing: 0.4mm; margin: 0; color: var(--brand-primary); }
+  .rx-number { font-size: calc(8pt * ${f}); color: var(--brand-ink-muted); text-align: right; }
+  .patient { margin-top: calc(2mm * ${f}); font-size: calc(8.5pt * ${f}); }
   .patient strong { font-weight: 600; }
   /* Copia de la farmacia (izquierda): un bloque por medicamento. */
-  .rp-items { margin-top: 3.5mm; }
-  .rp-item { margin-top: 3.5mm; }
+  .rp-items { margin-top: calc(3.5mm * ${f}); }
+  .rp-item { margin-top: calc(3.5mm * ${f}); }
   .rp-item:first-child { margin-top: 0; }
-  .rp-med { font-weight: 700; text-decoration: underline; font-size: 10.5pt; margin: 0 0 1mm; }
-  .rp-line { font-size: 9pt; margin: 0.4mm 0 0; }
+  .rp-med { font-weight: 700; text-decoration: underline; font-size: calc(10.5pt * ${f}); margin: 0 0 calc(1mm * ${f}); }
+  .rp-line { font-size: calc(9pt * ${f}); margin: calc(0.4mm * ${f}) 0 0; }
   .rp-line strong { font-weight: 600; }
-  .rp-code { margin-top: 4mm; font-size: 8pt; color: var(--brand-ink-muted); }
-  .rp-code code { font-size: 8.5pt; letter-spacing: 0.3mm; color: var(--brand-ink-strong); }
+  .rp-code { margin-top: calc(4mm * ${f}); font-size: calc(8pt * ${f}); color: var(--brand-ink-muted); }
+  .rp-code code { font-size: calc(8.5pt * ${f}); letter-spacing: 0.3mm; color: var(--brand-ink-strong); }
   /* Copia del paciente (derecha): la tabla de siempre. */
-  table { width: 100%; border-collapse: collapse; margin-top: 3mm; font-size: 8pt; }
-  th { text-align: left; background: var(--brand-table-head-bg); color: var(--brand-primary); font-size: 7pt; text-transform: uppercase; letter-spacing: 0.2mm; padding: 1.4mm 1.6mm; border-bottom: 0.3mm solid var(--brand-line); }
-  td { padding: 1.5mm 1.6mm; border-bottom: 0.2mm solid var(--brand-line-soft); vertical-align: top; }
+  table { width: 100%; border-collapse: collapse; margin-top: calc(3mm * ${f}); font-size: calc(8pt * ${f}); }
+  th { text-align: left; background: var(--brand-table-head-bg); color: var(--brand-primary); font-size: calc(7pt * ${f}); text-transform: uppercase; letter-spacing: 0.2mm; padding: calc(1.4mm * ${f}) calc(1.6mm * ${f}); border-bottom: 0.3mm solid var(--brand-line); }
+  td { padding: calc(1.5mm * ${f}) calc(1.6mm * ${f}); border-bottom: 0.2mm solid var(--brand-line-soft); vertical-align: top; }
   /* Anchos fijos para que «500 mg» y «cada 8 horas» no se partan en dos renglones. */
-  th:nth-child(2), td:nth-child(2) { width: 18mm; }
-  th:nth-child(3), td:nth-child(3) { width: 28mm; }
+  th:nth-child(2), td:nth-child(2) { width: calc(18mm * ${f}); }
+  th:nth-child(3), td:nth-child(3) { width: calc(28mm * ${f}); }
   .med { font-weight: 600; }
-  .detail { color: var(--brand-ink-strong); font-size: 7.5pt; }
-  .instructions { margin-top: 3mm; font-size: 8pt; }
-  .instructions h2 { font-family: var(--brand-font-doc-title); font-size: 8pt; font-weight: var(--brand-font-doc-title-weight); text-transform: uppercase; letter-spacing: 0.2mm; color: var(--brand-primary); margin: 0 0 1mm; }
+  .detail { color: var(--brand-ink-strong); font-size: calc(7.5pt * ${f}); }
+  .instructions { margin-top: calc(3mm * ${f}); font-size: calc(8pt * ${f}); }
+  .instructions h2 { font-family: var(--brand-font-doc-title); font-size: calc(8pt * ${f}); font-weight: var(--brand-font-doc-title-weight); text-transform: uppercase; letter-spacing: 0.2mm; color: var(--brand-primary); margin: 0 0 calc(1mm * ${f}); }
   /* La firma se ancla al pie de su mitad; el especialista ya va en el membrete, así que
      bajo la línea solo queda el nombre. */
-  .signature { text-align: center; font-size: 8.5pt; min-width: 48mm; margin-top: auto; padding-top: 6mm; }
-  .signature-line { border-top: 0.3mm solid var(--brand-ink); margin-bottom: 1.2mm; }
+  .signature { text-align: center; font-size: calc(8.5pt * ${f}); min-width: 48mm; margin-top: auto; padding-top: calc(6mm * ${f}); }
+  .signature-line { border-top: 0.3mm solid var(--brand-ink); margin-bottom: calc(1.2mm * ${f}); }
   .signature-name { font-weight: 600; }
-  .footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 4mm; margin-top: auto; padding-top: 6mm; }
+  .footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 4mm; margin-top: auto; padding-top: calc(6mm * ${f}); }
   .footer .signature { margin-top: 0; padding-top: 0; }
-  .verify { text-align: center; font-size: 6pt; color: var(--brand-ink-muted); }
-  .verify svg { width: 19mm; height: 19mm; display: block; margin: 0 auto 1mm; }
-  .verify code { font-size: 6.5pt; letter-spacing: 0.3mm; }
-  .note { margin-top: 1.5mm; font-size: 6.5pt; color: var(--brand-ink-subtle); }
+  .verify { text-align: center; font-size: calc(6pt * ${f}); color: var(--brand-ink-muted); }
+  .verify svg { width: calc(19mm * ${f}); height: calc(19mm * ${f}); display: block; margin: 0 auto calc(1mm * ${f}); }
+  .verify code { font-size: calc(6.5pt * ${f}); letter-spacing: 0.3mm; }
+  .note { margin-top: calc(1.5mm * ${f}); font-size: calc(6.5pt * ${f}); color: var(--brand-ink-subtle); }
 `;
+};
+
+/**
+ * Ajusta la **escala de encaje** de un HTML de récipe ya compuesto: sustituye el valor
+ * por defecto (`RX_FIT_DEFAULT`) por el que hace caber el documento en una sola hoja.
+ *
+ * Se separa de `prescriptionHtml` para no recomponer la plantilla (ni releer fuentes y
+ * logo) en cada intento: el servicio compone una vez y prueba escalas decrecientes hasta
+ * que el PDF sale en una página ([ADR 0061](../../../docs/adr/0061-recipe-en-dos-mitades-y-especialista-en-el-membrete.md)).
+ */
+export const withPrescriptionFit = (html: string, fit: number): string =>
+  html.replace(RX_FIT_DEFAULT, `--rx-fit: ${String(fit)};`);
+
+/** Cuenta las hojas del PDF (`/Type /Page`; `/Type /Pages` es el nodo raíz del árbol). */
+export const countPdfPages = (pdf: Buffer): number =>
+  (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length;
+
+/**
+ * Escalas de **encaje** que se prueban, de mayor a menor, hasta que el récipe cabe en una
+ * sola hoja. La primera (1) es el tamaño normal; las demás reducen el documento entero —
+ * membrete, listas, tabla y firmas— para que un récipe largo no deje la firma y el QR en
+ * una segunda página casi vacía. El mínimo (0,7) es un tope: por debajo, el texto dejaría
+ * de leerse.
+ */
+const FIT_STEPS = [1, 0.94, 0.88, 0.82, 0.76, 0.7] as const;
+
+/**
+ * Compone el récipe en **una sola hoja**: prueba el HTML tal cual y, si sale en más de
+ * una página, lo reintenta con escalas de encaje menores hasta que cabe.
+ *
+ * `render` es el compositor (Chromium, en producción); se inyecta para poder probar el
+ * bucle sin navegador. El caso normal (una hoja a la primera) compone **una sola vez**:
+ * el bucle solo trabaja cuando hace falta. Si ni con la escala mínima cabe, devuelve esa
+ * última composición (mejor un récipe estrecho que uno sin firma).
+ */
+export const renderPrescriptionFitted = async (
+  render: (html: string) => Promise<Buffer>,
+  html: string,
+): Promise<Buffer> => {
+  let pdf = await render(html);
+  for (const fit of FIT_STEPS) {
+    if (fit === 1) continue;
+    if (countPdfPages(pdf) <= 1) break;
+    pdf = await render(withPrescriptionFit(html, fit));
+  }
+  return pdf;
+};
 
 /**
  * HTML completo del récipe. Se devuelve como cadena (no se escribe en disco): el

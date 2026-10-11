@@ -4,8 +4,11 @@ import { BRAND } from '@odontocrm/contracts';
 
 import {
   birthLine,
+  countPdfPages,
   prescriptionHtml,
+  renderPrescriptionFitted,
   routeText,
+  withPrescriptionFit,
   type PrescriptionDocumentInput,
 } from './prescription-document.js';
 import { qrSvg } from './qr.js';
@@ -210,6 +213,68 @@ describe('el récipe en dos mitades apaisadas', () => {
     expect(html).toContain('--brand-ink: #123456;');
     // El color de fábrica no se queda pegado en el CSS.
     expect(html).not.toContain(`--brand-primary: ${BRAND.palette.primary};`);
+  });
+});
+
+describe('la escala de encaje del récipe', () => {
+  it('el HTML nace en escala 1 y todas las medidas la respetan', async () => {
+    const html = await prescriptionHtml(base);
+    // El valor por defecto que `withPrescriptionFit` reescribe si el récipe no cabe.
+    expect(html).toContain('--rx-fit: 1;');
+    // Las medidas caen al valor 1 si la variable no está: la escala nunca rompe el papel.
+    expect(html).toContain('var(--rx-fit, 1)');
+    // El membrete también encoge (tipografía del nombre, líneas y alto del logo).
+    expect(html).toContain('calc(var(--brand-lh-title-pt) * var(--rx-fit, 1))');
+    expect(html).toContain('calc(var(--brand-logo-height-mm) * var(--rx-fit, 1))');
+  });
+
+  it('withPrescriptionFit reescribe solo el valor por defecto', async () => {
+    const html = await prescriptionHtml(base);
+    const escalado = withPrescriptionFit(html, 0.85);
+    expect(escalado).toContain('--rx-fit: 0.85;');
+    expect(escalado).not.toContain('--rx-fit: 1;');
+    // Los respaldos de las medidas siguen en 1: cambiar la escala no los toca.
+    expect(escalado).toContain('var(--rx-fit, 1)');
+  });
+});
+
+describe('el récipe cabe en una sola hoja', () => {
+  const pdfDe = (paginas: number): Buffer => Buffer.from('/Type /Page '.repeat(paginas));
+  const escalaDe = (documento: string): number => {
+    const encontrado = /--rx-fit: ([\d.]+);/.exec(documento);
+    return encontrado === null ? 1 : Number(encontrado[1]);
+  };
+
+  it('no reintenta si ya cabe a tamaño normal', async () => {
+    const intentos: string[] = [];
+    const pdf = await renderPrescriptionFitted(async (documento) => {
+      intentos.push(documento);
+      return pdfDe(1);
+    }, 'HTML --rx-fit: 1;');
+    // Una sola composición: el récipe normal no paga el bucle.
+    expect(intentos).toHaveLength(1);
+    expect(countPdfPages(pdf)).toBe(1);
+  });
+
+  it('baja la escala hasta que cabe y deja de intentar', async () => {
+    const escalas: number[] = [];
+    await renderPrescriptionFitted(async (documento) => {
+      const escala = escalaDe(documento);
+      escalas.push(escala);
+      // A 1 y 0,94 el récipe sale en dos hojas; a 0,88 ya cabe.
+      return pdfDe(escala <= 0.88 ? 1 : 2);
+    }, 'HTML --rx-fit: 1;');
+    expect(escalas).toEqual([1, 0.94, 0.88]);
+  });
+
+  it('si ni con la escala mínima cabe, devuelve la última composición', async () => {
+    const escalas: number[] = [];
+    const pdf = await renderPrescriptionFitted(async (documento) => {
+      escalas.push(escalaDe(documento));
+      return pdfDe(2);
+    }, 'HTML --rx-fit: 1;');
+    expect(escalas).toEqual([1, 0.94, 0.88, 0.82, 0.76, 0.7]);
+    expect(countPdfPages(pdf)).toBe(2);
   });
 });
 
