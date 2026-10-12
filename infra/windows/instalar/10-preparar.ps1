@@ -364,10 +364,21 @@ $tz = (Get-TimeZone).Id
 if ($tz -eq $ZonaHoraria) {
   Escribir-Ok "zona horaria correcta: $tz"
 }
+elseif ($DryRun) {
+  Escribir-Detalle "[dry-run] pondría la zona horaria «$ZonaHoraria» (ahora «$tz»)"
+}
 else {
-  Escribir-Aviso "zona horaria actual «$tz»; el sistema espera «$ZonaHoraria»."
-  Escribir-Detalle "Corrígelo en Configuración → Hora e idioma → Fecha y hora, o con:"
-  Escribir-Detalle "    Set-TimeZone -Id '$ZonaHoraria'"
+  # La fija el instalador en vez de solo avisar (es lo que hace el de Fedora): afecta a
+  # tickets, citas y JWT, y un reloj en otra zona descuadra los «días completos».
+  Escribir-Aviso "zona horaria actual «$tz»; se pone «$ZonaHoraria»"
+  try {
+    Set-TimeZone -Id $ZonaHoraria -ErrorAction Stop
+    Escribir-Ok "zona horaria puesta en $ZonaHoraria"
+  }
+  catch {
+    Escribir-Aviso 'no pude cambiarla automáticamente: Configuración → Hora e idioma → Fecha y hora, o:'
+    Escribir-Detalle "    Set-TimeZone -Id '$ZonaHoraria'"
+  }
 }
 
 Escribir-Listo -Numero '1/4' -Texto 'La máquina está preparada.' -Siguiente '.\20-aprovisionar.ps1'
