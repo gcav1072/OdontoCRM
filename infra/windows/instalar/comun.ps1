@@ -62,6 +62,9 @@ $OdontoCmd = Join-Path $OdontoBin 'cmd' # los lanzadores del PATH (odontocrm.cmd
 $OdontoWww = Join-Path $OdontoDatos 'www'
 $OdontoCaPub = Join-Path $OdontoWww 'ca'
 $OdontoStorage = Join-Path $OdontoDatos 'storage'
+# Carpeta temporal del bot de administración: `%TEMP%` (C:\Windows\TEMP) NO es escribible
+# por LocalService, así que los volcados a demanda van aquí (creada con Escritura).
+$OdontoTmp = Join-Path $OdontoDatos 'tmp'
 $OdontoPlaywright = Join-Path $OdontoDatos 'ms-playwright'
 
 $PuertoGateway = 8090

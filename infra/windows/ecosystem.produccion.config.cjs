@@ -87,10 +87,45 @@ const servicios = existsSync(path.join(codigo, 'services'))
       .sort()
   : [];
 
+/**
+ * El **bot de administración** (`/estado`, `/respaldos` por Telegram) NO es un servicio: no
+ * sirve HTTP ni tiene base propia, es una herramienta de consola que escucha Telegram. Se
+ * supervisa igual (para que reviva solo) pero con sus propias variables:
+ *   · `ODONTOCRM_ENV_DIR`: de dónde saca el token del bot y los `DATABASE_URL` a volcar.
+ *   · `ODONTOCRM_ADMIN_TMP_DIR`: dónde escribe los volcados temporales —`%TEMP%` no es
+ *     escribible por LocalService, así que se le da la carpeta `data\tmp` (creada con permiso
+ *     de escritura por `10-preparar.ps1`).
+ * `stop_exit_codes: [0]`: si no hay bot configurado, la herramienta SALE CON 0 (no es un
+ * fallo); sin esto, PM2 la reiniciaría en bucle.
+ */
+const botAdmin = () => ({
+  name: 'odontocrm-admin-bot',
+  script: path.join(codigo, 'tools', 'admin-bot.mjs'),
+  cwd: codigo,
+  interpreter: 'node',
+  env: {
+    NODE_ENV: 'production',
+    ODONTOCRM_ENV_DIR: envDir,
+    ODONTOCRM_ADMIN_TMP_DIR: path.join(codigo, 'data', 'tmp'),
+  },
+  instances: 1,
+  autorestart: true,
+  stop_exit_codes: [0],
+  max_restarts: 20,
+  restart_delay: 5000,
+  kill_timeout: 8000,
+  merge_logs: true,
+  time: true,
+  out_file: path.join(logs, 'admin-bot.out.log'),
+  error_file: path.join(logs, 'admin-bot.error.log'),
+});
+
 module.exports = {
   apps: [
     // La puerta primero (no tiene base propia): responde /health y reintenta por su cuenta.
     servicio('gateway', 'apps/gateway/dist/index.js'),
     ...servicios.map((nombre) => servicio(nombre, `services/${nombre}/dist/index.js`)),
+    // El bot de administración, al final: no sirve HTTP ni depende de los servicios.
+    botAdmin(),
   ],
 };

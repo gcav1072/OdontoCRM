@@ -66,7 +66,7 @@ export DRY_RUN
 # quien reinstala tiene que ver que sus adjuntos y sus respaldos siguen ahí.
 UNIDADES=()
 for s in "${SERVICIOS[@]}"; do UNIDADES+=("odontocrm@$s.service"); done
-UNIDADES+=(odontocrm-gateway.service odontocrm-alertas.service odontocrm-alertas.timer)
+UNIDADES+=(odontocrm-gateway.service odontocrm-admin-bot.service odontocrm-alertas.service odontocrm-alertas.timer)
 UNIDADES+=(odontocrm-red.service odontocrm-red.timer)
 UNIDADES+=(odontocrm-backup.service odontocrm-backup.timer)
 RUTAS_FIJAS=("$CODE_DIR" "$ETC_DIR" /usr/local/bin/odontocrm /etc/logrotate.d/odontocrm)

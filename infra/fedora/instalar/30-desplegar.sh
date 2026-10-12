@@ -442,7 +442,7 @@ fi
 # 6. Unidades de systemd
 # ════════════════════════════════════════════════════════════════════════════
 paso '6/9 · Unidades de systemd'
-UNIDADES=(odontocrm@.service odontocrm-gateway.service)
+UNIDADES=(odontocrm@.service odontocrm-gateway.service odontocrm-admin-bot.service)
 # El de la red va SIEMPRE (no depende de los respaldos): es el que vuelve a adaptar
 # firewall, certificado, CORS y el DNS del nombre cuando cambia la IP. En la clínica, con
 # IP fija, sale sin hacer nada; en un portátil de pruebas, deja todo al día solo.
@@ -501,6 +501,9 @@ else
   fi
   systemctl enable --now odontocrm-alertas.timer >/dev/null 2>&1 || true
   systemctl enable --now odontocrm-red.timer >/dev/null 2>&1 || true
+  # El bot de administración: escucha Telegram. Si no hay bot configurado, la herramienta
+  # sale con 0 y la unidad (`Restart=on-failure`) no se reinicia.
+  systemctl enable --now odontocrm-admin-bot.service >/dev/null 2>&1 || true
   ok "los ${#SERVICIOS[@]} servicios habilitados (arrancan solos al encender la máquina)"
   detalle 'esperando a que escuchen…'
   # Los puertos salen de `PUERTO_SERVICIO` (comun.sh): antes estaban escritos a mano aquí y,

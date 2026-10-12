@@ -1,0 +1,74 @@
+# =============================================================================
+# OdontoCRM · bot de ADMINISTRACIÓN (estado del servidor y respaldos por Telegram)
+# Archivo : infra/fedora/systemd/odontocrm-admin-bot.service
+# Destino : /etc/systemd/system/odontocrm-admin-bot.service
+#
+# Escucha los comandos del dueño del consultorio y responde por el **bot de
+# administración** (`ADMIN_TELEGRAM_*`, OTRO bot distinto al de los pacientes):
+#
+#   /estado     la misma foto que «npm run estado»
+#   /respaldos  toma un respaldo AHORA y manda los .dump + SHA256SUMS
+#   /ayuda      la lista de comandos
+#
+# Solo responde al chat de `ADMIN_TELEGRAM_CHAT_ID`: cualquier otro mensaje se
+# ignora en silencio.
+#
+# POR QUÉ UN SERVICIO APARTE Y NO EL DE NOTIFICACIONES. El bot necesita leer las
+# credenciales de TODOS los servicios (`/etc/odontocrm/*.env`, 0600 root:root) para
+# volcar cada base, y el servicio de notificaciones corre como `odontocrm` (sin ese
+# permiso). Aquí corre como **root**, igual que las otras herramientas de consola
+# (alertas, simulacro de respaldo).
+#
+# SI NO HAY BOT CONFIGURADO, la herramienta SALE CON 0 (no es un fallo): por eso el
+# reinicio es `on-failure` y no `always` — así una instalación sin bot no se queda en
+# un bucle de reinicios.
+#
+# Instalación:
+#   sudo install -m 0644 -o root -g root \
+#     infra/fedora/systemd/odontocrm-admin-bot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now odontocrm-admin-bot.service
+#
+# Ver cómo va:
+#   systemctl status odontocrm-admin-bot
+#   journalctl -u odontocrm-admin-bot -n 50 --no-pager
+# =============================================================================
+
+[Unit]
+Description=OdontoCRM · bot de administración (Telegram: /estado, /respaldos)
+Documentation=file:///opt/odontocrm/infra/fedora/INSTALL.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# root: leer /etc/odontocrm/*.env (0600 root:root) para el estado y para volcar cada base.
+User=root
+WorkingDirectory=/opt/odontocrm
+
+# El común da las URLs internas y el TZ; el propio de notificaciones trae el token del bot.
+EnvironmentFile=/etc/odontocrm/odontocrm.env
+EnvironmentFile=-/etc/odontocrm/notifications.env
+Environment=ODONTOCRM_ENV_DIR=/etc/odontocrm
+Environment=NODE_ENV=production
+Environment=TZ=America/Caracas
+
+ExecStart=/usr/bin/node tools/admin-bot.mjs
+
+# `on-failure` a propósito: sin bot configurado la herramienta sale con 0 y NO hay que
+# reiniciarla (ver la nota de arriba).
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+KillSignal=SIGTERM
+
+# --- Endurecimiento (mismo criterio que el resto) -----------------------------
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+# Los volcados temporales van a /tmp (privado para el servicio y escribible por root).
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
