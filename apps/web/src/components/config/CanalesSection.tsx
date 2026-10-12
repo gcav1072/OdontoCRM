@@ -215,6 +215,7 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
               />
             </Field>
           </div>
+          <p className="text-xs text-ink-subtle">{t('config.canales.adminAviso')}</p>
         </section>
 
         <section className="space-y-3 border-t border-border pt-5">

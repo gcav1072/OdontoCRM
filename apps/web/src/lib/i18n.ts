@@ -320,6 +320,8 @@ const DICCIONARIO = {
   'config.canales.usuario': 'Usuario del bot (sin @)',
   'config.canales.admin': 'Bot de administración',
   'config.canales.adminChat': 'Chat del administrador',
+  'config.canales.adminAviso':
+    'El bot de administración toma estos cambios en ~1 minuto, sin reiniciar el servidor.',
   'config.canales.whatsapp': 'WhatsApp (Meta Cloud API)',
   'config.canales.whatsappToken': 'Token',
   'config.canales.whatsappPhone': 'Phone ID',
