@@ -47,7 +47,7 @@ import {
   rutaEnvDe,
   SERVICIOS,
 } from './lib/servicios.mjs';
-import { enviarAvisoAdmin, leerBotAdmin } from './lib/alerta-admin.mjs';
+import { enviarAvisoAdmin, resolverBotAdmin } from './lib/alerta-admin.mjs';
 
 const { Client } = pg;
 
@@ -871,7 +871,7 @@ const main = async () => {
       if (!resultado.enviado) {
         console.log(`${color.aviso('!')} el aviso no salió: ${String(resultado.motivo ?? '')}`);
       }
-    } else if (total > 0 && sinAviso && leerBotAdmin() !== null) {
+    } else if (total > 0 && sinAviso && (await resolverBotAdmin()) !== null) {
       console.log(`${color.aviso('!')} --sin-aviso: no se manda nada a Telegram`);
     }
     process.exitCode = total === 0 ? 0 : 1;
