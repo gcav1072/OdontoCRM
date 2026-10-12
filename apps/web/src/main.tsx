@@ -7,6 +7,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { aplicarFuentesDocumento } from './lib/fuentes';
+import { clinicLogoUrl } from './lib/marca';
 import { queryClient } from './lib/queryClient';
 import { AuthProvider } from './providers/AuthProvider';
 import { ClinicIdentityProvider } from './providers/ClinicIdentityProvider';
@@ -31,6 +32,23 @@ import './index.css';
 mensajesDeValidacionEnEspanol();
 
 const contenedor = document.getElementById('root');
+
+/**
+ * **Favicon**: el mismo logo del consultorio que va en el membrete impreso
+ * (`assets/clinic/logo.svg`). Se resuelve con Vite (`clinicLogoUrl`, el lector compartido) y
+ * se inyecta como `<link rel="icon">` en lugar de copiar el archivo a `public/`: el logo del
+ * papel y el de la pestaña no pueden separarse —es la regla de `marca.ts`—. Se hace **antes**
+ * del primer render para que la pestaña ya salga con el logo.
+ */
+const aplicarFavicon = (): void => {
+  const logo = clinicLogoUrl();
+  if (logo === null) return;
+  const enlace = document.createElement('link');
+  enlace.rel = 'icon';
+  enlace.type = 'image/svg+xml';
+  enlace.href = logo;
+  document.head.append(enlace);
+};
 
 /** Aviso de arranque fallido, sin React: tiene que funcionar justo cuando React no. */
 const mostrarFalloDeArranque = (mensaje: string, detalle?: string): void => {
@@ -93,6 +111,8 @@ try {
 
   // El aviso de reserva desaparece en cuanto React toma el contenedor.
   aplicarTemaGuardado();
+  // La pestaña lleva el logo del consultorio (el mismo del membrete impreso).
+  aplicarFavicon();
   // Las fuentes del consultorio (los mismos .woff2 que el servidor mete en los PDF),
   // antes del primer render para que el membrete impreso ya salga con su tipografía.
   aplicarFuentesDocumento();

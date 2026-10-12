@@ -1,7 +1,8 @@
 import { cn } from '@odontocrm/ui';
-import { PanelLeft, Stethoscope } from 'lucide-react';
+import { PanelLeft } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
+import { MarcaTile } from '../MarcaTile';
 import { t } from '../../lib/i18n';
 import { MODULES, NAV_SECTIONS } from '../../lib/nav';
 import { useAuth } from '../../providers/AuthProvider';
@@ -125,7 +126,7 @@ export const Sidebar = ({ collapsed, onToggle, panelAbierto }: SidebarProps) => 
       {!collapsed && (
         <>
           <span className="grid size-8 shrink-0 place-items-center rounded-control bg-primary text-primary-ink">
-            <Stethoscope className="size-4" aria-hidden="true" />
+            <MarcaTile className="size-4" />
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-ink">{t('app.nombre')}</span>

@@ -1,7 +1,8 @@
 import { cn } from '@odontocrm/ui';
-import { Stethoscope, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect } from 'react';
 
+import { MarcaTile } from '../MarcaTile';
 import { t } from '../../lib/i18n';
 import { SidebarNav } from './Sidebar';
 
@@ -51,7 +52,7 @@ export const MobileNav = ({ open, onClose }: MobileNavProps) => {
       >
         <div className="flex h-14 items-center gap-2 border-b border-border px-3">
           <span className="grid size-8 shrink-0 place-items-center rounded-control bg-primary text-primary-ink">
-            <Stethoscope className="size-4" aria-hidden="true" />
+            <MarcaTile className="size-4" />
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-ink">{t('app.nombre')}</span>

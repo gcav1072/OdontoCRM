@@ -10,10 +10,10 @@ import {
   CardTitle,
   Field,
 } from '@odontocrm/ui';
-import { Stethoscope } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 
+import { MarcaTile } from '../components/MarcaTile';
 import { NoticeBanner } from '../components/NoticeBanner';
 import { PasswordInput } from '../components/PasswordInput';
 import { ThemeSelector } from '../components/shell/ThemeSelector';
@@ -61,7 +61,7 @@ export const ChangePasswordPage = () => {
     <div className="@container flex min-h-dvh flex-col items-center justify-center gap-6 bg-canvas px-4 py-10">
       <div className="flex items-center gap-3">
         <span className="grid size-10 place-items-center rounded-card bg-primary text-primary-ink">
-          <Stethoscope className="size-5" aria-hidden="true" />
+          <MarcaTile className="size-5" />
         </span>
         <div>
           <p className="text-base font-semibold text-ink">{t('app.nombre')}</p>

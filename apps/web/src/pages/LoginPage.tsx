@@ -16,12 +16,12 @@ import {
   Input,
   type AlertVariant,
 } from '@odontocrm/ui';
-import { Stethoscope } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { FullScreenLoader } from '../components/FullScreenLoader';
+import { MarcaTile } from '../components/MarcaTile';
 import { PasswordInput } from '../components/PasswordInput';
 import { ThemeSelector } from '../components/shell/ThemeSelector';
 import { isApiError } from '../lib/api';
@@ -95,7 +95,7 @@ export const LoginPage = () => {
       <section className="hidden flex-col justify-between bg-primary p-10 text-primary-ink lg:flex">
         <div className="flex items-center gap-3">
           <span className="grid size-11 place-items-center rounded-card bg-primary-ink/10">
-            <Stethoscope className="size-6" aria-hidden="true" />
+            <MarcaTile className="size-6" />
           </span>
           <div>
             <p className="text-lg font-semibold">{t('app.nombre')}</p>
@@ -114,7 +114,7 @@ export const LoginPage = () => {
       <section className="flex flex-col items-center justify-center gap-6 px-4 py-10">
         <div className="flex items-center gap-3 lg:hidden">
           <span className="grid size-10 place-items-center rounded-card bg-primary text-primary-ink">
-            <Stethoscope className="size-5" aria-hidden="true" />
+            <MarcaTile className="size-5" />
           </span>
           <div>
             <p className="text-base font-semibold text-ink">{t('app.nombre')}</p>
