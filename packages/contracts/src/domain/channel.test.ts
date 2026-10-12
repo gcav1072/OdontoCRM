@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ADMIN_BOT_COMMANDS,
   BOT_COMMANDS,
   BOT_COMMAND_LIMITS,
   BOT_INTENTS,
+  adminBotCommandsAsText,
   botCommandsAsText,
   detectIntent,
   numberedOptions,
   resolveNumberedOption,
+  toAdminMenuCommands,
   toMenuCommands,
   type OutboundButton,
 } from './channel.js';
@@ -157,5 +160,47 @@ describe('menú de comandos (Telegram)', () => {
       expect(texto).toContain(`/${comando.comando} — ${comando.descripcion}`);
     }
     expect(texto.split('\n')).toHaveLength(BOT_COMMANDS.length);
+  });
+});
+
+describe('menú de comandos (bot de administración)', () => {
+  it('respeta el formato y los límites de Telegram', () => {
+    expect(ADMIN_BOT_COMMANDS.length).toBeLessThanOrEqual(BOT_COMMAND_LIMITS.maxComandos);
+    for (const comando of ADMIN_BOT_COMMANDS) {
+      // Telegram rechaza el menú entero si un comando no cumple el formato.
+      expect(comando.comando).toMatch(/^[a-z0-9_]{1,32}$/);
+      expect(comando.comando.length).toBeLessThanOrEqual(BOT_COMMAND_LIMITS.maxLargoComando);
+      expect(comando.descripcion.length).toBeGreaterThanOrEqual(
+        BOT_COMMAND_LIMITS.minLargoDescripcion,
+      );
+      expect(comando.descripcion.length).toBeLessThanOrEqual(
+        BOT_COMMAND_LIMITS.maxLargoDescripcion,
+      );
+    }
+    expect(new Set(ADMIN_BOT_COMMANDS.map((comando) => comando.comando)).size).toBe(
+      ADMIN_BOT_COMMANDS.length,
+    );
+    expect(new Set(ADMIN_BOT_COMMANDS.map((comando) => comando.descripcion)).size).toBe(
+      ADMIN_BOT_COMMANDS.length,
+    );
+  });
+
+  it('viaja con la forma de la API y con la ayuda en texto', () => {
+    expect(toAdminMenuCommands()[0]).toEqual({
+      command: ADMIN_BOT_COMMANDS[0]?.comando,
+      description: ADMIN_BOT_COMMANDS[0]?.descripcion,
+    });
+
+    const texto = adminBotCommandsAsText();
+    for (const comando of ADMIN_BOT_COMMANDS) {
+      expect(texto).toContain(`/${comando.comando} — ${comando.descripcion}`);
+    }
+    expect(texto.split('\n')).toHaveLength(ADMIN_BOT_COMMANDS.length);
+  });
+
+  it('es un catálogo aparte del de los pacientes', () => {
+    // Son bots distintos (tokens distintos), así que reutilizar `/estado` no molesta.
+    expect(ADMIN_BOT_COMMANDS).not.toEqual(BOT_COMMANDS);
+    expect(ADMIN_BOT_COMMANDS.map((comando) => comando.comando)).toContain('respaldos');
   });
 });

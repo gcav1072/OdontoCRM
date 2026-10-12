@@ -298,6 +298,48 @@ export const toMenuCommands = (): readonly { command: string; description: strin
 export const botCommandsAsText = (): string =>
   BOT_COMMANDS.map(({ comando, descripcion }) => `/${comando} — ${descripcion}`).join('\n');
 
+/* ── Menú del bot de administración ───────────────────────────────────────── */
+
+/**
+ * Comandos del **bot de administración** (`ADMIN_TELEGRAM_*`): el que avisa de los fallos de
+ * infraestructura. Es un bot **aparte** del de los pacientes a propósito —el de los pacientes
+ * lo ven las familias—, así que su menú también es aparte y puede reutilizar nombres:
+ * `/estado` no colisiona porque vive en otro bot.
+ *
+ * A diferencia del catálogo de pacientes, estos comandos **no** son «intenciones» de una
+ * conversación: los atiende una herramienta de consola (`tools/admin-bot.mjs`) que produce
+ * informes, no un asistente que pide datos. Por eso no hay `intencion`.
+ *
+ * **Un solo token por bot**: este menú se registra con `setMyCommands` sobre el token de
+ * administración; si alguien configurara el mismo token para los dos bots, el menú de
+ * administración pisaría al de los pacientes.
+ */
+export interface AdminBotCommand {
+  /** Sin la barra (la API exige minúsculas `a-z0-9_`). */
+  comando: string;
+  descripcion: string;
+  /** `true` si admite algo detrás. Hoy ninguno lo usa; se deja por simetría. */
+  admiteArgumento?: boolean;
+}
+
+export const ADMIN_BOT_COMMANDS: readonly AdminBotCommand[] = [
+  { comando: 'start', descripcion: 'Empezar' },
+  { comando: 'estado', descripcion: 'Estado del servidor' },
+  { comando: 'respaldos', descripcion: 'Respaldar las bases y recibirlas aquí' },
+  { comando: 'ayuda', descripcion: 'Ver lo que puedo hacer' },
+];
+
+/** Comandos del bot de administración con la forma que pide `setMyCommands`. */
+export const toAdminMenuCommands = (): readonly { command: string; description: string }[] =>
+  ADMIN_BOT_COMMANDS.map(({ comando, descripcion }) => ({
+    command: comando,
+    description: descripcion,
+  }));
+
+/** La misma lista, en texto, para la ayuda del bot de administración. */
+export const adminBotCommandsAsText = (): string =>
+  ADMIN_BOT_COMMANDS.map(({ comando, descripcion }) => `/${comando} — ${descripcion}`).join('\n');
+
 const INTENT_BY_PHRASE: ReadonlyMap<string, BotIntent> = new Map(
   BOT_INTENTS.flatMap((intencion) =>
     INTENT_PHRASES[intencion].map((frase) => [normalizePhrase(frase), intencion] as const),
