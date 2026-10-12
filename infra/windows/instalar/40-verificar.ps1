@@ -45,7 +45,7 @@ function Get-Codigo { param([string]$Url)
   try { return [int](Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 8).StatusCode } catch { return 0 }
 }
 
-# ── 1/6 · Credenciales y usuarios ───────────────────────────────────────────
+# ── 1/7 · Credenciales y usuarios ───────────────────────────────────────────
 Escribir-Paso '1/7 · Credenciales y usuarios: cada credencial tiene que conectar'
 if (-not (Test-Path (Join-Path $OdontoEnv 'odontocrm.env'))) {
   Fallo "no hay entorno en $OdontoEnv — falta ejecutar .\20-aprovisionar.ps1"
@@ -86,7 +86,7 @@ else {
   }
 }
 
-# ── 2/6 · Los procesos ──────────────────────────────────────────────────────
+# ── 2/7 · Los procesos ──────────────────────────────────────────────────────
 Escribir-Paso "2/7 · Los $($info.procesos.Count) procesos (PM2)"
 if ($Rapido) { Escribir-Detalle 'omitido (--rapido)' }
 else {
@@ -114,7 +114,7 @@ else {
   if ($fallos -eq 0) { Escribir-Ok "los $($info.procesos.Count) procesos están bien" }
 }
 
-# ── 3/6 · La aplicación por HTTPS ───────────────────────────────────────────
+# ── 3/7 · La aplicación por HTTPS ───────────────────────────────────────────
 Escribir-Paso '3/7 · La aplicación por HTTPS'
 if ($Rapido) { Escribir-Detalle 'omitido (--rapido)' }
 else {
@@ -144,7 +144,7 @@ else {
   else { Escribir-Aviso "el SSE devolvió $sse" }
 }
 
-# ── 4/6 · El certificado ────────────────────────────────────────────────────
+# ── 4/7 · El certificado ────────────────────────────────────────────────────
 Escribir-Paso '4/7 · Certificado'
 $cert = Join-Path $OdontoTls 'odontocrm.crt'
 if (-not (Test-Path $cert)) {
@@ -166,7 +166,7 @@ else {
   }
 }
 
-# ── 5/6 · Firewall: abierto lo que debe, cerrado lo que no ──────────────────
+# ── 5/7 · Firewall: abierto lo que debe, cerrado lo que no ──────────────────
 Escribir-Paso '5/7 · Firewall'
 if ($Rapido) { Escribir-Detalle 'omitido (--rapido)' }
 else {
@@ -190,7 +190,7 @@ else {
   if ($publicados -eq 0) { Escribir-Ok 'la base de datos y los servicios internos NO están publicados' }
 }
 
-# ── 6/6 · Sin secretos en el código ─────────────────────────────────────────
+# ── 6/7 · Sin secretos en el código ─────────────────────────────────────────
 Escribir-Paso '6/7 · Secretos'
 if (-not (Test-Path $OdontoCode)) { Escribir-Aviso "todavía no hay código desplegado en $OdontoCode" }
 else {

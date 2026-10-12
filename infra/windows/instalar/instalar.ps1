@@ -24,6 +24,7 @@
 #   --usuarios=a,b        cuentas a sembrar (por defecto SOLO `admin`)
 #   --clave-admin=CLAVE   contraseña del administrador
 #   --token-telegram=…    token de BotFather    · --usuario-telegram=…
+#   --token-bot-admin=…   bot de administración (avisos) · --chat-bot-admin=…
 #   --whatsapp-token=…    cuatro datos de la WhatsApp Cloud API
 #   --sin-preguntas       no pregunta nada (clave del admin al azar, bot simulado)
 #   --reconfigurar        vuelve a preguntar aunque ya haya valores
