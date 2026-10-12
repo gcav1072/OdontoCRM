@@ -197,7 +197,9 @@ else {
   else {
     Invocar "poner TCP en scram-sha-256 en $pgHba" {
       Copy-Item -Path $pgHba -Destination "$pgHba.antes-de-odontocrm" -Force
-      Set-Content -Path $pgHba -Value $nuevo -Encoding UTF8
+      # SIN BOM: `Set-Content -Encoding UTF8` en PowerShell 5.1 antepone el BOM y PostgreSQL
+      # puede rechazar la primera línea del archivo. Se escribe en UTF-8 sin BOM.
+      [IO.File]::WriteAllText($pgHba, $nuevo, (New-Object System.Text.UTF8Encoding($false)))
       # Recargar sin reiniciar: `pg_ctl reload`. Se busca junto a los binarios.
       $pgCtl = Join-Path $pgBin 'pg_ctl.exe'
       if (Test-Path $pgCtl) {
