@@ -38,7 +38,7 @@ import { pathToFileURL } from 'node:url';
 import pg from 'pg';
 
 import { enviarAvisoAdmin } from './lib/alerta-admin.mjs';
-import { entornoRaiz, leerEnv, ROOT } from './lib/servicios.mjs';
+import { dirDeEntornos, entornoRaiz, leerEnv, ROOT } from './lib/servicios.mjs';
 
 const { Client } = pg;
 
@@ -82,14 +82,31 @@ const ES_WINDOWS = process.platform === 'win32';
 
 /**
  * Carpeta de respaldos del sistema. En Windows el respaldo lo hace `odontocrm-backup.ps1`
- * dentro de `C:\ProgramData\OdontoCRM\backups`; en Fedora, el guion de shell en
- * `/var/backups/odontocrm`. `--dest` (o `ODONTOCRM_BACKUP_DIR`) manda sobre las dos.
+ * y en Fedora el guion de shell, pero los dos escriben la MISMA carpeta que declara
+ * `backup.env` (lo escribe el instalador). El simulacro tiene que leer esa misma fuente: si
+ * la ignorara, en Windows buscaría en `C:\ProgramData\OdontoCRM\backups` mientras el
+ * respaldo escribe en `C:\OdontoCRM\backups`, no encontraría nada y saldría en verde (que es
+ * lo peor: un simulacro que no comprueba nada). Prioridad: `--dest` > `ODONTOCRM_BACKUP_DIR`
+ * > `BACKUP_DIR` de `backup.env` > valor por defecto del sistema.
  */
+const leerBackupDirDeEnv = () => {
+  const dir = dirDeEntornos();
+  if (dir === null) return null;
+  const archivo = join(dir, 'backup.env');
+  if (!existsSync(archivo)) return null;
+  const linea = /^BACKUP_DIR=(.*)$/m.exec(readFileSync(archivo, 'utf8'));
+  const valor = linea?.[1]?.trim().replace(/^['"]|['"]$/g, '');
+  return valor === undefined || valor === '' ? null : valor;
+};
+
 const carpetaDeRespaldos = () =>
   destino ??
   process.env['ODONTOCRM_BACKUP_DIR'] ??
+  leerBackupDirDeEnv() ??
+  // Último recurso (sin `backup.env`): la misma carpeta por defecto que usa el respaldo
+  // (`$OdontoBackups` de `comun.ps1`).
   (ES_WINDOWS
-    ? join(process.env.ProgramData ?? 'C:\\ProgramData', 'OdontoCRM', 'backups')
+    ? join(process.env['ODONTOCRM_CODE_DIR'] ?? 'C:\\OdontoCRM', 'backups')
     : '/var/backups/odontocrm');
 
 /** Los directorios con nombre `AAAA-MM-DD`, del más nuevo al más viejo. */
