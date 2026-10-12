@@ -4,6 +4,47 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Administración] — `/estado` y respaldos por el bot de administración · 2026-10-12
+
+El bot de administración solo **enviaba** avisos; ahora también **escucha**. Un proceso aparte
+(`odontocrm-admin-bot`, supervisado por PM2 en Windows y `systemd` en Fedora) atiende al dueño del
+consultorio y responde con el estado del servidor (`/estado`, la misma foto que `npm run estado`) y
+con un respaldo a demanda (`/respaldos`): `pg_dump` de las bases con las credenciales de cada
+servicio, verificación de cada volcado y envío de los `.dump` + `SHA256SUMS` por Telegram. Solo
+responde al chat anclado (`ADMIN_TELEGRAM_CHAT_ID`). El catálogo de comandos vive en el contrato
+(`ADMIN_BOT_COMMANDS`), aparte del menú del bot de pacientes. Las credenciales salen del **panel**
+(`/configuración` → Canales), que **manda** sobre el `.env`: las herramientas de consola y el bot
+leen identity directamente (corren fuera de la pila y a menudo con los servicios caídos), así que
+configurar el bot ahí es suficiente. El bot **relee las credenciales cada ~30 s**, de modo que un
+cambio del panel se aplica en ~1 minuto sin reiniciar (el panel lo indica junto a los campos).
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `tools/admin-bot.mjs` | El escucha: long polling, solo el chat anclado, menú y despacho |
+| `tools/lib/bot-admin.mjs` · `tools/lib/admin-informes.mjs` | Transporte de Telegram y los informes (estado `--json` del tablero + respaldo ad-hoc) |
+| `ADMIN_BOT_COMMANDS` (contratos) | Fuente única del menú de administración |
+| `odontocrm-admin-bot` (PM2) · `odontocrm-admin-bot.service` | Supervisión en Windows y Fedora |
+
+## [Marca] — El logo del consultorio es el favicon y la marca de producto · 2026-10-12
+
+La pestaña y las pantallas de acceso y del raíl usaban el **estetoscopio** genérico. Ahora usan el
+**logo del consultorio** (`assets/clinic/logo.svg`), el mismo del membrete impreso: el favicon se
+inyecta en el arranque con `clinicLogoUrl()` (sin `public/` ni duplicar el binario) y un componente
+`MarcaTile` pinta el logo **enmascarado** (hereda `currentColor`, como hacía el icono). Los
+estetoscopios **semánticos** (módulo «Consultorio», secciones clínicas, kiosko) se conservan.
+
+## [Instalador] — Windows: respaldos, binarios y `pg_hba` · 2026-10-12
+
+Tres arreglos en el instalador de Windows. (1) El **simulacro semanal** de restauración
+(`verify-backup.mjs`) buscaba los respaldos en `C:\ProgramData\OdontoCRM\backups` mientras el
+respaldo los escribe en `C:\OdontoCRM\backups`: no encontraba nada y salía en **verde** (un
+simulacro que no comprobaba nada). Ahora lee `BACKUP_DIR` de `backup.env`, la fuente única. (2) Los
+binarios `mkcert.exe` y `caddy.exe` se descargaban **sin hash** y Caddy «la última»: ahora van con
+versión y SHA-256 fijados (Caddy v2.11.7, mkcert v1.4.4) y la descarga se verifica. (3) El
+`pg_hba.conf` se reescribía **con BOM** (`Set-Content -Encoding UTF8` en PowerShell 5.1), que
+PostgreSQL puede rechazar: ahora se escribe sin BOM. La zona horaria, además, se **fija** en vez de
+solo avisar.
+
 ## [Arreglo] — El récipe vuelve a una sola hoja: la marca de agua desbordaba · 2026-10-11
 
 Con la marca de la clínica (logo del membrete a 30 mm, velo de 110 mm, nombre a 24 pt) el récipe

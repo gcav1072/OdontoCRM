@@ -119,7 +119,7 @@ desde la pieza que falló (todas son idempotentes: correrlas cinco veces deja lo
 | :--- | :--- | :--- |
 | `10-preparar.ps1` | Node, PostgreSQL (servicio, puerto y `pg_hba` en `scram-sha-256`), los binarios `mkcert.exe` y `caddy.exe`, el PATH, la política de ejecución y los directorios con sus permisos | `.\10-preparar.ps1` |
 | `20-aprovisionar.ps1` | **Genera los secretos una vez** en `C:\ProgramData\OdontoCRM\env`, crea los roles y las bases con *esas mismas* contraseñas y **comprueba cada una conectándose** | `.\20-aprovisionar.ps1 --admin-url=…` |
-| `30-desplegar.ps1` | Código sin secretos, compilación, **Chromium** para los PDF, claves JWT, migraciones, usuarios iniciales, el servicio de PM2, el comando `odontocrm`, certificado TLS, Caddy, firewall, rol de respaldo y tareas programadas | `.\30-desplegar.ps1` |
+| `30-desplegar.ps1` | Código sin secretos, compilación, **Chromium** para los PDF, claves JWT, migraciones, usuarios iniciales, el servicio de PM2 (más el **bot de administración**, si está configurado), el comando `odontocrm`, certificado TLS, Caddy, firewall, rol de respaldo y tareas programadas | `.\30-desplegar.ps1` |
 | `40-verificar.ps1` | El **efecto**: cada credencial conecta, los 11 procesos responden, HTTPS sirve la aplicación, la CA se descarga y el firewall está bien | `.\40-verificar.ps1` |
 
 ### Una sola fuente de verdad para las credenciales (ADR 0043)

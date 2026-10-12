@@ -447,6 +447,32 @@ Con `STORAGE_ENCRYPTION_KEY` puesta, todo lo que se guarda va **cifrado en repos
 > borran siempre, también cuando algo falla. Si sale mal, el aviso de emergencia va al bot de
 > administración (`ADMIN_TELEGRAM_BOT_TOKEN` / `ADMIN_TELEGRAM_CHAT_ID`).
 
+### El bot de administración (`/estado` y `/respaldos`)
+
+El mismo bot de administración que recibe los avisos también **escucha** al dueño del
+consultorio. Lo atiende un proceso aparte —una herramienta de consola, no el servicio de
+notificaciones— porque necesita permisos que el servicio no tiene (leer los entornos de todos
+los servicios y volcar cada base):
+
+| Comando | Qué hace |
+| :--- | :--- |
+| `/estado` | La misma foto que `npm run estado` (servicios, bases, cola, outbox, envíos, eventos perdidos, disco y alertas), en texto compacto. |
+| `/respaldos` | Toma un respaldo **ahora** (`pg_dump -Fc` de cada base, con las credenciales de su propio servicio), verifica cada volcado, calcula las sumas SHA-256 y manda los `.dump` + `SHA256SUMS` por Telegram. Si un archivo supera los 50 MB (límite de Telegram), avisa y lo deja en la carpeta temporal. |
+| `/ayuda` | La lista de comandos. |
+
+**Solo responde al chat de `ADMIN_TELEGRAM_CHAT_ID`**: cualquier otro mensaje se ignora en
+silencio. El proceso lo supervisa PM2 (`odontocrm-admin-bot`) en Windows y
+`odontocrm-admin-bot.service` en Fedora; sin bot configurado **sale con 0** y no se reinicia.
+
+**Dónde se configura el bot.** Las credenciales salen del **panel** (`/configuración` →
+**Canales**: token y chat del bot de administración, guardados cifrados en identity) y el
+`.env` de notificaciones es el **respaldo**. El panel **manda**: si pones el token solo ahí, el
+servicio, las herramientas de consola (`estado --alertas`, `verify:backup`) y este bot lo usan
+sin tocar el archivo. Las herramientas leen la base directamente (corren fuera de la pila, a
+menudo con los servicios caídos, que es justo cuando hay que avisar). El **bot relee las
+credenciales cada ~30 s**, así que un cambio del panel se aplica **en ~1 minuto y sin reiniciar**
+(el panel lo dice junto a los campos).
+
 ---
 
 ## 7. Pruebas de humo
