@@ -255,22 +255,28 @@ Escribir-Paso '6/7 · Binarios (mkcert y caddy)'
 
 $Binarios = @(
   @{
-    Nombre = 'mkcert.exe'
-    Url    = 'https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-windows-amd64.exe'
-    # > PENDIENTE WINDOWS: fijar el SHA-256 de esta versión de mkcert para verificar la
-    #   descarga. Mientras esté vacío, el guion avisa y sigue (imprime el hash obtenido).
-    Sha256 = ''
+    Nombre    = 'mkcert.exe'
+    Url       = 'https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-windows-amd64.exe'
+    # SHA-256 del binario v1.4.4 (mkcert publica binarios sueltos, sin digest en GitHub):
+    # se comprobó contra el asset oficial. Fijarlo evita que una descarga alterada pase.
+    Sha256    = 'd2660b50a9ed59eada480750561c96abc2ed4c9a38c6a24d93e30e0977631398'
+    Extension = '.exe'
+    DeZip     = $false
   },
   @{
-    Nombre = 'caddy.exe'
-    Url    = 'https://caddyserver.com/api/download?os=windows&arch=amd64'
-    # > PENDIENTE WINDOWS: igual, fijar el SHA-256 de la versión de Caddy que se adopte.
-    Sha256 = ''
+    Nombre    = 'caddy.exe'
+    # El asset de Caddy es un zip (no hay un .exe suelto reproducible): se elige una
+    # VERSIÓN fija —no «la última»— para que una instalación de dentro de un año haga lo
+    # mismo que la de hoy, y se verifica el hash del zip antes de sacar `caddy.exe`.
+    Url       = 'https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_windows_amd64.zip'
+    Sha256    = '0a1edc0b799512051c57071ce0e798d3f2cf67dc98171366f1d2b326072e3b06'
+    Extension = '.zip'
+    DeZip     = $true
   }
 )
 
 function Descargar-Binario {
-  param([string]$Nombre, [string]$Url, [string]$Sha256)
+  param([string]$Nombre, [string]$Url, [string]$Sha256, [string]$Extension = '.exe', [switch]$DeZip)
   $destino = Join-Path $OdontoBin $Nombre
   if (Test-Path $destino) {
     Escribir-Ok "$Nombre ya está en $OdontoBin"
@@ -280,24 +286,45 @@ function Descargar-Binario {
     Escribir-Detalle "[dry-run] descargar $Nombre de $Url"
     return
   }
+  if (-not $Sha256) {
+    # No debería pasar: los dos binarios traen hash fijado. Si alguien añade otro sin hash,
+    # se avisa (y se sigue) en vez de bloquear la instalación por un binario secundario.
+    Escribir-Aviso "$Nombre no tiene SHA-256 fijado: se descarga sin verificar (fíjalo en 10-preparar.ps1)"
+  }
   New-Item -ItemType Directory -Force -Path $OdontoBin | Out-Null
-  $temporal = Join-Path $env:TEMP ("odontocrm-" + [Guid]::NewGuid().ToString('N') + ".tmp")
+  # La extensión importa: `Expand-Archive` exige que el archivo termine en `.zip`.
+  $temporal = Join-Path $env:TEMP ("odontocrm-" + [Guid]::NewGuid().ToString('N') + $Extension)
+  $extraidos = Join-Path $env:TEMP ("odontocrm-zip-" + [Guid]::NewGuid().ToString('N'))
   try {
     Invoke-WebRequest -Uri $Url -OutFile $temporal -UseBasicParsing -TimeoutSec 300
     $hash = (Get-FileHash -Path $temporal -Algorithm SHA256).Hash.ToLower()
-    if ($Sha256) {
-      if ($hash -ne $Sha256.ToLower()) {
-        Morir "el hash de $Nombre NO coincide.`n  esperado: $Sha256`n  obtenido: $hash"
-      }
-      Escribir-Ok "$Nombre descargado y verificado (sha256 $($hash.Substring(0, 12))…)"
+    if ($Sha256 -and $hash -ne $Sha256.ToLower()) {
+      Morir "el hash de $Nombre NO coincide.`n  esperado: $Sha256`n  obtenido: $hash"
+    }
+    if ($Sha256) { Escribir-Ok "$Nombre descargado y verificado (sha256 $($hash.Substring(0, 12))…)" }
+
+    if ($DeZip) {
+      Expand-Archive -Path $temporal -DestinationPath $extraidos -Force
+      $exe = Get-ChildItem -Path $extraidos -Filter $Nombre -Recurse -File | Select-Object -First 1
+      if (-not $exe) { Morir "el zip de $Nombre no trae $Nombre dentro" }
+      Move-Item -Path $exe.FullName -Destination $destino -Force
     }
     else {
-      Escribir-Aviso "$Nombre descargado SIN hash fijado (sha256 $hash) — fíjalo en 10-preparar.ps1"
+      Move-Item -Path $temporal -Destination $destino -Force
     }
-    Move-Item -Path $temporal -Destination $destino -Force
   }
   finally {
     if (Test-Path $temporal) { Remove-Item -Path $temporal -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $extraidos) { Remove-Item -Path $extraidos -Recurse -Force -ErrorAction SilentlyContinue }
+  }
+}
+
+if ($SinBinarios) {
+  Escribir-Aviso '--sin-binarios: no descargo mkcert ni caddy'
+}
+else {
+  foreach ($b in $Binarios) {
+    Descargar-Binario -Nombre $b.Nombre -Url $b.Url -Sha256 $b.Sha256 -Extension $b.Extension -DeZip:$b.DeZip
   }
 }
 
