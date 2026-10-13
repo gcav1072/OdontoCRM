@@ -47,7 +47,54 @@ cuándo), que es lo que permite **comprobar** que el respaldo no viene cortado.
 
 ---
 
-## 2. Antes de tocar nada: comprobar el respaldo
+## 2. Cómo deben estar los archivos en el medio
+
+El respaldo es **un directorio por día**, y todos los días cuelgan del mismo medio (el pendrive, el
+disco externo o la carpeta que lee el bot):
+
+```
+/media/pendrive/                 ← el medio de recuperación (su raíz)
+├── 2026-10-10/                  ← un respaldo por día
+├── 2026-10-11/
+└── 2026-10-12/                  ← el más reciente: el que se usa para recuperar
+```
+
+Dentro del directorio del día, los archivos van **sueltos** (nada de subcarpetas) y con estos nombres:
+
+```
+2026-10-12/
+├── odonto_<base>_2026-10-12_033001.dump   ┐
+├── odonto_<base>_2026-10-12_033001.dump   │  las bases, una por base (una por servicio,
+├── odonto_<base>_2026-10-12_033001.dump   │  más `odonto_events`); en Windows el nombre
+├── …                                      │  es `<base>.dump`, sin fecha
+├── storage_2026-10-12_033001.tar.gz       ←  radiografías y PDFs    (Windows: storage.zip)
+├── etc-odontocrm_2026-10-12_033001.tar.gz ←  configuración y claves (Windows: config.zip)
+├── SHA256SUMS                             ←  la huella de cada archivo de arriba
+└── manifest.txt                           ←  qué se respaldó y cuándo
+```
+
+Ese mismo directorio, en el servidor, vive en:
+
+| Fedora | Windows |
+| :--- | :--- |
+| `/var/backups/odontocrm/2026-10-12/` | `C:\OdontoCRM\backups\2026-10-12\` |
+
+Reglas (si algo no encaja, **sospecha antes de restaurar**):
+
+- **El directorio del día se llama exactamente `AAAA-MM-DD`.** Es lo único que la retención (30 días
+  por defecto) reconoce y borra: un `respaldo_final_ok/` no se borra nunca, pero tampoco se espera.
+- **Los archivos van sueltos**, en la raíz del día: `SHA256SUMS` los busca ahí, no dentro de carpetas.
+- **Los tres bloques viajan juntos** (bases + almacén + configuración). Si falta `storage*` o
+  `config*`, ese respaldo es anterior a esa mejora: repón lo que haya y cuenta con lo que falta (§1).
+- **`SHA256SUMS` y `manifest.txt` no se editan a mano**: son la prueba de que el respaldo no viene
+  cortado. Si un archivo no cuadra con su suma, ese respaldo **no se usa** (§3).
+- **Un `*.dump.err` es un volcado que falló** en esa fecha (en un respaldo sano no aparece ninguno).
+- **`odonto_events` puede no estar**: es la cola, y hasta que un servicio con outbox arranca por
+  primera vez esa base no existe. No es un respaldo roto.
+
+---
+
+## 3. Antes de tocar nada: comprobar el respaldo
 
 Un respaldo que nunca se ha restaurado es una carpeta con archivos. **Primero se comprueba** (y de
 paso se ve qué contiene y cuándo se hizo):
@@ -61,16 +108,9 @@ paso se ve qué contiene y cuándo se hizo):
 el respaldo (las bases y los archivos), no solo de un volcado. Si algo no cuadra, **se para aquí**:
 mejor saberlo antes de borrar nada.
 
-Lo que hay que ver en la carpeta:
-
-```
-2026-10-12/
-  odonto_identity.dump  odonto_patients.dump  odonto_scheduling.dump  …   (una por base)
-  storage_2026-10-12_033001.tar.gz   (o storage.zip)      ← las radiografías y los PDFs
-  etc-odontocrm_2026-10-12_033001.tar.gz  (o config.zip)  ← la configuración y los secretos
-  SHA256SUMS
-  manifest.txt
-```
+Lo que hay que ver en la carpeta es lo que describe el esquema de §2: las bases, `storage*`,
+la configuración (`etc-odontocrm_*` en Fedora, `config.zip` en Windows), `SHA256SUMS` y
+`manifest.txt`, todos sueltos dentro del directorio del día.
 
 > **Trampa real.** Un respaldo hecho **antes** de que el almacén entrara en la copia diaria **no
 > trae `storage*`**. Es la diferencia entre recuperar «todo» y recuperar «solo las bases»: míralo
@@ -78,7 +118,7 @@ Lo que hay que ver en la carpeta:
 
 ---
 
-## 3. La recuperación, en un comando
+## 4. La recuperación, en un comando
 
 ```bash
 # 1) En una máquina nueva, primero se instala (crea las bases vacías, los roles y los servicios):
@@ -103,15 +143,15 @@ Es prudente a propósito:
 
 - **sin `--yes`** dice exactamente qué haría y **no toca nada**;
 - **`--dry-run`** ni siquiera pregunta;
-- **no repone la configuración** salvo `--con-config` (ver §5);
+- **no repone la configuración** salvo `--con-config` (ver §6);
 - cualquier paso que falle **detiene el proceso** y dice qué pasó.
 
 ---
 
-## 4. El paso a paso (si prefieres verlo, o si `recuperar` falló en algo)
+## 5. El paso a paso (si prefieres verlo, o si `recuperar` falló en algo)
 
 ```bash
-# 1) Comprueba el respaldo (ver §2)
+# 1) Comprueba el respaldo (ver §3)
 node tools/verify-backup.mjs --from /media/pendrive/2026-10-12 --estado
 
 # 2) Para la pila (PostgreSQL se queda arriba)
@@ -123,7 +163,7 @@ sudo odontocrm restaurar --from /media/pendrive/2026-10-12 --all --keep-old --ye
 # 4) El almacén (radiografías y PDFs) → /var/lib/odontocrm/storage
 sudo tar -xzf /media/pendrive/2026-10-12/storage_<fecha>.tar.gz -C /var/lib/odontocrm/storage
 
-# 5) La configuración, SOLO si la necesitas (ver §5)
+# 5) La configuración, SOLO si la necesitas (ver §6)
 sudo tar -xzf /media/pendrive/2026-10-12/etc-odontocrm_<fecha>.tar.gz -C /etc
 sudo chmod 0600 /etc/odontocrm/*.env /etc/odontocrm/.pgpass
 
@@ -138,7 +178,7 @@ acceso al copiarse).
 
 ---
 
-## 5. La configuración y el `STORAGE_ENCRYPTION_KEY`
+## 6. La configuración y el `STORAGE_ENCRYPTION_KEY`
 
 `recuperar` **no repone `/etc/odontocrm`** (ni `…\ProgramData\OdontoCRM\env`) por defecto, y es a
 propósito: los `.env` del respaldo son de la máquina **anterior**. Traen sus contraseñas y sus
@@ -159,7 +199,7 @@ si no, el almacén restaurado queda **ilegible**. Opciones:
 
 ---
 
-## 6. Después de recuperar
+## 7. Después de recuperar
 
 1. **Si el respaldo es de un esquema anterior**, hay que **aplicar las migraciones** antes de dar
    por bueno el sistema: `odontocrm actualizar` (Fedora y Windows) compila, migra y reinicia.
@@ -172,7 +212,7 @@ si no, el almacén restaurado queda **ilegible**. Opciones:
 
 ---
 
-## 7. Qué cubre y qué no
+## 8. Qué cubre y qué no
 
 | Cubre | No cubre |
 | :--- | :--- |
@@ -185,7 +225,7 @@ si no, el almacén restaurado queda **ilegible**. Opciones:
 
 ---
 
-## 8. Dónde está cada cosa
+## 9. Dónde está cada cosa
 
 | Documento | Para qué |
 | :--- | :--- |
