@@ -8,6 +8,7 @@ import {
   formatSseFrame,
   screenClinicSchema,
   screenDeviceInputSchema,
+  screenDeviceUpdateSchema,
   screenSettingsSchema,
 } from './screens.js';
 
@@ -60,6 +61,24 @@ describe('dispositivos de pantalla', () => {
     expect(settings.voz).toBe(true);
     expect(settings.resalteSegundos).toBe(20);
     expect(settings.tema).toBe('oscuro');
+  });
+
+  it('acepta los números como texto: el panel de ajustes los manda así', () => {
+    // El formulario de ajustes envía los campos numéricos como texto (es lo que da un
+    // `<input type="number">`); el contrato los coacciona. Sin esto, guardar ajustes
+    // fallaba con «settings.volumen (falta o no es número)».
+    const patch = screenDeviceUpdateSchema.parse({
+      settings: { voz: true, volumen: '0.5', resalteSegundos: '30', repetirSegundos: '0' },
+    });
+
+    expect(patch.settings?.volumen).toBe(0.5);
+    expect(patch.settings?.resalteSegundos).toBe(30);
+    expect(patch.settings?.repetirSegundos).toBe(0);
+  });
+
+  it('rechaza un volumen fuera de rango aunque llegue como texto', () => {
+    expect(screenSettingsSchema.safeParse({ volumen: '2' }).success).toBe(false);
+    expect(screenSettingsSchema.safeParse({ volumen: 'no soy un número' }).success).toBe(false);
   });
 
   it('rechaza un acento o un modo que no existen', () => {

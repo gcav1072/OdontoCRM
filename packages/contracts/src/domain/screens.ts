@@ -33,8 +33,12 @@ export type ScreenTheme = (typeof SCREEN_THEMES)[number];
 export const screenSettingsSchema = z.object({
   /** Leer el llamado en voz alta (displaylobby). */
   voz: z.boolean().default(true),
-  /** Volumen de la voz, de 0 a 1. */
-  volumen: z.number().min(0).max(1).default(1),
+  /**
+   * Volumen de la voz, de 0 a 1. Se **coacciona** (como los segundos de abajo): el
+   * panel de ajustes es un formulario y sus campos numéricos llegan como texto; el
+   * `PATCH` los convierte aquí en vez de exigirle al navegador que lo haga.
+   */
+  volumen: z.coerce.number().min(0).max(1).default(1),
   /** Cuántos segundos se resalta el llamado en pantalla. */
   resalteSegundos: z.coerce.number().int().min(3).max(120).default(20),
   /** Repetir el llamado en voz alta a los N segundos (0 = no repetir). */
