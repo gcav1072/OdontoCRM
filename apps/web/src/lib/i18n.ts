@@ -551,6 +551,17 @@ const DICCIONARIO = {
   'perfil.mio.sinPerfil': 'Todavía no has completado tu perfil profesional.',
   'perfil.mio.error': 'No se pudo cargar tu perfil.',
   'perfil.mio.faltantes': 'Faltan datos del membrete:',
+  // Una cuenta sin rol Odontólogo (Administración, Secretaría) nunca tiene perfil
+  // profesional: no firma documentos. Se dice así, en vez del aviso de «te falta
+  // completarlo», que sería engañoso (nadie lo va a completar).
+  'perfil.mio.noAplicaTitulo': 'Tu cuenta no firma documentos',
+  // El título de la tarjeta tampoco puede decir «perfil profesional» para quien no lo tiene.
+  'perfil.mio.tituloCuenta': 'Tu cuenta',
+  'perfil.mio.noAplicaTexto':
+    'El perfil profesional —MPPS, especialidad y colegiatura— es de las cuentas con rol Odontólogo: esos datos salen impresos en el récipe y en la historia clínica. Tu cuenta no los necesita, así que aquí no hay nada que completar.',
+  'perfil.mio.noAplicaAccion': 'Administrar las cuentas',
+  'perfil.mio.descripcionAdmin':
+    'Tu cuenta no firma documentos, así que no tiene perfil profesional: esa parte la llenan los odontólogos.',
 
   // --- Módulo Mi perfil ----------------------------------------------------
   'modulo.miPerfil.titulo': 'Mi perfil',

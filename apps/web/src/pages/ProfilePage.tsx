@@ -19,6 +19,7 @@ import {
 } from '@odontocrm/ui';
 import { useEffect, useState } from 'react';
 
+import { LinkButton } from '../components/LinkButton';
 import { NoticeBanner } from '../components/NoticeBanner';
 import { useNotice } from '../hooks/useNotice';
 import { apiErrorMessage } from '../lib/api';
@@ -34,9 +35,14 @@ import { CLINIC_IDENTITY_QUERY_KEY, useClinicIdentity } from '../providers/Clini
  * Es la mitad «esa cuenta en cuestión» de la regla del ADR 0056: cada quien edita lo
  * suyo, y el administrador puede editar a cualquiera desde `/usuarios`. El **motivo es
  * obligatorio** y todo cambio queda en la auditoría.
+ *
+ * Una cuenta **sin rol Odontólogo** (Administración, Secretaría) no tiene perfil
+ * profesional y nunca será el titular (`findTitular` del servidor filtra por ese rol),
+ * así que aquí no se le pide nada: se le explica por qué y, si puede gestionar usuarios,
+ * se le manda a donde sí hay trabajo.
  */
 export const ProfilePage = () => {
-  const { user } = useAuth();
+  const { user, roles, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const identidad = useClinicIdentity();
   const { notice, limpiar, exito, error } = useNotice();
@@ -63,9 +69,14 @@ export const ProfilePage = () => {
     identidad.titularUsername !== null &&
     identidad.titularUsername === user?.username;
 
+  /** ¿Esta cuenta firma documentos? Solo entonces hay perfil profesional que llenar. */
+  const esOdontologo = roles.includes('odontologo');
+
   const perfilConsulta = useQuery({
     queryKey: ['mi-perfil-odontologo'],
     queryFn: ({ signal }) => identityApi.myDentistProfile(signal),
+    // Sin rol Odontólogo no hay perfil que traer: no se pide (el aviso de abajo lo explica).
+    enabled: esOdontologo,
     staleTime: 30_000,
   });
 
@@ -155,11 +166,26 @@ export const ProfilePage = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle as="h2">{t('perfil.mio.titulo')}</CardTitle>
-          <CardDescription>{t('perfil.mio.descripcion')}</CardDescription>
+          <CardTitle as="h2">
+            {esOdontologo ? t('perfil.mio.titulo') : t('perfil.mio.tituloCuenta')}
+          </CardTitle>
+          <CardDescription>
+            {esOdontologo ? t('perfil.mio.descripcion') : t('perfil.mio.descripcionAdmin')}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {perfilConsulta.isPending ? (
+          {!esOdontologo ? (
+            <>
+              <Alert variant="info" title={t('perfil.mio.noAplicaTitulo')}>
+                {t('perfil.mio.noAplicaTexto')}
+              </Alert>
+              {hasPermission('users:manage') && (
+                <LinkButton to="/usuarios" variant="secondary">
+                  {t('perfil.mio.noAplicaAccion')}
+                </LinkButton>
+              )}
+            </>
+          ) : perfilConsulta.isPending ? (
             <Spinner label={t('usuarios.perfil.cargando')} showLabel />
           ) : perfilConsulta.data?.profile === null ? (
             <Alert variant="warning" title={t('perfil.mio.sinPerfil')}>
