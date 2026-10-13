@@ -1,5 +1,5 @@
 import { createOutboxCheck, createPoolCheck } from '@odontocrm/db';
-import { buildServer, isProduction } from '@odontocrm/kernel';
+import { buildServer, createLetterheadLookup, isProduction } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 
 import type { ScreensConfig } from './config.js';
@@ -53,6 +53,9 @@ export const createScreensServer = async (
     lastError: options.services?.lastError ?? null,
     alertLookup: options.services?.alertLookup ?? createAlertLookup(config),
     chairCatalog: options.services?.chairCatalog ?? createChairCatalog(config),
+    // La marca del consultorio (nombre y logo) con caché: la comparten la cabecera del
+    // kiosko y `aplicarDatosDelConsultorio`, que refresca `config.CLINIC_NAME`.
+    clinicLookup: options.services?.clinicLookup ?? createLetterheadLookup(config),
   };
 
   registerScreenRoutes(app, services);

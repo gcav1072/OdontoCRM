@@ -45,6 +45,9 @@ const main = async (): Promise<void> => {
     lastError: null,
     alertLookup,
     chairCatalog,
+    // El mismo lector con caché que refresca `config.CLINIC_NAME`: las pantallas lo
+    // usan para su cabecera (nombre) y su marca de agua (logo).
+    clinicLookup: letterheadLookup,
   };
 
   const app = await createScreensServer({ config, database, services });

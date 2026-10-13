@@ -55,7 +55,7 @@ const safeEquals = (left: string, right: string): boolean => {
  *    la ruta interna sigue disponible como respaldo.
  */
 export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServices): void => {
-  const { db, config, broadcast, alertLookup, chairCatalog } = services;
+  const { db, config, broadcast, alertLookup, chairCatalog, clinicLookup } = services;
   const manage = requirePermission('screens:manage');
   const display = requirePermission('screens:display');
 
@@ -142,6 +142,27 @@ export const registerScreenRoutes = (app: FastifyInstance, services: ScreensServ
     }
     await touchDevice(db, device.id);
     return reply.status(200).send(toScreenDevice(device));
+  });
+
+  /**
+   * **Marca del consultorio** para la pantalla: su nombre y su logo.
+   *
+   * Va aparte del estado de la sala (`/lobby`, `/consultorio`) porque la sala cambia
+   * cada pocos segundos y la identidad cambia rarísimas veces: así el logo (una `data:`
+   * URI que puede pesar) no se reenvía en cada trama SSE. La pantalla lo pide una vez al
+   * arrancar, junto con sus ajustes. La identidad se lee de identity con caché (`clinicLookup`),
+   * que degrada al respaldo **neutro** del código si identity no responde.
+   */
+  app.get('/api/v1/screens/clinic', { preHandler: display }, async (request, reply) => {
+    // La pantalla tiene que seguir registrada y activa, como en el resto de sus rutas.
+    await pantallaDe(request);
+    const snapshot = await clinicLookup();
+    const nombre = snapshot.clinic.name.trim();
+    return reply.status(200).send({
+      // El nombre puede traer un salto de línea (hasta dos): se conserva tal cual.
+      name: nombre === '' ? null : snapshot.clinic.name,
+      logoDataUri: snapshot.logoDataUri,
+    });
   });
 
   app.get('/api/v1/screens/lobby', { preHandler: display }, async (request, reply) => {

@@ -137,6 +137,24 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
       chairCatalog: async () => [
         { id: 'chair-1', label: 'Consultorio 1', shortLabel: 'C1', sortOrder: 0 },
       ],
+      // Sin identity en la suite: el respaldo neutro del código (sin nombre ni logo).
+      clinicLookup: async () => ({
+        clinic: {
+          name: '',
+          legalName: null,
+          address: '',
+          city: null,
+          phones: [],
+          email: null,
+          rif: null,
+          website: null,
+          logoPath: null,
+          dentists: [],
+        },
+        dentist: null,
+        logoDataUri: null,
+        version: 'test',
+      }),
     };
   }, 30_000);
 
@@ -520,6 +538,46 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
       await server.close();
     }
   }, 60_000);
+
+  it('la marca del consultorio llega a la pantalla por su propia ruta', async () => {
+    const server = await createScreensServer({ config, database: handle, services });
+
+    const tokenId = globalThis.crypto.randomUUID();
+    await handle.db
+      .insert(screenDevices)
+      .values({ label: `Marca ${MARK}`, kind: 'lobby', tokenId });
+
+    const headers = {
+      'x-user-id': tokenId,
+      'x-user-username': 'Lobby',
+      'x-user-roles': 'pantalla',
+      'x-user-permissions': 'screens:display',
+      'x-user-must-change-password': 'false',
+      'x-session-id': globalThis.crypto.randomUUID(),
+    };
+
+    try {
+      const respuesta = await server.inject({
+        method: 'GET',
+        url: '/api/v1/screens/clinic',
+        headers,
+      });
+      expect(respuesta.statusCode).toBe(200);
+      // La suite inyecta un `clinicLookup` neutro: sin nombre ni logo, pero con la forma
+      // del contrato (el nombre vacío se normaliza a `null`).
+      expect(respuesta.json()).toEqual({ name: null, logoDataUri: null });
+
+      // Una pantalla sin registrar no ve la marca: misma puerta que el resto de rutas.
+      const desconocida = await server.inject({
+        method: 'GET',
+        url: '/api/v1/screens/clinic',
+        headers: { ...headers, 'x-user-id': globalThis.crypto.randomUUID() },
+      });
+      expect(desconocida.statusCode).toBe(403);
+    } finally {
+      await server.close();
+    }
+  }, 40_000);
 
   it('/ready publica las cifras del pool y del outbox contra la base de verdad', async () => {
     const server = await createScreensServer({ config, database: handle, services });
