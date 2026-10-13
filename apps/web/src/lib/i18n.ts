@@ -990,6 +990,11 @@ const DICCIONARIO = {
   'caja.sinPrecio': 'Sin precio en el arancel: escríbelo antes de emitir',
   'caja.quitar': 'Quitar',
   'caja.anadir': 'Añadir del arancel',
+  'caja.anadir.manual': 'Añadir línea manual',
+  'caja.manual.descripcion': 'Descripción del producto o servicio',
+  'caja.manual.exento': 'Exento de IVA',
+  'caja.manual.descripcionFalta':
+    'Escribe la descripción de la línea manual antes de guardar o emitir',
   'caja.elegir': 'Elegir…',
   'caja.guardar': 'Guardar cambios',
   'caja.guardado': 'Borrador guardado',

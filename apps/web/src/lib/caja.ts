@@ -4,6 +4,7 @@ import {
   invoiceTotalsFromItems,
   ivaCentsForItem,
   IVA_GENERAL_BASIS_POINTS,
+  MANUAL_LINE_CODE,
   usdCentsFromVes,
   vesCentimosFromUsd,
   type BillingDraftItem,
@@ -72,15 +73,32 @@ export const toEditableLine = (item: BillingDraftItem): EditableLine => ({
   needsPricing: item.needsPricing,
 });
 
+/**
+ * Una partida **escrita a mano** en la caja: no viene del arancel, así que declara su descripción y
+ * su categoría fiscal. Se reconoce por el código centinela (`MANUAL_LINE_CODE`), que es también el
+ * que decide en el servicio de dónde sale la categoría.
+ */
+export const esLineaManual = (linea: Pick<EditableLine, 'code'>): boolean =>
+  linea.code === MANUAL_LINE_CODE;
+
 /** Lo que se ve en la columna del total: sin redondeo, es una multiplicación exacta. */
 export const lineTotalCents = (linea: Pick<EditableLine, 'priceText' | 'quantity'>): number => {
   const cents = parseUsdToCents(linea.priceText);
   return cents === null ? 0 : cents * linea.quantity;
 };
 
-/** ¿Se puede guardar? Todas las líneas necesitan un precio legible. */
+/** ¿Se puede guardar? Todas las líneas necesitan un precio legible y, las **escritas a mano**, una
+ * descripción: sin ella la factura no diría qué se vendió. */
 export const linesReady = (lineas: readonly EditableLine[]): boolean =>
-  lineas.every((linea) => parseUsdToCents(linea.priceText) !== null);
+  lineas.every(
+    (linea) =>
+      parseUsdToCents(linea.priceText) !== null &&
+      (!esLineaManual(linea) || linea.description.trim() !== ''),
+  );
+
+/** Falta la descripción de alguna partida escrita a mano: la pantalla lo avisa antes de emitir. */
+export const faltaDescripcionManual = (lineas: readonly EditableLine[]): boolean =>
+  lineas.some((linea) => esLineaManual(linea) && linea.description.trim() === '');
 
 /** La lista completa que espera el servicio: quitar una línea es no mandarla. */
 export const toDraftItems = (lineas: readonly EditableLine[]): DraftItemInput[] =>
@@ -91,6 +109,8 @@ export const toDraftItems = (lineas: readonly EditableLine[]): DraftItemInput[] 
     description: linea.description === '' ? null : linea.description,
     toothNumber: linea.toothNumber,
     surfaces: linea.surfaces,
+    // En las partidas del arancel el servicio la ignora; en las escritas a mano la aplica.
+    taxCategory: linea.taxCategory,
   }));
 
 /* ── Los totales de lo que hay en pantalla ─────────────────────────────────── */
@@ -98,6 +118,22 @@ export const toDraftItems = (lineas: readonly EditableLine[]): DraftItemInput[] 
 /** La alícuota que el servicio copiará en una partida nueva, según su categoría. */
 export const taxRateForCategory = (category: TaxCategory): number =>
   category === 'general' ? IVA_GENERAL_BASIS_POINTS : 0;
+
+/**
+ * La partida que añade «Añadir línea manual»: vacía y **exenta** por defecto (el caso más común en
+ * un servicio odontológico), con el precio por escribir y la descripción por completar.
+ */
+export const nuevaLineaManual = (): EditableLine => ({
+  code: MANUAL_LINE_CODE,
+  description: '',
+  toothNumber: null,
+  surfaces: [],
+  quantity: 1,
+  priceText: '',
+  taxCategory: 'exento',
+  taxRateBasisPoints: taxRateForCategory('exento'),
+  needsPricing: true,
+});
 
 /**
  * Los totales **de lo que se ve en pantalla**, sumando las partidas con los mismos ayudantes

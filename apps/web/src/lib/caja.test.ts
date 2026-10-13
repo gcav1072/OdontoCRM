@@ -3,12 +3,15 @@ import { describe, expect, it } from 'vitest';
 import {
   FILTROS_VACIOS,
   aParametrosDeConsulta,
+  esLineaManual,
+  faltaDescripcionManual,
   formatBs,
   formatUsd,
   hayFiltros,
   lineTotalCents,
   linesReady,
   liveInvoiceTotals,
+  nuevaLineaManual,
   parseUsdToCents,
   puedeAnularse,
   puedeCobrarse,
@@ -156,6 +159,7 @@ describe('el dinero en la caja', () => {
         description: 'Obturación con resina compuesta',
         toothNumber: 26,
         surfaces: ['occlusal', 'mesial'],
+        taxCategory: 'exento',
       },
       {
         code: 'otros',
@@ -165,8 +169,59 @@ describe('el dinero en la caja', () => {
         description: null,
         toothNumber: null,
         surfaces: [],
+        taxCategory: 'exento',
       },
     ]);
+  });
+});
+
+describe('la partida escrita a mano en la caja', () => {
+  it('nace exenta, sin descripción y con el precio por escribir', () => {
+    const linea = nuevaLineaManual();
+    expect(esLineaManual(linea)).toBe(true);
+    expect(linea.description).toBe('');
+    expect(linea.taxCategory).toBe('exento');
+    expect(linea.taxRateBasisPoints).toBe(0);
+    expect(linea.quantity).toBe(1);
+    // Sin precio legible todavía: la caja no puede guardar el borrador así.
+    expect(linesReady([linea])).toBe(false);
+  });
+
+  it('exige descripción para poder guardar o emitir', () => {
+    const linea: EditableLine = { ...nuevaLineaManual(), priceText: '25,00' };
+    expect(linesReady([linea])).toBe(false);
+    expect(faltaDescripcionManual([linea])).toBe(true);
+    // Con precio y descripción, la partida está lista; el aviso de descripción desaparece.
+    const completa: EditableLine = { ...linea, description: 'Retiro de brackets' };
+    expect(linesReady([completa])).toBe(true);
+    expect(faltaDescripcionManual([completa])).toBe(false);
+    // Una partida del arancel **no** necesita descripción (ya trae la suya).
+    expect(faltaDescripcionManual([{ ...completa, code: 'profilaxis' }])).toBe(false);
+  });
+
+  it('se manda con su categoría, y una manual gravada suma el 16 % igual que el servicio', () => {
+    const exenta: EditableLine = {
+      ...nuevaLineaManual(),
+      description: 'Servicio suelto',
+      priceText: '20,00',
+    };
+    const gravada: EditableLine = {
+      ...nuevaLineaManual(),
+      description: 'Cepillo dental',
+      priceText: '3,00',
+      taxCategory: 'general',
+      taxRateBasisPoints: taxRateForCategory('general'),
+    };
+
+    expect(toDraftItems([exenta])[0]?.taxCategory).toBe('exento');
+    expect(toDraftItems([gravada])[0]?.taxCategory).toBe('general');
+    // 20,00 exento + 3,00 gravado al 16 % (0,48) = 23,48.
+    expect(liveInvoiceTotals([exenta, gravada])).toEqual({
+      exemptAmountCentsUsd: 2000,
+      taxableAmountCentsUsd: 300,
+      ivaAmountCentsUsd: 48,
+      totalCentsUsd: 2348,
+    });
   });
 });
 

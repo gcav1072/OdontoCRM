@@ -8,13 +8,14 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Checkbox,
   Dialog,
   EmptyState,
   Input,
   Select,
   Spinner,
 } from '@odontocrm/ui';
-import { Receipt, Trash2 } from 'lucide-react';
+import { Plus, Receipt, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { AnularCobroDialog, AnularFacturaDialog } from '../components/caja/AnularDialog';
@@ -26,13 +27,16 @@ import { apiErrorMessage } from '../lib/api';
 import {
   FILTROS_VACIOS,
   aParametrosDeConsulta,
+  esLineaManual,
   estadoDeFactura,
+  faltaDescripcionManual,
   formatBs,
   formatUsd,
   hayFiltros,
   lineTotalCents,
   linesReady,
   liveInvoiceTotals,
+  nuevaLineaManual,
   puedeAnularse,
   puedeCobrarse,
   puedeDescartarse,
@@ -201,6 +205,11 @@ export const CajaPage = () => {
         needsPricing: item.priceCentsUsd === 0,
       },
     ]);
+  };
+
+  /** Añade una partida escrita a mano (sin arancel): descripción, IVA, precio y unidades. */
+  const anadirManual = (): void => {
+    setLineas((actuales) => [...actuales, nuevaLineaManual()]);
   };
 
   const avisoDeExito = (mensaje: string): void => {
@@ -532,12 +541,43 @@ export const CajaPage = () => {
                           los números van debajo; antes la fila se salía y la
                           descripción quedaba tapada por los campos. */}
                       <div className="w-full min-w-0 @2xl:w-auto @2xl:flex-1">
-                        <p className="truncate font-medium text-ink">{linea.description}</p>
-                        <p className="text-xs text-ink-muted">
-                          {linea.code}
-                          {linea.toothNumber !== null && ` · pieza ${String(linea.toothNumber)}`}
-                          {linea.surfaces.length > 0 && ` (${linea.surfaces.join(', ')})`}
-                        </p>
+                        {esLineaManual(linea) ? (
+                          <>
+                            <Input
+                              aria-label={t('caja.manual.descripcion')}
+                              placeholder={t('caja.manual.descripcion')}
+                              value={linea.description}
+                              disabled={!puedeEscribir}
+                              onChange={(evento) =>
+                                cambiar(indice, { description: evento.target.value })
+                              }
+                            />
+                            <Checkbox
+                              className="mt-2"
+                              label={t('caja.manual.exento')}
+                              checked={linea.taxCategory === 'exento'}
+                              disabled={!puedeEscribir}
+                              onChange={(evento) => {
+                                const categoria: EditableLine['taxCategory'] = evento.target.checked
+                                  ? 'exento'
+                                  : 'general';
+                                cambiar(indice, {
+                                  taxCategory: categoria,
+                                  taxRateBasisPoints: taxRateForCategory(categoria),
+                                });
+                              }}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <p className="truncate font-medium text-ink">{linea.description}</p>
+                            <p className="text-xs text-ink-muted">
+                              {linea.code}
+                              {linea.toothNumber !== null && ` · pieza ${String(linea.toothNumber)}`}
+                              {linea.surfaces.length > 0 && ` (${linea.surfaces.join(', ')})`}
+                            </p>
+                          </>
+                        )}
                       </div>
                       <label className="w-20 shrink-0">
                         <span className="mb-1 block text-xs text-ink-muted">
@@ -610,6 +650,10 @@ export const CajaPage = () => {
                         ))}
                       </Select>
                     </label>
+                    <Button type="button" variant="secondary" onClick={anadirManual}>
+                      <Plus className="size-4" aria-hidden />
+                      {t('caja.anadir.manual')}
+                    </Button>
                     <Button
                       type="button"
                       variant="secondary"
@@ -621,7 +665,13 @@ export const CajaPage = () => {
                   </div>
                 )}
 
-                {!linesReady(lineas) && <Alert variant="warning">{t('caja.sinPrecio')}</Alert>}
+                {!linesReady(lineas) && (
+                  <Alert variant="warning">
+                    {faltaDescripcionManual(lineas)
+                      ? t('caja.manual.descripcionFalta')
+                      : t('caja.sinPrecio')}
+                  </Alert>
+                )}
 
                 <div className="flex items-center justify-between border-t border-line pt-3">
                   <div className="text-xs text-ink-muted">
