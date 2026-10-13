@@ -1,5 +1,6 @@
 import {
   abbreviateName,
+  CLINIC,
   clinicDentistFor,
   formatPrescriptionNumber,
   type AnnulPrescriptionInput,
@@ -678,11 +679,16 @@ export const readPrescriptionPdf = async (
  * clínicos** (ADR 0015). El nombre abreviado —«María P.», el mismo que usan las
  * pantallas de la sala— es lo único del paciente que sale, y sirve para que quien
  * tenga el papel reconozca que es suyo.
+ *
+ * La identidad del consultorio y **quién firma** se leen de la base (`letterheadLookup`,
+ * ADR 0056), resueltas por el usuario que emitió: el respaldo del código (`CLINIC`) no
+ * tiene datos personales, así que usarlo dejaría el membrete en blanco y el odontólogo
+ * en el «Odontólogo prueba» del seed.
  */
 export const verifyPrescription = async (
   db: ClinicalDb,
   rawCode: string,
-  clinicName: string,
+  letterheadLookup?: LetterheadLookup,
 ): Promise<PrescriptionVerificationResult> => {
   const code = normalizeVerifyCode(rawCode);
   const mostrar = formatVerifyCode(code);
@@ -698,12 +704,14 @@ export const verifyPrescription = async (
   const items = await loadItems(db, row.id);
   const snapshot = (row.patientSnapshot ?? {}) as { fullName?: unknown };
   const nombre = typeof snapshot.fullName === 'string' ? snapshot.fullName : null;
-  const odontologo = clinicDentistFor(row.issuedByUsername);
+  const identidad =
+    letterheadLookup === undefined ? null : await letterheadLookup(row.issuedByUsername);
+  const odontologo = identidad?.dentist ?? clinicDentistFor(row.issuedByUsername);
 
   const verificacion: PrescriptionVerification = {
     valid: true,
     code: mostrar,
-    clinicName,
+    clinicName: identidad?.clinic.name ?? CLINIC.name,
     issuedAt: (row.issuedAt ?? row.createdAt).toISOString(),
     dentistName: odontologo?.fullName ?? null,
     dentistMpps: odontologo?.mpps ?? null,

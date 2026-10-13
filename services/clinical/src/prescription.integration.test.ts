@@ -2,6 +2,7 @@ import {
   clinicalSessionContentSchema,
   createPrescriptionSchema,
   type CreatePrescriptionInput,
+  type LetterheadSnapshot,
 } from '@odontocrm/contracts';
 import {
   consumerQueueName,
@@ -102,6 +103,39 @@ const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AARAAB/wD/AH8hAAAAAElFTkSuQmCC',
   'base64',
 );
+
+/**
+ * La identidad que ve la verificación pública: el consultorio y el odontólogo que
+ * firma salen de aquí (ADR 0056), **no** del respaldo del código. El nombre distinto
+ * al del seed es lo que denuncia el «Odontólogo prueba» hardcodeado.
+ */
+const identidadDePrueba = async (): Promise<LetterheadSnapshot> => {
+  const dentist = {
+    username: MARKER,
+    fullName: 'Od. Titular Prueba',
+    mpps: '12345',
+    specialty: 'Odontología general',
+    licenseNumber: null,
+    email: null,
+  };
+  return {
+    clinic: {
+      name: 'Consultorio Sonrisa',
+      legalName: null,
+      address: 'Calle 1, Planta Baja',
+      city: null,
+      phones: [],
+      email: null,
+      rif: null,
+      website: null,
+      logoPath: null,
+      dentists: [dentist],
+    },
+    dentist,
+    logoDataUri: null,
+    version: 'test',
+  };
+};
 
 /** Clave que usa el servicio dentro del almacén para un adjunto de la sesión. */
 const attachmentKey = (sessionId: string, attachmentId: string): string =>
@@ -345,12 +379,16 @@ describeWithDatabases('récipes y adjuntos: número, PDF, QR y auditoría', () =
 
     // Como lo escribe una persona: con guion y en minúsculas.
     const escrito = `${code.slice(0, 5)}-${code.slice(5)}`.toLowerCase();
-    const verificacion = await verifyPrescription(handle.db, escrito, 'Consultorio de prueba');
+    const verificacion = await verifyPrescription(handle.db, escrito, identidadDePrueba);
     expect(verificacion.valid).toBe(true);
     if (verificacion.valid) {
       expect(verificacion.code).toBe(escrito.toUpperCase());
+      // El consultorio y el odontólogo salen de la identidad leída (ADR 0056), no del
+      // respaldo del código: si vuelve el «Odontólogo prueba», esta prueba cae.
+      expect(verificacion.clinicName).toBe('Consultorio Sonrisa');
+      expect(verificacion.dentistName).toBe('Od. Titular Prueba');
+      expect(verificacion.dentistMpps).toBe('12345');
       expect(verificacion.patientReference).toBe('María P.');
-      expect(verificacion.dentistName).toBe('Odontólogo prueba');
       expect(verificacion.itemCount).toBe(2);
       expect(verificacion.status).toBe('emitida');
       // Ni diagnóstico ni medicamentos: la página pública no los lleva.
@@ -358,7 +396,7 @@ describeWithDatabases('récipes y adjuntos: número, PDF, QR y auditoría', () =
       expect(JSON.stringify(verificacion)).not.toContain('Pulpitis');
     }
 
-    const inventado = await verifyPrescription(handle.db, 'ZZZZZ-ZZZZZ', 'Consultorio de prueba');
+    const inventado = await verifyPrescription(handle.db, 'ZZZZZ-ZZZZZ', identidadDePrueba);
     expect(inventado.valid).toBe(false);
   }, 40_000);
 
@@ -392,7 +430,7 @@ describeWithDatabases('récipes y adjuntos: número, PDF, QR y auditoría', () =
     const verificacion = await verifyPrescription(
       handle.db,
       String(anulado.verifyCode).replace('-', ''),
-      'Consultorio de prueba',
+      identidadDePrueba,
     );
     expect(verificacion.valid).toBe(true);
     if (verificacion.valid) expect(verificacion.status).toBe('anulada');

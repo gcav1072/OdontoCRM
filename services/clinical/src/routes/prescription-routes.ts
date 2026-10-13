@@ -302,7 +302,10 @@ export const registerPrescriptionRoutes = (
    */
   app.get('/api/v1/clinical/verify/:code', async (request, reply) => {
     const { code } = parseOrThrow(codeParamsSchema, request.params);
-    const result = await verifyPrescription(db, code, CLINIC.name);
+    // La identidad real (nombre del consultorio y odontólogo que firmó) sale de la
+    // base (ADR 0056), no del respaldo del código: la página pública tiene que
+    // enseñar el consultorio de verdad, no «Odontólogo prueba».
+    const result = await verifyPrescription(db, code, letterheadLookup);
     return reply.status(200).send(result);
   });
 };

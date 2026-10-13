@@ -1,5 +1,6 @@
 import {
   abbreviateName,
+  CLINIC,
   clinicalAlerts,
   clinicDentistFor,
   formatDossierNumber,
@@ -285,11 +286,16 @@ export const readDossierPdf = async (
  * Lo que responde la página pública: que el papel es auténtico, **sin datos clínicos**
  * (el mismo criterio del récipe, ADR 0015). Del paciente sale solo el nombre abreviado
  * —«María P.»—, que basta para que quien tenga el papel reconozca que es suyo.
+ *
+ * La identidad del consultorio y **quién firma** se leen de la base (`letterheadLookup`,
+ * ADR 0056), resueltas por el usuario que emitió: el respaldo del código (`CLINIC`) no
+ * tiene datos personales, así que usarlo dejaría el membrete en blanco y el odontólogo
+ * en el «Odontólogo prueba» del seed.
  */
 export const verifyDossier = async (
   db: ClinicalDb,
   rawCode: string,
-  clinicName: string,
+  letterheadLookup?: LetterheadLookup,
 ): Promise<DossierVerificationResult> => {
   const code = normalizeVerifyCode(rawCode);
   if (code.length === 0) return { valid: false, number: null };
@@ -304,12 +310,14 @@ export const verifyDossier = async (
 
   const snapshot = (row.patientSnapshot ?? {}) as { fullName?: unknown };
   const nombre = typeof snapshot.fullName === 'string' ? snapshot.fullName : null;
-  const odontologo = clinicDentistFor(row.issuedByUsername);
+  const identidad =
+    letterheadLookup === undefined ? null : await letterheadLookup(row.issuedByUsername);
+  const odontologo = identidad?.dentist ?? clinicDentistFor(row.issuedByUsername);
 
   const verificacion: DossierVerification = {
     valid: true,
     number: formatDossierNumber(row.number),
-    clinicName,
+    clinicName: identidad?.clinic.name ?? CLINIC.name,
     issuedAt: row.issuedAt.toISOString(),
     dentistName: odontologo?.fullName ?? null,
     dentistMpps: odontologo?.mpps ?? null,
