@@ -100,6 +100,11 @@ crear_dir "$DATA_DIR/storage" 0750 "$SERVICE_USER:$SERVICE_GROUP"
 crear_dir "$DATA_DIR/ms-playwright" 0750 "$SERVICE_USER:$SERVICE_GROUP"
 crear_dir "$LOG_DIR" 0750 "$SERVICE_USER:$SERVICE_GROUP"
 crear_dir "$BACKUP_DIR" 0700 root:root
+# El respaldo COMPLETO a demanda (`/respaldo` del bot de administración) se queda aquí: el
+# servicio del bot corre con ProtectSystem=strict, así que esta carpeta tiene que existir y
+# estar en su ReadWritePaths. No va dentro de BACKUP_DIR porque el bot escribe con sus permisos
+# y su retención es aparte (cada copia lleva el almacén entero). Contiene secretos: root y 0700.
+crear_dir "$DATA_DIR/respaldo-manual" 0700 root:root
 # Las claves viven aquí dentro y las lee el servicio: el grupo es el que da acceso.
 crear_dir "$ETC_DIR" 0750 "root:$SERVICE_GROUP"
 crear_dir "$ETC_DIR/keys" 0750 "root:$SERVICE_GROUP"

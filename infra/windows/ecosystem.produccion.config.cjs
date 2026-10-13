@@ -88,13 +88,16 @@ const servicios = existsSync(path.join(codigo, 'services'))
   : [];
 
 /**
- * El **bot de administración** (`/estado`, `/respaldos` por Telegram) NO es un servicio: no
- * sirve HTTP ni tiene base propia, es una herramienta de consola que escucha Telegram. Se
- * supervisa igual (para que reviva solo) pero con sus propias variables:
+ * El **bot de administración** (`/estado`, `/respaldos`, `/respaldo` por Telegram) NO es un
+ * servicio: no sirve HTTP ni tiene base propia, es una herramienta de consola que escucha
+ * Telegram. Se supervisa igual (para que reviva solo) pero con sus propias variables:
  *   · `ODONTOCRM_ENV_DIR`: de dónde saca el token del bot y los `DATABASE_URL` a volcar.
- *   · `ODONTOCRM_ADMIN_TMP_DIR`: dónde escribe los volcados temporales —`%TEMP%` no es
+ *   · `ODONTOCRM_ADMIN_TMP_DIR`: dónde escribe los volcados que manda por chat —`%TEMP%` no es
  *     escribible por LocalService, así que se le da la carpeta `data\tmp` (creada con permiso
  *     de escritura por `10-preparar.ps1`).
+ *   · `ODONTOCRM_BACKUP_MANUAL_DIR`: dónde deja el respaldo COMPLETO de `/respaldo` (bases,
+ *     configuración y almacén). Va dentro de `data` —que LocalService ya puede escribir— y no en
+ *     `backups`, que es solo de Administradores: el bot NO puede escribir ahí.
  * `stop_exit_codes: [0]`: si no hay bot configurado, la herramienta SALE CON 0 (no es un
  * fallo); sin esto, PM2 la reiniciaría en bucle.
  */
@@ -107,6 +110,7 @@ const botAdmin = () => ({
     NODE_ENV: 'production',
     ODONTOCRM_ENV_DIR: envDir,
     ODONTOCRM_ADMIN_TMP_DIR: path.join(codigo, 'data', 'tmp'),
+    ODONTOCRM_BACKUP_MANUAL_DIR: path.join(codigo, 'data', 'respaldo-manual'),
   },
   instances: 1,
   autorestart: true,

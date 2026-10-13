@@ -7,7 +7,10 @@
 # administración** (`ADMIN_TELEGRAM_*`, OTRO bot distinto al de los pacientes):
 #
 #   /estado     la misma foto que «npm run estado»
-#   /respaldos  toma un respaldo AHORA y manda los .dump + SHA256SUMS
+#   /respaldos  toma un respaldo AHORA y manda los .dump + SHA256SUMS por Telegram
+#   /respaldo   respaldo COMPLETO (bases + configuración + almacén) que se queda en el
+#               servidor, en /var/lib/odontocrm/respaldo-manual, listo para
+#               «odontocrm recuperar --from DIR» (por eso ReadWritePaths, más abajo)
 #   /ayuda      la lista de comandos
 #
 # Solo responde al chat de `ADMIN_TELEGRAM_CHAT_ID`: cualquier otro mensaje se
@@ -52,6 +55,8 @@ EnvironmentFile=-/etc/odontocrm/notifications.env
 Environment=ODONTOCRM_ENV_DIR=/etc/odontocrm
 Environment=NODE_ENV=production
 Environment=TZ=America/Caracas
+# Dónde se queda el respaldo COMPLETO de `/respaldo` (bases, configuración y almacén).
+Environment=ODONTOCRM_BACKUP_MANUAL_DIR=/var/lib/odontocrm/respaldo-manual
 
 ExecStart=/usr/bin/node tools/admin-bot.mjs
 
@@ -68,6 +73,9 @@ ProtectSystem=strict
 ProtectHome=true
 # Los volcados temporales van a /tmp (privado para el servicio y escribible por root).
 PrivateTmp=true
+# …y el respaldo completo a su carpeta: con ProtectSystem=strict, lo que no esté aquí es de
+# solo lectura (el directorio lo crea el instalador, en 10-preparar.sh).
+ReadWritePaths=/var/lib/odontocrm/respaldo-manual
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
