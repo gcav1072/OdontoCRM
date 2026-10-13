@@ -36,7 +36,8 @@
 #
 #   --usuarios=admin,recepcion   cuentas a sembrar (por defecto SOLO `admin`: el
 #                                resto del personal se da de alta desde /usuarios)
-#   --con-todas-las-cuentas      siembra también `recepcion` y los odontólogos
+#   --con-todas-las-cuentas      siembra TODO el juego de desarrollo (admin,
+#                                recepcion y los odontólogos de clinic.ts)
 #   --clave-admin=CLAVE          contraseña del administrador
 #   --token-telegram=…           token de BotFather
 #   --usuario-telegram=…         usuario del bot, sin @
@@ -94,7 +95,7 @@ for arg in "$@"; do
     --sin-preguntas) SIN_PREGUNTAS=1 ;;
     --reconfigurar) RECONFIGURAR=1 ;;
     --usuarios=*) USUARIOS_SEED="${arg#*=}" ;;
-    --con-todas-las-cuentas) USUARIOS_SEED="" ;;
+    --con-todas-las-cuentas) USUARIOS_SEED="all" ;;
     --clave-admin=*) CLAVE_ADMIN="${arg#*=}" ;;
     --token-telegram=*) TELEGRAM_BOT_TOKEN="${arg#*=}" ;;
     --usuario-telegram=*) TELEGRAM_BOT_USERNAME="${arg#*=}" ;;
@@ -379,7 +380,11 @@ else
     resumen_wa='ya configurado en el servidor (se conserva)'
   fi
   printf '\n'
-  detalle "cuentas a crear : ${USUARIOS_SEED:-admin, recepcion y los odontólogos de clinic.ts}"
+  if [[ "${USUARIOS_SEED:-admin}" == "all" ]]; then
+    detalle "cuentas a crear : admin, recepcion y los odontólogos (todo el juego de desarrollo)"
+  else
+    detalle "cuentas a crear : ${USUARIOS_SEED:-admin}"
+  fi
   detalle "admin           : $resumen_admin"
   detalle "Telegram        : $resumen_tg"
   detalle "bot del sistema : $resumen_admin_bot"

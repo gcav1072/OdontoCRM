@@ -324,23 +324,28 @@ paso '5/9 · Usuarios iniciales'
 SIN_USUARIOS=0
 INFORME_CLAVE=/root/odontocrm-contrasena-inicial.txt
 if (( DRY_RUN )); then
-  detalle "[dry-run] sembraría: ${USUARIOS_SEED:-admin, recepcion y los odontólogos de clinic.ts}"
+  detalle "[dry-run] sembraría: ${USUARIOS_SEED:-admin}"
 else
-  # Qué cuentas se siembran. Por defecto, todas —`admin`, `recepcion` y un odontólogo por
-  # entrada de `CLINIC.dentists`—, que es lo que necesitan el desarrollo y las pruebas y lo
-  # que sigue haciendo `odontocrm actualizar` (no define `USUARIOS_SEED`). El instalador
-  # pide **solo `admin`** en una instalación nueva: el resto del personal se da de alta
-  # desde la aplicación (`/usuarios`), que es donde tiene sentido decidir rol y datos.
+  # Qué cuentas se siembran. Por defecto, **solo `admin`**: es una instalación de clínica y el
+  # resto del personal se da de alta desde la aplicación (`/usuarios`), que es donde tiene
+  # sentido decidir rol y datos. El juego completo de desarrollo —`admin`, `recepcion` y un
+  # odontólogo por entrada de `CLINIC.dentists`— se pide a propósito con `USUARIOS_SEED=all`
+  # (o `--con-todas-las-cuentas` del instalador).
+  #
+  # Antes un `USUARIOS_SEED` VACÍO significaba «todas»: como `odontocrm actualizar` no define
+  # esa variable, cada actualización sembraba las cuentas de PRUEBA («Recepción prueba» y el
+  # odontólogo de `clinic.ts`) en producción. Ahora un vacío es «solo admin».
+  #
   # Los nombres van tal cual salen de `clinic.ts` (el seed los compara sin distinguir
   # mayúsculas) y la variable de entorno sí se escribe en mayúsculas.
-  if [[ -n "${USUARIOS_SEED:-}" ]]; then
-    usuarios_seed="$(printf '%s' "$USUARIOS_SEED" | tr ',' '\n' | sed '/^[[:space:]]*$/d')"
-  else
+  if [[ "${USUARIOS_SEED:-}" == "all" ]]; then
     usuarios_seed="$(
       { printf 'admin\nrecepcion\n'
         grep -oP "username: '\K[^']+" "$CODE_DIR/packages/contracts/src/clinic.ts" 2>/dev/null || true
       } | sort -u
     )"
+  else
+    usuarios_seed="$(printf '%s' "${USUARIOS_SEED:-admin}" | tr ',' '\n' | sed '/^[[:space:]]*$/d')"
   fi
   usuarios_lista="$(printf '%s' "$usuarios_seed" | paste -sd, -)"
 

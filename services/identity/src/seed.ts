@@ -144,6 +144,11 @@ const claveParaSembrar = (usuario: SeedUser): string => {
  * Los odontólogos salen de `CLINIC.dentists` (`packages/contracts/src/clinic.ts`), que
  * hoy trae una sola cuenta **de prueba** («Odontólogo prueba»): sirve para desarrollo y
  * pruebas de humo. En el servidor los odontólogos reales se crean desde la aplicación.
+ *
+ * Quién se siembra lo decide `USUARIOS_SEED` en el despliegue: por defecto **solo `admin`**,
+ * y el juego completo de desarrollo (`admin`, `recepcion` y estos odontólogos) se pide con
+ * `USUARIOS_SEED=all`. Las cuentas de prueba que se colaron en producción se retiran con
+ * `odontocrm purgar-prueba`.
  */
 const DENTIST_USERS: SeedUser[] = CLINIC.dentists.map((dentist) => ({
   username: dentist.username,

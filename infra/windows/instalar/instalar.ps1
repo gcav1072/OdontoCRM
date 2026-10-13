@@ -21,7 +21,8 @@
 #   --ip=IP               IP de la LAN (si no, se deduce)
 #   --admin-url=URL       cómo entrar a PostgreSQL como administrador (EN WINDOWS ES
 #                         OBLIGATORIO; si no se indica se usa PG_ADMIN_URL)
-#   --usuarios=a,b        cuentas a sembrar (por defecto SOLO `admin`)
+#   --usuarios=a,b        cuentas a sembrar (por defecto SOLO `admin`; «all» = juego
+#                         de desarrollo completo: admin, recepcion y los odontólogos)
 #   --clave-admin=CLAVE   contraseña del administrador
 #   --token-telegram=…    token de BotFather    · --usuario-telegram=…
 #   --token-bot-admin=…   bot de administración (avisos) · --chat-bot-admin=…

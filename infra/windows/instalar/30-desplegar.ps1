@@ -280,12 +280,37 @@ else {
   # El seed EXIGE la clave de cada cuenta en el entorno (`SEED_PASSWORD_<USUARIO>`, mínimo
   # 10 caracteres); sin ella no siembra nada. Si el instalador recogió la del admin, se
   # pasa; si no, se genera una temporal y se imprime UNA vez.
-  $usuarios = if ($env:USUARIOS_SEED) { $env:USUARIOS_SEED } else { 'admin' }
+  # Por defecto SOLO `admin` (el resto del personal se da de alta en /usuarios). El juego
+  # completo de desarrollo —`admin`, `recepcion` y los odontólogos de `clinic.ts`— se pide con
+  # `USUARIOS_SEED=all`: la misma convención que en Fedora.
+  $pedido = if ($env:USUARIOS_SEED) { $env:USUARIOS_SEED } else { 'admin' }
+  if ($pedido -eq 'all') {
+    $odontologos = @()
+    $clinicTs = Join-Path $OdontoCode 'packages\contracts\src\clinic.ts'
+    if (Test-Path $clinicTs) {
+      $odontologos = @((Select-String -Path $clinicTs -Pattern "username:\s*'([^']+)'" -AllMatches).Matches |
+        ForEach-Object { $_.Groups[1].Value })
+    }
+    $usuarios = (@('admin', 'recepcion') + $odontologos | Sort-Object -Unique) -join ','
+  }
+  else { $usuarios = $pedido }
+
   $claveAdmin = $env:SEED_PASSWORD_ADMIN
   $generada = $false
   if (-not $claveAdmin -or $claveAdmin.Length -lt 10) {
     $claveAdmin = -join ((48..57) + (97..122) | Get-Random -Count 16 | ForEach-Object { [char]$_ })
     $generada = $true
+  }
+
+  # Cada cuenta necesita su `SEED_PASSWORD_<USUARIO>` (el seed las exige en producción). Se usa
+  # la misma temporal para las que no traigan una puesta, como hace el despliegue de Fedora.
+  foreach ($u in ($usuarios -split ',')) {
+    $nombre = $u.Trim()
+    if (-not $nombre) { continue }
+    $var = "SEED_PASSWORD_$($nombre.ToUpper())"
+    if (-not [Environment]::GetEnvironmentVariable($var) -or [Environment]::GetEnvironmentVariable($var).Length -lt 10) {
+      Set-Item -Path "Env:\$var" -Value $claveAdmin
+    }
   }
 
   Push-Location $OdontoCode
