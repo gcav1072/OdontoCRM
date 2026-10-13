@@ -447,7 +447,7 @@ Con `STORAGE_ENCRYPTION_KEY` puesta, todo lo que se guarda va **cifrado en repos
 > borran siempre, también cuando algo falla. Si sale mal, el aviso de emergencia va al bot de
 > administración (`ADMIN_TELEGRAM_BOT_TOKEN` / `ADMIN_TELEGRAM_CHAT_ID`).
 
-### El bot de administración (`/estado` y `/respaldos`)
+### El bot de administración (`/estado`, `/respaldos` y `/respaldo`)
 
 El mismo bot de administración que recibe los avisos también **escucha** al dueño del
 consultorio. Lo atiende un proceso aparte —una herramienta de consola, no el servicio de
@@ -458,11 +458,27 @@ los servicios y volcar cada base):
 | :--- | :--- |
 | `/estado` | La misma foto que `npm run estado` (servicios, bases, cola, outbox, envíos, eventos perdidos, disco y alertas), en texto compacto. |
 | `/respaldos` | Toma un respaldo **ahora** (`pg_dump -Fc` de cada base, con las credenciales de su propio servicio), verifica cada volcado, calcula las sumas SHA-256 y manda los `.dump` + `SHA256SUMS` por Telegram. Si un archivo supera los 50 MB (límite de Telegram), avisa y lo deja en la carpeta temporal. |
+| `/respaldo` | Respaldo **completo** —bases + almacén + configuración— que se queda **en el servidor**, en `ODONTOCRM_BACKUP_MANUAL_DIR` (Fedora `/var/lib/odontocrm/respaldo-manual`, Windows `C:\OdontoCRM\data\respaldo-manual`). **No manda archivos**: responde con la carpeta, el tamaño de cada bloque y las dos órdenes para comprobarlo y reponerlo. Se conservan las **5** últimas copias (`ODONTOCRM_BACKUP_MANUAL_KEEP`). |
 | `/ayuda` | La lista de comandos. |
 
 Lo que manda el bot **es restaurable tal cual** —es `pg_dump -Fc`, un archivo por base, con su
 `SHA256SUMS`—: se comprueba con `verify-backup.mjs --from` y se repone con `odontocrm restaurar`
 (ver [`RECUPERACION.md` §3](RECUPERACION.md#3-si-lo-que-hay-es-lo-que-mandó-el-bot-solo-las-bases)).
+
+**`/respaldos` y `/respaldo` no son lo mismo**, y se parecen en el nombre a propósito: el primero
+sirve para *llevarse las bases* (te las manda por chat, y se pierden los adjuntos y los secretos,
+que es lo que el chat no trae); el segundo es la copia que **vale si se muere el disco**, porque
+trae los tres bloques y se queda en la máquina, verificada (cabecera `PGDMP`, catálogo con
+`pg_restore --list` y `SHA256SUMS`). Su forma es la del respaldo nocturno, así que
+`odontocrm recuperar --from <carpeta>` la repone igual (§[`RECUPERACION.md`](RECUPERACION.md#3b-si-lo-que-hay-es-la-copia-completa-del-servidor)).
+Como cada copia se lleva el almacén entero, su retención es corta (5) en vez de los 30 días del
+temporizador; `ODONTOCRM_BACKUP_MANUAL_KEEP` la cambia.
+
+El respaldo completo **no invoca el guion del temporizador** (`odontocrm-backup.sh` / `.ps1`): ese
+exige Administrador/root y lee el `.pgpass`, que en Windows es de solo Administradores, y el bot
+corre como `LocalService`. Vuelca cada base con el `DATABASE_URL` de **su propio servicio** (lo
+mismo que `/respaldos`) y le añade el almacén y la configuración. La misma pieza se puede correr
+sin Telegram: `npm run respaldo:manual [-- --dest DIR | --conservar N | --json]`.
 
 **Solo responde al chat de `ADMIN_TELEGRAM_CHAT_ID`**: cualquier otro mensaje se ignora en
 silencio. El proceso lo supervisa PM2 (`odontocrm-admin-bot`) en Windows y

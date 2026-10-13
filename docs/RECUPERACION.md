@@ -24,9 +24,10 @@
 | **Recuperar una sola base** (un dato borrado por error) | `odontocrm restaurar` de **esa** base (no hace falta el flujo completo) |
 
 Los tres casos son el mismo trabajo: **reponer lo que guarda el respaldo**. Lo único que cambia es
-de dónde sale la máquina que lo ejecuta. Y el respaldo puede venir de dos sitios: el **directorio
-del día** (pendrive, disco externo) o lo que mandó el **bot de administración** por Telegram, que
-trae **solo las bases** (§3).
+de dónde sale la máquina que lo ejecuta. Y el respaldo puede venir de **tres** sitios: el
+**directorio del día** (pendrive, disco externo), la **copia completa** que se pidió al bot
+desde Telegram (`/respaldo`, que se queda en el propio servidor: §3b) o lo que mandó el bot por
+chat (`/respaldos`, que trae **solo las bases**: §3).
 
 ---
 
@@ -95,6 +96,12 @@ Reglas (si algo no encaja, **sospecha antes de restaurar**):
   primera vez esa base no existe. No es un respaldo roto.
 - **Lo que manda el bot es otro origen** —`<base>.dump`, sin fecha, en una carpeta
   `admin-respaldos-…`—, y trae solo las bases: se trata en §3.
+- **La copia completa del bot es otro origen más** —carpeta con la marca `AAAA-MM-DD_HHMMSS`,
+  `<base>.dump` sin fecha y **los tres bloques**— y vive del lado del servidor, no del medio:
+  se trata en §3b.
+
+> Y ojo con lo que **no** es un respaldo: una carpeta `AAAA-MM-DD` a la que le falta
+> `SHA256SUMS` o uno de los tres bloques es un respaldo **roto o viejo**, y no se da por bueno.
 
 ---
 
@@ -146,6 +153,56 @@ bot vienen con `--no-owner`: se restauran con el rol de cada servicio, como cual
 > **Custodia.** Estos dumps van **en claro** y contienen datos clínicos, y ahora hay copias **en el
 > chat de Telegram y en el teléfono**. Al terminar, bórralas de ahí: el servidor y el pendrive
 > (protegido) son los sitios donde estos archivos deben estar.
+
+---
+
+## 3b. Si lo que hay es la copia completa del servidor (`/respaldo`)
+
+El bot de administración tiene **otro** comando, aparte de `/respaldos`: `/respaldo` (o
+`npm run respaldo:manual`, que es la misma pieza sin pasar por Telegram). Deja una copia
+**completa** —bases + almacén + configuración— en el propio servidor y contesta con la carpeta,
+tamaño de cada bloque y las dos órdenes para comprobarla y reponerla. **No manda nada por chat:**
+lo que viaja mal son justo los dos bloques que hacen falta para recuperar de verdad.
+
+| | Dónde queda |
+| :--- | :--- |
+| **Fedora** | `/var/lib/odontocrm/respaldo-manual/<AAAA-MM-DD_HHMMSS>/` |
+| **Windows** | `C:\OdontoCRM\data\respaldo-manual\<AAAA-MM-DD_HHMMSS>\` |
+
+Y por dentro es la forma del respaldo nocturno, con la fecha en la **carpeta** en vez de en los
+nombres:
+
+```
+2026-10-12_033001/
+├── odonto_<base>.dump          ←  una por servicio, más `odonto_events`
+├── storage.zip                 ←  radiografías y PDFs      (Fedora: storage_<marca>.tar.gz)
+├── config.zip                  ←  configuración y SECRETOS (Fedora: etc-odontocrm_<marca>.tar.gz)
+├── SHA256SUMS                  ←  la huella de cada archivo de arriba
+└── manifest.txt                ←  qué se respaldó y cuándo (`origen=manual`)
+```
+
+**Se comprueba y se repone igual** que el directorio del día: es exactamente el mismo formato, así
+que valen los comandos de §4, §5 y §6 cambiando la ruta.
+
+```bash
+# Comprobar (restaura cada volcado en una base temporal y cuenta filas: no toca nada)
+node tools/verify-backup.mjs --from /var/lib/odontocrm/respaldo-manual/2026-10-12_033001
+
+# Reponer (para los servicios → restaura las bases → repone el almacén → arranca)
+sudo odontocrm recuperar --from /var/lib/odontocrm/respaldo-manual/2026-10-12_033001 --yes
+```
+
+Tres cosas que conviene saber antes de tirar de esta carpeta:
+
+- **La configuración lleva secretos**, así que la carpeta se custodia como el respaldo del pendrive
+  (Fedora la crea `0700 root:root`): no se copia a un sitio compartido sin pensar. En cambio **sí**
+  trae el `STORAGE_ENCRYPTION_KEY`, que es lo que hace legible un almacén cifrado (§7).
+- **Se podan solas**: se conservan las **5** últimas copias (`ODONTOCRM_BACKUP_MANUAL_KEEP`),
+  porque cada una lleva el almacén entero dentro. Si el disco se llena, se baja ese número.
+- **Si un bloque falló, el mensaje del bot lo dice** (y la carpeta se queda igual, sin él): una
+  copia a la que le falta un bloque no sirve para una recuperación completa, y hay que enterarse
+  el día que se pide y no el día del desastre. Si el fallo fue el volcado de una base, `fallos=0`
+  del `manifest.txt` no cuadra y hay que tomarla como parcial.
 
 ---
 

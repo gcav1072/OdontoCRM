@@ -43,7 +43,7 @@
 | [`install.sh`](install.sh) | Aprovisionamiento idempotente: paquetes, usuario de sistema, directorios, plantillas de `/etc/odontocrm`, PM2 y arranque automático. **Por defecto solo simula** (`--dry-run`); con `--apply` ejecuta. |
 | [`systemd/odontocrm@.service`](systemd/odontocrm@.service) | Unidad plantilla para los 8 servicios internos (`odontocrm@identity`, `odontocrm@clinical`, …). Carga `/etc/odontocrm/odontocrm.env` + `/etc/odontocrm/%i.env` y arranca `services/%i/dist/index.js`. |
 | [`systemd/odontocrm-gateway.service`](systemd/odontocrm-gateway.service) | Unidad del gateway (puerto 8090, sin base de datos). Carga `/etc/odontocrm/odontocrm.env` + `/etc/odontocrm/gateway.env` y arranca `apps/gateway/dist/index.js`. |
-| [`systemd/odontocrm-admin-bot.service`](systemd/odontocrm-admin-bot.service) | **Bot de administración**: escucha Telegram y responde con `/estado` y `/respaldos` por el bot de administración (`ADMIN_TELEGRAM_*`). Corre como `root` (lee `/etc/odontocrm/*.env` y vuelca cada base) y con `Restart=on-failure` (sin bot configurado la herramienta sale con 0 y no se reinicia). |
+| [`systemd/odontocrm-admin-bot.service`](systemd/odontocrm-admin-bot.service) | **Bot de administración**: escucha Telegram y responde con `/estado`, `/respaldos` (los volcados, por chat) y `/respaldo` (copia **completa** —bases, almacén y configuración— que se queda en `/var/lib/odontocrm/respaldo-manual`; la unidad la declara en `ReadWritePaths` porque con `ProtectSystem=strict` el resto del disco es de solo lectura). Corre como `root` (lee `/etc/odontocrm/*.env` y vuelca cada base) y con `Restart=on-failure` (sin bot configurado la herramienta sale con 0 y no se reinicia). |
 | [`systemd/odontocrm-alertas.service`](systemd/odontocrm-alertas.service) + [`systemd/odontocrm-alertas.timer`](systemd/odontocrm-alertas.timer) | **Observabilidad (Fase 10)**: cada 5 minutos corre `node tools/estado.mjs --alertas` y deja el servicio en `failed` si algo no responde, el outbox se atasca, la cola tiene fallidos o queda poco disco. Ver §10.6. |
 | [`systemd/odontocrm-red.service`](systemd/odontocrm-red.service) + [`systemd/odontocrm-red.timer`](systemd/odontocrm-red.timer) | **La red, sola**: cada 5 minutos ejecuta `odontocrm red --arreglar --si-cambio`. Si la IP no cambió, no hace nada; si cambió, reajusta el firewall, reemite el certificado con la IP nueva (misma CA), actualiza `WEB_ORIGIN` y reescribe el DNS del nombre (el que hace que `odontocrm.local` funcione en los Android). En la clínica, con IP fija, nunca hace nada; en un portátil de pruebas, deja todo al día sin tocar nada a mano. |
 | [`logrotate/odontocrm`](logrotate/odontocrm) | Rotación diaria (30 días, comprimida) de `/var/log/odontocrm/*.log`. Con `systemd` los servicios van al journal, que rota solo; esto cubre los logs de operación y los de PM2 si se elige ese supervisor. |
@@ -1894,6 +1894,13 @@ Plan §11: **`pg_dump` diario por base, retención de 30 días y restauración p
 | `/etc/odontocrm` (incluye **secretos**) | `--include-config` → `tar.gz` | `etc-odontocrm_<fecha>.tar.gz` (0600) |
 | `/var/lib/odontocrm/storage` (radiografías y PDFs) | `--include-storage` → `tar.gz` (**por defecto** en el temporizador) | `storage_<fecha>.tar.gz` |
 | Registro | log a archivo y a stdout | `/var/log/odontocrm/backup.log` |
+
+> **A demanda, sin esperar al temporizador**: `/respaldo` por el bot de administración (o
+> `npm run respaldo:manual` en la máquina) deja una copia **completa** en
+> `/var/lib/odontocrm/respaldo-manual/<AAAA-MM-DD_HHMMSS>/`, con los tres bloques y los mismos
+> nombres (la fecha va en la carpeta). Es restaurable tal cual —`odontocrm recuperar --from <carpeta>`—
+> y conserva las 5 últimas copias (`ODONTOCRM_BACKUP_MANUAL_KEEP`). Ver
+> [`docs/RECUPERACION.md` §3b](../../docs/RECUPERACION.md).
 
 ### 15.2 Rol de respaldo
 

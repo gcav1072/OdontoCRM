@@ -238,6 +238,14 @@ configuración, para que un fallo físico del disco sea recuperable. Para repone
 completo en una máquina nueva o tras un fallo, sigue
 [`RUNBOOK.md` §"Recuperación completa"](RUNBOOK.md).
 
+> **A demanda y sin consola de Administrador**: por Telegram, `/respaldo` del bot de administración
+> (o `npm run respaldo:manual` en la máquina) deja la copia **completa** —bases, almacén y
+> configuración— en `C:\OdontoCRM\data\respaldo-manual\<AAAA-MM-DD_HHMMSS>\`, con los tres bloques,
+> `SHA256SUMS` y `manifest.txt`. No va a `C:\OdontoCRM\backups` porque esa carpeta es solo de
+> Administradores y el bot corre como `LocalService`. Es restaurable tal cual
+> (`odontocrm recuperar --from <carpeta>`) y conserva las 5 últimas copias
+> (`ODONTOCRM_BACKUP_MANUAL_KEEP`). Ver [`docs/RECUPERACION.md` §3b](../../docs/RECUPERACION.md).
+
 ## 10. Solución de problemas
 
 | Síntoma | Causa y solución |

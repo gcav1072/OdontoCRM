@@ -124,6 +124,11 @@ odontocrm recuperar --from C:\OdontoCRM\backups\2026-10-12 --yes
 conectarían). Si lo necesitas, añade `--con-config`. Sin `--yes` solo dice qué haría; con
 `--dry-run` no toca nada.
 
+> **Si el respaldo que hay es la copia completa del bot** (la que deja `/respaldo` en
+> `C:\OdontoCRM\data\respaldo-manual\<marca>\`), vale igual: tiene los tres bloques y los mismos
+> nombres, así que `odontocrm recuperar --from <esa carpeta> --yes` la repone tal cual
+> ([`docs/RECUPERACION.md` §3b](../../docs/RECUPERACION.md)).
+
 > **Base y almacén van juntos.** Si el almacén está cifrado, el `STORAGE_ENCRYPTION_KEY` tiene
 > que ser el MISMO con que se cifró; `recuperar` te dice de dónde copiarlo si no repusiste la
 > configuración. Y un respaldo hecho antes de que el almacén entrara en la copia diaria **no lo

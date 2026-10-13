@@ -4,6 +4,43 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Respaldo] — `/respaldo`: la copia completa del servidor, pedida desde Telegram · 2026-10-12
+
+El respaldo automático solo se puede lanzar como Administrador (Windows) o root (Fedora): su guion
+exige ese permiso y lee el `.pgpass`, que en Windows es de solo Administradores. El bot de
+administración corre como `LocalService`, así que desde Telegram no había forma de pedir una copia
+en la máquina —solo `/respaldos`, que manda las **bases** por chat y se pierde los adjuntos y los
+secretos—. Ahora `/respaldo` (y `npm run respaldo:manual`, la misma pieza sin Telegram) deja una
+copia **completa** en el servidor: bases + **almacén** + **configuración**, con sus `SHA256SUMS` y su
+`manifest.txt`, verificada (cabecera `PGDMP`, catálogo con `pg_restore --list`) y con la **misma
+forma** que la del temporizador, de modo que `odontocrm recuperar --from <carpeta>` la repone tal
+cual. No manda archivos: responde con la carpeta, el tamaño de cada bloque y las dos órdenes para
+comprobarla y reponerla.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `tools/lib/admin-informes.mjs` | `tomarRespaldoCompleto()`: volcados + almacén + configuración, sumas, manifiesto y retención propia (5 copias, `ODONTOCRM_BACKUP_MANUAL_KEEP`) |
+| `tools/admin-bot.mjs` | Atiende `/respaldo` (alias `/completo`); `/respaldos` sigue igual |
+| `tools/respaldo-manual.mjs` · `npm run respaldo:manual` | Lo mismo desde la consola (`--dest`, `--conservar`, `--json`) |
+| `ADMIN_BOT_COMMANDS` (contratos) | El comando nuevo entra en el menú de Telegram (y en la ayuda) por el catálogo |
+| `ODONTOCRM_BACKUP_MANUAL_DIR` | Dónde se queda la copia: Fedora `/var/lib/odontocrm/respaldo-manual`, Windows `C:\OdontoCRM\data\respaldo-manual`. **Fuera** de `BACKUP_DIR` a propósito: en Windows esa carpeta es solo de Administradores, y la retención de estas copias es aparte |
+
+La carpeta del respaldo manual se crea en el instalador (Fedora, `0700 root:root`) y la unidad del
+bot la declara en `ReadWritePaths`, porque con `ProtectSystem=strict` lo que no esté ahí es de solo
+lectura. Probado con el simulacro: la copia restaura las 10 bases (incluida la cola `odonto_events`)
+en bases temporales y las sumas cuadran.
+
+## [Mi perfil] — Las cuentas que no firman documentos ya no ven «te falta el perfil» · 2026-10-12
+
+Una cuenta **sin rol Odontólogo** (Administración, Secretaría) entraba a «Mi perfil» y se encontraba
+un aviso de advertencia («todavía no has completado tu perfil profesional») sobre un formulario
+vacío. Técnicamente cierto —nunca va a tener perfil: el MPPS y la especialidad son de quien firma el
+récipe— pero engañoso, porque ahí no hay nada que completar. Ahora esa cuenta ve un aviso
+**informativo** que lo explica, y si puede gestionar usuarios un botón a `/usuarios`, que es donde
+está el trabajo que sí le toca. El formulario y la consulta del perfil quedan solo para los
+odontólogos, y la tarjeta del consultorio sigue siendo del **titular** (que el servidor elige entre
+los odontólogos). Cambio de presentación: la API no cambia.
+
 ## [Recuperación] — `odontocrm recuperar`: la recuperación completa en un comando · 2026-10-12
 
 Recuperar un servidor (nuevo o tras un fallo físico) obligaba a encadenar a mano `parar` +

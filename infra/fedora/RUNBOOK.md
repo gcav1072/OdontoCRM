@@ -167,6 +167,12 @@ sudo ls -lh /var/backups/odontocrm | tail -10
 sudo /opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config --include-storage
 ```
 
+> **Sin consola de root y sin esperar al temporizador**: `/respaldo` por el bot de administración
+> (o `npm run respaldo:manual`) deja la copia **completa** —bases, almacén y configuración— en
+> `/var/lib/odontocrm/respaldo-manual/<marca>/`, verificada y restaurable tal cual
+> (`odontocrm recuperar --from <carpeta>`; ver [`docs/RECUPERACION.md` §3b](../../docs/RECUPERACION.md)).
+> Conserva las 5 últimas copias, porque cada una lleva el almacén entero dentro.
+
 Qué tiene que salir en el registro: una línea por base con `OK`, el tamaño, y al final
 `Respaldo completado`. Si aparece `FALLO` o el archivo pesa **cero**, el respaldo de
 ese día no sirve: mira el error, arréglalo y lanza uno a mano.
