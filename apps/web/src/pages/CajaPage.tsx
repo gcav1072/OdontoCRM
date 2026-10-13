@@ -573,7 +573,8 @@ export const CajaPage = () => {
                             <p className="truncate font-medium text-ink">{linea.description}</p>
                             <p className="text-xs text-ink-muted">
                               {linea.code}
-                              {linea.toothNumber !== null && ` · pieza ${String(linea.toothNumber)}`}
+                              {linea.toothNumber !== null &&
+                                ` · pieza ${String(linea.toothNumber)}`}
                               {linea.surfaces.length > 0 && ` (${linea.surfaces.join(', ')})`}
                             </p>
                           </>

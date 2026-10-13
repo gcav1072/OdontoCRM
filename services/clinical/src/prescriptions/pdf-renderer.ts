@@ -50,13 +50,14 @@ export interface PdfFitToPage {
    */
   availableWidthMm: number;
   /** Tope inferior de la escala; por defecto `MIN_FIT_SCALE`. */
-  minScale?: number | undefined;  /**
+  minScale?: number | undefined; /**
    * Hojas máximas que admite el documento; por defecto **1**. Tras medir, el encaje se
    * **comprueba** contando las hojas del PDF ya compuesto: si el documento se pasa (una
    * marca —membrete o velo— más alta, por ejemplo), se aprieta la escala y se vuelve a
    * componer. Es el blindaje contra la segunda hoja. `0` desactiva la comprobación.
    */
-  maxPages?: number | undefined;}
+  maxPages?: number | undefined;
+}
 
 /**
  * Cómo se compone el papel.

@@ -247,9 +247,10 @@ describeWithDatabase('la caja: del cierre de la sesión al borrador', () => {
     // Las manuales conservan descripción y categoría (no se pisan con «Procedimiento»).
     const manuales = detalle.items.filter((item) => item.code === MANUAL_LINE_CODE);
     expect(manuales).toHaveLength(2);
-    expect(
-      manuales.find((item) => item.description === 'Retiro de brackets'),
-    ).toMatchObject({ taxCategory: 'exento', taxRateBasisPoints: 0 });
+    expect(manuales.find((item) => item.description === 'Retiro de brackets')).toMatchObject({
+      taxCategory: 'exento',
+      taxRateBasisPoints: 0,
+    });
     expect(
       manuales.find((item) => item.description === 'Cepillo dental (mostrador)'),
     ).toMatchObject({ taxCategory: 'general', taxRateBasisPoints: 1600, quantity: 2 });
