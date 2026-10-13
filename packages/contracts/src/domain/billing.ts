@@ -252,6 +252,14 @@ export type TaxCategory = (typeof TAX_CATEGORIES)[number];
 export const CATALOG_KINDS = ['servicio', 'bien'] as const;
 export type CatalogKind = (typeof CATALOG_KINDS)[number];
 
+/**
+ * El código con el que la caja marca una partida **escrita a mano** (un producto o servicio que no
+ * está en el arancel). No tiene fila en `treatment_catalog`, así que el servicio toma su
+ * `taxCategory` de la propia línea; la pantalla lo usa para reconocerla y pedir su descripción.
+ * El servidor acepta cualquier código libre: este es solo el centinela de la interfaz.
+ */
+export const MANUAL_LINE_CODE = 'manual';
+
 export const RATE_SOURCES = ['bcv_oficial', 'manual', 'arrastre'] as const;
 export type RateSource = (typeof RATE_SOURCES)[number];
 
@@ -593,10 +601,14 @@ export const formatCreditNoteNumber = (creditNoteNumber: number): string =>
  *
  * `unitPriceCentsUsd` y `description` se piden cuando la partida **no tiene precio en el catálogo**
  * (M3: entra en 0 y marcada, y la caja la resuelve en diez segundos).
+ *
+ * `taxCategory` solo la declara una partida **escrita a mano** (`MANUAL_LINE_CODE`): en las del
+ * arancel se **ignora**, porque la categoría la manda el catálogo (un servicio odontológico no se
+ * puede facturar como gravado desde la caja).
  */
 export const draftItemInputSchema = z
   .object({
-    /** Código del catálogo (`obturacion_resina`) o el que trajo la sesión clínica (`otros`). */
+    /** Código del catálogo (`obturacion_resina`), el de la sesión clínica (`otros`) o `manual`. */
     code: z.string().trim().min(1).max(60),
     quantity: z.number().int().min(1).max(99).default(1),
     /** Precio unitario en céntimos de USD; si falta, el del catálogo. */
@@ -604,6 +616,8 @@ export const draftItemInputSchema = z
     description: optionalText(200),
     toothNumber: toothNumberSchema.nullable().default(null),
     surfaces: z.array(toothSurfaceSchema).max(5).default([]),
+    /** La categoría fiscal de una partida escrita a mano; en las del arancel se ignora. */
+    taxCategory: z.enum(TAX_CATEGORIES).optional(),
   })
   .strict();
 
