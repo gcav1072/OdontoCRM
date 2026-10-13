@@ -12,6 +12,9 @@
 @import 'tailwindcss';
 @import '@odontocrm/ui/tokens.css';
 @import '@odontocrm/ui/marca.css';
+/* Estética propia de las pantallas kiosko (variables `--kiosk-*`, marca de agua y
+   animaciones). Va aparte a propósito: es un tema que NO sigue a la aplicación. */
+@import './styles/pantalla.css';
 
 /* El tema oscuro se activa con la clase `dark` en <html> (ThemeProvider). */
 @custom-variant dark (&:where(.dark, .dark *));

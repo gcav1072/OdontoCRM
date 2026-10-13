@@ -9,8 +9,9 @@ import { t } from '../../lib/i18n';
  *
  * Una pantalla que se queda muda es el peor fallo posible (el paciente cree que
  * no lo han llamado), así que aquí se dice claramente si el flujo está abierto y
- * a qué hora llegó el último estado. Es informativo y no interactivo: nadie va a
- * pulsarlo desde el televisor.
+ * a qué hora llegó el último estado. Todo va **discreto y en la esquina**: un icono
+ * (verde o ámbar) y la hora de la última actualización. El texto del estado no se
+ * pinta —molestaría en una TV—, pero sigue disponible para lectores de pantalla.
  */
 export interface KioskStatusBarProps {
   /** El flujo SSE está abierto. */
@@ -20,26 +21,26 @@ export interface KioskStatusBarProps {
   className?: string;
 }
 
-export const KioskStatusBar = ({ conectada, actualizado, className }: KioskStatusBarProps) => (
-  <div className={cn('flex flex-wrap items-center gap-x-4 gap-y-1 text-sm', className)}>
+export const KioskStatusBar = ({ conectada, actualizado, className }: KioskStatusBarProps) => {
+  const estado = conectada ? t('pantalla.reconectada') : t('pantalla.desconectada');
+  const hora = actualizado === null ? null : formatTime(actualizado);
+
+  return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 font-medium',
-        conectada ? 'text-emerald-300' : 'text-amber-300',
+        'inline-flex items-center gap-2 text-sm',
+        conectada ? 'text-[var(--kiosk-ok)]' : 'text-[var(--kiosk-warn)]',
+        className,
       )}
+      title={hora === null ? estado : `${estado} · ${t('pantalla.actualizado', { hora })}`}
+      aria-label={hora === null ? estado : `${estado}. ${t('pantalla.actualizado', { hora })}`}
     >
       {conectada ? (
         <Wifi className="size-4" aria-hidden="true" />
       ) : (
         <WifiOff className="size-4" aria-hidden="true" />
       )}
-      {conectada ? t('pantalla.reconectada') : t('pantalla.desconectada')}
+      {hora !== null && <span className="tabular-nums">{hora}</span>}
     </span>
-
-    {actualizado !== null && (
-      <span className="text-slate-400">
-        {t('pantalla.actualizado', { hora: formatTime(actualizado) })}
-      </span>
-    )}
-  </div>
-);
+  );
+};

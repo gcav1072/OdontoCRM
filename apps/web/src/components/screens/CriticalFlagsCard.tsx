@@ -1,5 +1,5 @@
 import type { CriticalFlag } from '@odontocrm/contracts';
-import { Badge, cn } from '@odontocrm/ui';
+import { cn } from '@odontocrm/ui';
 import { Stethoscope, TriangleAlert } from 'lucide-react';
 
 import { t } from '../../lib/i18n';
@@ -12,29 +12,27 @@ import { ordenarCriticos } from '../../lib/screens';
  * de entrar: alergias, crónicos, anticoagulantes. Por eso el color y el tamaño
  * van por delante del texto (rojo = para y lee) y el orden lo decide
  * `ordenarCriticos`, que pone primero lo que mata.
+ *
+ * Los colores salen de las variables `--kiosk-*`, así que la tarjeta respeta el modo
+ * claro/oscuro y el color de acento de la pantalla (no los de la aplicación).
  */
 
-const VARIANTE_POR_SEVERIDAD: Readonly<
-  Record<CriticalFlag['severidad'], 'danger' | 'warning' | 'info'>
-> = {
-  alto: 'danger',
-  medio: 'warning',
-  info: 'info',
+const CLASES_SEVERIDAD: Readonly<Record<CriticalFlag['severidad'], string>> = {
+  alto: 'border-[var(--kiosk-danger)] bg-[var(--kiosk-danger-soft)]',
+  medio: 'border-[var(--kiosk-warn)] bg-[var(--kiosk-warn-soft)]',
+  info: 'border-[var(--kiosk-border-strong)] bg-[var(--kiosk-surface)]',
+};
+
+/** Colores del rótulo de nivel de riesgo. */
+const CLASES_BADGE: Readonly<Record<CriticalFlag['severidad'], string>> = {
+  alto: 'border-[var(--kiosk-danger)] text-[var(--kiosk-danger)]',
+  medio: 'border-[var(--kiosk-warn)] text-[var(--kiosk-warn)]',
+  info: 'border-[var(--kiosk-border-strong)] text-[var(--kiosk-ink-subtle)]',
 };
 
 /** Etiqueta del nivel de riesgo (`pantallas.riesgo.*`). */
 export const etiquetaSeveridad = (severidad: CriticalFlag['severidad']): string =>
   t(`pantallas.riesgo.${severidad}`);
-
-/**
- * Clases del semáforo. Son de tema oscuro fijo (la pantalla del consultorio se
- * pinta oscura para el televisor), con borde y texto del color del riesgo.
- */
-const CLASES_SEVERIDAD: Readonly<Record<CriticalFlag['severidad'], string>> = {
-  alto: 'border-red-500/70 bg-red-500/10',
-  medio: 'border-amber-400/70 bg-amber-400/10',
-  info: 'border-slate-500/60 bg-slate-500/10',
-};
 
 export interface CriticalFlagsCardProps {
   flags: readonly CriticalFlag[];
@@ -45,19 +43,21 @@ export const CriticalFlagsCard = ({ flags }: CriticalFlagsCardProps) => {
 
   if (ordenados.length === 0) {
     return (
-      <div className="rounded-card border border-slate-700 bg-slate-900/60 px-6 py-5 text-slate-300">
-        <p className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+      <div className="rounded-card border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-6 py-5">
+        <p className="flex items-center gap-2 text-sm font-semibold text-[var(--kiosk-ink)]">
           <Stethoscope className="size-4" aria-hidden="true" />
           {t('pantalla.consultorio.criticos')}
         </p>
-        <p className="pt-1 text-sm">{t('pantalla.consultorio.sinCriticos')}</p>
+        <p className="pt-1 text-sm text-[var(--kiosk-ink-muted)]">
+          {t('pantalla.consultorio.sinCriticos')}
+        </p>
       </div>
     );
   }
 
   return (
     <section aria-label={t('pantalla.consultorio.criticos')} className="space-y-3">
-      <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-200">
+      <h2 className="flex items-center gap-2 text-xl font-semibold text-[var(--kiosk-ink)]">
         <TriangleAlert className="size-5" aria-hidden="true" />
         {t('pantalla.consultorio.criticos')}
       </h2>
@@ -68,12 +68,17 @@ export const CriticalFlagsCard = ({ flags }: CriticalFlagsCardProps) => {
             key={`${flag.tipo}-${flag.etiqueta}-${String(indice)}`}
             className={cn('rounded-card border-2 px-6 py-5', CLASES_SEVERIDAD[flag.severidad])}
           >
-            <Badge variant={VARIANTE_POR_SEVERIDAD[flag.severidad]}>
+            <span
+              className={cn(
+                'inline-block rounded-full border px-2.5 py-0.5 text-xs font-semibold',
+                CLASES_BADGE[flag.severidad],
+              )}
+            >
               {etiquetaSeveridad(flag.severidad)}
-            </Badge>
-            <p className="pt-2 text-3xl font-bold text-white">{flag.etiqueta}</p>
+            </span>
+            <p className="pt-2 text-3xl font-bold text-[var(--kiosk-ink)]">{flag.etiqueta}</p>
             {flag.detalle !== null && flag.detalle !== '' && (
-              <p className="pt-1 text-lg text-slate-200">{flag.detalle}</p>
+              <p className="pt-1 text-lg text-[var(--kiosk-ink-muted)]">{flag.detalle}</p>
             )}
           </li>
         ))}

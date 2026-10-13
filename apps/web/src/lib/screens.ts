@@ -16,6 +16,8 @@ export const screenKeys = {
   conectadas: ['pantallas', 'conectadas'] as const,
   /** Ficha de la pantalla kiosko que está abierta (con sus ajustes). */
   dispositivo: ['pantallas', 'dispositivo'] as const,
+  /** Marca del consultorio que pinta la pantalla (nombre y logo). */
+  clinica: ['pantallas', 'clinica'] as const,
   /** Estado de la sala de espera. */
   lobby: ['pantallas', 'lobby'] as const,
   /** Paciente en el consultorio. */

@@ -90,6 +90,7 @@ import {
   type RescheduleAppointmentInput,
   type RetryNotificationInput,
   type Role,
+  type ScreenClinic,
   type ScreenDevice,
   type ScreenDeviceInput,
   type ScreenDeviceList,
@@ -273,6 +274,10 @@ export const screensApi = {
   /** Ficha de la pantalla que llama, con sus ajustes (voz, volumen, resalte). */
   actual: (signal?: AbortSignal): Promise<ScreenDevice> =>
     api.get<ScreenDevice>('/screens/device', { signal }),
+
+  /** Marca del consultorio (nombre y logo) para la cabecera y la marca de agua. */
+  clinic: (signal?: AbortSignal): Promise<ScreenClinic> =>
+    api.get<ScreenClinic>('/screens/clinic', { signal }),
 
   lobby: (signal?: AbortSignal): Promise<LobbyState> =>
     api.get<LobbyState>('/screens/lobby', { signal }),

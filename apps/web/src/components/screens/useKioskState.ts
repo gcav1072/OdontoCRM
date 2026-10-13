@@ -1,6 +1,7 @@
 import type {
   ConsultationState,
   LobbyState,
+  ScreenClinic,
   ScreenSettings,
   ScreenStreamEvent,
 } from '@odontocrm/contracts';
@@ -52,6 +53,8 @@ export interface UseKioskStateResult<K extends KioskKind> {
   dispositivo: string | null;
   /** Ajustes del dispositivo (voz, volumen, resalte): los pone la administración. */
   ajustes: ScreenSettings | null;
+  /** Marca del consultorio (nombre y logo) para la cabecera y la marca de agua. */
+  clinic: ScreenClinic | null;
   /** Hay flujo abierto: si no, la pantalla avisa de que está reintentando. */
   conectada: boolean;
   /** El token no sirve (revocado, desactivado o de otro tipo de pantalla). */
@@ -232,11 +235,23 @@ export const useKioskState = <K extends KioskKind>(kind: K): UseKioskStateResult
     enabled: sesionLista > 0,
   });
 
+  /**
+   * Marca del consultorio (nombre y logo): cambia rarísimas veces, así que se pide una
+   * vez con la sesión lista y no se refresca sola (`staleTime` alto).
+   */
+  const { data: clinic } = useQuery({
+    queryKey: screenKeys.clinica,
+    queryFn: ({ signal }) => screensApi.clinic(signal),
+    enabled: sesionLista > 0,
+    staleTime: 30 * 60_000,
+  });
+
   return {
     estado,
     sinToken: token === null,
     dispositivo,
     ajustes: ficha?.settings ?? null,
+    clinic: clinic ?? null,
     conectada,
     sinPermiso,
     reintentar,

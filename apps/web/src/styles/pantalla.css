@@ -1,0 +1,149 @@
+/**
+ * Estética de las **pantallas kiosko** (sala de espera y consultorio).
+ *
+ * La pantalla es un televisor y tiene su **propia** estética: su modo (claro/oscuro) y su
+ * color de acento se configuran por pantalla y **no** siguen a los de la aplicación. Por
+ * eso todo vive bajo `.kiosk-root` y consume variables `--kiosk-*` (que pone el componente
+ * desde los ajustes), nunca la clase `dark` del `<html>` ni los tokens `--color-*` de la app.
+ *
+ * Aquí solo hay lo que no se expresa bien con utilidades de Tailwind: el fondo con halo del
+ * acento, la marca de agua del logo, las animaciones y el respeto a la reducción de movimiento.
+ */
+
+.kiosk-root {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--kiosk-bg);
+  color: var(--kiosk-ink);
+}
+
+.kiosk-root[data-tema='oscuro'] {
+  color-scheme: dark;
+}
+
+.kiosk-root[data-tema='claro'] {
+  color-scheme: light;
+}
+
+/*
+ * Halo del acento: un degradado muy tenue en las esquinas para que el fondo no sea un
+ * plano muerto. Va en `z-index` negativo, así que queda **detrás** del contenido pero
+ * delante del color de fondo (la raíz aísla su contexto de apilado).
+ */
+.kiosk-root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(58% 42% at 50% 0%, var(--kiosk-accent-soft), transparent 70%),
+    radial-gradient(52% 40% at 100% 100%, var(--kiosk-accent-soft), transparent 72%);
+}
+
+/* ── Marca de agua del logo ──────────────────────────────────────────────── */
+
+.kiosk-watermark {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.kiosk-watermark img {
+  width: min(62vw, 44rem);
+  max-height: 68vh;
+  object-fit: contain;
+  /* Máscara radial: el logo se desvanece hacia los bordes (no un recorte duro). */
+  -webkit-mask-image: radial-gradient(closest-side, #000 32%, transparent 78%);
+  mask-image: radial-gradient(closest-side, #000 32%, transparent 78%);
+}
+
+/*
+ * Enmascarado **alfa por modo**: el logo se pinta como silueta (blanco sobre oscuro,
+ * tinta sobre claro) con `brightness`/`invert`, así funciona con cualquier logo que suba
+ * el consultorio, sea del color que sea, y siempre queda por detrás del texto.
+ */
+.kiosk-root[data-tema='oscuro'] .kiosk-watermark img {
+  filter: brightness(0) invert(1);
+  opacity: 0.05;
+}
+
+.kiosk-root[data-tema='claro'] .kiosk-watermark img {
+  filter: brightness(0);
+  opacity: 0.045;
+}
+
+/* ── Animaciones ─────────────────────────────────────────────────────────── */
+
+@keyframes kiosk-entrada {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes kiosk-aparece {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Halo que late alrededor del llamado vigente (el más reciente). */
+@keyframes kiosk-vigente {
+  0% {
+    box-shadow: 0 0 0 0 var(--kiosk-accent-glow);
+  }
+  70% {
+    box-shadow: 0 0 0 16px rgb(0 0 0 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(0 0 0 / 0);
+  }
+}
+
+/* Barrido suave del filete bajo el nombre del consultorio. */
+@keyframes kiosk-filete {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scaleX(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+.kiosk-entrada {
+  animation: kiosk-entrada 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.kiosk-aparece {
+  animation: kiosk-aparece 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.kiosk-vigente {
+  animation: kiosk-vigente 2.6s ease-out infinite;
+}
+
+.kiosk-filete {
+  background: linear-gradient(90deg, transparent, var(--kiosk-accent), transparent);
+  animation: kiosk-filete 4.5s ease-in-out infinite;
+}
+
+/*
+ * La reducción de movimiento del sistema (`prefers-reduced-motion`) ya se aplica de forma
+ * global desde `index.css`; aquí no hace falta repetirla.
+ */
