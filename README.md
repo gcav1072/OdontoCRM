@@ -25,6 +25,7 @@ más adelante, fuera de ella por VPN.
 > | **Instalar el servidor de la clínica** | `sudo bash infra/fedora/instalar/instalar.sh` (Fedora) o `powershell -ExecutionPolicy Bypass -File infra\windows\instalar\instalar.ps1` (Windows) y, para el detalle, [`INSTALL.md`](infra/fedora/INSTALL.md) §3-bis o [`infra/windows/INSTALL.md`](infra/windows/INSTALL.md) |
 > | **Poner mi consultorio, mi logo y mis colores** | [`docs/IDENTIDAD_Y_DATOS.md`](docs/IDENTIDAD_Y_DATOS.md) — datos del consultorio, marca y tema, en desarrollo y en producción |
 > | **Operar el sistema ya instalado** | [`infra/fedora/RUNBOOK.md`](infra/fedora/RUNBOOK.md) y [`infra/windows/RUNBOOK.md`](infra/windows/RUNBOOK.md) y [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) |
+> | **Recuperar el servidor** (mudarlo o tras un fallo de disco) | [`docs/RECUPERACION.md`](docs/RECUPERACION.md) |
 > | **Usar el consultorio** (sin terminal) | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) |
 > | **Conectar tablets, móviles y TVs** | [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) |
 > | **Desarrollar** | este README y [`docs/COMANDOS.md`](docs/COMANDOS.md) |
@@ -126,6 +127,7 @@ La lista completa (con flags, requisitos, variables de entorno y problemas típi
 está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)
 - [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) — comandos del servidor en producción (`sudo odontocrm …`).**. Estos son los del día a día:
 - [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) — instalar el certificado del servidor en tablets, móviles, PCs y TVs.
+- [`docs/RECUPERACION.md`](docs/RECUPERACION.md) — recuperar el servidor (servidor nuevo o fallo de disco): `odontocrm recuperar`.
 
 | Comando | Qué hace |
 | :--- | :--- |

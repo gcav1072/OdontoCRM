@@ -4,6 +4,40 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Recuperación] — `odontocrm recuperar`: la recuperación completa en un comando · 2026-10-12
+
+Recuperar un servidor (nuevo o tras un fallo físico) obligaba a encadenar a mano `parar` +
+`restaurar` + montar el almacén + `arrancar`, y el almacén ni siquiera venía en el respaldo.
+Ahora hay un comando que hace el flujo entero:
+
+```bash
+sudo odontocrm recuperar --from /media/pendrive/2026-10-12 --yes
+```
+
+Para los servicios, restaura las bases (con la verificación previa del restaurador y
+`--keep-old`), repone el almacén y arranca (que ya termina verificando). Es un **orquestador**:
+no reimplementa nada, reutiliza lo que ya estaba probado. La **configuración no se toca** a
+propósito —los `.env` del respaldo son de la máquina anterior y pisarían las contraseñas que el
+instalador acaba de crear—; con `--con-config` se repone, y sin `--yes` solo dice qué haría.
+
+## [Respaldo] — El respaldo diario incluye el almacén, y hay guía de recuperación · 2026-10-12
+
+El respaldo diario guardaba **bases + configuración**, pero **no** el almacén (radiografías y
+PDFs), y la restauración **no** reponía ni el almacén ni la configuración. Consecuencia: un
+fallo físico del disco dejaba la base recuperable pero **los adjuntos perdidos** — y, si el
+almacén está cifrado, restaurarlo sin la configuración (sin el `STORAGE_ENCRYPTION_KEY`) lo
+dejaría **ilegible**.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `odontocrm-backup.service` (Fedora) · tarea «respaldo diario» (Windows) | El respaldo diario pasa a `--include-config --include-storage` |
+| `odontocrm respaldar` (los dos CLI) | Lo mismo: el almacén entra por defecto |
+| `odontocrm-backup.sh` | Si no hay almacén todavía, **avisa y sigue** (antes abortaba: siendo el valor por defecto, no puede tumbar la copia nocturna) |
+| `RUNBOOK.md` (Fedora y Windows) | Nueva sección **«Recuperación completa: servidor nuevo o fallo físico»**: instalar → verificar el respaldo → parar → restaurar bases → reponer almacén y configuración → arrancar → verificar |
+
+El respaldo ya se puede validar entero antes de tocar nada: `verify-backup.mjs` comprueba el
+SHA-256 de **todos** los archivos del respaldo (bases y archivos), no solo los `.dump`.
+
 ## [Administración] — `/estado` y respaldos por el bot de administración · 2026-10-12
 
 El bot de administración solo **enviaba** avisos; ahora también **escucha**. Un proceso aparte
