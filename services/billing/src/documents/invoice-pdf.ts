@@ -127,16 +127,16 @@ export const renderInvoiceHtml = async (input: InvoicePdfInput): Promise<string>
   const fecha = fechaFiscal(input.issuedAt);
   // El odontólogo que responde por el documento, en el membrete.
   const lineaDentista = clinicDentistLine(input.dentist ?? null);
-  // El bloque de identidad sale del membrete compartido (ADR 0064); la factura pone la
-  // razón social como nombre y el nombre comercial como subtítulo.
+  // El bloque de identidad sale del membrete compartido (ADR 0064): lo encabeza el **nombre
+  // del consultorio** (admite dos líneas) y la razón social va de subtítulo, igual que en el
+  // récipe, el dossier y el membrete de la SPA. Antes la factura ponía la **razón social** de
+  // nombre: cuando el titular la dejaba en blanco, el renglón grande salía vacío y el nombre
+  // del consultorio quedaba de renglón menor.
   const membrete = buildLetterheadView(
     clinic,
     lineaDentista,
     input.brand?.letterhead ?? BRAND.letterhead,
-    {
-      name: clinic.legalName ?? clinic.name,
-      subtitle: clinic.legalName === null ? null : clinic.name,
-    },
+    { subtitle: clinic.legalName },
   );
   const enBs = (cents: number): number => vesCentimosFromUsd(cents, input.rateMicros);
 

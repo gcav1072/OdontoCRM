@@ -9,9 +9,9 @@ export interface LetterheadViewLine {
 
 /** El membrete resuelto para pintar: nombre (y subtítulo), líneas visibles y pie. */
 export interface LetterheadView {
-  /** Encabeza el bloque (el nombre del consultorio; la factura pone la razón social). */
+  /** Encabeza el bloque: el **nombre del consultorio** en todos los imprimibles (admite dos líneas). */
   name: string;
-  /** Segunda línea bajo el nombre (la factura pone aquí el nombre comercial). */
+  /** Segunda línea bajo el nombre: la **razón social**, si el documento la lleva (récipe, dossier, factura…). */
   subtitle: string | null;
   /** Las líneas visibles, en el orden elegido en el panel y ya sin las vacías. */
   lines: LetterheadViewLine[];

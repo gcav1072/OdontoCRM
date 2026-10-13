@@ -1,8 +1,22 @@
-import { BRAND, type BrandThemePayload } from '@odontocrm/contracts';
+import { BRAND, type BrandThemePayload, type ClinicIdentity } from '@odontocrm/contracts';
 import { describe, expect, it } from 'vitest';
 
 import { renderCreditNoteHtml, type CreditNotePdfInput } from './credit-note-pdf.js';
 import { renderReceiptHtml, type ReceiptPdfInput } from './receipt-pdf.js';
+
+/** Un consultorio con la razón social en blanco: el caso que destapó el membrete sin nombre. */
+const consultorio = {
+  name: 'Consultorio Sonrisa',
+  legalName: '',
+  address: 'Calle 1',
+  city: 'Caracas',
+  phones: [],
+  email: null,
+  rif: null,
+  website: null,
+  logoPath: null,
+  dentists: [],
+} satisfies ClinicIdentity;
 
 /**
  * El **recibo** y la **nota de crédito** no tenían prueba de plantilla. Además de dejar
@@ -67,6 +81,11 @@ describe('la plantilla del recibo', () => {
     expect(html).toContain('Ana Pérez');
   });
 
+  it('el nombre del consultorio encabeza el membrete (no la razón social)', async () => {
+    const html = await renderReceiptHtml(recibo({ clinic: consultorio }));
+    expect(html).toContain('<p class="brand-lh-name">Consultorio Sonrisa</p>');
+  });
+
   it('los COLORES del papel salen de la marca del panel, no del código', async () => {
     const html = await renderReceiptHtml(recibo({ brand: marca }));
     expect(html).toContain('--brand-primary: #c81e1e;');
@@ -81,6 +100,11 @@ describe('la plantilla de la nota de crédito', () => {
     expect(html).toContain('NC-000001');
     expect(html).toContain('A-000123');
     expect(html).toContain('Devolución del tratamiento');
+  });
+
+  it('el nombre del consultorio encabeza el membrete (no la razón social)', async () => {
+    const html = await renderCreditNoteHtml(nota({ clinic: consultorio }));
+    expect(html).toContain('<p class="brand-lh-name">Consultorio Sonrisa</p>');
   });
 
   it('los COLORES del papel salen de la marca del panel, no del código', async () => {

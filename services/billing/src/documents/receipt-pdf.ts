@@ -79,15 +79,13 @@ export const renderReceiptHtml = async (input: ReceiptPdfInput): Promise<string>
   const marcaDeAgua = brandWatermarkHtml(logo ?? (await readImageDataUri(BRAND.watermarkPath)));
   // El odontólogo que responde por el documento, en el membrete.
   const lineaDentista = clinicDentistLine(input.dentist ?? null);
-  // El bloque de identidad sale del membrete compartido (ADR 0064).
+  // El bloque de identidad sale del membrete compartido (ADR 0064): lo encabeza el **nombre
+  // del consultorio** y la razón social va de subtítulo, como en el resto de los imprimibles.
   const membrete = buildLetterheadView(
     clinic,
     lineaDentista,
     input.brand?.letterhead ?? BRAND.letterhead,
-    {
-      name: clinic.legalName ?? clinic.name,
-      subtitle: clinic.legalName === null ? null : clinic.name,
-    },
+    { subtitle: clinic.legalName },
   );
   const enBs = (cents: number): string =>
     dinero(Math.round((cents * input.rateMicros) / 1_000_000));

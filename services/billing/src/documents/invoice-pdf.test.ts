@@ -144,9 +144,36 @@ describe('la plantilla de la factura', () => {
         } as never,
       }),
     );
-    expect(html).toContain('Consultorio, C.A.');
+    // El **nombre del consultorio** encabeza el bloque y la razón social va de subtítulo.
+    expect(html).toContain('<p class="brand-lh-name">Consultorio</p>');
+    expect(html).toContain('<p class="brand-lh-line">Consultorio, C.A.</p>');
     // Las líneas vacías del membrete se omiten: no queda un «RIF: » huérfano.
     expect(html).toContain('class="brand-lh"');
     expect(html).not.toContain('RIF: ');
+  });
+
+  it('el nombre del consultorio encabeza el membrete aunque falte la razón social', async () => {
+    // Regresión: la factura ponía la **razón social** de nombre; si el titular la dejaba en
+    // blanco (`''`), el renglón grande salía vacío y el nombre del consultorio quedaba de
+    // renglón menor. Ahora encabeza el nombre, como en el récipe, el dossier y la SPA.
+    const html = await renderInvoiceHtml(
+      factura({
+        clinic: {
+          name: 'Consultorio Sonrisa',
+          legalName: '',
+          address: 'Calle 1',
+          city: 'Caracas',
+          phones: [],
+          email: null,
+          rif: null,
+          website: null,
+          logoPath: null,
+          dentists: [],
+        },
+      }),
+    );
+    expect(html).toContain('<p class="brand-lh-name">Consultorio Sonrisa</p>');
+    // Una razón social vacía no deja un subtítulo huérfano.
+    expect(html).not.toContain('<p class="brand-lh-line"></p>');
   });
 });
