@@ -1,4 +1,5 @@
 import { EVENT_TOPICS, domainEventSchema, type DomainEvent } from '@odontocrm/events';
+import { MANUAL_LINE_CODE } from '@odontocrm/contracts';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -186,6 +187,8 @@ describeWithDatabase('la caja: del cierre de la sesión al borrador', () => {
         description: null,
         toothNumber: 26,
         surfaces: ['occlusal', 'mesial'],
+        // La caja no puede recategorizar una partida del arancel: la categoría se **ignora**.
+        taxCategory: 'general',
       },
       {
         code: 'gel_fluorado',
@@ -202,22 +205,54 @@ describeWithDatabase('la caja: del cierre de la sesión al borrador', () => {
         toothNumber: null,
         surfaces: [],
       },
+      // Una partida escrita a mano (sin arancel): declara su descripción y su categoría.
+      {
+        code: MANUAL_LINE_CODE,
+        quantity: 1,
+        unitPriceCentsUsd: 2500,
+        description: 'Retiro de brackets',
+        toothNumber: null,
+        surfaces: [],
+        taxCategory: 'exento',
+      },
+      {
+        code: MANUAL_LINE_CODE,
+        quantity: 2,
+        unitPriceCentsUsd: 500,
+        description: 'Cepillo dental (mostrador)',
+        toothNumber: null,
+        surfaces: [],
+        taxCategory: 'general',
+      },
     ]);
 
-    // 50,00 exento + 30,00 exento = 80,00; el gel: 2 × 12,00 = 24,00 gravado al 16 % = 3,84 de IVA.
+    // Exento: 50,00 (obturación, pese al `general` que mandó la caja) + 30,00 (profilaxis) + 25,00
+    // (manual exenta) = 105,00. Gravado: 24,00 (gel) + 10,00 (manual al 16 %) = 34,00 → 5,44 de IVA.
     expect(totales).toEqual({
-      exemptAmountCentsUsd: 8000,
-      taxableAmountCentsUsd: 2400,
-      ivaAmountCentsUsd: 384,
-      totalCentsUsd: 10784,
+      exemptAmountCentsUsd: 10500,
+      taxableAmountCentsUsd: 3400,
+      ivaAmountCentsUsd: 544,
+      totalCentsUsd: 14444,
     });
 
     const detalle = await getDraft(handle.db, draftId);
-    expect(detalle.itemCount).toBe(3);
+    expect(detalle.itemCount).toBe(5);
     expect(detalle.needsPricing).toBe(false);
-    expect(detalle.balanceCentsUsd).toBe(10784);
+    expect(detalle.balanceCentsUsd).toBe(14444);
     const gel = detalle.items.find((item) => item.code === 'gel_fluorado');
     expect(gel).toMatchObject({ taxCategory: 'general', taxRateBasisPoints: 1600, quantity: 2 });
+    // El arancel manda: la obturación sigue exenta pese al `taxCategory: 'general'` de la caja.
+    const obturacion = detalle.items.find((item) => item.code === 'obturacion_resina');
+    expect(obturacion).toMatchObject({ taxCategory: 'exento', taxRateBasisPoints: 0 });
+    // Las manuales conservan descripción y categoría (no se pisan con «Procedimiento»).
+    const manuales = detalle.items.filter((item) => item.code === MANUAL_LINE_CODE);
+    expect(manuales).toHaveLength(2);
+    expect(
+      manuales.find((item) => item.description === 'Retiro de brackets'),
+    ).toMatchObject({ taxCategory: 'exento', taxRateBasisPoints: 0 });
+    expect(
+      manuales.find((item) => item.description === 'Cepillo dental (mostrador)'),
+    ).toMatchObject({ taxCategory: 'general', taxRateBasisPoints: 1600, quantity: 2 });
   });
 
   it('solo los borradores se pueden editar (una factura emitida no)', async () => {
@@ -246,7 +281,7 @@ describeWithDatabase('la caja: del cierre de la sesión al borrador', () => {
       .from(invoices)
       .where(eq(invoices.id, draftId));
     expect(filas[0]?.status).toBe('emitida');
-    expect(filas[0]?.total).toBe(10784);
+    expect(filas[0]?.total).toBe(14444);
   });
 
   it('el catálogo conserva los dos bienes gravados para que el camino del 16 % no se muera', async () => {

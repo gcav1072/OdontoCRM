@@ -80,6 +80,8 @@ interface LineInput {
   quantity?: number;
   unitPriceCentsUsd?: number;
   description?: string | null;
+  /** La categoría de una partida **escrita a mano**; en las del arancel se ignora (manda el catálogo). */
+  taxCategory?: TaxCategory;
 }
 
 /**
@@ -98,7 +100,10 @@ const buildItems = async (db: BillingDb, lines: readonly LineInput[]): Promise<I
     const delCatalogo = porCodigo.get(line.code);
     const quantity = line.quantity ?? 1;
     const unitPriceCentsUsd = line.unitPriceCentsUsd ?? delCatalogo?.priceCentsUsd ?? 0;
-    const taxCategory = (delCatalogo?.taxCategory ?? 'exento') as TaxCategory;
+    // La categoría la manda el **arancel** cuando la partida está en él. Solo una partida escrita a
+    // mano —sin fila en el catálogo— declara la suya: así un servicio odontológico no se puede
+    // facturar como gravado desde la caja.
+    const taxCategory = (delCatalogo?.taxCategory ?? line.taxCategory ?? 'exento') as TaxCategory;
     const taxRateBasisPoints = taxRateForItem(taxCategory);
     const surfaces = line.surfaces ?? [];
     /**
@@ -397,6 +402,7 @@ export const replaceDraftItems = async (
       description: item.description,
       toothNumber: item.toothNumber,
       surfaces: item.surfaces,
+      taxCategory: item.taxCategory,
     })),
   );
   const totales = invoiceTotalsFromItems(lineas);
