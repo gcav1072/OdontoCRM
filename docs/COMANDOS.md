@@ -460,6 +460,10 @@ los servicios y volcar cada base):
 | `/respaldos` | Toma un respaldo **ahora** (`pg_dump -Fc` de cada base, con las credenciales de su propio servicio), verifica cada volcado, calcula las sumas SHA-256 y manda los `.dump` + `SHA256SUMS` por Telegram. Si un archivo supera los 50 MB (límite de Telegram), avisa y lo deja en la carpeta temporal. |
 | `/ayuda` | La lista de comandos. |
 
+Lo que manda el bot **es restaurable tal cual** —es `pg_dump -Fc`, un archivo por base, con su
+`SHA256SUMS`—: se comprueba con `verify-backup.mjs --from` y se repone con `odontocrm restaurar`
+(ver [`RECUPERACION.md` §3](RECUPERACION.md#3-si-lo-que-hay-es-lo-que-mandó-el-bot-solo-las-bases)).
+
 **Solo responde al chat de `ADMIN_TELEGRAM_CHAT_ID`**: cualquier otro mensaje se ignora en
 silencio. El proceso lo supervisa PM2 (`odontocrm-admin-bot`) en Windows y
 `odontocrm-admin-bot.service` en Fedora; sin bot configurado **sale con 0** y no se reinicia.

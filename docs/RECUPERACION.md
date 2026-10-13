@@ -24,7 +24,9 @@
 | **Recuperar una sola base** (un dato borrado por error) | `odontocrm restaurar` de **esa** base (no hace falta el flujo completo) |
 
 Los tres casos son el mismo trabajo: **reponer lo que guarda el respaldo**. Lo único que cambia es
-de dónde sale la máquina que lo ejecuta.
+de dónde sale la máquina que lo ejecuta. Y el respaldo puede venir de dos sitios: el **directorio
+del día** (pendrive, disco externo) o lo que mandó el **bot de administración** por Telegram, que
+trae **solo las bases** (§3).
 
 ---
 
@@ -87,14 +89,67 @@ Reglas (si algo no encaja, **sospecha antes de restaurar**):
 - **Los tres bloques viajan juntos** (bases + almacén + configuración). Si falta `storage*` o
   `config*`, ese respaldo es anterior a esa mejora: repón lo que haya y cuenta con lo que falta (§1).
 - **`SHA256SUMS` y `manifest.txt` no se editan a mano**: son la prueba de que el respaldo no viene
-  cortado. Si un archivo no cuadra con su suma, ese respaldo **no se usa** (§3).
+  cortado. Si un archivo no cuadra con su suma, ese respaldo **no se usa** (§4).
 - **Un `*.dump.err` es un volcado que falló** en esa fecha (en un respaldo sano no aparece ninguno).
 - **`odonto_events` puede no estar**: es la cola, y hasta que un servicio con outbox arranca por
   primera vez esa base no existe. No es un respaldo roto.
+- **Lo que manda el bot es otro origen** —`<base>.dump`, sin fecha, en una carpeta
+  `admin-respaldos-…`—, y trae solo las bases: se trata en §3.
 
 ---
 
-## 3. Antes de tocar nada: comprobar el respaldo
+## 3. Si lo que hay es lo que mandó el bot (solo las bases)
+
+El bot de administración (`/respaldos` en Telegram) sirve para **sacar las bases ahora**:
+`pg_dump` de cada base, `SHA256SUMS` y un mensaje con el resumen. Sirve igual para recuperar,
+pero hay que saber dos cosas antes de empezar:
+
+- **Es solo las bases.** El bot **no** manda el almacén (radiografías y PDFs) ni la configuración:
+  con esto se recuperan las citas, las historias y las facturas, y **no** los documentos. Los dos
+  bloques que faltan se sacan del respaldo nocturno (§2) o se quedan como están; al terminar hay
+  que reponer el `STORAGE_ENCRYPTION_KEY` si el almacén está cifrado (§7).
+- **Los archivos llegan sueltos y sin fecha**: `<base>.dump` (no `<base>_<fecha>.dump`), y en una
+  carpeta llamada `admin-respaldos-<fecha ISO>`, no `AAAA-MM-DD`. Por eso `verify-backup.mjs` **solo
+  los mira si se le pasan con `--from`**: sin eso busca carpetas con fecha y no ve esta.
+
+Telegram corta en 50 MB: lo que no quepa **no se envía** y queda en la carpeta temporal del
+servidor —el mensaje del bot dice dónde—. Esa carpeta **no se borra** cuando algo quedó pendiente,
+pero la ruta que anuncia el bot hay que saber leerla, porque el servicio tiene su propio `/tmp`:
+
+| | Dónde buscar lo que no llegó por Telegram |
+| :--- | :--- |
+| **Fedora** | `/tmp/odontocrm/admin-respaldos-*` **dentro** del `/tmp` privado del servicio: `sudo ls -d /tmp/systemd-private-*/tmp/odontocrm/admin-respaldos-*` (el `.service` usa `PrivateTmp=true`) |
+| **Windows** | `C:\OdontoCRM\data\tmp\admin-respaldos-*` |
+
+### El camino: los mismos tres pasos, con esa carpeta
+
+```bash
+# 1) Reunir los archivos en una carpeta: las descargas de Telegram, o la carpeta temporal del
+#    servidor si algo superó los 50 MB. El bot nombra la carpeta con la fecha en ISO, así:
+CARPETA=/media/pendrive/admin-respaldos-2026-10-12T03-30-00-123Z
+
+# 2) Comprobar (restaura cada volcado en una base temporal y cuenta filas: no toca nada):
+node tools/verify-backup.mjs --from "$CARPETA" --estado
+
+# 3) Restaurar (los mismos comandos de §6, con esa carpeta como origen):
+sudo odontocrm restaurar --from "$CARPETA" --all --keep-old --yes          # Fedora
+odontocrm restaurar --from E:\admin-respaldos-2026-10-12T03-30-00-123Z --all --keep-old --yes  # Windows
+```
+
+Una sola base, sin tocar las demás: `--db odonto_patients` (nombre completo; el corto —`patients`—
+solo lo admite `verify-backup.mjs`, no el restaurador).
+
+El restaurador reconoce los dos nombres de archivo —el de la noche (`<base>_<fecha>.dump`) y el del
+bot (`<base>.dump`)— y, si en la carpeta están los dos, **prefiere el de la noche**. Los volcados del
+bot vienen con `--no-owner`: se restauran con el rol de cada servicio, como cualquier otro.
+
+> **Custodia.** Estos dumps van **en claro** y contienen datos clínicos, y ahora hay copias **en el
+> chat de Telegram y en el teléfono**. Al terminar, bórralas de ahí: el servidor y el pendrive
+> (protegido) son los sitios donde estos archivos deben estar.
+
+---
+
+## 4. Antes de tocar nada: comprobar el respaldo
 
 Un respaldo que nunca se ha restaurado es una carpeta con archivos. **Primero se comprueba** (y de
 paso se ve qué contiene y cuándo se hizo):
@@ -118,7 +173,7 @@ la configuración (`etc-odontocrm_*` en Fedora, `config.zip` en Windows), `SHA25
 
 ---
 
-## 4. La recuperación, en un comando
+## 5. La recuperación, en un comando
 
 ```bash
 # 1) En una máquina nueva, primero se instala (crea las bases vacías, los roles y los servicios):
@@ -143,15 +198,15 @@ Es prudente a propósito:
 
 - **sin `--yes`** dice exactamente qué haría y **no toca nada**;
 - **`--dry-run`** ni siquiera pregunta;
-- **no repone la configuración** salvo `--con-config` (ver §6);
+- **no repone la configuración** salvo `--con-config` (ver §7);
 - cualquier paso que falle **detiene el proceso** y dice qué pasó.
 
 ---
 
-## 5. El paso a paso (si prefieres verlo, o si `recuperar` falló en algo)
+## 6. El paso a paso (si prefieres verlo, o si `recuperar` falló en algo)
 
 ```bash
-# 1) Comprueba el respaldo (ver §3)
+# 1) Comprueba el respaldo (ver §4)
 node tools/verify-backup.mjs --from /media/pendrive/2026-10-12 --estado
 
 # 2) Para la pila (PostgreSQL se queda arriba)
@@ -163,7 +218,7 @@ sudo odontocrm restaurar --from /media/pendrive/2026-10-12 --all --keep-old --ye
 # 4) El almacén (radiografías y PDFs) → /var/lib/odontocrm/storage
 sudo tar -xzf /media/pendrive/2026-10-12/storage_<fecha>.tar.gz -C /var/lib/odontocrm/storage
 
-# 5) La configuración, SOLO si la necesitas (ver §6)
+# 5) La configuración, SOLO si la necesitas (ver §7)
 sudo tar -xzf /media/pendrive/2026-10-12/etc-odontocrm_<fecha>.tar.gz -C /etc
 sudo chmod 0600 /etc/odontocrm/*.env /etc/odontocrm/.pgpass
 
@@ -178,7 +233,7 @@ acceso al copiarse).
 
 ---
 
-## 6. La configuración y el `STORAGE_ENCRYPTION_KEY`
+## 7. La configuración y el `STORAGE_ENCRYPTION_KEY`
 
 `recuperar` **no repone `/etc/odontocrm`** (ni `…\ProgramData\OdontoCRM\env`) por defecto, y es a
 propósito: los `.env` del respaldo son de la máquina **anterior**. Traen sus contraseñas y sus
@@ -199,7 +254,7 @@ si no, el almacén restaurado queda **ilegible**. Opciones:
 
 ---
 
-## 7. Después de recuperar
+## 8. Después de recuperar
 
 1. **Si el respaldo es de un esquema anterior**, hay que **aplicar las migraciones** antes de dar
    por bueno el sistema: `odontocrm actualizar` (Fedora y Windows) compila, migra y reinicia.
@@ -212,7 +267,7 @@ si no, el almacén restaurado queda **ilegible**. Opciones:
 
 ---
 
-## 8. Qué cubre y qué no
+## 9. Qué cubre y qué no
 
 | Cubre | No cubre |
 | :--- | :--- |
@@ -225,7 +280,7 @@ si no, el almacén restaurado queda **ilegible**. Opciones:
 
 ---
 
-## 9. Dónde está cada cosa
+## 10. Dónde está cada cosa
 
 | Documento | Para qué |
 | :--- | :--- |
