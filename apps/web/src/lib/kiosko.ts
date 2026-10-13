@@ -81,6 +81,8 @@ export interface KioskSession {
 /** Canjea el token de dispositivo por un JWT (renovado con margen de 1 minuto). */
 export const createKioskSession = (deviceToken: string) => {
   let current: KioskSession | null = null;
+  /** Renovación en curso: el proveedor de token de `api` puede pedirla varias veces a la vez. */
+  let enCurso: Promise<KioskSession> | null = null;
 
   const renovar = async (): Promise<KioskSession> => {
     const respuesta = await authApi.deviceLogin(deviceToken);
@@ -92,11 +94,18 @@ export const createKioskSession = (deviceToken: string) => {
     return current;
   };
 
+  const renovarUnaVez = (): Promise<KioskSession> => {
+    enCurso ??= renovar().finally(() => {
+      enCurso = null;
+    });
+    return enCurso;
+  };
+
   return {
     /** Sesión válida, renovándola si hace falta. */
     vigente: async (): Promise<KioskSession> => {
       if (current !== null && current.expiresAt - Date.now() > 60_000) return current;
-      return renovar();
+      return renovarUnaVez();
     },
     olvidar: (): void => {
       current = null;

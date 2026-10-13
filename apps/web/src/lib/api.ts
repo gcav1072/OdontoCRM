@@ -126,6 +126,36 @@ export const setAccessToken = (token: string | null): void => {
   if (token !== null) sesionPerdidaNotificada = false;
 };
 
+/**
+ * **Proveedor de token para las pantallas kiosko.**
+ *
+ * La pantalla no tiene usuario ni cookie: se autentica con su token de dispositivo, que se
+ * canjea por un JWT que caduca a los 15 minutos. Ese JWT no puede vivir en `accessToken`
+ * (ese es el de la sesión de usuario y lo maneja `AuthProvider`), así que el kiosko registra
+ * aquí un proveedor que `api` consulta en **cada** petición y que renueva el token cuando
+ * hace falta. Sin él, las peticiones del kiosko (`GET /screens/device`, los textos y la marca
+ * del consultorio) viajaban **sin** `Authorization` y el servidor las rechazaba con 401: la
+ * pantalla se quedaba con los ajustes por defecto. Sin proveedor, `api` usa la sesión de usuario.
+ */
+type TokenProvider = () => Promise<string | null>;
+let proveedorToken: TokenProvider | null = null;
+
+export const setTokenProvider = (proveedor: TokenProvider | null): void => {
+  proveedorToken = proveedor;
+};
+
+/** Token para una petición: el del kiosko si hay proveedor, o el de la sesión de usuario. */
+const tokenParaPeticion = async (): Promise<string | null> => {
+  if (proveedorToken === null) return getAccessToken();
+  try {
+    return await proveedorToken();
+  } catch {
+    // Un fallo al emitir el token del kiosko no debe tumbar la petición con una excepción
+    // rara: se manda sin token y el 401 lo trata el camino normal.
+    return null;
+  }
+};
+
 /** `AuthProvider` registra aquí qué hacer cuando la sesión ya no se puede renovar. */
 export const setSessionLostHandler = (handler: (() => void) | null): void => {
   manejadorSesionPerdida = handler;
@@ -260,8 +290,8 @@ const enviar = async (method: string, path: string, options: RequestOptions): Pr
   const headers = new Headers({ Accept: 'application/json' });
   if (options.body !== undefined) headers.set('Content-Type', 'application/json');
 
-  const token = getAccessToken();
-  if (token !== null && options.anonymous !== true) {
+  const token = options.anonymous === true ? null : await tokenParaPeticion();
+  if (token !== null) {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
@@ -334,7 +364,15 @@ const solicitar = async <T>(
 ): Promise<T> => {
   const response = await enviar(method, path, options);
 
-  if (response.status === 401 && options.skipRefresh !== true && options.anonymous !== true) {
+  if (
+    response.status === 401 &&
+    options.skipRefresh !== true &&
+    options.anonymous !== true &&
+    // Con el proveedor del kiosko no hay sesión de usuario que renovar (ni cookie de
+    // refresco): un 401 es la respuesta, no una sesión que se cayó. Se deja pasar para
+    // que lo trate quien pidió (la pantalla muestra su aviso de «sin permiso»).
+    proveedorToken === null
+  ) {
     const renovada = await intentarRenovarSesion();
     if (renovada) return interpretar<T>(await enviar(method, path, options));
     notificarSesionPerdida();
@@ -368,8 +406,8 @@ export const apiBinary = async (
 ): Promise<Blob> => {
   const pedir = async (): Promise<Response> => {
     const headers = new Headers({ Accept: '*/*' });
-    const token = getAccessToken();
-    if (token !== null && options.anonymous !== true) {
+    const token = options.anonymous === true ? null : await tokenParaPeticion();
+    if (token !== null) {
       headers.set('Authorization', `Bearer ${token}`);
     }
     try {

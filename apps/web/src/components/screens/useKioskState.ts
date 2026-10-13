@@ -8,7 +8,7 @@ import type {
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { isApiError } from '../../lib/api';
+import { isApiError, setTokenProvider } from '../../lib/api';
 import { screensApi } from '../../lib/endpoints';
 import {
   abrirFlujoKiosko,
@@ -158,6 +158,14 @@ export const useKioskState = <K extends KioskKind>(kind: K): UseKioskStateResult
     const sesion = createKioskSession(token);
     setSinPermiso(false);
 
+    /**
+     * El cliente HTTP (`api`) usa este token en **cada** petición. La pantalla no tiene
+     * sesión de usuario, así que sin esto los ajustes (`GET /screens/device`), los textos
+     * del kiosko y la marca del consultorio viajaban sin `Authorization` y el servidor los
+     * rechazaba con 401: la pantalla se quedaba siempre con los valores por defecto.
+     */
+    setTokenProvider(() => sesion.vigente().then((actual) => actual.token));
+
     void sesion
       .vigente()
       .then((actual) => {
@@ -180,6 +188,8 @@ export const useKioskState = <K extends KioskKind>(kind: K): UseKioskStateResult
 
     return () => {
       activo = false;
+      // Al desmontar (o reintentar) se suelta el proveedor: otra sesión, si la hay, manda.
+      setTokenProvider(null);
     };
   }, [token, kind, intento]);
 

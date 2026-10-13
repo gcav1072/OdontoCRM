@@ -29,7 +29,10 @@ export const useScreenTexts = (): ScreenTextTranslator => {
     queryKey: APP_SETTINGS_QUERY_KEY,
     queryFn: ({ signal }) => settingsApi.get(signal),
     staleTime: 5 * 60_000,
-    retry: false,
+    // El kiosko registra su token en `api` desde `useKioskState`, cuyo efecto corre algo
+    // después del primer render: si esta consulta se dispara antes de que el proveedor
+    // esté puesto, da 401. Un par de reintentos la recuperan sin intervención.
+    retry: 2,
   });
   const textos = consulta.data?.screenTexts;
 
