@@ -2172,8 +2172,14 @@ sudo chown -R odontocrm:odontocrm /var/lib/odontocrm/storage
 
 1. Si el respaldo es de un esquema **anterior** al código desplegado, aplica las
    migraciones (§9.3) — el script de restauración no las ejecuta.
-2. Reinicia los servicios afectados y verifica `/health` (§17).
-3. Si usaste `--keep-old`, elimina `<base>__antes_de_restaurar_<fecha>` cuando todo
+2. El **almacén** (radiografías y PDFs) y su clave **sí** los reponen solos `odontocrm recuperar`
+   y `odontocrm restaurar --all`: extraen el `storage_*.tar.gz`, **reconcilian
+   `STORAGE_ENCRYPTION_KEY`** (copian solo esa línea del respaldo a los `.env`, sin tocar el resto)
+   y comprueban que un documento se descifra de verdad. Ya no hay que copiar la clave a mano ni
+   descomprimir el almacén por tu cuenta (sigue estando el paso a paso manual, por si el comando
+   falló en algo).
+3. Reinicia los servicios afectados y verifica `/health` (§17).
+4. Si usaste `--keep-old`, elimina `<base>__antes_de_restaurar_<fecha>` cuando todo
    esté validado:
 
 ```sql

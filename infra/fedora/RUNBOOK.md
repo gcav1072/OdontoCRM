@@ -217,6 +217,12 @@ sudo odontocrm verificar
 > restaurar es destructivo. Y antes de restaurar en producción, un **respaldo reciente
 > verificado** ([[INSTALL.md §15]]).
 
+> **`restaurar --all` no es solo las bases.** Además de las nueve bases, repone el **almacén**
+> (radiografías y PDFs), **reconcilia `STORAGE_ENCRYPTION_KEY`** (copia solo esa línea del respaldo a
+> los `.env`) y **reinicia** los servicios. Con `--db <una>` o `--list` sigue tocando solo las bases.
+> Es el mismo camino que hace `odontocrm recuperar` de una pieza; el flujo completo (qué trae el
+> respaldo, los tres casos) está en [`docs/RECUPERACION.md`](../../docs/RECUPERACION.md).
+
 La prueba de restauración completa (base limpia, contar filas y anotarlo) está en
 [`INSTALL.md` §16](INSTALL.md) y es un **criterio de aceptación de la Fase 10**: sin
 ella, el sistema no se usa con pacientes reales.
@@ -320,7 +326,17 @@ sudo odontocrm con-entorno identity -- node services/identity/dist/seed.js --pri
 > **`--reset` cambia la contraseña de las cuentas que se siembren**, así que con
 > `--usuarios=admin` toca solo la del administrador (lo que casi siempre se quiere). La
 > contraseña nueva nace **temporal** y el sistema obliga a cambiarla al entrar; en
-> producción el seed **no** acepta las claves de desarrollo.
+> producción el seed **no** acepta las claves de desarrollo. **Sin `--usuarios=`, el seed siembra
+> el juego completo** (admin + `recepcion` + los odontólogos de `CLINIC.dentists`): en el servidor
+> se llama **con `--usuarios=admin`** (el despliegue ya lo hace así).
+
+Si una instalación vieja dejó sembradas las **cuentas de prueba**, se retiran con:
+
+```bash
+sudo odontocrm purgar-prueba             # enseña qué haría (no toca nada)
+sudo odontocrm purgar-prueba --si        # las DESACTIVA (por defecto)
+sudo odontocrm purgar-prueba --si --borrar   # las elimina
+```
 
 - Toda contraseña nueva nace **temporal**: el sistema obliga a cambiarla en el primer
   acceso.

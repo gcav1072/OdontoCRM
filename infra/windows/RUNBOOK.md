@@ -54,7 +54,17 @@ odontocrm con-entorno identity -- node services/identity/dist/seed.js --usuarios
 ```
 
 El seed **omite los que ya existen** (sin `--reset`). El sistema pide cambiar la contraseña
-en el primer acceso.
+en el primer acceso. **Sin `--usuarios=`, el seed siembra el juego completo** (admin +
+`recepcion` + los odontólogos de `CLINIC.dentists`): en el servidor se llama **con
+`--usuarios=admin`**.
+
+Si una instalación vieja dejó sembradas las **cuentas de prueba**, se retiran con:
+
+```powershell
+odontocrm purgar-prueba             # enseña qué haría (no toca nada)
+odontocrm purgar-prueba --si        # las DESACTIVA (por defecto)
+odontocrm purgar-prueba --si --borrar   # las elimina
+```
 
 ## 6. El bot de Telegram y WhatsApp
 
@@ -130,9 +140,10 @@ conectarían). Si lo necesitas, añade `--con-config`. Sin `--yes` solo dice qu�
 > ([`docs/RECUPERACION.md` §3b](../../docs/RECUPERACION.md)).
 
 > **Base y almacén van juntos.** Si el almacén está cifrado, el `STORAGE_ENCRYPTION_KEY` tiene
-> que ser el MISMO con que se cifró; `recuperar` te dice de dónde copiarlo si no repusiste la
-> configuración. Y un respaldo hecho antes de que el almacén entrara en la copia diaria **no lo
-> trae** (`--include-storage`): compruébalo antes de dar el desastre por resuelto.
+> que ser el MISMO con que se cifró: `recuperar` y `odontocrm restaurar --all` **reconcilian la clave
+> solos** (copian solo esa línea del respaldo a los `.env`) y comprueban que un documento se
+> descifra. Y un respaldo hecho antes de que el almacén entrara en la copia diaria **no lo trae**
+> (`--include-storage`): compruébalo antes de dar el desastre por resuelto.
 
 **Paso a paso** (si prefieres verlo, o si `recuperar` falló en algo):
 
@@ -143,7 +154,8 @@ node tools\verify-backup.mjs --from C:\OdontoCRM\backups\2026-10-12 --estado
 # 2) Para la pila (PostgreSQL se queda arriba: la restauración necesita conectarse)
 odontocrm parar
 
-# 3) Bases (ensaya en base temporal; --keep-old conserva la anterior)
+# 3) Bases (ensaya en base temporal; --keep-old conserva la anterior).
+#    Con `--all` repone ADEMÁS el almacén, reconcilia su clave y reinicia los servicios.
 odontocrm restaurar --from C:\OdontoCRM\backups\2026-10-12 --all --keep-old --yes
 
 # 4) Almacén (radiografías y PDFs) → C:\OdontoCRM\data\storage

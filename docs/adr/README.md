@@ -13,7 +13,11 @@ del odontograma, la **0052** al permitir que el paciente confirme su cita (y que
 cita» de la sesión clínica se cree de verdad en la agenda) y la **0053** al permitir que el
 paciente **cancela** su cita desde el bot. La **0054** se toma al unificar el membrete, el logo
 y la marca de agua de todos los imprimibles (y cablear la marca de agua, que estaba declarada
-en `brand.ts` y sin usar).
+en `brand.ts` y sin usar). Las **0055–0065** cierran el membrete y la tipografía de los
+imprimibles, la identidad en la base, la cancelación del paciente con plazo, el sillón como
+recurso de la agenda y el panel de configuración; las **0066–0068** documentan el aspecto propio
+de las pantallas kiosko, la partida escrita a mano en la caja y lo que hace `restaurar --all`
+(repoblar el almacén y reconciliar su clave).
 
 > **Numeración de la Fase 11:** el plan de facturación
 > ([`../feat_billing.md`](../feat_billing.md)) numeraba sus cinco ADRs **0043–0047** porque daba por hecho
@@ -88,3 +92,6 @@ en `brand.ts` y sin usar).
 | [0063](0063-seleccion-de-fuentes-por-rol.md) | Las fuentes de los imprimibles se eligen **por rol** (título y cuerpo) en un desplegable con vista previa: la marca pasa de una familia a un **catálogo de familias** y el peso de los títulos es de la marca | aceptada |
 | [0064](0064-membrete-configurable-y-aplicado-en-caliente.md) | El membrete tiene su **subsección** (logo centrado en vertical, tipografía propia del nombre, líneas y su orden, pie y velo) con vista previa en vivo, un helper compartido por los seis imprimibles y la SPA, y una caché corta para que el cambio llegue al papel en segundos sin reiniciar | aceptada |
 | [0065](0065-el-recipe-cabe-en-el-papel-de-la-clinica.md) | El récipe sale en el **papel de la clínica** (carta apaisada de fábrica, elegible en el panel) con la **tipografía del panel**, y el encaje **mide** el documento en Chromium con el ancho real del papel: una sola hoja, sin la segunda hoja en blanco | aceptada |
+| [0066](0066-estetica-propia-de-las-pantallas.md) | Cada pantalla kiosko tiene su **aspecto** (modo, acento y logo de marca de agua) en sus propios ajustes, aislado del tema de la app, y la marca del consultorio se sirve por su **ruta kiosko** en vez de por el SSE de la sala | aceptada |
+| [0067](0067-partida-escrita-a-mano-en-la-factura.md) | La caja puede facturar una partida **escrita a mano** (código centinela `manual`, sin arancel) con su **IVA**, precio y unidades; la categoría del arancel no se puede cambiar | aceptada |
+| [0068](0068-restaurar-repone-el-almacen.md) | `restaurar --all` y `recuperar` **repueblan el almacén**, **reconcilian `STORAGE_ENCRYPTION_KEY`** y comprueban que se descifra; el despliegue siembra **solo `admin`** y hay `purgar-prueba` | aceptada |

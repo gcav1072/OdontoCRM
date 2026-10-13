@@ -248,7 +248,9 @@ odontocrm recuperar --from E:\2026-10-12 --yes                        # Windows
 2. **Restaura las bases**, cada una con la verificación previa del restaurador (ensaya en una base
    temporal y, solo si entra, sustituye la buena) y conservando la anterior como
    `<base>__antes_de_restaurar_<fecha>`.
-3. **Repone el almacén** (radiografías y PDFs).
+3. **Repone el almacén** (radiografías y PDFs), **reconcilia `STORAGE_ENCRYPTION_KEY`** copiando la
+   del respaldo a los `.env` (solo esa línea; es la excepción al «no se toca la configuración») y
+   **comprueba que un documento se descifra** de verdad.
 4. **Arranca** y comprueba que los servicios responden.
 
 Es prudente a propósito:
@@ -269,10 +271,14 @@ node tools/verify-backup.mjs --from /media/pendrive/2026-10-12 --estado
 # 2) Para la pila (PostgreSQL se queda arriba)
 sudo odontocrm parar
 
-# 3) Las bases: ensaya en base temporal y conserva la anterior
+# 3) Las bases: ensaya en base temporal y conserva la anterior.
+#    Con `--all` repone ADEMÁS el almacén, reconcilia su clave y reinicia los servicios;
+#    con `--db <una>` o `--list` sigue tocando solo las bases.
 sudo odontocrm restaurar --from /media/pendrive/2026-10-12 --all --keep-old --yes
 
 # 4) El almacén (radiografías y PDFs) → /var/lib/odontocrm/storage
+#    Si el almacén está cifrado, la clave del respaldo tiene que quedar puesta (el paso 3 la
+#    reconcilia solo; a mano es copiar el STORAGE_ENCRYPTION_KEY, ver §7).
 sudo tar -xzf /media/pendrive/2026-10-12/storage_<fecha>.tar.gz -C /var/lib/odontocrm/storage
 
 # 5) La configuración, SOLO si la necesitas (ver §7)
@@ -300,14 +306,13 @@ genera el instalador.
 
 **La excepción es el almacén cifrado.** Si el consultorio guarda radiografías con cifrado en reposo
 (`STORAGE_ENCRYPTION_KEY`), esa clave tiene que ser **la misma** con la que se cifraron los archivos;
-si no, el almacén restaurado queda **ilegible**. Opciones:
-
-- copiar **solo** `STORAGE_ENCRYPTION_KEY` del respaldo a `patients.env` **y** a `clinical.env` y
-  `billing.env` (las tres guardan archivos y comparten la clave), o
-- `--con-config` para reponer la configuración entera, **y después revisar las rutas y las
-  contraseñas** de cada `.env`.
-
-`recuperar` avisa de esto al terminar, con la ruta exacta donde hay que copiarla.
+si no, el almacén restaurado queda **ilegible**. Eso ya **no hay que hacerlo a mano**: `recuperar`
+y `odontocrm restaurar --all` **reconcilian la clave solos** —copian **solo** esa línea del respaldo a
+`patients.env`, `clinical.env` y `billing.env`, sin tocar el resto del archivo— y **comprueban en el
+acto** que un documento se descifra. Si se prefiere hacerlo a mano (o imponer otra clave sin reponer
+nada más), el aprovisionador tiene `--clave-almacen=<base64url>`, que reemplaza únicamente esa línea y
+deja una copia `.antes-de-<sello>` junto al `.env`. La alternativa de reponer la configuración entera
+es `--con-config`, **y después revisar las rutas y las contraseñas** de cada `.env`.
 
 ---
 
@@ -317,9 +322,12 @@ si no, el almacén restaurado queda **ilegible**. Opciones:
    por bueno el sistema: `odontocrm actualizar` (Fedora y Windows) compila, migra y reinicia.
 2. **Comprobar**: `odontocrm verificar` (servicios, HTTPS, la CA) y `odontocrm estado` (bases, cola,
    outbox y alertas).
-3. **Entrar** a la aplicación y mirar lo que importa: la agenda del día, un paciente con radiografías
+3. **Si el respaldo venía de una máquina que tuvo las cuentas de prueba** («Recepción prueba»,
+   «Odontólogo prueba»), retirarlas: `sudo odontocrm purgar-prueba` (sin `--si` enseña qué haría; las
+   **desactiva**, y con `--borrar` las elimina).
+4. **Entrar** a la aplicación y mirar lo que importa: la agenda del día, un paciente con radiografías
    y una factura. Es la única prueba que cuenta.
-4. Si todo está bien, borrar las bases `__antes_de_restaurar_*` y `__verif` que quedaron de la
+5. Si todo está bien, borrar las bases `__antes_de_restaurar_*` y `__verif` que quedaron de la
    restauración (`psql -c '\l'` las lista).
 
 ---

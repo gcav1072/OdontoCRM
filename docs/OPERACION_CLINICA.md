@@ -194,8 +194,9 @@ duración, con las indicaciones generales) y se **emite**.
 
 - Al emitirlo queda **numerado** (`RX-000001`), con su **PDF A5** archivado y un
   **código de verificación** con QR: quien tenga el papel puede comprobar en la
-  dirección pública que ese récipe consta y a nombre de quién está (sin ver datos
-  clínicos).
+  dirección pública que ese récipe consta, **a nombre de quién está** —con el
+  **nombre del consultorio** y el del **odontólogo que lo emitió**— y sin ver datos
+  clínicos.
 - **Reimprimir** se puede siempre: queda registrado cuántas veces se imprimió.
 - **Anular** exige motivo y no borra nada: el récipe anulado se conserva.
 - Un récipe emitido **no se edita**. Si hay un error, se anula con motivo y se emite
@@ -242,6 +243,9 @@ duración, con las indicaciones generales) y se **emite**.
   de los hallazgos se ven como deben. (Antes, imprimiendo desde un equipo en modo
   oscuro, las líneas salían claras sobre blanco y los dibujos casi no se veían.)
 - Cada impresión queda registrada en la auditoría con el usuario que la hizo.
+- Los cuadritos de color de la leyenda y los puntos de estado salen **en color** en el papel
+  aunque la impresora esté configurada para **no** imprimir fondos: van dibujados (SVG), no son
+  fondos.
 
 ---
 
@@ -254,6 +258,13 @@ duración, con las indicaciones generales) y se **emite**.
   consulta y sus **datos críticos en semáforo** (alergias, anticoagulantes, diabetes…).
 - Cada televisor o monitor se registra una vez en `/pantallas` con su token y se
   desactiva cuando se retira.
+- **Cada pantalla tiene su propio aspecto**: modo **claro u oscuro**, su **color de
+  acento** y, si se quiere, el **logo del consultorio como marca de agua**. Se configura en
+  `/pantallas` → **Ajustes** de la pantalla y **no** cambia cuando cambia el tema de la
+  aplicación de recepción.
+- El **nombre del consultorio** que sale en la pantalla (arriba y centrado en la sala de
+  espera) y su **logo** se toman del **perfil del consultorio**, el que completa el titular
+  en su primer acceso.
 - **Antes de eso, el televisor tiene que conocer el certificado** (si no, la pantalla
   queda en blanco o con el aviso de conexión no privada): se abre
   `http://<IP-del-servidor>/ca.crt` **en el propio televisor** y se instala como

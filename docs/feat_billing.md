@@ -47,6 +47,7 @@ proyecto ya resuelve en otro sitio y conviene copiar · **R** = riesgo o decisi�
 | M6 | Recibo vs. factura | Mezclados | Dos series y dos documentos: **factura** (fiscal) y **recibo** `REC-000001` (interno, con el IGTF y la tasa del pago) (§6) |
 | M7 | Modo test | No se menciona | Numeración y series **reservadas** (`900.000+`, serie `T`) como los récipes y los tickets: la numeración real nunca ve un número de prueba (ADR 0020/0042) (§4) |
 | M8 | Tasa del día ausente | «el sistema opera con autonomía» | Falta la regla: **arrastre** de la última tasa publicada con aviso si el hueco supera N días, y confirmación explícita para cobrar con una tasa vieja (§5.5) |
+| M9 | Línea libre | No se menciona | El borrador admite una partida **escrita a mano** (`manual`) con su categoría fiscal, precio y unidades; el arancel manda su categoría (§5.6) |
 | R1 | IGTF | «3 % sobre efectivo en divisas» | Confirmado el **3 % para los supuestos de divisas** (Art. 24 de la Ley de IGTF), pero el 2 % general quedó en **0 %** (Decreto 4.972, jul-2024) y **quién lo percibe cambia según el medio**: en divisas por el sistema bancario nacional lo debita el **banco** (Art. 4.5, sin importar si la clínica es SPE); el efectivo en divisas y Zelle/USDT lo percibe **la clínica solo si está calificada como Sujeto Pasivo Especial** (Art. 4.6). Se modela **por medio de pago y con quién percibe** (§3.2, §5.3, §10). **Cerrado (§0.1): la clínica no es SPE, así que no percibe IGTF en caja.** |
 | R2 | Validez de la factura | Se asume que el PDF impreso **es** la factura | **Un PDF impreso en hoja blanca no es una factura válida** para un contribuyente ordinario: la Providencia SNAT/2011/0071 solo admite **formatos** o **formas libres** de imprenta autorizada (con **número de control preimpreso**) o **máquina fiscal** (Art. 6). Los servicios odontológicos **no** están en la lista del Art. 8, así que la máquina fiscal no es obligatoria; el régimen digital (Providencia SNAT/2024/000102) es **opt-in** salvo venta exclusivamente electrónica. Decide quién asigna el número (ADR 0047, §10) |
 | R3 | Leyendas y artículo | «Exento de IVA de conformidad con el Art. 18, num. 4» | El artículo está mal: la exención de servicios odontológicos es el **Art. 19, numeral 6** de la Ley de IVA (el Art. 18.4 es de **ventas** de bienes, prótesis incluidas). Lo que exige la Providencia 0071 es la letra **`(E)`** junto a la descripción o al precio (Art. 13 num. 8) y el **total exento separado** (num. 10); «sin derecho a crédito fiscal» va **en las copias** (num. 13) (§6, §10) |
@@ -1136,6 +1137,12 @@ Una factura emitida **no se borra ni se edita**: se anula con una **nota de cré
 * Cambiar un precio **no** reescribe nada: las partidas emitidas son instantáneas y el cambio queda
   auditado con su valor anterior y nuevo. *(Si más adelante llegan los presupuestos, ahí sí hará falta un
   histórico de precios con vigencia; hoy sería una tabla que nadie consulta.)*
+* Además de las partidas del arancel, el borrador admite una **partida escrita a mano** (código
+  centinela `manual`, sin fila en `treatment_catalog`): descripción, **categoría fiscal** (exento o
+  gravado), precio y unidades, con la descripción **obligatoria**. Su categoría **se copia** en el
+  documento como la de cualquier partida, y sale con su letra `(E)`/`(G)`. La categoría de las partidas
+  **del arancel** no se puede cambiar desde la caja: la manda el catálogo, para que un servicio
+  odontológico (Art. 19.6) no se pueda facturar gravado desde el mostrador.
 
 ---
 
@@ -1167,9 +1174,11 @@ el documento no vale):
     elaboración de la forma.
 
 **Encabezado legal** (los datos salen del **perfil del consultorio resuelto por entorno**, §2.4, no de una
-tabla duplicada —B12— ni de una constante de código): razón social y nombre comercial, **RIF**, dirección
-fiscal, teléfonos, logo, y la condición `Contribuyente Especial` **solo si algún día aplica**. Mientras el
-perfil esté incompleto, la factura sale con el aviso de datos faltantes en vez de un membrete inventado.
+tabla duplicada —B12— ni de una constante de código): el **nombre del consultorio** encabeza el membrete
+(admite dos líneas) y la **razón social** va debajo como subtítulo, con el **RIF**, la dirección fiscal,
+los teléfonos, el logo y el especialista que firma en el orden que elige el panel —y la condición
+`Contribuyente Especial` **solo si algún día aplica**—. Mientras el perfil esté incompleto, la factura
+sale con el aviso de datos faltantes en vez de un membrete inventado.
 
 **Leyendas** (con la corrección R3):
 

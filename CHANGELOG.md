@@ -4,6 +4,162 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Odontograma] — La leyenda del odontograma impreso sale en color (y no en blanco) · 2026-10-13
+
+Al imprimir el odontograma, los **cuadritos de la leyenda** (rojo `pendiente`, azul `completado` y el
+blanco de «sano») salían **en blanco** en el papel, aunque en pantalla y en la vista previa se vieran
+bien. Lo mismo, en los **puntos de estado** de las tablas del informe (hallazgos, prótesis e historial).
+No era un problema del color: esos códigos se pintaban con `background-color`, y **al imprimir el
+navegador descarta los fondos CSS** salvo que el usuario active «gráficos de fondo» en el diálogo de
+impresión. El resto del dibujo —dientes, símbolos, doble línea— ya iba en SVG, y por eso sí salía.
+
+El arreglo dibuja esos cuadritos y puntos también como **SVG** (`fill`): el dibujo vectorial se imprime
+siempre y no depende de ninguna casilla del diálogo. Los colores **clínicos** (rojo `pendiente`,
+azul `completado`, `CLINICAL_STATE_COLORS`) no cambian: solo cambia cómo se pintan.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `Swatch` (`OdontogramStaticChart`) | Los tres cuadritos de la leyenda, en SVG en vez de `<span>` con fondo |
+| `StateDot` (`OdontogramDocument`) | El punto de color del estado (hallazgos, prótesis e historial), en SVG |
+| `document.test.ts` | Regresión: el papel **nunca** pinta un color clínico como `background-color`; los colores van en `fill`/`stroke` |
+
+> **Sin migración.** Solo cambia el frontend: entra con `npm run build` (o `sudo odontocrm actualizar`
+> en producción).
+
+## [Clínica] — La verificación pública enseña el consultorio de verdad, no «Odontólogo prueba» · 2026-10-13
+
+Al abrir el **QR de un récipe** (o del expediente) la página pública confirmaba la autenticidad, pero
+firmaba **«Odontólogo prueba»** y dejaba el **nombre del consultorio en blanco**: la verificación
+resolvía el firmante con `clinicDentistFor(usuario)` **sin** la identidad del consultorio, así que
+caía al **respaldo del código** (`CLINIC`) —que solo tiene al odontólogo del **seed**— en vez de leer
+la identidad real de la base. La web, además, encabezaba con `CLINIC.name` (vacío) en lugar del
+nombre que devuelve la verificación. Arregla las dos páginas públicas: el récipe (`/verificar/<código>`)
+y el expediente (`/verificar-expediente/<código>`).
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `verifyPrescription` / `verifyDossier` (clinical) | Reciben el `letterheadLookup` y resuelven el odontólogo que **emitió** (`issuedByUsername`) y el nombre del consultorio desde la identidad real (ADR 0056) |
+| Rutas `/clinical/verify/:code` y `/clinical/verify-expediente/:code` | Pasan el `letterheadLookup` del servicio en vez del `CLINIC.name` del código |
+| `VerifyPrescriptionPage` / `VerifyDossierPage` (web) | El encabezado usa el `clinicName` de la verificación (la página es pública y no puede pedir la identidad sin sesión) |
+| `prescription.integration.test.ts` | La verificación devuelve el consultorio y el odontólogo de la identidad leída, no los del código |
+
+> **Sin migración.** Es lectura, no datos. El arreglo vive en el `dist` de `services/clinical` **y** en
+> el bundle de la web: en producción hace falta `sudo odontocrm actualizar` (o `recompilar`) para que
+> entre; hasta entonces la verificación sigue firmando «Odontólogo prueba».
+
+## [Odontograma] — Retirar una PPR/PRT vuelve a funcionar: el borrado valida la ruta · 2026-10-13
+
+**Eliminar o deshacer una prótesis removible** (PPR/PRT) devolvía «Los datos enviados no son válidos
+— (cuerpo) (lleva campos que no se admiten)». La ruta de retirada
+(`DELETE /api/v1/odontogram/patients/:patientId/prostheses/:id`) le pasaba a Zod **el `params`
+entero** —que trae `patientId` **e** `id`— al contrato `deleteProsthesisSchema`, que es `.strict()` y
+**solo admite `id`**: el `patientId` sobrante se rechazaba como campo desconocido y, como el fallo de
+Zod no traía `path`, el detalle caía en `(cuerpo)`. Ahora la ruta valida sus `params` con su propio
+esquema y al contrato le da **solo** el `id`, igual que la ruta de «dejar la cara sana» con su input.
+Arregla las dos vías que comparten el mismo cliente: **eliminar** la prótesis y **deshacer** su
+registro.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `odontogram-routes.ts` | Nuevo `prosthesisParamsSchema` (`patientId` + `id`) y el borrado de prótesis le pasa al contrato solo `{ id }` |
+| `odontogram-server.test.ts` | Regresión del `DELETE .../prostheses/:id` (antes 400 por el `patientId`; ahora llega al servicio) y cobertura 401/403 de `PUT`/`DELETE .../prostheses` |
+
+> **Sin migración.** Es validación de ruta, no datos. El arreglo vive en el `dist` del servicio
+> `odontogram`: en producción hay que `sudo odontocrm actualizar` (o `recompilar`) para que entre.
+
+## [Caja] — Partida escrita a mano en la factura · 2026-10-13
+
+La caja solo podía facturar lo que estuviera en el **arancel**: un producto o servicio suelto (un
+retiro de brackets, un cepillo, un trabajo de laboratorio) había que darlo de alta en el catálogo
+antes de cobrarlo. Ahora el borrador tiene un botón **«Añadir línea manual»** que agrega una partida
+**escrita a mano**: descripción, **casilla «Exento de IVA»** (marcada = exento al 0 %; sin marcar =
+gravado al 16 %), precio y unidades. La **descripción es obligatoria** para guardar o emitir, y la
+**categoría fiscal de las partidas del arancel no se puede cambiar** (la manda el catálogo, para que
+un servicio odontológico no se pueda facturar gravado desde el mostrador). La partida manual sale en
+la factura con su letra **`(E)`/`(G)`** y entra en el desglose de bases como cualquier otra.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `MANUAL_LINE_CODE` (contratos) | El código centinela `manual` y el `taxCategory` opcional de la línea del borrador |
+| `buildItems` (billing) | La categoría sale del catálogo si la partida está en él; solo la línea manual declara la suya |
+| `CajaPage` / `caja.ts` | «Añadir línea manual», descripción obligatoria y casilla «Exento de IVA» |
+
+> **Sin migración**: `invoice_items` ya guardaba la categoría y la alícuota de cada partida.
+
+## [Caja] — El membrete de la factura encabeza con el nombre del consultorio · 2026-10-13
+
+La **factura**, el **recibo** y la **nota de crédito** ponían la **razón social** de nombre del
+membrete y el **nombre del consultorio** como renglón de detalle. Cuando el titular dejaba la razón
+social en blanco —el campo es opcional—, el renglón grande salía **vacío** y el nombre del
+consultorio quedaba pequeño: el papel parecía no llevar el nombre del consultorio. Ahora los tres
+componen el membrete **igual que el récipe, el dossier y el membrete de la SPA**: el **nombre del
+consultorio** encabeza (admite dos líneas) y la **razón social**, si la hay, va de subtítulo. El
+bloque sale del helper compartido (`buildLetterheadView`), así que la caja deja de desviarse del
+resto de los imprimibles.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `invoice-pdf.ts` | El membrete encabeza con el nombre del consultorio; la razón social va de subtítulo |
+| `receipt-pdf.ts` | Lo mismo para el recibo de un cobro |
+| `credit-note-pdf.ts` | Lo mismo para la nota de crédito |
+| `letterhead.ts` (contracts) | Los comentarios de `LetterheadView.name`/`subtitle` dejan de decir «la factura pone la razón social» |
+| `invoice-pdf.test.ts` / `cobros-pdf.test.ts` | Regresión: el nombre del consultorio encabeza aunque la razón social venga vacía |
+
+> **Sin migración.** Es composición del membrete, no datos. Los PDF ya archivados **no** se
+> regeneran: la factura emitida sigue diciendo lo que decía (ADR 0048). Las nuevas salen con el
+> nombre arriba.
+
+## [Respaldo] — Reimprimir récipes tras restaurar, y no sembrar cuentas de prueba · 2026-10-13
+
+Dos fallos del flujo de respaldo, los dos en la restauración:
+
+**Los récipes no se podían reimprimir después de restaurar.** Reimprimir un récipe no recompone
+el PDF: vuelve a leer el archivo archivado en el almacén (cifrado con `STORAGE_ENCRYPTION_KEY`).
+`odontocrm restaurar` solo restauraba las bases —no el almacén—, y al reinstalar se generaba otra
+clave, así que los documentos quedaban ausentes o ilegibles. Ahora `restaurar` (con `--all`) y
+`recuperar` **repueblan el almacén**, **reconcilian la clave** (copian la del respaldo a los `.env`
+sin tocar el resto) y **comprueban de verdad** que un archivo de muestra se descifra
+(`tools/verificar-almacen.mjs`). El simulacro de restauración (`verify-backup`) revisa también el
+almacén, no solo las bases.
+
+**Se sembraban dos cuentas de prueba en el servidor.** `30-desplegar.sh` usaba por defecto el juego
+completo de desarrollo («Recepción prueba» y «Odontólogo prueba») cuando `USUARIOS_SEED` estaba
+vacío, y `odontocrm actualizar` no la definía. Ahora el defecto es **solo `admin`**; el juego
+completo se pide con `USUARIOS_SEED=all` (`--con-todas-las-cuentas` en el instalador). Para las
+cuentas ya sembradas hay `sudo odontocrm purgar-prueba` (por defecto las **desactiva**; `--borrar`
+las elimina).
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `infra/fedora/backup/lib-almacen.sh` (nuevo) | Repone el almacén, reconcilia la clave y verifica que se lee |
+| `tools/verificar-almacen.mjs` (nuevo) | Cuenta archivos (en claro/cifrados) y descifra una muestra; sale 1 si no se lee |
+| `tools/purgar-cuentas-prueba.mjs` (nuevo) | Quita `recepcion` y los odontólogos de `clinic.ts` de identity |
+| `aprovisionar.mjs` | + `--clave-almacen` (reemplaza SOLO esa línea en los `.env`; no toca el resto) |
+| `odontocrm restaurar`/`recuperar` | Reponen el almacén y su clave; `restaurar --all` también reinicia |
+| `odontocrm purgar-prueba` | Nuevo subcomando (Fedora y Windows) |
+| `30-desplegar.sh` | Siembra solo `admin`; el juego completo es opt-in (`USUARIOS_SEED=all`) |
+
+## [Pantallas] — Estética propia del lobby: tema, acento y logo de marca de agua · 2026-10-13
+
+Las pantallas de la sala y del consultorio dejan de estar ancladas a la estética de la
+aplicación: cada pantalla se configura en `/pantallas` con su **modo** (claro u oscuro), su
+**color de acento** (los mismos diez presets de la interfaz) y la opción de mostrar el **logo
+del consultorio como marca de agua** (silueta con alfa distinto según el modo). El **lobby**
+se reordena: arriba y centrado el **nombre del consultorio** (el que completa el titular en su
+primer login) y, debajo, la **hora** y cuánta gente hay **en sala**; abajo, en las esquinas, lo
+discreto —a la izquierda «Sala de espera – ‹pantalla›» y a la derecha el indicador de conexión
+(icono + última actualización, en verde o ámbar)—. Se añaden animaciones de entrada y de
+resalte. **Sin migración**: el aspecto se guarda en el JSONB de ajustes de cada pantalla.
+
+| Pieza | Qué hace |
+| :--- | :--- |
+| `screenSettingsSchema` (contratos) | + `tema` (`claro`/`oscuro`), `acento` (10 presets) y `logoMarcaAgua` (booleano) |
+| `GET /api/v1/screens/clinic` (nuevo) | La marca del consultorio (nombre + logo) para la pantalla; reusa el lector de identity con caché |
+| `useKioskTheme` (web) | Traduce los ajustes a variables CSS `--kiosk-*`; **no** sigue la clase `dark` de la app |
+| `pantalla.css` (nuevo) | Estética kiosko: fondo con halo del acento, marca de agua y animaciones |
+| `ScreenLobbyPage` | Cabecera centrada (nombre + hora + en sala), pie en las esquinas |
+| `ScreenSettingsDialog` | Modo, acento y marca de agua por pantalla |
+
 ## [Respaldo] — `/respaldo`: la copia completa del servidor, pedida desde Telegram · 2026-10-12
 
 El respaldo automático solo se puede lanzar como Administrador (Windows) o root (Fedora): su guion

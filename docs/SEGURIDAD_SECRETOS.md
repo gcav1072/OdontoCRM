@@ -56,6 +56,7 @@ Este documento responde a la pregunta «¿cómo te paso el token del bot con la 
 | `TELEGRAM_BOT_TOKEN` | `services/notifications/.env` | `/etc/odontocrm/notifications.env` | tú, vía BotFather |
 | Clave privada JWT (EdDSA) | `services/identity/.keys/jwt-private.pem` (ignorado) | `/etc/odontocrm/keys/jwt-private.pem` (`0600`) | `npm run keys:generate` (Fase 1) |
 | `INTERNAL_SERVICE_SECRET` | `.env` por servicio | `/etc/odontocrm/internal-secret.env` | bootstrap |
+| `STORAGE_ENCRYPTION_KEY` (cifrado en reposo del almacén) | `.env` de `patients`, `clinical` y `billing` (la **misma** en los tres) | `/etc/odontocrm/{patients,clinical,billing}.env` | bootstrap (**opcional**: sin ella se escribe en claro). **Debe ser la misma del respaldo** si se quiere leer un almacén cifrado: al recuperar, `odontocrm` la **reconcilia** sola (copia solo esa línea a los `.env`); el aprovisionador admite `--clave-almacen=<base64url>` para imponerla sin tocar el resto del `.env` |
 | `COOKIE_SECRET` | `.env` de identity | `/etc/odontocrm/identity.env` | bootstrap |
 | Token de dispositivo de cada pantalla | se genera desde el panel `/pantallas` y se guarda **hasheado** en la BD | igual | el sistema (Fase 5) |
 | `WHATSAPP_TOKEN` (Cloud API) | `services/notifications/.env` | `/etc/odontocrm/notifications.env` | tú, en Meta for Developers |

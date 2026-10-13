@@ -349,7 +349,7 @@ Un solo origen para el frontend: `http(s)://<host>:8090/api/v1/**`.
 | `/api/v1/agenda/**` | scheduling | `GET /day?date=`, `PUT /capacity`, `GET /slot-templates`, `POST /assign`, `POST /:id/reschedule`, `POST /:id/no-show` |
 | `/api/v1/appointments/**` | scheduling | `GET /:id`, `POST /:id/check-in`, `POST /:id/call`, `POST /:id/start`, `POST /:id/attend`, `GET /:id/ics` |
 | `/api/v1/clinical/**` | clinical | historia, sesiones, récipes, PDF, adjuntos |
-| `/api/v1/odontogram/**` | odontogram | `GET /patients/:id`, `POST /patients/:id/findings`, `DELETE /patients/:id/findings` |
+| `/api/v1/odontogram/**` | odontogram | `GET /patients/:id`, `POST /patients/:id/findings`, `DELETE /patients/:id/findings`, `POST /patients/:id/surfaces/:tooth/:surface` (`DELETE` para dejar la cara sana), `PUT /patients/:id/prostheses` y `DELETE /patients/:id/prostheses/:id` |
 | `/api/v1/screens/**` | screens | `POST /devices`, `GET /device`, `GET /lobby`, `GET /lobby/stream` (SSE), `GET /consultorio/stream` (SSE) · `POST /api/v1/auth/device` canjea el token de la pantalla |
 | `/api/v1/reports/**` | reporting | `GET /summary`, `GET /funnel`, `GET /capacity`, `GET /demographics`, `GET /clinical-profile`, `GET /oral-health`, `GET /prescriptions`, `GET /:key/export.csv`, `GET /:key/export.pdf` |
 | `/internal/v1/**` | todos | solo red interna + service JWT (`upsert-by-cedula`, `patients/:id/summary`, …) |
@@ -449,7 +449,7 @@ END:VEVENT / END:VCALENDAR
   - `/pacientes` · `/pacientes/:id` (historial clínico completo, adjuntos, recetas)
   - `/reportes` · `/auditoria` · `/usuarios` · `/pantallas` (dispositivos y tokens)
   - `/pantalla/lobby` y `/pantalla/consultorio` (**kiosko**, sin shell, con token de dispositivo, reconexión SSE y *fullscreen*)
-- **Displaylobby**: número de turno, nombre abreviado (`Juan P.`), consultorio, animación y **TTS en español** (`Web Speech API`, voz y volumen configurables), 2.º llamado en rojo.
+- **Displaylobby**: cabecera **centrada** con el **nombre del consultorio**, la **hora** y cuánta gente hay **en sala**; abajo, en las esquinas, «Sala de espera – ‹pantalla›» y el indicador de conexión. Cada pantalla tiene su **aspecto propio** (modo **claro u oscuro**, **color de acento** y **logo del consultorio como marca de agua**, configurable en `/pantallas`), más el **TTS en español**, el 2.º llamado en rojo y las animaciones de entrada.
 - **Pantalla de consultorio**: paciente actual, **alergias, crónicos (diabetes/hipertensión), medicamentos, edad, motivo y últimos signos vitales** en tipografía grande y semáforo de riesgo.
 - Accesibilidad: navegación por teclado en tablas y formularios, foco visible, contraste AA, y atajos para el flujo rápido (teclear cédula → Enter).
 

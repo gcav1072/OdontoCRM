@@ -294,7 +294,10 @@ sudo odontocrm restaurar --from /var/backups/odontocrm/2026-10-04 --all --yes --
 
 El restablecimiento **restaura primero a bases temporales `<base>__verif`** y solo
 continúa si la verificación pasa; `--keep-old` conserva la base actual renombrada en
-lugar de borrarla. Para retirar las temporales cuando ya no hagan falta:
+lugar de borrarla. Con **`--all`** repone **también el almacén** (radiografías y PDFs),
+**reconcilia `STORAGE_ENCRYPTION_KEY`** (copia la del respaldo a los `.env`) y reinicia los
+servicios: sirve para dejar el servidor entero como estaba. Con `--db <una>` o `--list` sigue
+tocando **solo las bases**. Para retirar las temporales cuando ya no hagan falta:
 
 ```bash
 sudo odontocrm restaurar --limpiar-verif --yes
@@ -338,6 +341,19 @@ sudo odontocrm con-entorno identity -- node -e "
 En el día a día **no hace falta tocar esto**: las contraseñas se cambian desde la
 aplicación (cada usuario, en su perfil) y el sistema obliga a cambiarlas en el primer
 acceso. Lo de arriba es para el caso «nadie recuerda la del administrador».
+
+**Cuentas de prueba sembradas por una instalación vieja.** El instalador ya siembra
+**solo `admin`** (el juego completo es opt-in con `USUARIOS_SEED=all`), pero una máquina que
+se desplegó con el defecto anterior puede tener «Recepción prueba» y «Odontólogo prueba»:
+
+```bash
+sudo odontocrm purgar-prueba            # enseña qué haría (no toca nada)
+sudo odontocrm purgar-prueba --si       # las DESACTIVA (por defecto)
+sudo odontocrm purgar-prueba --si --borrar   # las elimina de verdad
+```
+
+Se niega a tocar una cuenta cuyo nombre completo no sea el de la cuenta sembrada, para no
+llevarse por delante a una persona real que se llame parecido.
 
 > **`--reset` cambia la contraseña de las cuentas que se siembren**: con
 > `--usuarios=admin` solo la del administrador. Para el estado —quién existe, quién sigue

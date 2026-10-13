@@ -44,8 +44,8 @@ edita desde el panel es el **acento** (diez presets del espectro); el resto de l
 
 | Dato | Dónde vive | Quién lo edita | Dónde se nota |
 | :--- | :--- | :--- | :--- |
-| Nombre del consultorio | Perfil del consultorio (base) · respaldo `clinic.ts` → `name` | **Titular** (Mi perfil) · admin | Bot, `.ics`, pantallas de sala (en **una línea**) y membrete de **todos** los imprimibles (admite **dos líneas**) |
-| Razón social | Perfil del consultorio · `clinic.ts` → `legalName` | Titular · admin | Membrete de la factura, el recibo, la nota de crédito, el récipe y el dossier |
+| Nombre del consultorio | Perfil del consultorio (base) · respaldo `clinic.ts` → `name` | **Titular** (Mi perfil) · admin | Bot, `.ics`, pantallas de sala (en **una línea**) y membrete de **todos** los imprimibles (**encabeza** el bloque; admite **dos líneas**) |
+| Razón social | Perfil del consultorio · `clinic.ts` → `legalName` | Titular · admin | Membrete de los seis imprimibles **como subtítulo** bajo el nombre del consultorio (la factura, el recibo, la nota de crédito, el récipe y el dossier la llevan; el reporte, no) |
 | Dirección y ciudad | Perfil del consultorio · `clinic.ts` → `address`, `city` | Titular · admin | Membrete de los imprimibles |
 | Teléfonos y correo | Perfil del consultorio · `clinic.ts` → `phones`, `email` | Titular · admin | Membrete del récipe y las pantallas |
 | RIF | Perfil del consultorio · `clinic.ts` → `rif` | Titular · admin | Membrete de los imprimibles y el párrafo del `.ics` |
@@ -438,6 +438,7 @@ porque el consultorio cambió de nombre.
 | Todo el repositorio sigue sano | `npm run verify` (secretos + lint + formato + tipos + build + pruebas) |
 | El **color** y las **fuentes** del panel llegan al papel | `npm run e2e:config` (mira el **PDF** del reporte, no el CSS de la pantalla) |
 | El membrete sale en el papel | Emitir un **récipe**: logo, nombre, RIF, teléfonos y el MPPS del firmante, con las dos tipografías |
+| La verificación pública enseña el consultorio y el firmante reales | Abrir el QR de un **récipe** emitido por un odontólogo distinto del de prueba: el nombre del consultorio y el MPPS son los suyos, no «Odontólogo prueba» |
 
 ---
 
@@ -453,7 +454,7 @@ Lo que **no** cambia con la paleta, y no es un olvido:
 
 | Color | Dónde | Por qué se queda |
 | :--- | :--- | :--- |
-| Rojo `pendiente` y azul `completado` | `CLINICAL_STATE_COLORS` (odontograma, servidor y navegador) | Es un **código clínico**: el odontólogo lee «por hacer» y «hecho», no decoración |
+| Rojo `pendiente` y azul `completado` | `CLINICAL_STATE_COLORS` (odontograma, servidor y navegador) | Es un **código clínico**: el odontólogo lee «por hacer» y «hecho», no decoración. Y se dibujan en **SVG** (`fill`/`stroke`), **no** con `background-color`: al imprimir el navegador descarta los fondos CSS y el color saldría en blanco |
 | Pantalla de carga/error | `apps/web/src/main.tsx` y el arranque de `index.html` | Se pintan **antes** de que exista la hoja de estilos; no pueden leer variables |
 | Fondo blanco al imprimir | `apps/web/src/index.css` (`@media print`) | El papel es blanco aunque la pantalla esté en modo oscuro |
 | Cifras de respaldo de las gráficas de reportes | `ReportChart.tsx` (`RESPALDO`) | Solo se usan si el DOM no está disponible; en la aplicación leen las variables CSS |
@@ -483,7 +484,9 @@ no duplicados de la paleta.
 | `npm test` falla en `brand.test.ts` | Cambiaste `brand.ts` sin regenerar el CSS, o falta un `.woff2` declarado | `npm run marca:css` / poner el archivo |
 | Los títulos salen con la fuente del sistema | Falta el `.woff2` en `assets/clinic/fonts/` o no recompilaste la web | Reponer el archivo y recompilar la web |
 | El **nombre del membrete** sale con la fuente del sistema **al imprimir** (en pantalla se ve bien) | La familia del nombre del membrete no viajaba en el `themeCss` (solo se incrustaban títulos y cuerpo) o se imprimió antes de que la fuente cargara | Corregido: identity incrusta la familia del membrete y el papel espera a `document.fonts.ready` antes de imprimir |
-| `CLINIC_NAME` del `.env` «no hace nada» en el récipe | Solo lo leen bot, `.ics` y pantallas | Para el récipe y la interfaz, edítalo en la aplicación (§2) |
+| `CLINIC_NAME` del `.env` «no hace nada» en el récipe | Solo lo leen el bot, el `.ics` y los avisos: **las pantallas kiosko ya leen la identidad de la base** (ruta `GET /api/v1/screens/clinic`) | Para el récipe, la interfaz y las pantallas, edítalo en la aplicación (§2) |
+| La página de **verificación** firma «Odontólogo prueba» o sale sin nombre de consultorio | El servicio `clinical` no pudo leer la identidad de `identity` y cayó al respaldo del código **al verificar** (misma causa que el membrete del código en los PDF) | Revisar que `identity` esté arriba y que el despliegue esté al día (`sudo odontocrm actualizar`); el aviso del log es el mismo del membrete («Los imprimibles usan el membrete del CÓDIGO…») |
+| Los cuadritos de la leyenda o los puntos de estado del odontograma salen **sin color** en papel (en pantalla sí se ven) | Los códigos clínicos se pintaban con `background-color` y el navegador descarta los fondos al imprimir | **Corregido**: van en SVG (`fill`). Si vuelve a pasar, es que un color clínico se está pintando como fondo CSS |
 
 ---
 
