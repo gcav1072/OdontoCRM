@@ -21,6 +21,8 @@
  *   node infra/fedora/instalar/aprovisionar.mjs --host=odontocrm.local --ip=192.168.1.50
  *   node infra/fedora/instalar/aprovisionar.mjs --env-dir=/tmp/prueba --dry-run
  *   node infra/fedora/instalar/aprovisionar.mjs --rotate     # contraseñas nuevas
+ *   node … --solo-archivos --clave-almacen=<base64url>       # fija la clave del almacén
+ *                                                            # (al restaurar un respaldo)
  *
  * Uso (Windows):
  *   node aprovisionar.mjs --env-dir="C:\ProgramData\OdontoCRM\env" \
@@ -111,6 +113,7 @@ const opciones = {
   soloArchivos: false,
   soloBases: false,
   soloVerificar: false,
+  claveAlmacen: '',
   espera: 10,
 };
 
@@ -131,6 +134,7 @@ for (const arg of process.argv.slice(2)) {
     case '--solo-archivos': opciones.soloArchivos = true; break;
     case '--solo-bases': opciones.soloBases = true; break;
     case '--solo-verificar': opciones.soloVerificar = true; break;
+    case '--clave-almacen': opciones.claveAlmacen = valor; break;
     case '-h':
     case '--help':
       console.log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(1, 30).map((l) => l.replace(/^ \* ?/, '')).join('\n'));
@@ -223,6 +227,63 @@ const morir = (m) => {
   console.error(`\n${c.er} ${m}`);
   process.exit(1);
 };
+
+/* ── Reponer la clave del almacén (al recuperar un respaldo) ───────────────── */
+
+/**
+ * `--clave-almacen=<base64url>`: **reemplaza** la clave del almacén y termina.
+ *
+ * Es lo que hace legible un almacén restaurado: los archivos (radiografías, PDF de récipes)
+ * vienen cifrados con la clave del respaldo, y la instalación nueva generó otra, así que sin
+ * esto no se pueden leer. Reescribir los `.env` enteros recalcularía `WEB_ORIGIN`, el nombre y
+ * las rutas con los valores por defecto —y rompería el CORS—, así que se cambia **solo esa
+ * línea** en los archivos que la declaran, dejando una copia `.antes-de-<sello>` al lado. No
+ * toca bases ni nada más: es una operación de mantenimiento, no un aprovisionamiento.
+ */
+const reponerClaveAlmacen = (clave) => {
+  if (Buffer.from(clave, 'base64url').length !== 32) {
+    morir(
+      '--clave-almacen no decodifica a 32 bytes (base64url): no la escribo, dejaría el almacén ilegible',
+    );
+  }
+  const servicios = ['patients', 'clinical', 'billing', 'identity'].filter((s) =>
+    existsSync(join(ETC, `${s}.env`)),
+  );
+  if (servicios.length === 0) {
+    morir(`no encuentro ningún .env en ${ETC} (¿está aprovisionado el servidor?)`);
+  }
+  const sello = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15);
+  let cambiadas = 0;
+  for (const servicio of servicios) {
+    const ruta = join(ETC, `${servicio}.env`);
+    const contenido = readFileSync(ruta, 'utf8');
+    const linea = /^STORAGE_ENCRYPTION_KEY=.*$/m;
+    if (!linea.test(contenido)) {
+      av(`${servicio}.env no declara STORAGE_ENCRYPTION_KEY: no lo toco`);
+      continue;
+    }
+    if (opciones.dryRun) {
+      detalle(`[dry-run] pondría STORAGE_ENCRYPTION_KEY en ${servicio}.env`);
+      cambiadas += 1;
+      continue;
+    }
+    writeFileSync(`${ruta}.antes-de-${sello}`, contenido, { mode: 0o600 });
+    writeFileSync(ruta, contenido.replace(linea, `STORAGE_ENCRYPTION_KEY=${clave}`), {
+      mode: 0o600,
+    });
+    cambiadas += 1;
+  }
+  ok(
+    `clave del almacén repuesta en ${cambiadas} archivo(s)` +
+      (opciones.dryRun ? '' : ` (copia .antes-de-${sello} junto a cada uno)`),
+  );
+};
+
+if (opciones.claveAlmacen.trim() !== '') {
+  paso('Clave del almacén (restauración)');
+  reponerClaveAlmacen(opciones.claveAlmacen.trim());
+  process.exit(0);
+}
 
 /* ── Lectura y escritura de archivos de entorno ────────────────────────────── */
 

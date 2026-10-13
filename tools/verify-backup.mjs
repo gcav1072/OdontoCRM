@@ -31,11 +31,22 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import pg from 'pg';
+
+import { decryptBlob, looksEncrypted, parseEncryptionKey } from '@odontocrm/storage';
 
 import { enviarAvisoAdmin } from './lib/alerta-admin.mjs';
 import { dirDeEntornos, entornoRaiz, leerEnv, ROOT } from './lib/servicios.mjs';
@@ -272,6 +283,164 @@ const revisarSumas = (dir) => {
   return { comprobado: true, revisados, discrepancias };
 };
 
+/* ── El almacén (radiografías y PDF de récipes) ───────────────────────────── */
+
+const mensajeDe = (error) => (error instanceof Error ? error.message : String(error));
+
+/** Todos los archivos (rutas relativas) bajo una carpeta. */
+const listarArchivos = (dir) => {
+  const resultado = [];
+  const recorrer = (actual) => {
+    for (const entrada of readdirSync(actual, { withFileTypes: true })) {
+      const camino = join(actual, entrada.name);
+      if (entrada.isDirectory()) recorrer(camino);
+      else if (entrada.isFile()) resultado.push(relative(dir, camino));
+    }
+  };
+  recorrer(dir);
+  return resultado.sort();
+};
+
+/**
+ * Lista o extrae con `tar`, que entiende los dos formatos que produce el respaldo:
+ * `.tar.gz` (Fedora, `tar -xzf`) y `.zip` (Windows, `tar -xf` — el `tar.exe` de Windows 10+
+ * lee zip). No se parsea en Node a propósito: el formato lo elige quien respalda, y `tar` ya
+ * sabe leerlo. Se extrae por **miembro**, no el archivo entero: un almacén entero son
+ * gigabytes y aquí solo hace falta una muestra.
+ */
+const esTarGz = (archivo) => /\.(tar\.gz|tgz)$/.test(archivo);
+const listarMiembros = (archivo) =>
+  execFileSync('tar', [esTarGz(archivo) ? '-tzf' : '-tf', archivo], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+    .split('\n')
+    .map((linea) => linea.trim())
+    .filter((linea) => linea !== '' && !linea.endsWith('/'));
+const extraerMiembro = (archivo, miembro, destino) => {
+  mkdirSync(destino, { recursive: true });
+  execFileSync('tar', [esTarGz(archivo) ? '-xzf' : '-xf', archivo, '-C', destino, miembro], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+};
+const extraerTodo = (archivo, destino) => {
+  mkdirSync(destino, { recursive: true });
+  execFileSync('tar', [esTarGz(archivo) ? '-xzf' : '-xf', archivo, '-C', destino], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+};
+
+/** La clave del almacén, en cualquier `.env` bajo una carpeta (la config extraída). */
+const claveEnArbol = (dir) => {
+  for (const archivo of listarArchivos(dir)) {
+    if (!/(^|\/)(patients|clinical|billing|identity)\.env$/.test(archivo)) continue;
+    const linea = /^STORAGE_ENCRYPTION_KEY=(.*)$/m.exec(readFileSync(join(dir, archivo), 'utf8'));
+    const valor = linea?.[1]?.trim().replace(/^['"]|['"]$/g, '');
+    if (valor !== undefined && valor !== '') return valor;
+  }
+  return undefined;
+};
+
+/**
+ * Comprueba el almacén del respaldo: que venga, que traiga archivos y que **uno de los
+ * cifrados se descifre** con la clave que trae la configuración. Es lo que demuestra que,
+ * tras restaurar, los récipes y las radiografías se podrán seguir abriendo —justo lo que
+ * falló cuando se restauraban solo las bases y la clave era otra—.
+ */
+export const revisarAlmacen = (dir) => {
+  const enDir = readdirSync(dir);
+  const storage =
+    enDir.find((n) => /^storage_.*\.tar\.gz$/.test(n)) ??
+    (enDir.includes('storage.zip') ? 'storage.zip' : undefined);
+  if (storage === undefined) {
+    return {
+      estado: 'ausente',
+      detalle: 'no hay storage_*.tar.gz ni storage.zip (¿respaldo sin --include-storage?)',
+    };
+  }
+
+  const tmp = mkdtempSync(join(tmpdir(), 'odontocrm-almacen-'));
+  try {
+    let miembros;
+    try {
+      miembros = listarMiembros(join(dir, storage));
+    } catch (error) {
+      return { estado: 'fallo', detalle: `no pude abrir ${storage}: ${mensajeDe(error)}` };
+    }
+    if (miembros.length === 0) {
+      return { estado: 'fallo', detalle: `${storage} no trae ningún archivo` };
+    }
+
+    // La clave, del archivo de configuración (si el respaldo la trae).
+    const config =
+      enDir.find((n) => /^etc-odontocrm_.*\.tar\.gz$/.test(n)) ??
+      (enDir.includes('config.zip') ? 'config.zip' : undefined);
+    let clave;
+    if (config !== undefined) {
+      const dirConfig = join(tmp, 'config');
+      try {
+        extraerTodo(join(dir, config), dirConfig);
+        clave = claveEnArbol(dirConfig);
+      } catch {
+        clave = undefined;
+      }
+    }
+
+    // Se busca el primer archivo cifrado de la muestra (se extrae por miembro: barato).
+    const tope = Math.min(miembros.length, 25);
+    for (let i = 0; i < tope; i += 1) {
+      const miembro = miembros[i];
+      const dirMuestra = join(tmp, 'muestra');
+      try {
+        extraerMiembro(join(dir, storage), miembro, dirMuestra);
+      } catch {
+        continue;
+      }
+      const bytes = readFileSync(join(dirMuestra, miembro));
+      if (!looksEncrypted(bytes)) continue;
+
+      if (clave === undefined) {
+        return {
+          estado: 'aviso',
+          detalle: `${String(miembros.length)} archivo(s) con cifrado, pero el respaldo no trae STORAGE_ENCRYPTION_KEY (¿sin --include-config?)`,
+        };
+      }
+      let claveBuffer;
+      try {
+        claveBuffer = parseEncryptionKey(clave);
+      } catch (error) {
+        return {
+          estado: 'fallo',
+          detalle: `STORAGE_ENCRYPTION_KEY del respaldo no es válida: ${mensajeDe(error)}`,
+        };
+      }
+      if (claveBuffer === undefined) {
+        return { estado: 'aviso', detalle: 'el respaldo no trae clave de cifrado' };
+      }
+      try {
+        decryptBlob(bytes, claveBuffer);
+      } catch (error) {
+        const crudo = mensajeDe(error);
+        const motivo = /authenticate|Unsupported state/i.test(crudo)
+          ? 'no se descifra con la clave del respaldo (los documentos restaurados no se abrirían)'
+          : crudo;
+        return { estado: 'fallo', detalle: `${miembro}: ${motivo}` };
+      }
+      return {
+        estado: 'ok',
+        detalle: `${String(miembros.length)} archivo(s); «${miembro}» se descifra con la clave del respaldo`,
+      };
+    }
+
+    return {
+      estado: 'ok',
+      detalle: `${String(miembros.length)} archivo(s); la muestra no tiene cifrados`,
+    };
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+};
+
 /** Restaura un `.dump` en una base temporal y cuenta la tabla de control. */
 const probarBase = async (dir, base) => {
   const archivo = join(dir, `${base}.dump`);
@@ -452,6 +621,18 @@ export const main = async () => {
     aviso(`sumas SHA-256: ${sumas.motivo}`);
   }
 
+  // El almacén (radiografías y PDF de récipes): que venga y que se descifre con la clave del
+  // respaldo. Restaurar solo las bases dejaba la base intacta pero los documentos ilegibles.
+  let almacen;
+  try {
+    almacen = revisarAlmacen(elegido.dir);
+  } catch (error) {
+    almacen = { estado: 'aviso', detalle: `no pude revisar el almacén: ${mensajeDe(error)}` };
+  }
+  if (almacen.estado === 'ok') ok(`almacén: ${almacen.detalle}`);
+  else if (almacen.estado === 'fallo') fallo(`almacén: ${almacen.detalle}`);
+  else aviso(`almacén: ${almacen.detalle}`);
+
   if (urlAdmin === '') {
     console.error(
       '\n✖ falta PG_ADMIN_URL (en el .env de la raíz o en el entorno): sin administrador de\n' +
@@ -493,7 +674,9 @@ export const main = async () => {
   }
 
   const huboFallo =
-    fallidas.length > 0 || (sumas.comprobado && (sumas.discrepancias?.length ?? 0) > 0);
+    fallidas.length > 0 ||
+    (sumas.comprobado && (sumas.discrepancias?.length ?? 0) > 0) ||
+    almacen.estado === 'fallo';
 
   if (huboFallo && !sinAviso) {
     const detalle = [
@@ -501,6 +684,7 @@ export const main = async () => {
       ...(sumas.comprobado && (sumas.discrepancias?.length ?? 0) > 0
         ? [`· las sumas SHA-256 no cuadran: ${(sumas.discrepancias ?? []).join(', ')}`]
         : []),
+      ...(almacen.estado === 'fallo' ? [`· el almacén no se pudo leer: ${almacen.detalle}`] : []),
     ].join('\n');
 
     const avisoEnviado = await enviarAvisoAdmin({
