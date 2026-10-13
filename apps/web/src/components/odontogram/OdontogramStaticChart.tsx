@@ -196,6 +196,32 @@ const Arch = ({
 };
 
 /**
+ * El cuadrito de color de la leyenda, dibujado en **SVG** y no como un `<span>` con
+ * `background-color`.
+ *
+ * Al imprimir, el navegador **descarta los fondos CSS** salvo que el usuario active
+ * «gráficos de fondo»: el cuadrito se veía en pantalla (y en la vista previa) pero en
+ * el papel salía **en blanco**. El `fill`/`stroke` de un SVG sí se imprime siempre
+ * —es dibujo vectorial, no un fondo—, igual que ya imprimen los dientes, los símbolos
+ * y la doble línea de la leyenda. El color clínico va en el `fill`; `null` = sano, que
+ * es el cuadro en blanco con su borde.
+ */
+const Swatch = ({ color }: { color: string | null }) => (
+  <svg viewBox="0 0 12 12" className="size-3 shrink-0" aria-hidden>
+    <rect
+      x={0.75}
+      y={0.75}
+      width={10.5}
+      height={10.5}
+      rx={1.5}
+      fill={color ?? '#ffffff'}
+      strokeWidth={1.5}
+      style={TRAZO_CARA}
+    />
+  </svg>
+);
+
+/**
  * Leyenda del papel: qué significa cada color y cada símbolo.
  *
  * Los tratamientos se enseñan en **los dos colores** (rojo = indicado o pendiente,
@@ -207,26 +233,15 @@ const OdontogramLegend = () => (
   <div className="space-y-1.5 text-xs text-[color:var(--brand-ink-muted)]">
     <ul className="flex flex-wrap gap-x-5 gap-y-1">
       <li className="flex items-center gap-1.5">
-        <span
-          className="inline-block size-3 rounded-sm border border-[color:var(--brand-line)]"
-          style={{ backgroundColor: CLINICAL_STATE_COLORS.pendiente }}
-          aria-hidden
-        />
+        <Swatch color={CLINICAL_STATE_COLORS.pendiente} />
         {t('odonto.leyenda.rojo')}
       </li>
       <li className="flex items-center gap-1.5">
-        <span
-          className="inline-block size-3 rounded-sm border border-[color:var(--brand-line)]"
-          style={{ backgroundColor: CLINICAL_STATE_COLORS.completado }}
-          aria-hidden
-        />
+        <Swatch color={CLINICAL_STATE_COLORS.completado} />
         {t('odonto.leyenda.azul')}
       </li>
       <li className="flex items-center gap-1.5">
-        <span
-          className="inline-block size-3 rounded-sm border border-[color:var(--brand-line)] bg-white"
-          aria-hidden
-        />
+        <Swatch color={null} />
         {t('odonto.leyenda.sano')}
       </li>
     </ul>

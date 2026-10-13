@@ -241,6 +241,25 @@ describe('el informe impreso se lee como un documento clínico', () => {
     expect(boca).toContain('Azul: tratamiento ya realizado');
     expect(boca).toContain('Rojo: caries, restauración o tratamiento indicado');
   });
+
+  it('los colores clínicos del papel se dibujan (SVG) y no como fondos que la impresora descarta', () => {
+    const boca = documento(
+      detalle({
+        '16': [hallazgo({ toothNumber: 16, state: 'pendiente' })],
+        '17': [hallazgo({ toothNumber: 17, condition: 'restauracion', state: 'completado' })],
+      }),
+    );
+
+    // Al imprimir, el navegador **no pinta los fondos CSS** (salvo que el usuario active
+    // «gráficos de fondo»): un color clínico puesto con `background-color` —el cuadrito de
+    // la leyenda o el punto de estado— sale **en blanco** en papel, aunque se vea en
+    // pantalla. Por eso todo el código de color del documento va en SVG (fill/stroke), que
+    // sí se imprime.
+    expect(boca).not.toMatch(/background-color:\s*#(?:ef4444|3b82f6)/i);
+    // Y los colores siguen saliendo, como relleno/trazo vectorial.
+    expect(boca).toMatch(/fill="#ef4444"/);
+    expect(boca).toMatch(/fill="#3b82f6"/);
+  });
 });
 
 describe('el documento se lee como la boca del paciente', () => {

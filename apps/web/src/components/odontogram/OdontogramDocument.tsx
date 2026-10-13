@@ -37,6 +37,22 @@ import { MembreteDocumento } from '../print/MembreteDocumento';
  * odontólogo lee y no cambian con la paleta.
  */
 
+/**
+ * El punto de color del estado de un hallazgo (o de una prótesis), en el papel.
+ *
+ * Va en **SVG** y no como un `<span>` con `background-color`: al imprimir, el navegador
+ * **descarta los fondos CSS** salvo que el usuario active «gráficos de fondo», así que
+ * el punto salía **en blanco** en papel aunque se viera en pantalla. El `fill` de un SVG
+ * sí se imprime siempre (dibujo vectorial, no fondo). El texto que lo acompaña ya lleva
+ * el color del estado, de modo que el documento no pierde información aunque el punto
+ * no salga; pero así el papel casa con lo que se vio en la vista previa.
+ */
+const StateDot = ({ color, size = 'size-2.5' }: { color: string; size?: string }) => (
+  <svg viewBox="0 0 10 10" className={`${size} shrink-0`} aria-hidden>
+    <circle cx={5} cy={5} r={5} fill={color} />
+  </svg>
+);
+
 /** Todos los hallazgos vigentes, ordenados por pieza y cara. */
 const orderedFindings = (detail: OdontogramDetail): ToothFindingRecord[] =>
   Object.values(detail.findings)
@@ -104,15 +120,12 @@ const FindingsTable = ({ detail }: { detail: OdontogramDetail }) => {
                       : CLINICAL_STATE_COLORS.completado,
                 }}
               >
-                <span
-                  className="inline-block size-2.5 rounded-full"
-                  style={{
-                    backgroundColor:
-                      hallazgo.state === 'pendiente'
-                        ? CLINICAL_STATE_COLORS.pendiente
-                        : CLINICAL_STATE_COLORS.completado,
-                  }}
-                  aria-hidden
+                <StateDot
+                  color={
+                    hallazgo.state === 'pendiente'
+                      ? CLINICAL_STATE_COLORS.pendiente
+                      : CLINICAL_STATE_COLORS.completado
+                  }
                 />
                 {CLINICAL_STATE_LABELS[hallazgo.state]}
               </span>
@@ -167,11 +180,7 @@ const ProsthesesTable = ({ prostheses }: { prostheses: readonly ProsthesisRecord
               className="inline-flex items-center gap-1.5"
               style={{ color: CLINICAL_STATE_COLORS[prosthesis.state] }}
             >
-              <span
-                className="inline-block size-2.5 rounded-full"
-                style={{ backgroundColor: CLINICAL_STATE_COLORS[prosthesis.state] }}
-                aria-hidden
-              />
+              <StateDot color={CLINICAL_STATE_COLORS[prosthesis.state]} />
               {CLINICAL_STATE_LABELS[prosthesis.state]}
             </span>
           </td>
@@ -360,11 +369,7 @@ export const OdontogramDocument = ({
                         className="inline-flex items-center gap-1"
                         style={{ color: CLINICAL_STATE_COLORS[entrada.state] }}
                       >
-                        <span
-                          className="inline-block size-2 rounded-full"
-                          style={{ backgroundColor: CLINICAL_STATE_COLORS[entrada.state] }}
-                          aria-hidden
-                        />
+                        <StateDot color={CLINICAL_STATE_COLORS[entrada.state]} size="size-2" />
                         {CLINICAL_STATE_LABELS[entrada.state]}
                       </span>
                     </td>
