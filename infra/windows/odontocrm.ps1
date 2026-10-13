@@ -5,7 +5,9 @@
 #   odontocrm estado          # tablero completo (con el entorno de producción)
 #   odontocrm alertas         # solo los problemas; código 1 si hay alguno
 #   odontocrm respaldar       # respaldo ahora (bases + configuración)
+#   odontocrm restaurar --from DIR --all --yes   # restaura bases + almacén y reinicia
 #   odontocrm recuperar --from DIR   # recuperación completa (bases + almacén + arranque)
+#   odontocrm purgar-prueba   # quita las cuentas de PRUEBA sembradas (recepcion/prueba)
 #   odontocrm verificar       # los procesos, HTTPS y la CA
 #   odontocrm servicios       # estado de los procesos con PM2
 #   odontocrm logs clinical   # últimos registros de un servicio
@@ -56,10 +58,12 @@ function Ayuda {
   Write-Host '  odontocrm respaldar       Respaldo ahora de las bases y de la configuración'
   Write-Host '                            (CONTINENE SECRETOS: custodiar el medio).'
   Write-Host '  odontocrm restaurar ...   Restaurar desde un respaldo (mira --help del guion).'
+  Write-Host '                            Con --all repone ADEMÁS el almacén (radiografías y PDF) y su'
+  Write-Host '                            clave, y reinicia: reimprimir un récipe funciona al terminar.'
   Write-Host '  odontocrm recuperar --from DIR'
   Write-Host '                            RECUPERACIÓN COMPLETA en un comando: para los servicios,'
-  Write-Host '                            restaura las bases, repone el almacén y arranca'
-  Write-Host '                            (servidor nuevo o fallo físico).'
+  Write-Host '                            restaura las bases, repone el almacén (y reconcilia su'
+  Write-Host '                            clave), y arranca (servidor nuevo o fallo físico).'
   Write-Host '  odontocrm verificar       Los procesos, HTTPS, la CA y el firewall.'
   Write-Host '  odontocrm servicios       Estado de los procesos con PM2.'
   Write-Host '  odontocrm logs <servicio|gateway|caddy|postgres> [líneas]'
@@ -76,7 +80,9 @@ function Ayuda {
   Write-Host '  odontocrm reiniciar       Reinicia todo (aplica configuración).'
   Write-Host '  odontocrm compilar        Solo compila.  ·  odontocrm recompilar  Compila y reinicia.'
   Write-Host '  odontocrm modo-test <on|off|estado>'
-  Write-Host ''
+  Write-Host '  odontocrm purgar-prueba [--si] [--desactivar|--borrar]'
+  Write-Host '                            Quita las cuentas de PRUEBA que el seed creaba (recepcion y'
+  Write-Host '                            el odontólogo de clinic.ts). Sin --si solo enseña qué haría.'
   Write-Host "  Directorio del código: $OdontoCode" -ForegroundColor DarkGray
   Write-Host "  Configuración:         $OdontoEnv" -ForegroundColor DarkGray
   Write-Host ''
@@ -96,6 +102,95 @@ function Invocar-Node {
     Remove-Item Env:\ODONTOCRM_ENV_DIR -ErrorAction SilentlyContinue
     Pop-Location
   }
+}
+
+# Repone el almacén (radiografías/PDF) y reconcilia la clave del respaldo. Es lo que hace que
+# los récipes y las radiografías restaurados se puedan abrir: reimprimir un récipe LEE el PDF
+# archivado, y si no está —o está cifrado con otra clave— no se puede. Devuelve $false solo si
+# los ARCHIVOS no se pudieron reponer (eso sí es grave).
+function Restaurar-Almacen {
+  param([string]$StorageZip, [string]$ConfigZip)
+  if (-not $StorageZip -or -not (Test-Path $StorageZip)) {
+    Escribir-Aviso 'este respaldo no trae el almacén (storage.zip)'
+    return $true
+  }
+  New-Item -ItemType Directory -Force -Path $OdontoStorage | Out-Null
+  try {
+    # `| Out-Null`: si un cmdlet escribiera algo, se colaría en el valor de retorno de la
+    # función (que solo debe ser $true/$false) y rompería el `if` que la usa.
+    Expand-Archive -Path $StorageZip -DestinationPath $OdontoStorage -Force | Out-Null
+    Escribir-Ok "almacén repuesto en $OdontoStorage"
+  }
+  catch {
+    Escribir-Error "no pude extraer ${StorageZip}: $($_.Exception.Message)"
+    return $false
+  }
+
+  # La clave con la que se cifraron los archivos: la del respaldo (config.zip) o, si no viene,
+  # la del respaldo de la desinstalación. Sin ella, un almacén cifrado queda ilegible.
+  $clave = $null
+  $buscar = @()
+  $tmp = $null
+  if ($ConfigZip -and (Test-Path $ConfigZip)) {
+    $tmp = Join-Path $OdontoTmp ('clave-almacen_' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    try { Expand-Archive -Path $ConfigZip -DestinationPath $tmp -Force | Out-Null } catch { }
+    $buscar += $tmp
+  }
+  foreach ($g in (Get-ChildItem -Path 'C:\' -Directory -Filter 'OdontoCRM-antes-de-desinstalar-*' -ErrorAction SilentlyContinue | Sort-Object Name -Descending)) {
+    $dirEnv = Join-Path $g.FullName 'env'
+    if (Test-Path $dirEnv) { $buscar += $dirEnv }
+  }
+  foreach ($dir in $buscar) {
+    foreach ($f in 'patients', 'clinical', 'billing', 'identity') {
+      $ruta = Join-Path $dir "${f}.env"
+      if (Test-Path $ruta) {
+        $linea = (Get-Content -Path $ruta -ErrorAction SilentlyContinue | Where-Object { $_ -match '^STORAGE_ENCRYPTION_KEY=' } | Select-Object -First 1)
+        if ($linea) { $clave = ($linea -replace '^STORAGE_ENCRYPTION_KEY=', '').Trim(); break }
+      }
+    }
+    if ($clave) { break }
+  }
+  if ($tmp) { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
+
+  $actual = $null
+  foreach ($f in 'patients', 'clinical', 'billing', 'identity') {
+    $ruta = Join-Path $OdontoEnv "${f}.env"
+    if (Test-Path $ruta) {
+      $linea = (Get-Content -Path $ruta -ErrorAction SilentlyContinue | Where-Object { $_ -match '^STORAGE_ENCRYPTION_KEY=' } | Select-Object -First 1)
+      if ($linea) { $actual = ($linea -replace '^STORAGE_ENCRYPTION_KEY=', '').Trim(); break }
+    }
+  }
+
+  if (-not $clave) {
+    Escribir-Aviso 'no pude averiguar la clave del almacén: si está cifrado, quedará ilegible (RUNBOOK)'
+  }
+  elseif ($clave -eq $actual) {
+    Escribir-Ok 'la clave del almacén ya es la del respaldo'
+  }
+  else {
+    # `| Out-Host` es IMPORTANTE: la salida de un programa nativo entra en el flujo de la
+    # función y se colaría en el valor de retorno ($true/$false), rompiendo el `if` que la usa.
+    & node (Join-Path $OdontoCode 'infra\fedora\instalar\aprovisionar.mjs') "--env-dir=$OdontoEnv" "--clave-almacen=$clave" | Out-Host
+    if ($LASTEXITCODE -eq 0) { Escribir-Ok 'clave del almacén repuesta (para que los documentos restaurados se lean)' }
+    else { Escribir-Aviso 'no pude reponer la clave del almacén en los .env' }
+  }
+
+  # La prueba que importa: que un archivo de muestra se descifre de verdad. La herramienta
+  # encuentra los .env por ODONTOCRM_ENV_DIR, así que se pasa y se restaura.
+  $anteriorEnv = $env:ODONTOCRM_ENV_DIR
+  $env:ODONTOCRM_ENV_DIR = $OdontoEnv
+  try {
+    & node (Join-Path $OdontoCode 'tools\verificar-almacen.mjs') --estado | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+      Escribir-Aviso 'la verificación del almacén avisó de algo: revísalo antes de dar por bueno el sistema'
+    }
+  }
+  finally {
+    if ($null -eq $anteriorEnv) { Remove-Item Env:\ODONTOCRM_ENV_DIR -ErrorAction SilentlyContinue }
+    else { $env:ODONTOCRM_ENV_DIR = $anteriorEnv }
+  }
+  return $true
 }
 
 switch ($Orden) {
@@ -141,7 +236,6 @@ switch ($Orden) {
     $dumps = @(Get-ChildItem -Path $desde -Filter '*.dump' -File -ErrorAction SilentlyContinue)
     if ($dumps.Count -eq 0) { Morir "no hay volcados (.dump) en ${desde}: ¿es un directorio de respaldo?" }
 
-    $almacen = $OdontoStorage
     $storageZip = Join-Path $desde 'storage.zip'
     $configZip = Join-Path $desde 'config.zip'
     $restaurador = Join-Path $OdontoRepo 'infra\windows\backup\odontocrm-restore.ps1'
@@ -179,18 +273,10 @@ switch ($Orden) {
     & powershell -NoProfile -ExecutionPolicy Bypass -File $restaurador --from $desde --all --keep-old --yes
     if ($LASTEXITCODE -ne 0) { Morir 'falló la restauración de las bases (revisa lo de arriba)' }
 
-    # 3) El almacén (radiografías y PDFs).
+    # 3) El almacén (radiografías y PDFs) + su clave de cifrado, y comprobación de que se lee.
     Escribir-Paso '3/4 · Almacén'
-    if (Test-Path $storageZip) {
-      New-Item -ItemType Directory -Force -Path $almacen | Out-Null
-      try {
-        Expand-Archive -Path $storageZip -DestinationPath $almacen -Force
-        Escribir-Ok "almacén repuesto en $almacen"
-      }
-      catch { Escribir-Aviso "no pude extraer ${storageZip}: reponlo a mano (RUNBOOK)" }
-    }
-    else {
-      Escribir-Aviso 'este respaldo no trae el almacén (es anterior a la copia diaria con --include-storage)'
+    if (-not (Restaurar-Almacen -StorageZip $storageZip -ConfigZip $configZip)) {
+      Escribir-Aviso 'no pude reponer el almacén: míralo a mano (RUNBOOK)'
     }
 
     # 4) La configuración, solo si se pide a propósito.
@@ -212,8 +298,8 @@ switch ($Orden) {
     }
     else {
       Escribir-Aviso 'no se toca la configuración (a propósito): los .env del respaldo son de la máquina ANTERIOR.'
-      Escribir-Detalle "si el almacén está CIFRADO, copia el STORAGE_ENCRYPTION_KEY del respaldo a"
-      Escribir-Detalle "$OdontoEnv\patients.env (clinical y billing usan el MISMO) o el almacén quedará ilegible."
+      Escribir-Detalle 'la CLAVE del almacén sí se reconcilió en el paso 3, para que los documentos'
+      Escribir-Detalle 'restaurados se lean; el resto es la configuración que generó el instalador.'
       Escribir-Detalle "para reponerla entera:  odontocrm recuperar --from `"$desde`" --con-config --yes"
     }
 
@@ -227,7 +313,44 @@ switch ($Orden) {
     Afirmar-Administrador
     $guion = Join-Path $OdontoRepo 'infra\windows\backup\odontocrm-restore.ps1'
     if (-not (Test-Path $guion)) { $guion = Join-Path $OdontoCode 'infra\windows\backup\odontocrm-restore.ps1' }
+
+    # Como en Fedora: si el respaldo es COMPLETO (`--all`) y trae el almacén, restaura las bases,
+    # repone el almacén Y su clave, y reinicia. Así, al terminar, reimprimir un récipe funciona.
+    # `--db <una>` y `--list` siguen siendo solo-bases.
+    $desde = Get-Argumento $Resto 'from'
+    $conTodo = Test-Bandera $Resto 'all'
+    $asumir = Test-Bandera $Resto 'yes'
+    $dry = Test-Bandera $Resto 'dry-run'
+    $storageZip = if ($desde) { Join-Path $desde 'storage.zip' } else { $null }
+    $configZip = if ($desde) { Join-Path $desde 'config.zip' } else { $null }
+
+    if (-not $conTodo -or -not $desde -or -not (Test-Path $storageZip) -or $dry -or -not $asumir) {
+      & powershell -NoProfile -ExecutionPolicy Bypass -File $guion @Resto
+      exit $LASTEXITCODE
+    }
+
+    Write-Host ''
+    Write-Host "Restauración completa desde $desde" -ForegroundColor White
+    Escribir-Detalle 'bases    : todas (la anterior se conserva como «<base>__antes_de_restaurar_<fecha>»)'
+    Escribir-Detalle "almacén  : $(Split-Path $storageZip -Leaf)"
+
+    Escribir-Paso '1/3 · Parar'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath parar
+    if ($LASTEXITCODE -ne 0) { Morir 'no pude parar los servicios' }
+
+    Escribir-Paso '2/3 · Bases'
     & powershell -NoProfile -ExecutionPolicy Bypass -File $guion @Resto
+    if ($LASTEXITCODE -ne 0) { Morir 'falló la restauración de las bases (revisa lo de arriba)' }
+
+    Escribir-Paso '3/3 · Almacén'
+    # Se AVISA y se sigue: las bases ya están restauradas, y dejar los servicios parados por el
+    # almacén sería peor. El operador lo ve y lo repone a mano si hace falta.
+    if (-not (Restaurar-Almacen -StorageZip $storageZip -ConfigZip $configZip)) {
+      Escribir-Aviso 'no pude reponer el almacén: míralo a mano (RUNBOOK)'
+    }
+
+    Escribir-Paso 'Arranque'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath arrancar
     exit $LASTEXITCODE
   }
 
@@ -282,6 +405,10 @@ switch ($Orden) {
     # y proxy. Es idempotente y NO toca las credenciales (ADR 0043).
     $desplegar = Join-Path $OdontoCode 'infra\windows\instalar\30-desplegar.ps1'
     if (-not (Test-Path $desplegar)) { Morir "no encuentro $desplegar en el código desplegado" }
+    # El despliegue NO debe sembrar las cuentas de PRUEBA («recepcion», «Odontólogo prueba»):
+    # solo el `admin`. El resto del personal se da de alta en /usuarios. (Sin esta variable
+    # `30-desplegar.ps1` ya usa `admin`, pero fijarlo aquí lo hace explícito y a prueba de fallos.)
+    $env:USUARIOS_SEED = 'admin'
     & powershell -NoProfile -ExecutionPolicy Bypass -File $desplegar
     if ($LASTEXITCODE -ne 0) { Escribir-Aviso 'el despliegue reportó un problema: revisa la salida de arriba' }
     exit $LASTEXITCODE
@@ -462,6 +589,20 @@ switch ($Orden) {
     Push-Location $OdontoCode
     try {
       & node (Join-Path $OdontoCode 'tools\con-entorno.mjs') $OdontoEnv $servicio -- @comando
+      exit $LASTEXITCODE
+    }
+    finally { Pop-Location }
+  }
+
+  { $_ -in @('purgar-prueba', 'limpiar-cuentas-prueba') } {
+    Afirmar-Administrador
+    # Borra (o desactiva) las cuentas de PRUEBA que el seed creaba en el servidor: «recepcion»
+    # y el odontólogo de `CLINIC.dentists` («Odontólogo prueba»). El personal real no se toca.
+    # Sin `--si` solo enseña qué haría.
+    Push-Location $OdontoCode
+    try {
+      & node (Join-Path $OdontoCode 'tools\con-entorno.mjs') $OdontoEnv identity -- `
+        node (Join-Path $OdontoCode 'tools\purgar-cuentas-prueba.mjs') @Resto
       exit $LASTEXITCODE
     }
     finally { Pop-Location }
