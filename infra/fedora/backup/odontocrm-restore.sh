@@ -303,6 +303,12 @@ SQL_TABLE_COUNT="SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.
 # Utilidades de respaldo
 # -----------------------------------------------------------------------------
 # Devuelve la ruta del volcado de una base dentro de un directorio de respaldo.
+#
+# Dos nombres valen, porque hay dos orígenes:
+#   · `<base>_AAAA-MM-DD_HHMMSS.dump` — el respaldo nocturno (así lo escribe
+#     odontocrm-backup.sh). Es el que manda si en la carpeta están los dos.
+#   · `<base>.dump` — lo que manda el bot de administración (`/respaldos`) y lo que
+#     escribe el respaldo en Windows. Sin fecha, pero es un respaldo completo de esa base.
 find_dump_for_db() {
   local dir="$1" db="$2" f
   for f in "$dir/${db}"_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_*.dump; do
@@ -311,12 +317,21 @@ find_dump_for_db() {
       return 0
     fi
   done
+  if [[ -f "$dir/${db}.dump" ]]; then
+    printf '%s\n' "$dir/${db}.dump"
+    return 0
+  fi
   return 1
 }
 
-# Deriva el nombre de la base a partir del nombre del archivo <base>_<fecha>.dump
+# Deriva el nombre de la base a partir del nombre del archivo: `<base>_<fecha>.dump` o
+# `<base>.dump` (el del bot de administración, que no lleva fecha).
 db_from_dump() {
   local base; base="$(basename "$1")"
+  if [[ "$base" != *_2[0-9][0-9][0-9]-* ]]; then
+    printf '%s\n' "${base%.dump}"
+    return 0
+  fi
   printf '%s\n' "${base%%_2[0-9][0-9][0-9]-*}"
 }
 
@@ -632,9 +647,12 @@ main() {
         fi
       done
     else
-      for f in "$FROM"/*.dump; do
+      # Los volcados del respaldo nocturno van primero: si en la carpeta están el de la noche y
+      # el que mandó el bot (sin fecha), el de la noche es el bueno. Después los sin fecha.
+      for f in "$FROM"/*_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_*.dump "$FROM"/*.dump; do
         [[ -f "$f" ]] || continue
         db="$(db_from_dump "$f")"
+        [[ -n "${WORK[$db]:-}" ]] && continue
         WORK["$db"]="$f"
       done
       (( ${#WORK[@]} > 0 )) || die "no se encontraron archivos .dump en $FROM" 2

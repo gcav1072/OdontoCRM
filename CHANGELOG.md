@@ -20,6 +20,11 @@ no reimplementa nada, reutiliza lo que ya estaba probado. La **configuración no
 propósito —los `.env` del respaldo son de la máquina anterior y pisarían las contraseñas que el
 instalador acaba de crear—; con `--con-config` se repone, y sin `--yes` solo dice qué haría.
 
+El restaurador acepta ya los **volcados del bot de administración** (`<base>.dump`, sin la fecha en
+el nombre), no solo los del respaldo nocturno (`<base>_<fecha>.dump`): recuperar con lo que mandó
+`/respaldos` por Telegram no exige renombrar los archivos a mano. Si en la carpeta están las dos
+formas, manda la del respaldo nocturno.
+
 ## [Respaldo] — El respaldo diario incluye el almacén, y hay guía de recuperación · 2026-10-12
 
 El respaldo diario guardaba **bases + configuración**, pero **no** el almacén (radiografías y
