@@ -90,6 +90,74 @@ La tarea **OdontoCRM · respaldo diario** corre a las 03:30 como SYSTEM. Los res
 Sin `--dry-run` y **sin** `--yes`, restaura a una base temporal de verificación y **no toca la
 base real**: es la forma de comprobar que un respaldo sirve.
 
+### Recuperación completa: servidor nuevo o fallo físico
+
+> La guía única (los tres casos, qué trae el respaldo y qué no) está en
+> [`docs/RECUPERACION.md`](../../docs/RECUPERACION.md). Aquí va el comando y el paso a paso de
+> este servidor.
+
+El respaldo diario trae **tres cosas**, y hay que reponer las tres:
+
+| Archivo | Qué lleva |
+| :--- | :--- |
+| `odonto_<base>.dump` | Una base cada una (el esquema y los datos) |
+| `storage.zip` | El **almacén**: radiografías y PDFs |
+| `config.zip` | La configuración (y los **secretos**) |
+
+> **Base y almacén van juntos.** Si el almacén está cifrado y lo restauras sin la
+> configuración (sin el `STORAGE_ENCRYPTION_KEY`), los archivos quedan **ilegibles**. Y un
+> respaldo hecho antes de que el almacén entrara en la copia diaria **no lo trae**: compruébalo
+> antes de dar el desastre por resuelto.
+
+**En un comando** (para los servicios → restaura las bases → repone el almacén → arranca):
+
+```powershell
+# En una máquina nueva, primero el instalador (crea roles, bases vacías y servicios):
+powershell -ExecutionPolicy Bypass -File infra\windows\instalar\instalar.ps1
+
+# Recuperación completa desde el pendrive o la carpeta del respaldo:
+odontocrm recuperar --from C:\OdontoCRM\backups\2026-10-12 --yes
+```
+
+`recuperar` **no toca la configuración** a propósito: los `.env` del respaldo son de la máquina
+**anterior** y pisarían las contraseñas que el instalador acaba de crear (los servicios no
+conectarían). Si lo necesitas, añade `--con-config`. Sin `--yes` solo dice qué haría; con
+`--dry-run` no toca nada.
+
+> **Base y almacén van juntos.** Si el almacén está cifrado, el `STORAGE_ENCRYPTION_KEY` tiene
+> que ser el MISMO con que se cifró; `recuperar` te dice de dónde copiarlo si no repusiste la
+> configuración. Y un respaldo hecho antes de que el almacén entrara en la copia diaria **no lo
+> trae** (`--include-storage`): compruébalo antes de dar el desastre por resuelto.
+
+**Paso a paso** (si prefieres verlo, o si `recuperar` falló en algo):
+
+```powershell
+# 1) Verifica el respaldo ANTES de tocar nada (SHA-256 de TODO el respaldo)
+node tools\verify-backup.mjs --from C:\OdontoCRM\backups\2026-10-12 --estado
+
+# 2) Para la pila (PostgreSQL se queda arriba: la restauración necesita conectarse)
+odontocrm parar
+
+# 3) Bases (ensaya en base temporal; --keep-old conserva la anterior)
+odontocrm restaurar --from C:\OdontoCRM\backups\2026-10-12 --all --keep-old --yes
+
+# 4) Almacén (radiografías y PDFs) → C:\OdontoCRM\data\storage
+Expand-Archive -Path C:\OdontoCRM\backups\2026-10-12\storage.zip -DestinationPath C:\OdontoCRM\data\storage -Force
+
+# 5) Configuración y secretos — el zip trae el CONTENIDO de la carpeta `env`, así que se
+#    extrae EN `env` (no en el padre):
+Expand-Archive -Path C:\OdontoCRM\backups\2026-10-12\config.zip -DestinationPath C:\ProgramData\OdontoCRM\env -Force
+# los .env vueltos a poner pierden la ACL: vuelve a protegerlos (Administradores + LocalService)
+
+# 6) Arranca y verifica
+odontocrm arrancar
+```
+
+> **Si el respaldo es de un esquema anterior**, tras restaurar hay que aplicar las migraciones
+> (`odontocrm actualizar`). Y si repusiste la configuración de otra máquina, revisa las **rutas**
+> de los `.env` (el almacén y las claves JWT cambian de sitio entre servidores); los `.env`
+> vueltos a poner hay que **volver a protegerlos** (ACL de Administradores + LocalService).
+
 ## 8. Ver logs
 
 ```powershell

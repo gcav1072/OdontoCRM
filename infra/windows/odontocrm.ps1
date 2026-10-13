@@ -5,6 +5,7 @@
 #   odontocrm estado          # tablero completo (con el entorno de producción)
 #   odontocrm alertas         # solo los problemas; código 1 si hay alguno
 #   odontocrm respaldar       # respaldo ahora (bases + configuración)
+#   odontocrm recuperar --from DIR   # recuperación completa (bases + almacén + arranque)
 #   odontocrm verificar       # los procesos, HTTPS y la CA
 #   odontocrm servicios       # estado de los procesos con PM2
 #   odontocrm logs clinical   # últimos registros de un servicio
@@ -55,6 +56,10 @@ function Ayuda {
   Write-Host '  odontocrm respaldar       Respaldo ahora de las bases y de la configuración'
   Write-Host '                            (CONTINENE SECRETOS: custodiar el medio).'
   Write-Host '  odontocrm restaurar ...   Restaurar desde un respaldo (mira --help del guion).'
+  Write-Host '  odontocrm recuperar --from DIR'
+  Write-Host '                            RECUPERACIÓN COMPLETA en un comando: para los servicios,'
+  Write-Host '                            restaura las bases, repone el almacén y arranca'
+  Write-Host '                            (servidor nuevo o fallo físico).'
   Write-Host '  odontocrm verificar       Los procesos, HTTPS, la CA y el firewall.'
   Write-Host '  odontocrm servicios       Estado de los procesos con PM2.'
   Write-Host '  odontocrm logs <servicio|gateway|caddy|postgres> [líneas]'
@@ -113,6 +118,108 @@ switch ($Orden) {
     # --include-storage: el almacén (radiografías/PDFs) entra por defecto; sin él, un fallo
     # físico del disco dejaría la base recuperable pero los adjuntos perdidos.
     & powershell -NoProfile -ExecutionPolicy Bypass -File $guion --include-config --include-storage @Resto
+    exit $LASTEXITCODE
+  }
+
+  'recuperar' {
+    Afirmar-Administrador
+    # **Recuperación completa en un comando** (RUNBOOK §"Recuperación completa"): parar →
+    # restaurar las bases → reponer el almacén → arrancar. Es el flujo de un servidor nuevo o
+    # de un fallo físico, partiendo del pendrive o de la carpeta del respaldo. No reimplementa
+    # nada: reutiliza `parar`, el restaurador y `arrancar`.
+    #
+    # OJO con la configuración: NO se repone salvo `--con-config`. Sobre una máquina nueva,
+    # los `.env` del respaldo traen las contraseñas y rutas de la ANTERIOR y pisarían las que
+    # el instalador acaba de crear (los servicios no conectarían). Pero si el almacén está
+    # cifrado, el `STORAGE_ENCRYPTION_KEY` tiene que venir de esa config: mira el aviso final.
+    $desde = Get-Argumento $Resto 'from'
+    $asumir = Test-Bandera $Resto 'yes'
+    $dry = Test-Bandera $Resto 'dry-run'
+    $conConfig = Test-Bandera $Resto 'con-config'
+    if (-not $desde) { Morir 'uso: odontocrm recuperar --from DIR [--yes] [--dry-run] [--con-config]' }
+    if (-not (Test-Path $desde)) { Morir "no encuentro el respaldo en $desde" }
+    $dumps = @(Get-ChildItem -Path $desde -Filter '*.dump' -File -ErrorAction SilentlyContinue)
+    if ($dumps.Count -eq 0) { Morir "no hay volcados (.dump) en ${desde}: ¿es un directorio de respaldo?" }
+
+    $almacen = $OdontoStorage
+    $storageZip = Join-Path $desde 'storage.zip'
+    $configZip = Join-Path $desde 'config.zip'
+    $restaurador = Join-Path $OdontoRepo 'infra\windows\backup\odontocrm-restore.ps1'
+    if (-not (Test-Path $restaurador)) { $restaurador = Join-Path $OdontoCode 'infra\windows\backup\odontocrm-restore.ps1' }
+
+    Write-Host ''
+    Write-Host "Recuperación desde $desde" -ForegroundColor White
+    Escribir-Detalle "bases    : $($dumps.Count) volcado(s)"
+    if (Test-Path $storageZip) { Escribir-Detalle "almacén  : $storageZip" }
+    else { Escribir-Detalle 'almacén  : no viene en este respaldo (se conserva el actual)' }
+    if ($conConfig) { Escribir-Detalle "config   : $configZip" }
+    else { Escribir-Detalle 'config   : no se toca (usa --con-config; ver el aviso final)' }
+    Escribir-Detalle 'PostgreSQL queda arriba: la restauración necesita conectarse.'
+
+    if ($dry) {
+      Escribir-Aviso '[dry-run] pararía los servicios, restauraría las bases, repondría el almacén y arrancaría'
+      exit 0
+    }
+    if (-not $asumir) {
+      Write-Host ''
+      Escribir-Error 'esto SUSTITUYE las bases actuales por las del respaldo.'
+      Escribir-Detalle 'las actuales se conservan como «<base>__antes_de_restaurar_<fecha>».'
+      Write-Host "      para confirmarlo:  odontocrm recuperar --from `"$desde`" --yes"
+      exit 10
+    }
+
+    # 1) Parar los servicios (PostgreSQL se queda arriba). Se reusa el mismo camino que
+    #    «odontocrm parar» re-invocando el propio comando.
+    Escribir-Paso '1/4 · Parar'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath parar
+    if ($LASTEXITCODE -ne 0) { Morir 'no pude parar los servicios' }
+
+    # 2) Las bases (el restaurador verifica cada volcado en una base temporal antes de la real).
+    Escribir-Paso '2/4 · Bases'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $restaurador --from $desde --all --keep-old --yes
+    if ($LASTEXITCODE -ne 0) { Morir 'falló la restauración de las bases (revisa lo de arriba)' }
+
+    # 3) El almacén (radiografías y PDFs).
+    Escribir-Paso '3/4 · Almacén'
+    if (Test-Path $storageZip) {
+      New-Item -ItemType Directory -Force -Path $almacen | Out-Null
+      try {
+        Expand-Archive -Path $storageZip -DestinationPath $almacen -Force
+        Escribir-Ok "almacén repuesto en $almacen"
+      }
+      catch { Escribir-Aviso "no pude extraer ${storageZip}: reponlo a mano (RUNBOOK)" }
+    }
+    else {
+      Escribir-Aviso 'este respaldo no trae el almacén (es anterior a la copia diaria con --include-storage)'
+    }
+
+    # 4) La configuración, solo si se pide a propósito.
+    Escribir-Paso '4/4 · Configuración'
+    if ($conConfig) {
+      if (Test-Path $configZip) {
+        Escribir-Aviso 'repones la configuración: revisa DESPUÉS las rutas y las contraseñas de los .env'
+        try {
+          # El zip trae el CONTENIDO de la carpeta `env`, así que se extrae ahí (no en el padre).
+          Expand-Archive -Path $configZip -DestinationPath $OdontoEnv -Force
+          # Los .env vueltos a poner pierden la ACL: se vuelve a proteger (Administradores + LocalService).
+          Get-ChildItem -Path $OdontoEnv -Filter '*.env' -ErrorAction SilentlyContinue |
+            ForEach-Object { Proteger-Archivo -Ruta $_.FullName -LecturaServicio }
+          Escribir-Ok "configuración y secretos repuestos en $OdontoEnv"
+        }
+        catch { Escribir-Aviso "no pude extraer ${configZip}: repónla a mano (RUNBOOK)" }
+      }
+      else { Escribir-Aviso 'este respaldo no trae la configuración (config.zip)' }
+    }
+    else {
+      Escribir-Aviso 'no se toca la configuración (a propósito): los .env del respaldo son de la máquina ANTERIOR.'
+      Escribir-Detalle "si el almacén está CIFRADO, copia el STORAGE_ENCRYPTION_KEY del respaldo a"
+      Escribir-Detalle "$OdontoEnv\patients.env (clinical y billing usan el MISMO) o el almacén quedará ilegible."
+      Escribir-Detalle "para reponerla entera:  odontocrm recuperar --from `"$desde`" --con-config --yes"
+    }
+
+    # 5) Arrancar y verificar (arrancar ya termina verificando).
+    Escribir-Paso 'Arranque'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath arrancar
     exit $LASTEXITCODE
   }
 

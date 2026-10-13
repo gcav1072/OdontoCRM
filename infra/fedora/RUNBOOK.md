@@ -215,6 +215,72 @@ La prueba de restauración completa (base limpia, contar filas y anotarlo) está
 [`INSTALL.md` §16](INSTALL.md) y es un **criterio de aceptación de la Fase 10**: sin
 ella, el sistema no se usa con pacientes reales.
 
+### Recuperación completa: servidor nuevo o fallo físico
+
+> La guía única (los tres casos, qué trae el respaldo y qué no) está en
+> [`docs/RECUPERACION.md`](../../docs/RECUPERACION.md). Aquí va el comando y el paso a paso de
+> este servidor.
+
+El respaldo diario trae **tres cosas**, y hay que reponer las tres:
+
+| Archivo | Qué lleva |
+| :--- | :--- |
+| `<base>.dump` | Una base cada una (el esquema y los datos) |
+| `storage_<marca>.tar.gz` | El **almacén**: radiografías y PDFs |
+| `etc-odontocrm_<marca>.tar.gz` | La configuración (y los **secretos**) |
+
+> **Base y almacén van juntos.** Si el almacén está cifrado y lo restauras sin la
+> configuración (sin el `STORAGE_ENCRYPTION_KEY`), los archivos quedan **ilegibles**. Y un
+> respaldo hecho antes de que el almacén entrara en la copia diaria **no lo trae**: compruébalo
+> con `ls` antes de dar el desastre por resuelto.
+
+**En un comando** (para los servicios → restaura las bases → repone el almacén → arranca):
+
+```bash
+# En una máquina nueva, primero el instalador (crea roles, bases vacías y servicios):
+sudo bash infra/fedora/instalar/instalar.sh
+
+# Recuperación completa desde el pendrive o la carpeta del respaldo:
+sudo odontocrm recuperar --from /media/pendrive/2026-10-12 --yes
+```
+
+`recuperar` **no toca `/etc/odontocrm`** a propósito: los `.env` del respaldo son de la máquina
+**anterior** y pisarían las contraseñas que el instalador acaba de crear (los servicios no
+conectarían). Si lo necesitas, añade `--con-config`. Sin `--yes` solo dice qué haría; con
+`--dry-run` no toca nada.
+
+> **Base y almacén van juntos.** Si el almacén está cifrado, el `STORAGE_ENCRYPTION_KEY` tiene
+> que ser el MISMO con que se cifró; `recuperar` te dice de dónde copiarlo si no repusiste la
+> configuración. Y un respaldo hecho antes de que el almacén entrara en la copia diaria **no lo
+> trae** (`--include-storage`): compruébalo con `ls` antes de dar el desastre por resuelto.
+
+**Paso a paso** (si prefieres verlo, o si `recuperar` falló en algo):
+
+```bash
+# 1) Verifica el respaldo ANTES de tocar nada (SHA-256 de TODO el respaldo)
+node tools/verify-backup.mjs --from /media/pendrive/2026-10-12 --estado
+
+# 2) Para la pila (PostgreSQL se queda arriba: la restauración necesita conectarse)
+sudo odontocrm parar
+
+# 3) Bases (ensaya en base temporal; --keep-old conserva la anterior)
+sudo odontocrm restaurar --from /media/pendrive/2026-10-12 --all --keep-old --yes
+
+# 4) Almacén (radiografías y PDFs)
+sudo tar -xzf /media/pendrive/2026-10-12/storage_<marca>.tar.gz -C /var/lib/odontocrm/storage
+
+# 5) Configuración y secretos (deja /etc/odontocrm) — solo si la necesitas
+sudo tar -xzf /media/pendrive/2026-10-12/etc-odontocrm_<marca>.tar.gz -C /etc
+sudo chmod 0600 /etc/odontocrm/*.env /etc/odontocrm/.pgpass
+
+# 6) Arranca y verifica
+sudo odontocrm arrancar
+```
+
+> **Si el respaldo es de un esquema anterior**, tras restaurar hay que aplicar las migraciones
+> del servicio (`INSTALL.md` §13.5). Y si repusiste la configuración de otra máquina, revisa las
+> **rutas** de los `.env` (el almacén y las claves JWT cambian de sitio entre servidores).
+
 ---
 
 ## 5. Usuarios y contraseñas

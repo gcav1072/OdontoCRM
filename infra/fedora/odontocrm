@@ -6,6 +6,7 @@
 #   sudo odontocrm estado          # tablero completo (con el entorno de producción)
 #   sudo odontocrm alertas         # solo los problemas; código 1 si hay alguno
 #   sudo odontocrm respaldar       # respaldo ahora (bases + configuración)
+#   sudo odontocrm recuperar --from DIR   # recuperación completa (bases + almacén + arranque)
 #   sudo odontocrm verificar       # los 9 servicios: unidad, puerto y /health
 #   sudo odontocrm servicios       # estado de las 10 unidades
 #   sudo odontocrm logs clinical   # últimos registros de un servicio
@@ -137,6 +138,10 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    configuración (/etc/odontocrm, CONTIENE SECRETOS).
   sudo odontocrm restaurar ...     Restaurar desde un respaldo (pasa las opciones tal
                                    cual: --from /var/backups/odontocrm/<fecha> --all --yes).
+  sudo odontocrm recuperar --from DIR
+                                   RECUPERACIÓN COMPLETA en un comando: para los servicios,
+                                   restaura las bases, repone el almacén y arranca
+                                   (servidor nuevo o fallo físico; RUNBOOK §4.1).
   sudo odontocrm verificar         Los ${#SERVICIOS[@]} servicios: unidad activa, puerto servido por
                                    ELLA y /health + /ready en 200. Espera (hasta 45 s,
                                    ODONTOCRM_ESPERA) a que todos escuchen: tras un
@@ -224,6 +229,112 @@ case "$ORDEN" in
     # --include-storage: el almacén (radiografías/PDFs) entra por defecto, o un fallo físico
     # del disco dejaría la base recuperable pero los adjuntos perdidos.
     exec bash "$CODE_DIR/infra/fedora/backup/odontocrm-backup.sh" --include-config --include-storage "$@"
+    ;;
+
+  recuperar)
+    necesita_root
+    # **Recuperación completa en un comando** (RUNBOOK §4.1): parar → restaurar las bases →
+    # reponer el almacén → arrancar. Es el flujo de un servidor nuevo o de un fallo físico,
+    # partiendo del pendrive o de la carpeta del respaldo. No reimplementa nada: reutiliza
+    # `parar`, el restaurador (que ya verifica cada volcado antes de tocar la base real) y
+    # `arrancar`.
+    #
+    # OJO con la configuración: NO se repone salvo `--con-config`. Sobre una máquina nueva,
+    # los `.env` del respaldo traen las contraseñas y rutas de la ANTERIOR y pisarían las que
+    # el instalador acaba de crear (los servicios no conectarían). Pero si el almacén está
+    # cifrado, el `STORAGE_ENCRYPTION_KEY` tiene que venir de esa config: mira el aviso final.
+    desde=""; asumir=0; dry=0; con_config=0
+    while (( $# )); do
+      case "$1" in
+        --from) desde="${2:-}"; shift ;;
+        --from=*) desde="${1#*=}" ;;
+        --yes|-y) asumir=1 ;;
+        --dry-run) dry=1 ;;
+        --con-config) con_config=1 ;;
+      esac
+      shift
+    done
+    [[ -n "$desde" ]] || morir 'uso: odontocrm recuperar --from DIR [--yes] [--dry-run] [--con-config]'
+    [[ -d "$desde" ]] || morir "no encuentro el respaldo en $desde"
+    compgen -G "$desde/*.dump" >/dev/null || morir "no hay volcados (.dump) en $desde: ¿es un directorio de respaldo?"
+
+    almacen="$DATA_DIR/storage"
+    leido="$(sed -n 's/^STORAGE_DIR=//p' "$ETC_DIR/backup.env" 2>/dev/null | head -1)"
+    [[ -n "$leido" ]] && almacen="$leido"
+    storage_tar="$(compgen -G "$desde/storage_*.tar.gz" 2>/dev/null | head -1)"
+    config_tar="$(compgen -G "$desde/etc-odontocrm_*.tar.gz" 2>/dev/null | head -1)"
+    restaurar="$CODE_DIR/infra/fedora/backup/odontocrm-restore.sh"
+    [[ -f "$restaurar" ]] || morir "no encuentro el restaurador en $restaurar"
+
+    printf '\n%sRecuperación desde %s%s\n\n' "$C_TI" "$desde" "$C_RE"
+    printf '  bases    : %s volcado(s)\n' "$(compgen -G "$desde/*.dump" | wc -l)"
+    printf '  almacén  : %s\n' "${storage_tar:-no viene en este respaldo (se conserva el actual)}"
+    if (( con_config )); then
+      printf '  config   : %s\n' "${config_tar:-no viene en este respaldo}"
+    else
+      printf '  config   : no se toca (usa --con-config; ver el aviso final)\n'
+    fi
+    printf '  PostgreSQL queda arriba: la restauración necesita conectarse.\n'
+
+    if (( dry )); then
+      av '[dry-run] pararía los servicios, restauraría las bases, repondría el almacén y arrancaría'
+      exit 0
+    fi
+    if (( ! asumir )); then
+      printf '\n'
+      err 'esto SUSTITUYE las bases actuales por las del respaldo.'
+      printf '      las actuales se conservan como «<base>__antes_de_restaurar_<fecha>».\n'
+      printf '      para confirmarlo:  sudo odontocrm recuperar --from %s --yes\n' "$desde"
+      exit 10
+    fi
+
+    # 1) Parar los servicios (PostgreSQL se queda arriba).
+    printf '\n%s== 1/4 · Parar ==%s\n' "$C_TI" "$C_RE"
+    bash "$0" parar || morir 'no pude parar los servicios'
+
+    # 2) Las bases (el restaurador verifica cada volcado en una base temporal antes de la real).
+    printf '\n%s== 2/4 · Bases ==%s\n' "$C_TI" "$C_RE"
+    bash "$restaurar" --from "$desde" --all --keep-old --yes ||
+      morir 'falló la restauración de las bases (revisa lo de arriba)'
+
+    # 3) El almacén (radiografías y PDFs).
+    printf '\n%s== 3/4 · Almacén ==%s\n' "$C_TI" "$C_RE"
+    if [[ -n "$storage_tar" ]]; then
+      mkdir -p "$almacen" || morir "no pude crear $almacen"
+      if tar -xzf "$storage_tar" -C "$almacen"; then
+        ok "almacén repuesto en $almacen ($(basename "$storage_tar"))"
+      else
+        av "no pude extraer $storage_tar: reponlo a mano (RUNBOOK §4.1)"
+      fi
+    else
+      av 'este respaldo no trae el almacén (es anterior a la copia diaria con --include-storage)'
+    fi
+
+    # 4) La configuración, solo si se pide a propósito.
+    if (( con_config )); then
+      printf '\n%s== 4/4 · Configuración ==%s\n' "$C_TI" "$C_RE"
+      if [[ -n "$config_tar" ]]; then
+        av 'repones /etc/odontocrm: revisa DESPUÉS las rutas y las contraseñas de los .env'
+        if tar -xzf "$config_tar" -C "$(dirname "$ETC_DIR")"; then
+          chmod 0600 "$ETC_DIR"/*.env "$ETC_DIR"/.pgpass 2>/dev/null || true
+          ok 'configuración y secretos repuestos'
+        else
+          av "no pude extraer $config_tar: repónla a mano (RUNBOOK §4.1)"
+        fi
+      else
+        av 'este respaldo no trae la configuración'
+      fi
+    else
+      printf '\n%s== 4/4 · Configuración ==%s\n' "$C_TI" "$C_RE"
+      av 'no se toca /etc/odontocrm (a propósito): los .env del respaldo son de la máquina ANTERIOR.'
+      printf '      si el almacén está CIFRADO, copia el STORAGE_ENCRYPTION_KEY del respaldo a\n'
+      printf '      %s/patients.env (clinical y billing usan el MISMO) o el almacén quedará ilegible.\n' "$ETC_DIR"
+      printf '      para reponerla entera:  sudo odontocrm recuperar --from %s --con-config --yes\n' "$desde"
+    fi
+
+    # 5) Arrancar y verificar (arrancar ya termina llamando a `verificar`).
+    printf '\n%s== Arranque ==%s\n' "$C_TI" "$C_RE"
+    exec bash "$0" arrancar
     ;;
 
   restaurar)
