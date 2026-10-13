@@ -225,25 +225,37 @@ export const useKioskState = <K extends KioskKind>(kind: K): UseKioskStateResult
   const reintentar = useCallback(() => setIntento((valor) => valor + 1), []);
 
   /**
-   * Ajustes del dispositivo (voz, volumen, segundos de resalte). Viven en el
-   * servicio de pantallas, no en identity, así que se piden aparte en cuanto la
-   * sesión está lista; sin ellos la pantalla usa los valores por defecto.
+   * Ajustes del dispositivo (voz, volumen, resalte, aspecto). Viven en el servicio de
+   * pantallas, no en identity, así que se piden aparte en cuanto la sesión está lista;
+   * sin ellos la pantalla usa los valores por defecto.
+   *
+   * Se **refrescan solos** cada `SCREEN_REFRESH_MS`: la TV es otro equipo y no recibe la
+   * invalidación de caché del panel, así que si no volviera a preguntar, un cambio de
+   * ajustes no se vería hasta recargar la pantalla a mano. Con esto, guardar en
+   * `/pantallas` se aplica en la TV en segundos.
    */
   const { data: ficha } = useQuery({
     queryKey: screenKeys.dispositivo,
     queryFn: ({ signal }) => screensApi.actual(signal),
     enabled: sesionLista > 0,
+    refetchInterval: SCREEN_REFRESH_MS,
+    // El televisor casi siempre está a la vista, pero si el quiosco lo manda a segundo
+    // plano igual conviene seguir refrescando.
+    refetchIntervalInBackground: true,
   });
 
   /**
-   * Marca del consultorio (nombre y logo): cambia rarísimas veces, así que se pide una
-   * vez con la sesión lista y no se refresca sola (`staleTime` alto).
+   * Marca del consultorio (nombre y logo): cambia rarísimas veces, así que se pide con
+   * la sesión lista y se refresca despacio (`staleTime` alto y un intervalo largo). No
+   * hace falta nada más: el nombre y el logo cambian como mucho de vez en cuando.
    */
   const { data: clinic } = useQuery({
     queryKey: screenKeys.clinica,
     queryFn: ({ signal }) => screensApi.clinic(signal),
     enabled: sesionLista > 0,
     staleTime: 30 * 60_000,
+    refetchInterval: 10 * 60_000,
+    refetchIntervalInBackground: true,
   });
 
   return {
