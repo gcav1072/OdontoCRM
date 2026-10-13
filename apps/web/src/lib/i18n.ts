@@ -2191,6 +2191,16 @@ const DICCIONARIO = {
   'pantallas.ajustes.repetir': 'Repetir el llamado (segundos, 0 = no repetir)',
   'pantallas.ajustes.guardar': 'Guardar ajustes',
   'pantallas.ajustes.guardado': 'Ajustes guardados.',
+  'pantallas.ajustes.estetica': 'Aspecto de la pantalla',
+  'pantallas.ajustes.estetica.ayuda':
+    'La pantalla tiene su propio aspecto: no cambia cuando cambias el tema de la aplicación.',
+  'pantallas.ajustes.tema': 'Modo',
+  'pantallas.ajustes.tema.claro': 'Claro',
+  'pantallas.ajustes.tema.oscuro': 'Oscuro',
+  'pantallas.ajustes.acento': 'Color de acento',
+  'pantallas.ajustes.marcaAgua': 'Mostrar el logo del consultorio como marca de agua',
+  'pantallas.ajustes.marcaAgua.ayuda':
+    'Si el consultorio todavía no ha subido su logo, se usa el de la instalación.',
   'pantallas.desactivar.titulo': 'Desactivar {pantalla}',
   'pantallas.desactivar.texto':
     'La pantalla deja de ver la sala y su token no sirve para nada más. Se puede registrar de nuevo cuando haga falta.',

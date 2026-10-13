@@ -1,10 +1,12 @@
-import type { ScreenDevice } from '@odontocrm/contracts';
+import { SCREEN_THEMES, UI_ACCENT_IDS, type ScreenDevice } from '@odontocrm/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Dialog, Field, Input, Switch } from '@odontocrm/ui';
+import { Alert, Button, Dialog, Field, Input, Switch, cn } from '@odontocrm/ui';
+import { Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
+import { AccentPicker } from '../config/AccentPicker';
 import { apiErrorMessage } from '../../lib/api';
 import { screensApi } from '../../lib/endpoints';
 import { t } from '../../lib/i18n';
@@ -33,6 +35,10 @@ const _esquemaAjustes = z.object({
     .int()
     .min(0, 'Entre 0 y 300 segundos')
     .max(300, 'Entre 0 y 300 segundos'),
+  /** El aspecto es **propio de la pantalla**: modo, acento y marca de agua. */
+  tema: z.enum(SCREEN_THEMES),
+  acento: z.enum(UI_ACCENT_IDS),
+  logoMarcaAgua: z.boolean(),
 });
 
 type ValoresFormulario = z.input<typeof _esquemaAjustes>;
@@ -57,7 +63,15 @@ export const ScreenSettingsDialog = ({ pantalla, onClose, onSaved }: ScreenSetti
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
 
   const formulario = useForm<ValoresFormulario, unknown, ValoresEnviados>({
-    defaultValues: { voz: true, volumen: '1', resalteSegundos: '20', repetirSegundos: '0' },
+    defaultValues: {
+      voz: true,
+      volumen: '1',
+      resalteSegundos: '20',
+      repetirSegundos: '0',
+      tema: 'oscuro',
+      acento: 'teal',
+      logoMarcaAgua: false,
+    },
   });
 
   const { reset } = formulario;
@@ -71,6 +85,9 @@ export const ScreenSettingsDialog = ({ pantalla, onClose, onSaved }: ScreenSetti
       volumen: String(pantalla.settings.volumen),
       resalteSegundos: String(pantalla.settings.resalteSegundos),
       repetirSegundos: String(pantalla.settings.repetirSegundos),
+      tema: pantalla.settings.tema,
+      acento: pantalla.settings.acento,
+      logoMarcaAgua: pantalla.settings.logoMarcaAgua,
     });
   }, [pantalla, reset]);
 
@@ -96,6 +113,8 @@ export const ScreenSettingsDialog = ({ pantalla, onClose, onSaved }: ScreenSetti
   };
 
   const { errors, isSubmitting } = formulario.formState;
+  const temaActual = formulario.watch('tema');
+  const acentoActual = formulario.watch('acento');
 
   return (
     <Dialog
@@ -180,6 +199,63 @@ export const ScreenSettingsDialog = ({ pantalla, onClose, onSaved }: ScreenSetti
                 {...formulario.register('repetirSegundos')}
               />
             </Field>
+          </div>
+
+          {/* Aspecto propio de la pantalla: no sigue el tema de la aplicación. */}
+          <div className="space-y-4 border-t border-border pt-4">
+            <div>
+              <p className="text-sm font-semibold text-ink">{t('pantallas.ajustes.estetica')}</p>
+              <p className="text-xs text-ink-muted">{t('pantallas.ajustes.estetica.ayuda')}</p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-ink">{t('pantallas.ajustes.tema')}</p>
+              <div
+                role="radiogroup"
+                aria-label={t('pantallas.ajustes.tema')}
+                className="flex flex-wrap gap-3"
+              >
+                {SCREEN_THEMES.map((modo) => {
+                  const elegido = temaActual === modo;
+                  const Icono = modo === 'claro' ? Sun : Moon;
+                  return (
+                    <button
+                      key={modo}
+                      type="button"
+                      role="radio"
+                      aria-checked={elegido}
+                      onClick={() => formulario.setValue('tema', modo, { shouldDirty: true })}
+                      className={cn(
+                        'flex items-center gap-2 rounded-control border-2 px-3 py-2 text-sm transition-colors',
+                        elegido
+                          ? 'border-primary bg-surface-muted'
+                          : 'border-border hover:bg-surface-muted',
+                      )}
+                    >
+                      <Icono className="size-4" aria-hidden="true" />
+                      {t(`pantallas.ajustes.tema.${modo}`)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-ink">{t('pantallas.ajustes.acento')}</p>
+              <AccentPicker
+                value={acentoActual}
+                onChange={(valor) => formulario.setValue('acento', valor, { shouldDirty: true })}
+                ariaLabel={t('pantallas.ajustes.acento')}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Switch
+                label={t('pantallas.ajustes.marcaAgua')}
+                {...formulario.register('logoMarcaAgua')}
+              />
+              <p className="text-xs text-ink-muted">{t('pantallas.ajustes.marcaAgua.ayuda')}</p>
+            </div>
           </div>
         </form>
       </div>
