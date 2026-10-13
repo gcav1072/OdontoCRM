@@ -14,6 +14,14 @@
  * supervisor (PM2 en Windows, systemd en Fedora) y no el servicio de notificaciones. Ese
  * detalle importa para los respaldos: el bot corre con los permisos que necesita para leer
  * las credenciales y escribir los volcados.
+ *
+ * Hay **dos** respaldos y no son lo mismo:
+ *
+ *   · `/respaldos` — volcados **ad-hoc** de las bases, temporales, para que viajen por Telegram
+ *     (te los llevas en el móvil).
+ *   · `/respaldo`  — copia **completa** (bases + configuración + almacén) que se queda en el
+ *     servidor, con la forma que entiende `odontocrm recuperar`. Es la que vale si se muere el
+ *     disco; la del chat no (le faltan los adjuntos y los secretos).
  */
 import { adminBotCommandsAsText, toAdminMenuCommands } from '@odontocrm/contracts';
 import { readFileSync } from 'node:fs';
@@ -22,9 +30,11 @@ import { join } from 'node:path';
 import {
   MAX_ARCHIVO_TELEGRAM,
   formatearEstado,
+  formatearRespaldoCompleto,
   formatearRespaldos,
   limpiarRespaldos,
   tomarEstado,
+  tomarRespaldoCompleto,
   tomarRespaldos,
 } from './lib/admin-informes.mjs';
 import { crearBotAdmin } from './lib/bot-admin.mjs';
@@ -82,7 +92,7 @@ const responderEstado = async () => {
 
 const responderRespaldos = async () => {
   await bot.sendMessage('Tomando el respaldo de las bases… (puede tardar unos minutos).');
-  const resultado = tomarRespaldos();
+  const resultado = await tomarRespaldos();
 
   // Los volcados, uno por uno. Telegram corta en 50 MB: lo que no quepa se avisa y se deja en
   // la carpeta temporal (no se borra) para poder recogerlo a mano.
@@ -124,6 +134,23 @@ const responderRespaldos = async () => {
   if (grandes.length === 0) limpiarRespaldos(resultado.dir);
 };
 
+/**
+ * Respaldo **completo** (bases + configuración + almacén) que se queda en el servidor.
+ *
+ * No se manda nada por Telegram a propósito: lo que viaja mal por chat son justo los dos
+ * bloques que hacen falta para recuperar de verdad (los adjuntos y los secretos), y para
+ * llevarse las bases ya está `/respaldos`. Aquí lo que importa es que la copia exista y esté
+ * verificada en la máquina, así que se responde con dónde quedó.
+ */
+const responderRespaldo = async () => {
+  await bot.sendMessage(
+    'Tomando el respaldo completo en el servidor (bases, configuración y almacén)…\n' +
+      'Puede tardar unos minutos: el almacén entero se comprime dentro.',
+  );
+  const resultado = await tomarRespaldoCompleto();
+  await bot.sendMessage(formatearRespaldoCompleto(resultado));
+};
+
 const atender = async (mensaje) => {
   // El candado: solo el chat anclado. Cualquier otro, ignorado en silencio.
   if (String(mensaje.chat?.id ?? '') !== bot.chatId) return;
@@ -139,6 +166,12 @@ const atender = async (mensaje) => {
     case 'respaldar':
     case 'backup':
       await responderRespaldos();
+      break;
+    // El respaldo completo, con otro nombre a propósito: `/respaldos` manda los `.dump` por
+    // chat y `/respaldo` deja la copia entera en el servidor. `completo` es el alias largo.
+    case 'respaldo':
+    case 'completo':
+      await responderRespaldo();
       break;
     case 'ayuda':
     case 'help':
