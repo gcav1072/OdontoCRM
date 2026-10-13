@@ -217,12 +217,12 @@ Tres tareas programadas quedan registradas solas (mira `taskschd.msc`):
 
 | Tarea | Cuándo | Qué hace |
 | :--- | :--- | :--- |
-| OdontoCRM · respaldo diario | 03:30 | `odontocrm-backup.ps1 --include-config` |
+| OdontoCRM · respaldo diario | 03:30 | `odontocrm-backup.ps1 --include-config --include-storage` (bases, config y almacén) |
 | OdontoCRM · alertas | cada 5 min | el tablero en modo alertas; falla si hay algún problema |
 | OdontoCRM · red | cada 5 min | adapta firewall, certificado, CORS y proxy si cambió la IP |
 
 ```powershell
-# Un respaldo ahora, con la configuración (CONTIENE SECRETOS):
+# Un respaldo ahora (bases + almacén + configuración, que CONTIENE SECRETOS):
 odontocrm respaldar
 
 # Ver qué respaldos hay y probar una restauración sin tocar la base real:
@@ -232,6 +232,11 @@ odontocrm respaldar
 
 Los respaldos **contienen datos clínicos** y, con `--include-config`, también secretos:
 cópialos a un medio protegido. El cifrado en reposo está pendiente, igual que en Fedora.
+
+El respaldo diario incluye el **almacén** (radiografías y PDFs) además de las bases y la
+configuración, para que un fallo físico del disco sea recuperable. Para reponer un respaldo
+completo en una máquina nueva o tras un fallo, sigue
+[`RUNBOOK.md` §"Recuperación completa"](RUNBOOK.md).
 
 ## 10. Solución de problemas
 

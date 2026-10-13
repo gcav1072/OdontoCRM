@@ -110,7 +110,9 @@ switch ($Orden) {
     Afirmar-Administrador
     $guion = Join-Path $OdontoRepo 'infra\windows\backup\odontocrm-backup.ps1'
     if (-not (Test-Path $guion)) { $guion = Join-Path $OdontoCode 'infra\windows\backup\odontocrm-backup.ps1' }
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $guion --include-config @Resto
+    # --include-storage: el almacén (radiografías/PDFs) entra por defecto; sin él, un fallo
+    # físico del disco dejaría la base recuperable pero los adjuntos perdidos.
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $guion --include-config --include-storage @Resto
     exit $LASTEXITCODE
   }
 

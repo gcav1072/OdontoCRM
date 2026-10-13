@@ -84,9 +84,9 @@ function Registrar-Tarea {
 # 1. Respaldo diario a las 03:30 (la clínica está cerrada y hay margen si tarda).
 $disparadorRespaldo = New-ScheduledTaskTrigger -Daily -At '03:30'
 Registrar-Tarea -Nombre 'OdontoCRM · respaldo diario' `
-  -Descripcion 'Respaldo de las bases y de la configuración (CONTINENE SECRETOS).' `
+  -Descripcion 'Respaldo de las bases, el almacén y la configuración (CONTIENE SECRETOS).' `
   -Programa $powershell `
-  -Argumentos "-NoProfile -ExecutionPolicy Bypass -File `"$respaldo`" --include-config" `
+  -Argumentos "-NoProfile -ExecutionPolicy Bypass -File `"$respaldo`" --include-config --include-storage" `
   -Disparador $disparadorRespaldo
 
 # 2. Alertas cada 5 minutos: si algo no responde, el outbox se atasca o la cola tiene

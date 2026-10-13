@@ -221,7 +221,9 @@ case "$ORDEN" in
 
   respaldar|respaldo)
     necesita_root
-    exec bash "$CODE_DIR/infra/fedora/backup/odontocrm-backup.sh" --include-config "$@"
+    # --include-storage: el almacén (radiografías/PDFs) entra por defecto, o un fallo físico
+    # del disco dejaría la base recuperable pero los adjuntos perdidos.
+    exec bash "$CODE_DIR/infra/fedora/backup/odontocrm-backup.sh" --include-config --include-storage "$@"
     ;;
 
   restaurar)

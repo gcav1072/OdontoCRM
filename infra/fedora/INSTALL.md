@@ -1892,7 +1892,7 @@ Plan §11: **`pg_dump` diario por base, retención de 30 días y restauración p
 | Todas las bases | `pg_dump --format=custom` por base | `/var/backups/odontocrm/AAAA-MM-DD/<base>_<fecha>.dump` |
 | Integridad | `pg_restore --list` + `sha256sum` | `SHA256SUMS` y `manifest.txt` en el mismo directorio |
 | `/etc/odontocrm` (incluye **secretos**) | `--include-config` → `tar.gz` | `etc-odontocrm_<fecha>.tar.gz` (0600) |
-| `/var/lib/odontocrm/storage` (radiografías y PDFs) | `--include-storage` → `tar.gz` | `storage_<fecha>.tar.gz` |
+| `/var/lib/odontocrm/storage` (radiografías y PDFs) | `--include-storage` → `tar.gz` (**por defecto** en el temporizador) | `storage_<fecha>.tar.gz` |
 | Registro | log a archivo y a stdout | `/var/log/odontocrm/backup.log` |
 
 ### 15.2 Rol de respaldo
@@ -1973,11 +1973,12 @@ la opción recomendada.
 # Simulación: no escribe nada
 sudo /opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --dry-run
 
-# Respaldo real (bases + configuración con secretos)
-sudo /opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config
-
-# Respaldo completo, incluido el almacenamiento de radiografías
+# Respaldo real (bases + configuración con secretos + almacén de radiografías)
 sudo /opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config --include-storage
+
+# Solo bases y configuración (sin el almacén: más ligero, pero un fallo de disco
+# dejaría las radiografías perdidas)
+sudo /opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config
 
 # Una sola base, con otra retención
 sudo /opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --db odonto_identity --retention 60
@@ -2014,7 +2015,7 @@ tail -20 /var/log/odontocrm/backup.log
 Alternativa con cron (una línea en `/etc/cron.d/odontocrm-backup`):
 
 ```cron
-30 3 * * * root /opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config >> /var/log/odontocrm/backup-cron.log 2>&1
+30 3 * * * root /opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config --include-storage >> /var/log/odontocrm/backup-cron.log 2>&1
 ```
 
 ### 15.5 Rotación de logs y journal

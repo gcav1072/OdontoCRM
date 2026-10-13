@@ -294,7 +294,10 @@ preflight() {
   fi
 
   if (( INCLUDE_STORAGE )) && [[ ! -d "$STORAGE_DIR" ]]; then
-    die "--include-storage: no existe el directorio $STORAGE_DIR" 1
+    # Ya no es un error: el respaldo lo pide POR DEFECTO (para que un fallo físico sea
+    # recuperable), y una máquina sin almacén todavía no debe tumbar la copia nocturna.
+    warn "--include-storage: no existe $STORAGE_DIR; se omite la copia del almacén"
+    INCLUDE_STORAGE=0
   fi
   if (( INCLUDE_CONFIG )) && [[ ! -d "$CONFIG_DIR" ]]; then
     die "--include-config: no existe el directorio $CONFIG_DIR" 1

@@ -21,7 +21,9 @@ Environment=TZ=America/Caracas
 
 # --include-config copia /etc/odontocrm (CONTINENE SECRETOS): el archivo resultante
 # va cifrado o en un medio protegido, nunca suelto en un directorio compartido.
-ExecStart=/opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config
+# --include-storage copia el almacén (radiografías y PDFs): SIN él, un fallo físico del
+# disco deja la base recuperable pero los adjuntos perdidos, y la restauración no los repone.
+ExecStart=/opt/odontocrm/infra/fedora/backup/odontocrm-backup.sh --include-config --include-storage
 
 Nice=10
 IOSchedulingClass=idle
