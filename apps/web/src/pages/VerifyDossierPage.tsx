@@ -34,7 +34,11 @@ export const VerifyDossierPage = () => {
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-4 px-4 py-10">
       <header className="text-center">
-        <p className="text-lg font-semibold text-ink">{CLINIC.name}</p>
+        {/* El nombre del consultorio lo sirve la propia verificación (ADR 0056): la
+            página es pública y no puede pedir la identidad sin sesión. */}
+        <p className="text-lg font-semibold text-ink">
+          {consulta.data?.valid === true ? consulta.data.clinicName : CLINIC.name}
+        </p>
         <p className="text-sm text-ink-muted">{t('verificarExpediente.subtitulo')}</p>
       </header>
 
