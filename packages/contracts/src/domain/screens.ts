@@ -7,6 +7,10 @@ import {
   type ClinicalAlert,
 } from './clinical.js';
 import { SCREEN_KINDS, type ScreenKind } from './enums.js';
+// El acento del kiosko reutiliza los **mismos presets** que la interfaz: no hay una
+// paleta aparte que mantener. `settings.ts` solo importa `zod`, así que traerlo aquí
+// no crea ciclo (aunque `screens` sea un módulo de más alto nivel).
+import { UI_ACCENT_IDS } from './settings.js';
 
 /**
  * Pantallas de sala de espera y consultorio (Fase 5).
@@ -21,6 +25,10 @@ import { SCREEN_KINDS, type ScreenKind } from './enums.js';
 
 /* ── Dispositivos ──────────────────────────────────────────────────────────── */
 
+/** Modos de la pantalla: su estética es **propia** y no sigue la de la aplicación. */
+export const SCREEN_THEMES = ['claro', 'oscuro'] as const;
+export type ScreenTheme = (typeof SCREEN_THEMES)[number];
+
 /** Ajustes de una pantalla: lo que se puede cambiar sin tocar el código. */
 export const screenSettingsSchema = z.object({
   /** Leer el llamado en voz alta (displaylobby). */
@@ -31,6 +39,21 @@ export const screenSettingsSchema = z.object({
   resalteSegundos: z.coerce.number().int().min(3).max(120).default(20),
   /** Repetir el llamado en voz alta a los N segundos (0 = no repetir). */
   repetirSegundos: z.coerce.number().int().min(0).max(300).default(0),
+  /**
+   * Modo de la pantalla. Es **independiente** del tema de la aplicación: el televisor
+   * tiene su propia estética y no cambia cuando alguien cambia el tema en recepción.
+   */
+  tema: z.enum(SCREEN_THEMES).default('oscuro'),
+  /**
+   * Color de acento de la pantalla. Reutiliza los diez presets de la interfaz
+   * (`UI_ACCENTS`); se aplica solo al cromo del kiosko.
+   */
+  acento: z.enum(UI_ACCENT_IDS).default('teal'),
+  /**
+   * Pintar el logo del consultorio como **marca de agua** de fondo. Cuando está
+   * activo y el consultorio no ha subido logo, se usa el del repositorio.
+   */
+  logoMarcaAgua: z.boolean().default(false),
 });
 
 export type ScreenSettings = z.infer<typeof screenSettingsSchema>;
@@ -79,6 +102,22 @@ export interface ScreenDeviceList {
   items: ScreenDevice[];
   total: number;
 }
+
+/**
+ * La **marca del consultorio** que pinta la pantalla kiosko: su nombre y su logo.
+ *
+ * Viaja por su propia ruta (`GET /screens/clinic`) y no dentro del estado de la sala
+ * porque la sala cambia cada pocos segundos y la identidad cambia rarísimas veces: así
+ * el nombre y el logo (una `data:` URI que puede pesar) no se reenvían en cada trama SSE.
+ */
+export const screenClinicSchema = z.object({
+  /** Nombre del consultorio (puede traer un salto de línea). `null` si aún no está configurado. */
+  name: z.string().nullable(),
+  /** Logo efectivo como `data:` URI, listo para pintar. `null` si no hay ninguno. */
+  logoDataUri: z.string().nullable(),
+});
+
+export type ScreenClinic = z.infer<typeof screenClinicSchema>;
 
 /* ── Sala de espera y consultorio ──────────────────────────────────────────── */
 
