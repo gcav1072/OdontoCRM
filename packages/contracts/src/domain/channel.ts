@@ -326,6 +326,14 @@ export const ADMIN_BOT_COMMANDS: readonly AdminBotCommand[] = [
   { comando: 'start', descripcion: 'Empezar' },
   { comando: 'estado', descripcion: 'Estado del servidor' },
   { comando: 'respaldos', descripcion: 'Respaldar las bases y recibirlas aquí' },
+  // `/respaldos` manda volcados por chat (ad-hoc, para llevárselos); `/respaldo` deja una
+  // **copia completa en el servidor** (bases + configuración + almacén) con la misma forma
+  // que la del temporizador nocturno, lista para `odontocrm recuperar`. Se parecen en el
+  // nombre a propósito: las descripciones del menú son las que los distinguen.
+  {
+    comando: 'respaldo',
+    descripcion: 'Respaldo completo en el servidor (bases, config y almacén)',
+  },
   { comando: 'ayuda', descripcion: 'Ver lo que puedo hacer' },
 ];
 

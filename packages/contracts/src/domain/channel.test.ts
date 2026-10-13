@@ -203,4 +203,15 @@ describe('menú de comandos (bot de administración)', () => {
     expect(ADMIN_BOT_COMMANDS).not.toEqual(BOT_COMMANDS);
     expect(ADMIN_BOT_COMMANDS.map((comando) => comando.comando)).toContain('respaldos');
   });
+
+  /**
+   * Los dos respaldos se parecen en el nombre (`/respaldos` y `/respaldo`) y hacen cosas
+   * distintas: el primero manda los volcados por chat y el segundo deja la copia completa en el
+   * servidor. La descripción es lo único que los distingue en el menú, así que tiene que decirlo.
+   */
+  it('el respaldo completo se distingue del que viaja por chat', () => {
+    const respaldo = ADMIN_BOT_COMMANDS.find((comando) => comando.comando === 'respaldo');
+    expect(respaldo?.descripcion).toMatch(/servidor|completo/i);
+    expect(respaldo?.admiteArgumento).toBeFalsy();
+  });
 });
