@@ -50,6 +50,14 @@ const clearSurfaceParamsSchema = z
   })
   .strict();
 
+/** Params de la retirada de una prótesis: la ruta trae paciente **e** identificador. */
+const prosthesisParamsSchema = z
+  .object({
+    patientId: z.uuid(),
+    id: z.uuid(),
+  })
+  .strict();
+
 const historyQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(MAX_HISTORY_LIMIT).default(DEFAULT_HISTORY_LIMIT),
@@ -196,15 +204,23 @@ export const registerOdontogramRoutes = (
     },
   );
 
-  /** Retira una prótesis removible por su identificador. */
+  /**
+   * Retira una prótesis removible por su identificador.
+   *
+   * La ruta trae **dos** claves en `params` —`patientId` e `id`— y el contrato
+   * `deleteProsthesisSchema` es `.strict()` con solo `id`: pasarle el `params` entero
+   * fallaba con «(cuerpo) (lleva campos que no se admiten)» al eliminar o deshacer una
+   * PPR/PRT. Se valida el `params` con su propio esquema y al contrato se le da solo el
+   * `id`, igual que hace la ruta de «dejar la cara sana» con su input.
+   */
   app.delete(
     '/api/v1/odontogram/patients/:patientId/prostheses/:id',
     { preHandler: write },
     async (request, reply) => {
       const actor = actorFrom(request);
-      const { patientId } = parseOrThrow(patientParamsSchema, request.params);
-      const { id } = parseOrThrow(deleteProsthesisSchema, request.params as { id?: unknown });
-      const result = await removeProsthesis(db, patientId, id, actor);
+      const params = parseOrThrow(prosthesisParamsSchema, request.params);
+      const input = parseOrThrow(deleteProsthesisSchema, { id: params.id });
+      const result = await removeProsthesis(db, params.patientId, input.id, actor);
       if (!result.unchanged) publicarYa();
       return reply.status(200).send(result);
     },

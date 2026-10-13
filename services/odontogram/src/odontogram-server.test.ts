@@ -96,6 +96,9 @@ afterEach(async () => {
 
 const paciente = globalThis.crypto.randomUUID();
 
+/** Identificador de prótesis para las rutas que lo exigen en la URL. */
+const protesisId = globalThis.crypto.randomUUID();
+
 describe('servidor del odontograma', () => {
   it('/health se identifica como el servicio odontogram', async () => {
     const app = await abrirServidor();
@@ -130,6 +133,8 @@ describe('servidor del odontograma', () => {
       { method: 'POST', url: `/api/v1/odontogram/patients/${paciente}/findings/batch` },
       { method: 'DELETE', url: `/api/v1/odontogram/patients/${paciente}/findings` },
       { method: 'DELETE', url: `/api/v1/odontogram/patients/${paciente}/surfaces/16/occlusal` },
+      { method: 'PUT', url: `/api/v1/odontogram/patients/${paciente}/prostheses` },
+      { method: 'DELETE', url: `/api/v1/odontogram/patients/${paciente}/prostheses/${protesisId}` },
       { method: 'GET', url: `/api/v1/odontogram/patients/${paciente}/history` },
       { method: 'POST', url: `/api/v1/odontogram/patients/${paciente}/printed` },
     ];
@@ -180,6 +185,10 @@ describe('servidor del odontograma', () => {
         url: `/api/v1/odontogram/patients/${paciente}/findings?toothNumber=16&surface=occlusal&condition=caries`,
       },
       { method: 'DELETE', url: `/api/v1/odontogram/patients/${paciente}/surfaces/16/occlusal` },
+      {
+        method: 'DELETE',
+        url: `/api/v1/odontogram/patients/${paciente}/prostheses/${protesisId}`,
+      },
     ];
 
     for (const escritura of escrituras) {
@@ -255,6 +264,30 @@ describe('servidor del odontograma', () => {
       headers: cabeceras,
     });
     expect(borradoSinPieza.statusCode).toBe(400);
+  });
+
+  it('retirar una prótesis valida los params de la ruta, no rechaza el paciente', async () => {
+    const app = await abrirServidor();
+    const cabeceras = identidad('odontologo');
+
+    // Antes esta ruta pasaba el `params` entero (con `patientId`) al contrato
+    // `.strict()` del borrado, que solo admite `id`: al eliminar o deshacer una PPR/PRT
+    // respondía 400 «(cuerpo) (lleva campos que no se admiten)». Ahora valida el
+    // `params` con su propio esquema y llega al servicio (404, la boca está vacía).
+    const retiro = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/odontogram/patients/${paciente}/prostheses/${protesisId}`,
+      headers: cabeceras,
+    });
+    expect(retiro.statusCode).toBe(404);
+
+    // Un identificador que no es UUID se sigue rechazando con 400.
+    const idInvalido = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/odontogram/patients/${paciente}/prostheses/no-es-uuid`,
+      headers: cabeceras,
+    });
+    expect(idInvalido.statusCode).toBe(400);
   });
 });
 
