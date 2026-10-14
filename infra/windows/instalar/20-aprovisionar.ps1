@@ -10,6 +10,7 @@
 # lo que cambia en Windows es dónde viven los secretos, dónde está `psql` y que el
 # administrador de PostgreSQL es OBLIGATORIO (no existe el socket «peer» de Linux).
 #
+#   .\20-aprovisionar.ps1                     # PIDE la contraseña de `postgres` (lo normal)
 #   .\20-aprovisionar.ps1 --admin-url="postgres://postgres:CLAVE@127.0.0.1:5432/postgres"
 #   .\20-aprovisionar.ps1 --solo-verificar    # no cambia nada
 #   .\20-aprovisionar.ps1 --rotate            # contraseñas nuevas
@@ -27,13 +28,22 @@ OdontoCRM · 2/4 · Aprovisionar (Windows)
 
 USO
   .\20-aprovisionar.ps1 [--nombre-mdns=NOMBRE] [--ip=IP]
-                        [--admin-url=URL] [--rotate] [--solo-verificar] [--dry-run]
+                        [--admin-url=URL] [--admin-usuario=…] [--admin-host=…]
+                        [--admin-puerto=…] [--sin-preguntas]
+                        [--rotate] [--solo-verificar] [--dry-run]
 
 OPCIONES
   --admin-url=URL     Cómo entrar a PostgreSQL como administrador. Si no se indica, se
-                      usa la variable PG_ADMIN_URL. EN WINDOWS ES OBLIGATORIO.
+                      usa PG_ADMIN_URL y, si tampoco hay, se PIDE la contraseña del
+                      usuario administrador por teclado (oculta). En Windows hay que
+                      entrar de ALGUNA de las tres formas: no existe el socket «peer».
+  --admin-usuario=…   Usuario administrador de PostgreSQL (por defecto: postgres).
+  --admin-host=…      Equipo de PostgreSQL (por defecto: 127.0.0.1).
+  --admin-puerto=…    Puerto de PostgreSQL (por defecto: 5432).
   --nombre-mdns=…     Nombre del servidor (para el certificado y WEB_ORIGIN).
   --ip=…              IP de la LAN (si no, se deduce).
+  --sin-preguntas     No pregunta la contraseña: si no vino por bandera ni por entorno,
+                      se detiene con el ejemplo (para consolas sin teclado).
   --rotate            Genera contraseñas NUEVAS (invalida las anteriores).
   --solo-verificar    No cambia nada: comprueba que cada credencial CONECTA.
   --dry-run           Enseña lo que haría, sin hacerlo.
@@ -45,6 +55,10 @@ $Nombre = Get-Argumento $args 'nombre-mdns'
 $Ip = Get-Argumento $args 'ip'
 $AdminUrl = Get-Argumento $args 'admin-url'
 if (-not $AdminUrl) { $AdminUrl = $env:PG_ADMIN_URL }
+$AdminUsuario = Get-Argumento $args 'admin-usuario'
+$AdminHost = Get-Argumento $args 'admin-host'
+$AdminPuerto = Get-Argumento $args 'admin-puerto'
+$SinPreguntas = Test-Bandera $args 'sin-preguntas'
 $Rotar = Test-Bandera $args 'rotate'
 $SoloVerificar = Test-Bandera $args 'solo-verificar'
 $DryRun = Test-Bandera $args 'dry-run'
@@ -69,12 +83,23 @@ $cuantos = $info.servicios.Count
 
 # ── El administrador de PostgreSQL ───────────────────────────────────────────
 # En Fedora, sin `--admin-url` se usa el socket como usuario `postgres`. En Windows no
-# existe eso: o hay URL, o no se puede crear ninguna base. Se dice ANTES de intentarlo.
+# existe eso: o hay URL, o no se puede crear ninguna base. Si no vino por bandera ni por
+# entorno, se PIDE la contraseña por teclado (oculta): así no queda en el historial ni en
+# la lista de procesos. La petición va ANTES de tocar nada, para no fallar a mitad.
+if (-not $AdminUrl -and -not $SoloVerificar -and -not $SinPreguntas) {
+  $UsuarioAdmin = if ($AdminUsuario) { $AdminUsuario } else { 'postgres' }
+  $EquipoAdmin = if ($AdminHost) { $AdminHost } else { '127.0.0.1' }
+  $PuertoAdmin = if ($AdminPuerto) { [int]$AdminPuerto } else { 5432 }
+  $AdminUrl = Resolver-AdminUrlPostgres -Url $AdminUrl -Usuario $UsuarioAdmin `
+    -Equipo $EquipoAdmin -Puerto $PuertoAdmin -SinPreguntar:$DryRun
+}
+
 if (-not $SoloVerificar -and -not $AdminUrl -and -not $DryRun) {
   Write-Host ''
-  Escribir-Error 'falta el administrador de PostgreSQL (--admin-url o PG_ADMIN_URL).'
-  Escribir-Detalle 'En Windows no hay socket «peer»: se necesita la contraseña del usuario postgres.'
+  Escribir-Error 'sin administrador de PostgreSQL: no puedo crear las bases.'
+  Escribir-Detalle 'En Windows no hay socket «peer»: hace falta la contraseña del usuario postgres.'
   Escribir-Detalle ''
+  Escribir-Detalle '  .\20-aprovisionar.ps1            (la pide por teclado; es lo normal)'
   Escribir-Detalle '  .\20-aprovisionar.ps1 --admin-url="postgres://postgres:TU_CLAVE@127.0.0.1:5432/postgres"'
   exit 1
 }

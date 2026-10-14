@@ -5,15 +5,18 @@
 #   · Node.js y Git (si faltan, con `winget`)
 #   · PostgreSQL 18: servicio arrancado, puerto 5432 a la escucha y `pg_hba.conf`
 #     en `scram-sha-256` para las conexiones TCP
+#   · una contraseña CONOCIDA y COMPROBADA para el administrador de PostgreSQL (en Windows no
+#     hay socket «peer»: sin ella la pieza 2 no puede crear ninguna base)
 #   · los binarios que Windows no trae: `mkcert.exe` y `caddy.exe`
 #   · los directorios de producción con sus permisos (ACL) y el PATH de la máquina
 #
-# NO instala nada de la aplicación y NO crea credenciales: eso es la pieza 2.
+# NO instala nada de la aplicación y NO crea las credenciales de los servicios: eso es la pieza 2.
 # Es idempotente: lo que ya está, se salta.
 #
 #   powershell -ExecutionPolicy Bypass -File infra\windows\instalar\10-preparar.ps1
-#   ...\10-preparar.ps1 --comprobar      # solo dice si la máquina está lista; no toca nada
-#   ...\10-preparar.ps1 --dry-run        # enseña lo que haría, sin hacerlo
+#   ...\10-preparar.ps1 --comprobar               # solo dice si la máquina está lista; no toca nada
+#   ...\10-preparar.ps1 --dry-run                 # enseña lo que haría, sin hacerlo
+#   ...\10-preparar.ps1 --recuperar-postgres      # PostgreSQL ya estaba y la clave se perdió
 #
 # Espejo de `infra/fedora/instalar/10-preparar.sh`.
 # =============================================================================
@@ -27,18 +30,37 @@ OdontoCRM · 1/4 · Preparar la máquina (Windows)
 
 USO
   .\10-preparar.ps1 [--dry-run] [--comprobar] [--sin-binarios]
+                    [--admin-url=URL] [--admin-usuario=…] [--admin-host=…] [--admin-puerto=…]
+                    [--recuperar-postgres] [--sin-preguntas]
 
 OPCIONES
-  --dry-run        Enseña lo que haría, sin cambiar nada (se puede sin Administrador).
-  --comprobar      Solo comprueba si la máquina está lista; no toca NADA.
-  --sin-binarios   No descarga mkcert/caddy (los instala otro medio).
-  --ayuda          Esta ayuda.
+  --dry-run             Enseña lo que haría, sin cambiar nada (se puede sin Administrador).
+  --comprobar           Solo comprueba si la máquina está lista; no toca NADA.
+  --sin-binarios        No descarga mkcert/caddy (los instala otro medio).
+  --admin-url=URL       Cómo entra el instalador a PostgreSQL como administrador. Si no se
+                        indica se usa PG_ADMIN_URL y, si tampoco hay, se PIDE la contraseña
+                        por teclado (oculta).
+  --admin-usuario=…     Usuario administrador de PostgreSQL (por defecto: postgres).
+  --admin-host=…        Equipo de PostgreSQL (por defecto: 127.0.0.1).
+  --admin-puerto=…      Puerto de PostgreSQL (por defecto: 5432).
+  --recuperar-postgres  PostgreSQL ya estaba instalado y su contraseña se perdió: la que se
+                        dé pasa a ser la nueva (se fija por la «ventana de confianza»).
+  --sin-preguntas       No pregunta nada (para consolas sin teclado).
+  --ayuda               Esta ayuda.
 '@
 
 $Comprobar = Test-Bandera $args 'comprobar'
 $SinBinarios = Test-Bandera $args 'sin-binarios'
 if (Test-Bandera $args 'ayuda' -or (Test-Bandera $args 'help')) { Write-Host $Ayuda; exit 0 }
 $DryRun = Test-Bandera $args 'dry-run'
+
+$AdminUrl = Get-Argumento $args 'admin-url'
+if (-not $AdminUrl) { $AdminUrl = $env:PG_ADMIN_URL }
+$AdminUsuario = Get-Argumento $args 'admin-usuario'
+$AdminHost = Get-Argumento $args 'admin-host'
+$AdminPuerto = Get-Argumento $args 'admin-puerto'
+$RecuperarPostgres = Test-Bandera $args 'recuperar-postgres'
+$SinPreguntas = Test-Bandera $args 'sin-preguntas'
 
 # ── Modo comprobación: ¿está la máquina lista? No toca NADA. ─────────────────
 # Es lo primero que uno quiere saber antes de empezar, y se puede ejecutar sin
@@ -131,16 +153,23 @@ else { Instalar-ConWinget -Id 'Git.Git' -Que 'Git' | Out-Null }
 # ── 2. PostgreSQL: motor, servicio y puerto ──────────────────────────────────
 Escribir-Paso '2/7 · PostgreSQL'
 
+# ¿Lo instala ESTA corrida? Importa para la contraseña: si el motor lo acaba de poner winget,
+# nadie ha elegido la clave del superusuario y hay que fijarla aquí (más abajo).
+$recienInstalado = $false
 if ($null -eq (Get-PgBin)) {
   Escribir-Aviso 'PostgreSQL no está instalado'
   Instalar-ConWinget -Id 'PostgreSQL.PostgreSQL.18' -Que 'PostgreSQL 18' | Out-Null
+  $recienInstalado = $true
 }
 
 $pgBin = Get-PgBin
 if ($null -eq $pgBin) {
   if ($DryRun) { Escribir-Detalle '[dry-run] se instalaría PostgreSQL 18' }
   else {
-    Morir 'instala PostgreSQL 18 desde https://www.postgresql.org/download/windows/ y vuelve a ejecutar esto.'
+    Escribir-Error 'no encuentro PostgreSQL 18 y la instalación automática no lo dejó en su sitio.'
+    Escribir-Detalle 'Instálalo desde https://www.postgresql.org/download/windows/ y repite esto.'
+    Escribir-Detalle 'Anota la contraseña que te pida para «postgres»: la pieza 2 la necesita.'
+    exit 1
   }
 }
 else {
@@ -170,6 +199,64 @@ else {
   if (-not $DryRun) {
     if (Esperar-Puerto -Puerto 5432 -Segundos 30) { Escribir-Ok 'PostgreSQL escucha en el 5432' }
     else { Morir 'PostgreSQL no abrió el puerto 5432 a tiempo (mira el visor de eventos del servicio).' }
+  }
+}
+
+# ── La contraseña del administrador de PostgreSQL ────────────────────────
+# En Windows el motor NO tiene socket «peer», así que la contraseña del superusuario es
+# obligatoria para crear las bases; y el instalador de EDB **no la elige** (winget lo lanza con
+# `--mode unattended --unattendedmodeui none`, sin `--superpassword`). De ahí que una PC sin
+# PostgreSQL —el caso más común en una instalación en limpio— acabara en la pieza 2 con
+# «password authentication failed» sin forma de salir desde el propio instalador.
+#
+# Las tres situaciones tienen que terminar igual: una credencial que CONECTA.
+#   1. PostgreSQL ya estaba y la contraseña se sabe    → se comprueba por efecto.
+#   2. Lo acaba de instalar esta pieza                 → no había credencial que perder: se fija
+#                                                        la del operador por la «ventana de
+#                                                        confianza» y se comprueba.
+#   3. PostgreSQL ya estaba y la contraseña se perdió  → solo con `--recuperar-postgres`: reiniciar
+#                                                        una credencial que quizá use otra
+#                                                        aplicación no puede ser silencioso.
+$PgUsuario = if ($AdminUsuario) { $AdminUsuario } else { 'postgres' }
+$PgEquipo = if ($AdminHost) { $AdminHost } else { '127.0.0.1' }
+$PgPuerto = if ($AdminPuerto) { [int]$AdminPuerto } else { 5432 }
+$PgClave = if ($AdminUrl) { Get-ClaveDeAdminUrl -Url $AdminUrl } else { '' }
+
+if ($DryRun) {
+  if ($recienInstalado) { Escribir-Detalle "[dry-run] fijaría la contraseña de «$PgUsuario» (el instalador no la elige)" }
+  elseif ($PgClave) { Escribir-Detalle "[dry-run] comprobaría que «$PgUsuario» conecta" }
+  else { Escribir-Detalle "[dry-run] pediría la contraseña de «$PgUsuario»" }
+}
+else {
+  if (-not $PgClave) {
+    $pregunta = 'Para crear las bases hace falta la contraseña del administrador de PostgreSQL.'
+    if ($RecuperarPostgres) {
+      $pregunta = 'PostgreSQL ya está instalado y no se conoce su contraseña: la que escribas pasa a ser la NUEVA.'
+    }
+    $PgClave = Get-ClaveDeAdminUrl -Url (Resolver-AdminUrlPostgres -Usuario $PgUsuario `
+        -Equipo $PgEquipo -Puerto $PgPuerto -Pregunta $pregunta -SinPreguntar:$SinPreguntas)
+  }
+
+  if (-not $PgClave) {
+    Escribir-Aviso 'sin contraseña del administrador de PostgreSQL: la pieza 2 no podrá crear las bases.'
+    Escribir-Detalle 'Repite esto escribiendo la contraseña, o pásala con --admin-url="postgres://…".'
+  }
+  elseif (Probar-ClavePostgres -Usuario $PgUsuario -Equipo $PgEquipo -Puerto $PgPuerto -Clave $PgClave) {
+    Escribir-Ok "el administrador de PostgreSQL conecta («$PgUsuario»)"
+  }
+  elseif ($recienInstalado -or $RecuperarPostgres) {
+    Escribir-Detalle 'fijando la contraseña por la ventana de confianza (el motor se reinicia dos veces)…'
+    if (Reiniciar-ClavePostgres -Clave $PgClave -Usuario $PgUsuario -Equipo $PgEquipo -Puerto $PgPuerto) {
+      Escribir-Ok "contraseña de «$PgUsuario» fijada y comprobada"
+    }
+    else {
+      Escribir-Aviso "no pude fijar la contraseña de «$PgUsuario»: la pieza 2 fallará."
+    }
+  }
+  else {
+    Escribir-Aviso "la contraseña de «$PgUsuario» no conecta con este PostgreSQL."
+    Escribir-Detalle 'Si es una instalación anterior y perdiste la contraseña, repite con:'
+    Escribir-Detalle '  .\10-preparar.ps1 --recuperar-postgres'
   }
 }
 

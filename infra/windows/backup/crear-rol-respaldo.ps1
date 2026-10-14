@@ -25,11 +25,14 @@ if (-not $AdminUrl) { $AdminUrl = $env:PG_ADMIN_URL }
 if (-not $DryRun) { Afirmar-Administrador }
 
 if (-not $AdminUrl -and -not $DryRun) {
-  Morir "falta --admin-url (o PG_ADMIN_URL): sin él no puedo crear el rol`n    --admin-url=`"postgres://postgres:TU_CLAVE@127.0.0.1:5432/postgres`""
+  # Si no vino por bandera ni por entorno, se PIDE (oculta, sin dejar rastro en el historial).
+  $AdminUrl = Resolver-AdminUrlPostgres -Pregunta 'Para crear el rol de respaldo hace falta el administrador de PostgreSQL.'
+  if (-not $AdminUrl) {
+    Morir "sin administrador de PostgreSQL no puedo crear el rol de respaldo. Ejecútalo así:`n    .\crear-rol-respaldo.ps1            (pide la contraseña de postgres)`n    .\crear-rol-respaldo.ps1 --admin-url=`"postgres://postgres:TU_CLAVE@127.0.0.1:5432/postgres`""
+  }
 }
 
-$psql = (Get-PgBin) ; if ($psql) { $psql = Join-Path $psql 'psql.exe' } else { $psql = 'psql' }
-$pgPass = Join-Path $OdontoEnv '.pgpass'
+$psql = (Get-PgBin) ; if ($psql) { $psql = Join-Path $psql 'psql.exe' } else { $psql = 'psql' }$pgPass = Join-Path $OdontoEnv '.pgpass'
 $backupEnv = Join-Path $OdontoEnv 'backup.env'
 $info = Get-Info
 

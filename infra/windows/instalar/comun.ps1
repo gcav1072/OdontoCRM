@@ -278,6 +278,189 @@ function Get-PgVersion {
   return (Split-Path $carpeta -Leaf)
 }
 
+# ── El administrador de PostgreSQL ───────────────────────────────────────────
+# En Fedora, sin `--admin-url` se usa el socket «peer» (`runuser -u postgres`), que funciona
+# en una instalación recién hecha sin teclear ninguna contraseña. En Windows ese socket NO
+# existe: o hay URL, o no se puede crear ninguna base. Hasta ahora la única salida era pasar
+# la URL por la línea de órdenes, y la contraseña de `postgres` —que es la del MOTOR— quedaba
+# en el historial de PowerShell y en la lista de procesos, a la vista de cualquiera de la
+# máquina. Aquí se PIDE por teclado y se oculta al escribir.
+function ConvertTo-TextoClaro {
+  param([Parameter(Mandatory = $true)][Security.SecureString]$Segura)
+  $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Segura)
+  try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
+  finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
+}
+
+# Devuelve la URL del administrador de PostgreSQL. Si ya viniera por bandera (`--admin-url`) o
+# por entorno (`PG_ADMIN_URL`), devuelve ESA tal cual (no se pregunta dos veces). Si no, y hay
+# consola, compone `postgres://USUARIO:CLAVE@EQUIPO:PUERTO/BASE` con la contraseña tecleada
+# —**codificada**, porque una `@`, `:` o `/` dentro de la clave partiría la URL por la mitad—,
+# la deja en `PG_ADMIN_URL` (para las piezas y herramientas siguientes) y **no la imprime**.
+# Con `-SinPreguntar` (--dry-run, --sin-preguntas) o sin consola devuelve `$null`, y quien
+# llama decide: el aprovisionador lo explica y se detiene.
+function Resolver-AdminUrlPostgres {
+  param(
+    [string]$Url = '',
+    [string]$Usuario = 'postgres',
+    [string]$Equipo = '127.0.0.1',
+    [int]$Puerto = 5432,
+    [string]$Base = 'postgres',
+    [string]$Pregunta = '',
+    [switch]$SinPreguntar
+  )
+  if ($Url) { return $Url }
+  if ($env:PG_ADMIN_URL) { return $env:PG_ADMIN_URL }
+  if ($SinPreguntar -or -not [Environment]::UserInteractive) { return $null }
+
+  if ($Pregunta) { Escribir-Detalle $Pregunta }
+  Write-Host ''
+  Escribir-Detalle 'Se escribe oculta: no queda en el historial ni en la lista de procesos.'
+  $clave = $null
+  try {
+    $segura = Read-Host "      Contraseña de «$Usuario» (Enter para cancelar)" -AsSecureString
+    $clave = ConvertTo-TextoClaro $segura
+  }
+  catch { return $null }
+  if ([string]::IsNullOrEmpty($clave)) { return $null }
+
+  $url = "postgres://${Usuario}:$([Uri]::EscapeDataString($clave))@${Equipo}:$Puerto/$Base"
+  $env:PG_ADMIN_URL = $url
+  Escribir-Ok "administrador de PostgreSQL: postgres://${Usuario}:***@${Equipo}:$Puerto/$Base"
+  return $url
+}
+
+# La copia en claro de la contraseña que va DENTRO de una URL de administrador
+# (`postgres://usuario:clave@equipo:puerto/base`). Se devuelve `''` si la URL no la trae
+# —`PG_ADMIN_URL` puede venir de un `.pgpass` o de un usuario con otro mecanismo—, y en ese
+# caso quien llama NO inventa nada: pregunta o lo dice.
+function Get-ClaveDeAdminUrl {
+  param([string]$Url)
+  if (-not $Url) { return '' }
+  $m = [regex]::Match($Url, '^[A-Za-z][A-Za-z0-9+.-]*://[^:/@]*:([^@]*)@')
+  if (-not $m.Success) { return '' }
+  try { return [Uri]::UnescapeDataString($m.Groups[1].Value) } catch { return $m.Groups[1].Value }
+}
+
+function Get-PsqlExe {
+  $bin = Get-PgBin
+  if (-not $bin) { return $null }
+  $exe = Join-Path $bin 'psql.exe'
+  if (Test-Path $exe) { return $exe }
+  return $null
+}
+
+# ¿La credencial del administrador CONECTA? Es la regla del repositorio: una credencial vale
+# cuando entra, no cuando el archivo existe. Devuelve $false sin ruido si `psql` no está.
+function Probar-ClavePostgres {
+  param(
+    [string]$Usuario = 'postgres',
+    [string]$Equipo = '127.0.0.1',
+    [int]$Puerto = 5432,
+    [string]$Base = 'postgres',
+    [string]$Clave
+  )
+  $psql = Get-PsqlExe
+  if (-not $psql) { return $false }
+  # La contraseña va por ENTORNO (`PGPASSWORD`), nunca como argumento: en la lista de procesos
+  # la vería cualquiera de la máquina. `PGCONNECT_TIMEOUT` evita que la comprobación se quede
+  # colgada si el motor está levantado pero no responde.
+  $anterior = $env:PGPASSWORD
+  $anteriorTimeout = $env:PGCONNECT_TIMEOUT
+  $env:PGPASSWORD = $Clave
+  $env:PGCONNECT_TIMEOUT = '5'
+  try {
+    $salida = & $psql -X -w -tAc 'select 1' -h $Equipo -p $Puerto -U $Usuario -d $Base 2>$null
+    return ($LASTEXITCODE -eq 0 -and "$salida".Trim() -eq '1')
+  }
+  finally {
+    if ($null -eq $anterior) { Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue }
+    else { $env:PGPASSWORD = $anterior }
+    if ($null -eq $anteriorTimeout) { Remove-Item Env:\PGCONNECT_TIMEOUT -ErrorAction SilentlyContinue }
+    else { $env:PGCONNECT_TIMEOUT = $anteriorTimeout }
+  }
+}
+
+# ── La «ventana de confianza»: fijar la contraseña cuando no se conoce ───────
+# Es el equivalente en Windows del socket «peer» de Linux. En Fedora, root entra como
+# `postgres` sin contraseña (`runuser -u postgres psql`), así que un motor recién instalado
+# NUNCA deja fuera al instalador. En Windows no hay nada parecido: el motor exige contraseña
+# y el instalador de EDB **no la elige** (winget lo lanza con `--mode unattended
+# --unattendedmodeui none`, sin `--superpassword`), así que la instalación en limpio moría en
+# la pieza 2 con «password authentication failed» —o con un rol `postgres` sin contraseña
+# utilizable— y no había forma de salir desde el propio instalador.
+#
+# El arreglo es el que usa cualquier DBA cuando se queda fuera: durante unos segundos se
+# permite entrar SIN contraseña por la interfaz local (solo `127.0.0.1`/`::1`), se fija la
+# contraseña con `ALTER ROLE`, y se restaura `pg_hba.conf` **tal como estaba** (el `finally`,
+# aunque algo falle a mitad). El motor se reinicia dos veces (no hay nadie conectado todavía:
+# esto corre en la pieza 1, antes de desplegar).
+#
+# Devuelve $true solo si, al final, la contraseña CONECTA de verdad.
+function Reiniciar-ClavePostgres {
+  param(
+    [Parameter(Mandatory = $true)][string]$Clave,
+    [string]$Usuario = 'postgres',
+    [string]$Equipo = '127.0.0.1',
+    [int]$Puerto = 5432,
+    [string]$Base = 'postgres'
+  )
+  if ($DryRun) {
+    Escribir-Detalle "[dry-run] fijaría la contraseña de «$Usuario» por la ventana de confianza"
+    return $false
+  }
+  $psql = Get-PsqlExe
+  if (-not $psql) { Escribir-Error 'no encuentro psql.exe: ¿está instalado PostgreSQL?'; return $false }
+  $pgBin = Get-PgBin
+  $hba = Join-Path (Split-Path $pgBin -Parent) 'data\pg_hba.conf'
+  if (-not (Test-Path $hba)) { Escribir-Error "no encuentro pg_hba.conf en $hba"; return $false }
+  $servicio = Get-ServicioPostgres
+  if (-not $servicio) { Escribir-Error 'no encuentro el servicio de PostgreSQL'; return $false }
+  $nombreServicio = $servicio.Name
+
+  $sinBom = New-Object System.Text.UTF8Encoding($false) # PostgreSQL rechaza el BOM
+  $original = [IO.File]::ReadAllText($hba)
+  # SOLO las líneas de bases de datos locales (`host all <usuario> 127.0.0.1/32`): se dejan
+  # fuera las de `replication`, que no hacen falta para fijar la contraseña.
+  $ventana = $original -replace '(?m)^(host\s+all\s+\S+\s+(?:127\.0\.0\.1/32|::1/128)\s+)\S+\s*$', '${1}trust'
+  if ($ventana -eq $original) {
+    Escribir-Error "$hba no tiene líneas «host all … 127.0.0.1/32»: no puedo abrir la ventana de confianza"
+    return $false
+  }
+  $copia = "$hba.antes-de-odontocrm"
+
+  try {
+    Copy-Item -Path $hba -Destination $copia -Force
+    [IO.File]::WriteAllText($hba, $ventana, $sinBom)
+    Restart-Service -Name $nombreServicio -Force
+    if (-not (Esperar-Puerto -Puerto $Puerto -Segundos 30)) {
+      Escribir-Error "PostgreSQL no volvió a escuchar en el $Puerto tras reiniciar el servicio"
+      return $false
+    }
+
+    # La contraseña va por ENTRADA ESTÁNDAR (no como argumento) y el literal SQL se escapa.
+    $sql = "ALTER ROLE ""$Usuario"" WITH PASSWORD '$($Clave -replace "'", "''")';"
+    $salida = $sql | & $psql -X -q -v ON_ERROR_STOP=1 -h $Equipo -p $Puerto -U $Usuario -d $Base 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      Escribir-Error 'PostgreSQL rechazó el cambio de contraseña:'
+      foreach ($l in @("$salida" -split "`r?`n")) { if ($l) { Escribir-Detalle $l } }
+      return $false
+    }
+  }
+  finally {
+    # Pase lo que pase, `pg_hba.conf` vuelve a como estaba.
+    if (Test-Path $copia) {
+      [IO.File]::WriteAllText($hba, [IO.File]::ReadAllText($copia), $sinBom)
+      Restart-Service -Name $nombreServicio -Force | Out-Null
+      if (-not (Esperar-Puerto -Puerto $Puerto -Segundos 30)) {
+        Escribir-Aviso "PostgreSQL tardó en volver tras restaurar $hba (míralo antes de seguir)"
+      }
+    }
+  }
+
+  return (Probar-ClavePostgres -Usuario $Usuario -Equipo $Equipo -Puerto $Puerto -Base $Base -Clave $Clave)
+}
+
 # ── El navegador de los PDF (Chromium de Playwright) ─────────────────────────
 # Lo necesitan el récipe A5 (`clinical`), la factura y el recibo (`billing`) y los reportes.
 # **No viene con el código**: Playwright lo descarga aparte y los servicios lo buscan en

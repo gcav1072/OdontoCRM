@@ -19,8 +19,14 @@
 #   --solo=PIEZA          preparar | aprovisionar | desplegar | verificar
 #   --nombre-mdns=NOMBRE  nombre del servidor (por defecto: odontocrm)
 #   --ip=IP               IP de la LAN (si no, se deduce)
-#   --admin-url=URL       cómo entrar a PostgreSQL como administrador (EN WINDOWS ES
-#                         OBLIGATORIO; si no se indica se usa PG_ADMIN_URL)
+#   --admin-url=URL       cómo entrar a PostgreSQL como administrador. Si no se indica, se
+#                         usa PG_ADMIN_URL y, si tampoco hay, se PIDE la contraseña del
+#                         usuario postgres por teclado (oculta; no queda en el historial)
+#   --admin-usuario=…     usuario administrador (por defecto: postgres)
+#   --admin-host=…        equipo de PostgreSQL (por defecto: 127.0.0.1)
+#   --admin-puerto=…      puerto de PostgreSQL (por defecto: 5432)
+#   --recuperar-postgres  PostgreSQL ya estaba y su contraseña se perdió: la que se dé pasa a
+#                         ser la nueva (se fija por la «ventana de confianza», solo 127.0.0.1)
 #   --usuarios=a,b        cuentas a sembrar (por defecto SOLO `admin`; «all» = juego
 #                         de desarrollo completo: admin, recepcion y los odontólogos)
 #   --clave-admin=CLAVE   contraseña del administrador
@@ -50,7 +56,9 @@ MODO
   --ayuda            Esta ayuda.
 
 DATOS
-  --nombre-mdns=NOMBRE   --ip=IP   --admin-url=URL   --usuarios=a,b
+  --nombre-mdns=NOMBRE   --ip=IP   --usuarios=a,b
+  --admin-url=URL        --admin-usuario=…   --admin-host=…   --admin-puerto=…
+  --recuperar-postgres   (la contraseña que se dé pasa a ser la NUEVA)
   --clave-admin=CLAVE    --sin-preguntas            --reconfigurar
   --token-telegram=…   --usuario-telegram=…
   --token-bot-admin=…  --chat-bot-admin=…   (avisos de fallos del sistema)
@@ -65,6 +73,11 @@ $DryRun = Test-Bandera $args 'dry-run'
 $Nombre = Get-Argumento $args 'nombre-mdns'
 $Ip = Get-Argumento $args 'ip'
 $AdminUrl = Get-Argumento $args 'admin-url'
+if (-not $AdminUrl) { $AdminUrl = $env:PG_ADMIN_URL }
+$AdminUsuario = Get-Argumento $args 'admin-usuario'
+$AdminHost = Get-Argumento $args 'admin-host'
+$AdminPuerto = Get-Argumento $args 'admin-puerto'
+$RecuperarPostgres = Test-Bandera $args 'recuperar-postgres'
 $Usuarios = Get-Argumento $args 'usuarios'
 $ClaveAdmin = Get-Argumento $args 'clave-admin'
 $TokenTelegram = Get-Argumento $args 'token-telegram'
@@ -119,6 +132,26 @@ if (-not $DryRun -and -not $SinPreguntas -and $hayTerminal -and $Solo -notin @('
   }
   elseif ($yaAprovisionado -and -not $Reconfigurar) {
     Escribir-Detalle 'ya hay un entorno aprovisionado: no se toca la contraseña del administrador'
+  }
+
+  # La contraseña del administrador de PostgreSQL (el usuario del MOTOR, no el de la app). Se
+  # pregunta aquí, una sola vez, y viaja a las piezas por ENTORNO. Es lo que sustituye a pasar
+  # `--admin-url="postgres://postgres:CLAVE@…"` por la línea de órdenes, que dejaba la clave en
+  # el historial de PowerShell. Hace falta en la 1 (que instala y comprueba el motor) y en la 2
+  # (que crea las bases); las piezas 3 y 4 no la usan.
+  if ($Solo -notin @('desplegar', 'verificar') -and -not $AdminUrl) {
+    $UsuarioAdmin = if ($AdminUsuario) { $AdminUsuario } else { 'postgres' }
+    $EquipoAdmin = if ($AdminHost) { $AdminHost } else { '127.0.0.1' }
+    $PuertoAdmin = if ($AdminPuerto) { [int]$AdminPuerto } else { 5432 }
+    $Pregunta = 'Para crear las bases hace falta la contraseña del administrador de PostgreSQL.'
+    if ($RecuperarPostgres) {
+      $Pregunta = 'PostgreSQL ya está instalado y no se conoce su contraseña: la que escribas pasa a ser la NUEVA.'
+    }
+    $AdminUrl = Resolver-AdminUrlPostgres -Usuario $UsuarioAdmin -Equipo $EquipoAdmin `
+      -Puerto $PuertoAdmin -Pregunta $Pregunta
+    if (-not $AdminUrl) {
+      Escribir-Aviso 'sin contraseña de PostgreSQL: la instalación se detendrá antes de crear las bases'
+    }
   }
 
   if (-not $TokenTelegram) {
@@ -178,10 +211,17 @@ $comunes = @()
 if ($Nombre) { $comunes += "--nombre-mdns=$Nombre" }
 if ($Ip) { $comunes += "--ip=$Ip" }
 if ($DryRun) { $comunes += '--dry-run' }
+# `--sin-preguntas` va a TODAS las piezas: la 1 y la 2 también preguntarían lo suyo si no, y
+# aquí ya se decidió no preguntar nada. (Las que no lo conocen lo ignoran.)
+if ($SinPreguntas) { $comunes += '--sin-preguntas' }
+# `--recuperar-postgres` solo lo entiende la pieza 1 (es la que toca el motor); las demás lo
+# ignoran sin quejarse.
+if ($RecuperarPostgres) { $comunes += '--recuperar-postgres' }
 
 $argsAprovisionar = @($comunes)
 $argsDesplegar = @($comunes)
-if ($AdminUrl) { $argsAprovisionar += "--admin-url=$AdminUrl" }
+# La contraseña del MOTOR no viaja como argumento: en la lista de procesos del hijo la vería
+# cualquiera de la máquina. Va por entorno (`PG_ADMIN_URL`, que el hijo hereda).
 
 switch ($Solo) {
   'preparar' { Invocar-Pieza '1/4 · Preparar la máquina' '10-preparar.ps1' $comunes }

@@ -138,12 +138,15 @@ foreach ($regla in @('OdontoCRM Web (HTTP)', 'OdontoCRM Web (HTTPS)')) {
   else { Escribir-Detalle "no existía: $regla" }
 }
 
-# ── 5. Las bases y los roles ─────────────────────────────────────────────────
+# ── 5. Las bases y los roles ────────────────────────────────────────
 Escribir-Paso '5/7 · Bases de datos y roles'
-$adminUrl = $env:PG_ADMIN_URL
 $psql = Join-Path (Get-PgBin) 'psql.exe'
+# Si el administrador no vino por entorno, se PIDE la contraseña (oculta). Sin ella no se puede
+# borrar ninguna base, y quedarse a medias es peor que preguntar.
+$adminUrl = Resolver-AdminUrlPostgres -SinPreguntar:$DryRun `
+  -Pregunta 'Para borrar las bases y los roles hace falta el administrador de PostgreSQL.'
 if (-not $adminUrl) {
-  Escribir-Aviso 'sin PG_ADMIN_URL no puedo borrar las bases ni los roles: hazlo a mano si quieres'
+  Escribir-Aviso 'sin administrador de PostgreSQL no puedo borrar las bases ni los roles: hazlo a mano si quieres'
 }
 elseif ($DryRun) {
   Escribir-Detalle "[dry-run] borraría las bases: $($info.bases -join ', ')"

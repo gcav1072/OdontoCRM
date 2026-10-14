@@ -502,12 +502,14 @@ else {
   # usuario del sistema se llame como un rol de PostgreSQL.
   $rolRespaldo = Join-Path $OdontoRepo 'infra\windows\backup\crear-rol-respaldo.ps1'
   if ((Test-Path $rolRespaldo) -and $env:PG_ADMIN_URL) {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $rolRespaldo "--admin-url=$($env:PG_ADMIN_URL)"
+    # La URL del administrador NO viaja como argumento: lleva la contraseña y en la lista de
+    # procesos la vería cualquiera de la máquina. El hijo hereda `PG_ADMIN_URL` del entorno.
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $rolRespaldo
     if ($LASTEXITCODE -ne 0) { Escribir-Aviso 'no pude preparar el rol de respaldo' }
   }
   elseif (-not $env:PG_ADMIN_URL) {
     Escribir-Aviso 'sin PG_ADMIN_URL no puedo crear el rol de respaldo: hazlo con'
-    Escribir-Detalle '    .\infra\windows\backup\crear-rol-respaldo.ps1 --admin-url="postgres://…"'
+    Escribir-Detalle '    .\infra\windows\backup\crear-rol-respaldo.ps1   (pide la contraseña de postgres)'
   }
 
   # Las cuatro tareas: respaldo diario, alertas cada 5 min, adaptación de la red cada 5 min
