@@ -102,7 +102,9 @@ Banderas útiles:
 
 | Bandera | Para qué |
 | :--- | :--- |
-| `--admin-url=URL` | Cómo entrar a PostgreSQL como administrador. **Obligatorio**: en Windows no hay socket «peer». Si no se pasa, se usa `PG_ADMIN_URL`. |
+| `--admin-url=URL` | Cómo entrar a PostgreSQL como administrador. Si no se pasa, se usa `PG_ADMIN_URL` y, si tampoco hay, **se pide la contraseña del usuario `postgres` por teclado** (oculta). |
+| `--admin-usuario=…` `--admin-host=…` `--admin-puerto=…` | Si el administrador no es `postgres@127.0.0.1:5432` (lo normal si otra aplicación ya usa ese motor). |
+| `--recuperar-postgres` | PostgreSQL ya estaba instalado y su contraseña se perdió: la que se dé pasa a ser la **nueva**. |
 | `--ip=IP` | La IP de la LAN (si no, se deduce). |
 | `--nombre-mdns=NOMBRE` | El nombre del servidor (va al certificado y a `WEB_ORIGIN`). Por defecto `odontocrm`. |
 | `--solo=preparar\|aprovisionar\|desplegar\|verificar` | Ejecuta **una** pieza. |
@@ -117,8 +119,8 @@ desde la pieza que falló (todas son idempotentes: correrlas cinco veces deja lo
 
 | Pieza | Qué hace | Se ejecuta sola |
 | :--- | :--- | :--- |
-| `10-preparar.ps1` | Node, PostgreSQL (servicio, puerto y `pg_hba` en `scram-sha-256`), los binarios `mkcert.exe` y `caddy.exe`, el PATH, la política de ejecución y los directorios con sus permisos | `.\10-preparar.ps1` |
-| `20-aprovisionar.ps1` | **Genera los secretos una vez** en `C:\ProgramData\OdontoCRM\env`, crea los roles y las bases con *esas mismas* contraseñas y **comprueba cada una conectándose** | `.\20-aprovisionar.ps1 --admin-url=…` |
+| `10-preparar.ps1` | Node, PostgreSQL (servicio, puerto, una contraseña del administrador **conocida y comprobada** y `pg_hba` en `scram-sha-256`), los binarios `mkcert.exe` y `caddy.exe`, el PATH, la política de ejecución y los directorios con sus permisos | `.\10-preparar.ps1` |
+| `20-aprovisionar.ps1` | **Genera los secretos una vez** en `C:\ProgramData\OdontoCRM\env`, crea los roles y las bases con *esas mismas* contraseñas y **comprueba cada una conectándose** | `.\20-aprovisionar.ps1` |
 | `30-desplegar.ps1` | Código sin secretos, compilación, **Chromium** para los PDF, claves JWT, migraciones, usuarios iniciales, el servicio de PM2 (más el **bot de administración**, si está configurado), el comando `odontocrm`, certificado TLS, Caddy, firewall, rol de respaldo y tareas programadas | `.\30-desplegar.ps1` |
 | `40-verificar.ps1` | El **efecto**: cada credencial conecta, los 11 procesos responden, HTTPS sirve la aplicación, la CA se descarga y el firewall está bien | `.\40-verificar.ps1` |
 
@@ -138,12 +140,21 @@ para no tener que pelearse después con los archivos de `C:\ProgramData\OdontoCR
 | Pregunta | Para qué | Si se omite |
 | :--- | :--- | :--- |
 | **Contraseña del administrador** | es la cuenta con la que se entra la primera vez | se genera una temporal y se imprime UNA vez (queda en `C:\ProgramData\OdontoCRM\contrasena-inicial.txt`) |
+| **Contraseña de `postgres` de PostgreSQL** | es la llave del *motor*: sin ella no se pueden crear las bases (en Windows no hay socket «peer») | si PostgreSQL ya estaba instalado, la instalación se detiene antes de crear las bases; si lo instala la pieza 1, se usa la que digas |
 | **Token del bot de Telegram** | los avisos salen de verdad | el bot queda en **modo simulado** y los avisos esperan en la bandeja |
 | **WhatsApp Cloud API** | activa ese canal | el canal no se activa; lo demás funciona igual |
 
 Se crea **una sola cuenta: `admin`**. El resto del personal se da de alta desde `/usuarios`.
 Los tokens van a `C:\ProgramData\OdontoCRM\env` (solo Administradores y el servicio, en
-lectura) y no se imprimen.
+lectura) y no se imprimen. La contraseña de PostgreSQL **no se guarda en ningún sitio**: la
+pide cada vez y solo vive en la memoria del instalador.
+
+> **PostgreSQL: los tres casos.** El instalador nunca deja el servidor sin poder crear las
+> bases: si el motor ya estaba y la contraseña se sabe, la **comprueba**; si lo acaba de
+> instalar la pieza 1 (winget lo instala sin elegir contraseña), **fija** la que le des; y si
+> el motor venía de antes y la contraseña se perdió, `--recuperar-postgres` la **reinicia**
+> (abre la conexión local sin contraseña unos segundos, fija la nueva y restaura
+> `pg_hba.conf` tal como estaba).
 
 > **Los datos del consultorio** (nombre, RIF, teléfonos, logo y **odontólogos con su MPPS**) no
 > se piden aquí: viven en la sección editable del código, `packages/contracts/src/clinic.ts`, y
@@ -251,7 +262,9 @@ completo en una máquina nueva o tras un fallo, sigue
 | Síntoma | Causa y solución |
 | :--- | :--- |
 | `este guion necesita una consola de Administrador` | Abre PowerShell con clic derecho → «Ejecutar como administrador». |
-| `en Windows hace falta el administrador de PostgreSQL` | Pasa `--admin-url="postgres://postgres:CLAVE@127.0.0.1:5432/postgres"`. |
+| `sin administrador de PostgreSQL: no puedo crear las bases` | Repite la pieza 2 y **escribe la contraseña** cuando la pida, o pásala con `--admin-url="postgres://postgres:CLAVE@127.0.0.1:5432/postgres"`. |
+| `la contraseña de «postgres» no conecta con este PostgreSQL` | El motor venía de antes y la contraseña no es esa. Si no la tienes: `10-preparar.ps1 --recuperar-postgres` (la que escribas pasa a ser la nueva). |
+| `no encuentro PostgreSQL 18 y la instalación automática no lo dejó en su sitio` | Instálalo a mano desde postgresql.org (instalación **estándar**) y anota la contraseña de `postgres`: la pieza 2 la necesita. |
 | `no encuentro «node»` | Node no está en el PATH: ejecuta `10-preparar.ps1` (o instálalo desde nodejs.org, instalación **estándar**, no `nvm`). |
 | Al ejecutar un `.ps1` no arranca y salen símbolos raros | El archivo perdió el BOM: guárdalo como **UTF-8 con BOM**. |
 | `no se puede cargar el archivo …pm2.ps1` | Política de ejecución: `Set-ExecutionPolicy -Scope LocalMachine RemoteSigned`. |

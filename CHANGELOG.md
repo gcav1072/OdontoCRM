@@ -4,6 +4,40 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — En Windows, PostgreSQL ya no deja la instalación a medias · 2026-10-14
+
+En una PC **sin PostgreSQL**, el instalador de Windows se detenía en la pieza 2/4 con «falta el
+administrador de PostgreSQL (--admin-url o PG_ADMIN_URL)», y la única salida era repetir el comando
+con la contraseña de `postgres` escrita en la línea de órdenes —donde queda en el historial de
+PowerShell y en la lista de procesos de la máquina—. La causa es una diferencia de fondo que el
+instalador de Windows **heredó 1:1** del de Fedora: allí, sin `--admin-url`, el aprovisionador entra
+como usuario del sistema `postgres` por el socket «peer» (`runuser -u postgres psql`), así que un
+motor recién instalado nunca deja fuera a nadie. En Windows ese socket **no existe**.
+
+Quedaba además el caso peor: si el motor lo instalaba la propia pieza 1 con `winget`, el manifiesto lo
+lanza con `--mode unattended --unattendedmodeui none` **sin `--superpassword`**, así que el rol
+`postgres` acababa sin una contraseña que nadie conoce. La instalación en limpio moría ahí, sin forma
+de salir desde el propio instalador.
+
+Ahora la contraseña **se pide** (oculta, sin quedar en el historial ni en la lista de procesos), se
+**comprueba por efecto** —una credencial vale cuando conecta, no cuando se escribió el archivo— y, si
+el motor venía sin credencial utilizable, se **fija** con el recurso con el que sale cualquier DBA
+cuando se queda fuera: abrir la conexión local sin contraseña unos segundos (`pg_hba.conf` en
+`trust`, solo `127.0.0.1`/`::1`), `ALTER ROLE … PASSWORD`, y restaurar `pg_hba.conf` tal como estaba
+**aunque algo falle a mitad**. Es el equivalente en Windows del socket «peer» de Fedora.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `comun.ps1` | `Resolver-AdminUrlPostgres` (pide la contraseña, la codifica dentro de la URL y no la imprime), `Get-ClaveDeAdminUrl`, `Probar-ClavePostgres` (por efecto, con `PGPASSWORD` y sin tocar argv) y `Reiniciar-ClavePostgres` (la «ventana de confianza») |
+| `instalar.ps1` | Pregunta la contraseña **una sola vez** y la lleva a las piezas por entorno (`PG_ADMIN_URL`), nunca por argumento; gana `--admin-usuario`/`--admin-host`/`--admin-puerto` y `--recuperar-postgres` |
+| `10-preparar.ps1` | Deja la contraseña del administrador **conocida y comprobada** en los tres casos: ya estaba y se sabe · lo acaba de instalar la pieza 1 (se fija la que des) · se perdió (`--recuperar-postgres`) |
+| `20-aprovisionar.ps1` | Ya no exige `--admin-url`: si falta, pide la contraseña (`--sin-preguntas` lo desactiva) |
+| `30-desplegar.ps1` | Al rol de respaldo le pasa el entorno en vez de la URL por argumento (la URL lleva la contraseña) |
+| `desinstalar.ps1` · `crear-rol-respaldo.ps1` | Si no hay administrador en el entorno, lo piden en vez de pararse |
+
+> **Sin migración y solo para Windows.** Es infraestructura de instalación: no toca el código
+> desplegado, ni las bases, ni la SPA. No entra con `odontocrm actualizar`.
+
 ## [Odontograma] — La leyenda del odontograma impreso sale en color (y no en blanco) · 2026-10-13
 
 Al imprimir el odontograma, los **cuadritos de la leyenda** (rojo `pendiente`, azul `completado` y el

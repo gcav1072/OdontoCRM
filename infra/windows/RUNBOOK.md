@@ -221,7 +221,7 @@ odontocrm modo-test off
 | Un proceso en bucle por `EADDRINUSE` | Hay **otra pila** usando los puertos: `npm run stack:status`. Solo un dueño de los puertos (ADR 0037) |
 | `/ready` con `database` en error | `Get-Service postgresql-x64-18` |
 | Los PDF fallan | Falta Chromium: `.\40-verificar.ps1` lo señala; repite `30-desplegar.ps1` |
-| El respaldo dice «no existe en este servidor» | Falta `.pgpass`/`backup.env`: `crear-rol-respaldo.ps1 --admin-url=…` |
+| El respaldo dice «no existe en este servidor» | Falta `.pgpass`/`backup.env`: `crear-rol-respaldo.ps1` (pide la contraseña de `postgres`) |
 | La cola crece y no baja | `odontocrm estado`: ¿el outbox se atasca? ¿la cola tiene fallidos? |
 | Nadie entra desde fuera | La red de Windows debe estar en perfil **Privado** |
 
