@@ -63,6 +63,15 @@ DATOS
   --token-telegram=…   --usuario-telegram=…
   --token-bot-admin=…  --chat-bot-admin=…   (avisos de fallos del sistema)
   --whatsapp-token=…   --whatsapp-phone-id=…   --whatsapp-verify-token=…   --whatsapp-app-secret=…
+
+CANALES
+  · Los tokens de Telegram se COMPRUEBAN contra la API: si el token vale, se enseña el nombre
+    del bot (ese nombre se guarda como `TELEGRAM_BOT_USERNAME`, que es el del enlace
+    t.me/<usuario>) y se completa solo.
+  · El chat del administrador NO se pregunta: se DETECTA. Se te pedirá que le escribas
+    «/start» al bot y se lee su `chat.id` de las actualizaciones.
+  · Las credenciales de los canales se guardan SIEMPRE en notifications.env, también cuando se
+    ejecuta una sola pieza (por ejemplo `--solo=desplegar`): no se quedan en la pantalla.
 '@
 
 $Comprobar = Test-Bandera $args 'comprobar'
@@ -137,9 +146,10 @@ if (-not $DryRun -and -not $SinPreguntas -and $hayTerminal -and $Solo -notin @('
   # La contraseña del administrador de PostgreSQL (el usuario del MOTOR, no el de la app). Se
   # pregunta aquí, una sola vez, y viaja a las piezas por ENTORNO. Es lo que sustituye a pasar
   # `--admin-url="postgres://postgres:CLAVE@…"` por la línea de órdenes, que dejaba la clave en
-  # el historial de PowerShell. Hace falta en la 1 (que instala y comprueba el motor) y en la 2
-  # (que crea las bases); las piezas 3 y 4 no la usan.
-  if ($Solo -notin @('desplegar', 'verificar') -and -not $AdminUrl) {
+  # el historial de PowerShell. Hace falta en la 1 (que instala y comprueba el motor), en la 2
+  # (que crea las bases) y en la 3 (que crea el rol de respaldo en su paso 10/10). Solo la
+  # verificación (la 4) no la usa.
+  if ($Solo -ne 'verificar' -and -not $AdminUrl) {
     $UsuarioAdmin = if ($AdminUsuario) { $AdminUsuario } else { 'postgres' }
     $EquipoAdmin = if ($AdminHost) { $AdminHost } else { '127.0.0.1' }
     $PuertoAdmin = if ($AdminPuerto) { [int]$AdminPuerto } else { 5432 }
@@ -156,19 +166,64 @@ if (-not $DryRun -and -not $SinPreguntas -and $hayTerminal -and $Solo -notin @('
 
   if (-not $TokenTelegram) {
     $r = Read-Host '      Token del bot de Telegram (Enter para omitir; queda en modo simulado)'
-    if ($r) { $TokenTelegram = $r }
+    if ($r) { $TokenTelegram = $r.Trim() }
   }
+  # Un token de BotFather ronda los 45 caracteres: si es mucho más corto no es un token, y
+  # guardarlo dejaría los avisos en un «modo simulado» que parece configurado (lo comprueba el
+  # instalador de Fedora desde el primer día). Y se comprueba contra Telegram, que además dice
+  # el nombre del bot: `TELEGRAM_BOT_USERNAME` es lo que arma el enlace `t.me/<usuario>`.
+  if ($TokenTelegram -and $TokenTelegram.Length -lt 20) {
+    Escribir-Aviso 'un token de BotFather tiene más de 20 caracteres: no lo guardo'
+    $TokenTelegram = $null
+  }
+  if ($TokenTelegram) {
+    $bot = Get-BotTelegram -Token $TokenTelegram
+    if ($bot) {
+      Escribir-Ok "Telegram confirma el bot: @$($bot.username)"
+      if (-not $UsuarioTelegram) { $UsuarioTelegram = $bot.username }
+    }
+    else {
+      Escribir-Aviso 'Telegram no confirmó ese token (¿internet?, ¿mal copiado?): se guarda igual'
+    }
+  }
+
   if (-not $TokenBotAdmin) {
     $r = Read-Host '      Token del bot de ADMINISTRACIÓN —avisos de fallos del sistema— (Enter para omitir)'
-    if ($r) { $TokenBotAdmin = $r }
+    if ($r) { $TokenBotAdmin = $r.Trim() }
   }
+  if ($TokenBotAdmin -and $TokenBotAdmin.Length -lt 20) {
+    Escribir-Aviso 'un token de BotFather tiene más de 20 caracteres: no lo guardo'
+    $TokenBotAdmin = $null
+  }
+  # El chat de destino se DESCUBRE, no se pregunta: se le pide al administrador que le escriba
+  # al bot y se lee su `chat.id` de las actualizaciones. Es lo que evita teclear un número que
+  # nadie sabe de memoria (y equivocarse). Sin el chat, el bot de administración no puede avisar.
   if ($TokenBotAdmin -and -not $ChatBotAdmin) {
-    $r = Read-Host '      Chat del administrador (Enter para abrir Telegram, escribirle /start al bot y pulsar Enter)'
-    if ($r) { $ChatBotAdmin = $r }
+    $botAdmin = Get-BotTelegram -Token $TokenBotAdmin
+    if (-not $botAdmin) {
+      Escribir-Aviso 'Telegram no confirmó ese token de administración: se guarda igual'
+    }
+    else {
+      Escribir-Ok "el bot de administración existe (@$($botAdmin.username))"
+      for ($intento = 1; $intento -le 3; $intento++) {
+        $ChatBotAdmin = Get-ChatTelegram -Token $TokenBotAdmin
+        if ($ChatBotAdmin) { break }
+        if ($intento -lt 3) {
+          $aviso = "      Abre Telegram, escríbele «/start» a @$($botAdmin.username) y pulsa Enter"
+          Read-Host "$aviso (intento $intento de 3)" | Out-Null
+        }
+      }
+      if ($ChatBotAdmin) { Escribir-Ok "chat del administrador detectado: $ChatBotAdmin" }
+      else {
+        Escribir-Aviso 'no pude detectar el chat: se puede poner luego en notifications.env'
+        Escribir-Detalle '    (ADMIN_TELEGRAM_CHAT_ID: escríbele algo al bot y copia el número)'
+      }
+    }
   }
+
   if (-not $WaToken) {
     $r = Read-Host '      Token de la WhatsApp Cloud API (Enter para omitir)'
-    if ($r) { $WaToken = $r }
+    if ($r) { $WaToken = $r.Trim() }
   }
 }
 elseif ($DryRun) { Escribir-Detalle '[dry-run] no se pregunta nada' }
@@ -222,6 +277,20 @@ $argsAprovisionar = @($comunes)
 $argsDesplegar = @($comunes)
 # La contraseña del MOTOR no viaja como argumento: en la lista de procesos del hijo la vería
 # cualquiera de la máquina. Va por entorno (`PG_ADMIN_URL`, que el hijo hereda).
+
+# ── Que las credenciales de los canales QUEDEN guardadas ────────────────────
+# Los tokens y el resto de los datos de los canales viven en `notifications.env`, y quien los
+# escribe es la pieza 2 (el aprovisionador). Si esta corrida NO la va a ejecutar, hay que
+# llamarla en modo «solo archivos»: si no, se piden, se usan para comprobarlos… y se pierden al
+# terminar (que es justo lo que pasaba con `--solo=desplegar`). Ese modo no toca la base ni las
+# claves de firma; reescribe los `.env` conservando lo que ya había.
+$hayCanales = [bool]($TokenTelegram -or $UsuarioTelegram -or $TokenBotAdmin -or $ChatBotAdmin -or
+  $WaToken -or $WaPhone -or $WaVerify -or $WaAppSecret)
+if ($hayCanales -and -not $DryRun -and -not ($Solo -in @('', 'aprovisionar'))) {
+  Write-Host ''
+  Escribir-Paso 'Guardando las credenciales de los canales'
+  Invocar-Pieza 'Canales (solo los archivos)' '20-aprovisionar.ps1' (@($comunes) + '--solo-archivos')
+}
 
 switch ($Solo) {
   'preparar' { Invocar-Pieza '1/4 · Preparar la máquina' '10-preparar.ps1' $comunes }

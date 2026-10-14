@@ -12,6 +12,7 @@
 #
 #   .\20-aprovisionar.ps1                     # PIDE la contraseña de `postgres` (lo normal)
 #   .\20-aprovisionar.ps1 --admin-url="postgres://postgres:CLAVE@127.0.0.1:5432/postgres"
+#   .\20-aprovisionar.ps1 --solo-archivos     # escribe los .env y NADA más (ni base ni comprobación)
 #   .\20-aprovisionar.ps1 --solo-verificar    # no cambia nada
 #   .\20-aprovisionar.ps1 --rotate            # contraseñas nuevas
 #   .\20-aprovisionar.ps1 --dry-run
@@ -44,6 +45,10 @@ OPCIONES
   --ip=…              IP de la LAN (si no, se deduce).
   --sin-preguntas     No pregunta la contraseña: si no vino por bandera ni por entorno,
                       se detiene con el ejemplo (para consolas sin teclado).
+  --solo-archivos     Escribe los `.env` y no toca nada más: no crea ni comprueba bases.
+                      Es como se guardan las credenciales de los canales cuando la pieza 2
+                      no va a correr (p. ej. un `--solo=desplegar`) ni hace falta la
+                      contraseña de PostgreSQL.
   --rotate            Genera contraseñas NUEVAS (invalida las anteriores).
   --solo-verificar    No cambia nada: comprueba que cada credencial CONECTA.
   --dry-run           Enseña lo que haría, sin hacerlo.
@@ -61,6 +66,7 @@ $AdminPuerto = Get-Argumento $args 'admin-puerto'
 $SinPreguntas = Test-Bandera $args 'sin-preguntas'
 $Rotar = Test-Bandera $args 'rotate'
 $SoloVerificar = Test-Bandera $args 'solo-verificar'
+$SoloArchivos = Test-Bandera $args 'solo-archivos'
 $DryRun = Test-Bandera $args 'dry-run'
 
 if (-not $DryRun -and -not $SoloVerificar) { Afirmar-Administrador }
@@ -86,7 +92,7 @@ $cuantos = $info.servicios.Count
 # existe eso: o hay URL, o no se puede crear ninguna base. Si no vino por bandera ni por
 # entorno, se PIDE la contraseña por teclado (oculta): así no queda en el historial ni en
 # la lista de procesos. La petición va ANTES de tocar nada, para no fallar a mitad.
-if (-not $AdminUrl -and -not $SoloVerificar -and -not $SinPreguntas) {
+if (-not $AdminUrl -and -not $SoloVerificar -and -not $SoloArchivos -and -not $SinPreguntas) {
   $UsuarioAdmin = if ($AdminUsuario) { $AdminUsuario } else { 'postgres' }
   $EquipoAdmin = if ($AdminHost) { $AdminHost } else { '127.0.0.1' }
   $PuertoAdmin = if ($AdminPuerto) { [int]$AdminPuerto } else { 5432 }
@@ -94,7 +100,7 @@ if (-not $AdminUrl -and -not $SoloVerificar -and -not $SinPreguntas) {
     -Equipo $EquipoAdmin -Puerto $PuertoAdmin -SinPreguntar:$DryRun
 }
 
-if (-not $SoloVerificar -and -not $AdminUrl -and -not $DryRun) {
+if (-not $SoloVerificar -and -not $SoloArchivos -and -not $AdminUrl -and -not $DryRun) {
   Write-Host ''
   Escribir-Error 'sin administrador de PostgreSQL: no puedo crear las bases.'
   Escribir-Detalle 'En Windows no hay socket «peer»: hace falta la contraseña del usuario postgres.'
@@ -124,6 +130,7 @@ $pgBin = Get-PgBin
 if ($pgBin) { $argumentos += "--pgbin=$pgBin" }
 if ($Rotar) { $argumentos += '--rotate' }
 if ($SoloVerificar) { $argumentos += '--solo-verificar' }
+if ($SoloArchivos) { $argumentos += '--solo-archivos' }
 if ($DryRun) { $argumentos += '--dry-run' }
 
 if ($DryRun) {
@@ -152,4 +159,9 @@ if (-not $DryRun -and -not $SoloVerificar) {
   }
 }
 
-Escribir-Listo -Numero '2/4' -Texto "Las credenciales viven SOLO en $OdontoEnv y conectan." -Siguiente '.\30-desplegar.ps1'
+Escribir-Listo -Numero '2/4' -Texto $(if ($SoloArchivos) {
+    "Los archivos de $OdontoEnv quedaron al día (sin tocar bases)."
+  }
+  else {
+    "Las credenciales viven SOLO en $OdontoEnv y conectan."
+  }) -Siguiente '.\30-desplegar.ps1'

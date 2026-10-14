@@ -575,6 +575,60 @@ function Confirmar-ServicioPm2 {
   return $false
 }
 
+# ── Telegram: comprobar un token y descubrir el chat ─────────────────────────
+# Un token mal copiado de BotFather no falla en NINGÚN sitio: el servicio arranca, los avisos
+# se quedan en la bandeja y nadie se entera hasta que un paciente no recibe su cita. Se
+# comprueba aquí, contra la propia API de Telegram (es lo que hace el instalador de Fedora).
+# Devuelve el objeto del bot (`id`, `username`, …) o `$null` si Telegram no lo confirma.
+function Get-BotTelegram {
+  param([string]$Token)
+  if (-not $Token) { return $null }
+  # PowerShell 5.1 no siempre negocia TLS 1.2 con `api.telegram.org`: sin esto la llamada falla
+  # con un error de conexión que parece «no hay internet».
+  try {
+    [Net.ServicePointManager]::SecurityProtocol =
+      [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+  }
+  catch { }
+  try {
+    $r = Invoke-RestMethod -Uri "https://api.telegram.org/bot$Token/getMe" -TimeoutSec 10 -ErrorAction Stop
+    if ($r.ok) { return $r.result }
+  }
+  catch { }
+  return $null
+}
+
+# El `chat.id` del administrador, sacado de las ACTUALIZACIONES del bot: es lo que evita pedir
+# un número que nadie sabe de memoria (y equivocarse). Hace falta que el administrador le haya
+# escrito algo al bot (`/start`); si no, no hay actualizaciones y devuelve `$null`.
+#
+# OJO con `Set-StrictMode` (lo pone este archivo): `$actualizacion.message` **lanza** si la
+# actualización no trae esa clave, y Telegram manda `my_chat_member` (no `message`) al pulsar
+# «Iniciar». Un `throw` ahí se lo comería el `catch` y el chat no se detectaría NUNCA, sin decir
+# nada. Por eso se pregunta por la clave con `PSObject.Properties`, que sí devuelve `$null`.
+function Select-ChatDeActualizaciones {
+  param($Actualizaciones)
+  foreach ($actualizacion in @($Actualizaciones)) {
+    $mensaje = $actualizacion.PSObject.Properties['message']
+    if (-not $mensaje -or -not $mensaje.Value) { continue }
+    $chat = $mensaje.Value.PSObject.Properties['chat']
+    if (-not $chat -or -not $chat.Value) { continue }
+    if ($chat.Value.id) { return $chat.Value.id }
+  }
+  return $null
+}
+
+function Get-ChatTelegram {
+  param([string]$Token)
+  if (-not $Token) { return $null }
+  try {
+    $r = Invoke-RestMethod -Uri "https://api.telegram.org/bot$Token/getUpdates" -TimeoutSec 10 -ErrorAction Stop
+    if ($r.ok) { return (Select-ChatDeActualizaciones -Actualizaciones $r.result) }
+  }
+  catch { }
+  return $null
+}
+
 # ── El navegador de los PDF (Chromium de Playwright) ─────────────────────────
 # Lo necesitan el récipe A5 (`clinical`), la factura y el recibo (`billing`) y los reportes.
 # **No viene con el código**: Playwright lo descarga aparte y los servicios lo buscan en

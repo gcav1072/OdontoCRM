@@ -919,6 +919,12 @@ if (opciones.dryRun) {
 }
 
 console.log();
+if (opciones.soloArchivos) {
+  // En modo «solo archivos» no se crean bases ni se comprueban credenciales, así que decir
+  // «los 9 servicios tienen credencial que conecta» sería mentira (y de las que se creen).
+  ok('archivos de entorno escritos (no se tocó la base ni se comprobó la conexión)');
+  process.exit(0);
+}
 if (fallos.length === 0) {
   ok('aprovisionamiento correcto: los 9 servicios tienen credencial que conecta');
   detalle(`siguiente paso:  30-desplegar.sh  (código sin secretos + unidades + TLS)`);
