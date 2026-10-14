@@ -4,6 +4,34 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — El proxy arranca: el binario no lo podía ejecutar el servicio · 2026-10-14
+
+El servicio `caddy` quedaba en `Stopped`, así que desde la LAN no se entraba: la última parte del
+paso 9/10 decía `la SPA devolvió 0 · la API devolvió 0 · la CA respondió 0`… y aun así el guion
+informaba «✔ servicio caddy reiniciado». Dos defectos, uno tapando al otro.
+
+El de fondo es un permiso: **Caddy corre como `LocalService`** y `caddy.exe` no era legible para esa
+cuenta. Los binarios se descargan en `%TEMP%` y se mueven a `C:\ProgramData\OdontoCRM\bin`, y al
+moverlos **conservan las ACL de `%TEMP%`** (del usuario Administrador, sin el servicio y con la
+herencia bloqueada): la carpeta de destino sí daba permiso a `LocalService`, pero al archivo no le
+llegaba. Windows lo cuenta en el registro de eventos con `El servicio caddy no pudo iniciarse
+debido al siguiente error: %%5`, que es «acceso denegado» sin decir de qué archivo.
+
+El otro es de información: `Restart-Service` fallaba y el guion seguía igual hasta el final.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `comun.ps1` | `Permitir-EjecucionAlServicio`: da `RX` —leer **y ejecutar**— al binario, por SID. Un `R` a secas no basta: Windows exige `FILE_EXECUTE` para crear el proceso, y eso también fue parte del mismo `%%5` |
+| `10-preparar.ps1` | Al colocar cada binario se le da ese permiso, y **también cuando ya estaba** (idempotente): así una instalación anterior se repara al volver a pasar por la pieza 1, sin volver a descargar nada |
+| `caddy/instalar.ps1` | Comprueba el **efecto** en vez de dar por hecho el arranque: si el servicio no queda en marcha, dice que suele ser un permiso, cómo verlo (`Get-EventLog System -Source "Service Control Manager"`) y se detiene, en vez de terminar con «reiniciado» y el proxy caído |
+
+> **Verificado**: el ayudante se probó sobre un archivo con las ACL reales del caso (mover desde
+> `%TEMP%`): sin permiso → `ReadAndExecute`, idempotente, y no rompe si el archivo no existe. La
+> causa se confirmó contra la máquina, con las dos ACL y el `%%5` del registro de eventos.
+
+> **Sin migración.** Es el instalador. Para que entre en un servidor ya instalado hay que volver a
+> pasar por la pieza 1 (el instalador completo): es la que revisa los permisos de los binarios.
+
 ## [Instalador] — Los tokens de los canales se comprueban y quedan guardados · 2026-10-14
 
 En el instalador de Windows se pedían los tokens de Telegram y de WhatsApp y **no se hacía nada con
