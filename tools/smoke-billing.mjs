@@ -64,8 +64,10 @@ const CLAVE_ALMACEN = parseEncryptionKey(
 const ESPERA_BORRADOR_MS = Number(process.env.SMOKE_BILLING_WAIT_MS ?? 20_000);
 /** Hasta cuánto se espera a que la auditoría proyecte los eventos (el outbox no es instantáneo). */
 const ESPERA_AUDITORIA_MS = Number(process.env.SMOKE_BILLING_AUDIT_WAIT_MS ?? 10_000);
-/** El arancel que la caja teclea para el procedimiento (US$ 35,00): el catálogo entra en 0. */
-const PRECIO_CENTIMOS = 3500;
+/** CP-01 (ADR 0069): la factura del contador — US$ 60,00 emitida a 1.000,00 Bs./US$. */
+const CP_TOTAL_CENTIMOS = 6_000;
+const CP_TASA_EMISION = '1000';
+const CP_TASA_PAGO = '1020';
 /** La tasa como se teclea en el mostrador; si ya hay una de hoy, se reutiliza. */
 const TASA = process.env.SMOKE_BILLING_RATE ?? '36,5420';
 /** Numeración propia del lote (9 dígitos: no choca con los lotes de 6 de la clínica). */
@@ -389,26 +391,31 @@ if (partidas.length === 0) {
   process.exit(1);
 }
 
-/* ── 5) Preciar el borrador ────────────────────────────────────────────────── */
+/* ── 5) Preciar el borrador: la factura del caso CP-01 ───────────────────── */
 
+// Una sola partida escrita a mano de **US$ 60,00**, exenta (Art. 19.6): es la factura exacta del
+// caso CP-01 del ADR 0069, la del diferencial cambiario de +200,00 Bs.
 const precio = await call(`/api/v1/billing/drafts/${resumen.id}/items`, {
   method: 'PUT',
   body: JSON.stringify({
-    items: partidas.map((item, indice) => ({
-      code: item.code,
-      quantity: item.quantity,
-      // La primera partida se precia; si hubiera más, también, para no dejar ninguna en 0.
-      unitPriceCentsUsd: PRECIO_CENTIMOS + indice,
-      description: item.description,
-      toothNumber: item.toothNumber,
-      surfaces: item.surfaces ?? [],
-    })),
+    items: [
+      {
+        code: 'manual',
+        quantity: 1,
+        unitPriceCentsUsd: CP_TOTAL_CENTIMOS,
+        description: 'Tratamiento de la prueba de humo (CP-01)',
+        toothNumber: null,
+        surfaces: [],
+      },
+    ],
   }),
 });
 const precioTotal = precio.body?.totals?.totalCentsUsd ?? 0;
 check(
-  'el borrador se precia y deja de estar marcado',
-  precio.status === 200 && precio.body?.needsPricing === false && precioTotal > 0,
+  'el borrador se precia en US$ 60,00 y deja de estar marcado',
+  precio.status === 200 &&
+    precio.body?.needsPricing === false &&
+    precioTotal === CP_TOTAL_CENTIMOS,
   `status ${precio.status} · total US$ ${(precioTotal / 100).toFixed(2)}`,
 );
 // Los servicios odontológicos son EXENTOS (Art. 19.6): el total va por lo exento, sin IVA.
@@ -493,6 +500,23 @@ check(
   `${String(tasa?.rateMicros)} micros · ${String(tasa?.rateDate)}`,
 );
 
+// La tasa de **emisión** del caso CP-01: 1.000,00 Bs./US$. Se corrige con motivo (la fila anterior
+// queda como historia), y así la factura congela exactamente la tasa del caso del contador.
+const emisionCp = await call('/api/v1/billing/rates', {
+  method: 'POST',
+  body: JSON.stringify({
+    rateDate: hoy,
+    rate: CP_TASA_EMISION,
+    note: `${MARK}: la tasa de emisión del caso CP-01`,
+  }),
+});
+check(
+  'la tasa de emisión del CP-01 (1.000,00 Bs./US$) queda vigente',
+  emisionCp.status === 201 && emisionCp.body?.rateMicros === 1_000_000_000,
+  `status ${emisionCp.status} · ${String(emisionCp.body?.rateMicros)} micros`,
+);
+tasa = emisionCp.body ?? tasa;
+
 /* ── 8) Emitir ─────────────────────────────────────────────────────────────── */
 
 const emitida = await call(`/api/v1/billing/drafts/${resumen.id}/issue`, {
@@ -543,65 +567,101 @@ check(
   pdf ?? `no se encontró en ${ALMACEN}`,
 );
 
-/* ── 9) Cobrar: en bolívares y en divisas ──────────────────────────────────── */
+/* ── 9) Cobrar: CP-01 — abono y pago «extemporáneo» (ADR 0069) ─────────────── */
 
 const total = emitida.body?.totalCentsUsd ?? 0;
 const totalVes = emitida.body?.totalVesCentimos ?? 0;
 
-const enBolivares = await call(`/api/v1/billing/invoices/${invoiceId}/payments`, {
+// Pago 1 («día 1»): 50.000,00 Bs. a la tasa de **emisión** (1.000,00) amortizan US$ 50,00, sin
+// diferencial. La Fecha Valor es la del comprobante del banco: hoy.
+const pago1 = await call(`/api/v1/billing/invoices/${invoiceId}/payments`, {
   method: 'POST',
   body: JSON.stringify({
     method: 'pago_movil',
-    // La mitad, en bolívares: la mitad de lo impreso.
-    tenderedAmount: Math.floor(totalVes / 2),
-    reference: 'op-prueba-0001',
+    tenderedAmount: 5_000_000,
+    reference: 'op-prueba-cp01-1',
+    effectiveDate: hoy,
     confirmRate: true,
   }),
 });
 check(
-  'el cobro en bolívares se imputa con la tasa del pago',
-  enBolivares.status === 200 &&
-    enBolivares.body?.payment?.imputationPolicy === 'tasa_del_pago' &&
-    enBolivares.body?.payment?.tenderedCurrency === 'VES' &&
-    enBolivares.body?.payment?.exchangeRateMicros === tasa.rateMicros,
-  `status ${enBolivares.status} · ${String(enBolivares.body?.payment?.imputationPolicy)}`,
+  'CP-01 · pago 1: 50.000,00 Bs. amortizan US$ 50,00 sin diferencial y queda abonada',
+  pago1.status === 200 &&
+    pago1.body?.payment?.tenderedCurrency === 'VES' &&
+    pago1.body?.payment?.amountCentsUsd === 5_000 &&
+    pago1.body?.payment?.effectiveDate === hoy &&
+    pago1.body?.payment?.historicalVesCentimos === 5_000_000 &&
+    pago1.body?.payment?.exchangeDiffVesCentimos === 0 &&
+    pago1.body?.invoice?.status === 'parcial' &&
+    pago1.body?.invoice?.balanceCentsUsd === 1_000,
+  `status ${pago1.status} · saldo US$ ${((pago1.body?.invoice?.balanceCentsUsd ?? 0) / 100).toFixed(2)} · histórico Bs. ${((pago1.body?.payment?.historicalVesCentimos ?? 0) / 100).toFixed(2)}`,
 );
 check(
   'el recibo sale numerado y archivado',
-  /^REC-\d{6}$/.test(enBolivares.body?.payment?.receiptLabel ?? '') &&
-    esHuella(enBolivares.body?.payment?.pdfSha256),
-  String(enBolivares.body?.payment?.receiptLabel),
+  /^REC-\d{6}$/.test(pago1.body?.payment?.receiptLabel ?? '') &&
+    esHuella(pago1.body?.payment?.pdfSha256),
+  String(pago1.body?.payment?.receiptLabel),
 );
 check(
-  'la factura queda abonada, con saldo mayor que cero y menor que el total',
-  enBolivares.body?.invoice?.status === 'parcial' &&
-    enBolivares.body.invoice.balanceCentsUsd > 0 &&
-    enBolivares.body.invoice.balanceCentsUsd < total,
-  `status ${String(enBolivares.body?.invoice?.status)} · saldo US$ ${((enBolivares.body?.invoice?.balanceCentsUsd ?? 0) / 100).toFixed(2)}`,
+  'la clínica es contribuyente ordinario: no percibe IGTF',
+  pago1.body?.payment?.appliesIgtf === false &&
+    pago1.body?.payment?.igtfAmountCentsUsd === 0 &&
+    pago1.body?.payment?.igtfCollectedCurrency === null,
+  `IGTF US$ ${((pago1.body?.payment?.igtfAmountCentsUsd ?? 0) / 100).toFixed(2)}`,
 );
 
-const saldo = enBolivares.body?.invoice?.balanceCentsUsd ?? 0;
-const enDivisas = await call(`/api/v1/billing/invoices/${invoiceId}/payments`, {
+// El «día 4»: la tasa sube a 1.020,00. La corrección es un acto auditado —la fila anterior queda
+// como historia— y el siguiente cobro se valora a la tasa de su **Fecha Valor**, que es la que manda.
+const subida = await call('/api/v1/billing/rates', {
   method: 'POST',
   body: JSON.stringify({
-    method: 'cash_usd',
-    tenderedAmount: saldo,
-    reference: null,
+    rateDate: hoy,
+    rate: CP_TASA_PAGO,
+    note: `${MARK}: sube la tasa; el cobro se valora a la del día (CP-01)`,
+  }),
+});
+check(
+  'la tasa del pago sube a 1.020,00 y la anterior queda como historia',
+  subida.status === 201 && subida.body?.rateMicros === 1_020_000_000,
+  `status ${subida.status} · ${String(subida.body?.rateMicros)} micros`,
+);
+
+// Pago 2 («día 4»): 10.200,00 Bs. a 1.020,00 saldan los US$ 10,00 restantes; la diferencia con la
+// tasa de emisión es **ganancia cambiaria** realizada: +200,00 Bs.
+const pago2 = await call(`/api/v1/billing/invoices/${invoiceId}/payments`, {
+  method: 'POST',
+  body: JSON.stringify({
+    method: 'pago_movil',
+    tenderedAmount: 1_020_000,
+    reference: 'op-prueba-cp01-2',
+    effectiveDate: hoy,
     confirmRate: true,
   }),
 });
 check(
-  'el cobro en divisas liquida la deuda',
-  enDivisas.status === 200 &&
-    enDivisas.body?.invoice?.status === 'pagada' &&
-    enDivisas.body?.invoice?.balanceCentsUsd === 0,
-  `status ${enDivisas.status} · saldo US$ ${((enDivisas.body?.invoice?.balanceCentsUsd ?? 0) / 100).toFixed(2)}`,
+  'CP-01 · pago 2: 10.200,00 Bs. saldan US$ 10,00 y el diferencial es +200,00 Bs.',
+  pago2.status === 200 &&
+    pago2.body?.payment?.amountCentsUsd === 1_000 &&
+    pago2.body?.payment?.exchangeRateMicros === 1_020_000_000 &&
+    pago2.body?.payment?.historicalVesCentimos === 1_000_000 &&
+    pago2.body?.payment?.exchangeDiffVesCentimos === 20_000 &&
+    pago2.body?.invoice?.status === 'pagada' &&
+    pago2.body?.invoice?.balanceCentsUsd === 0,
+  `status ${pago2.status} · saldo US$ ${((pago2.body?.invoice?.balanceCentsUsd ?? 0) / 100).toFixed(2)} · diferencial Bs. ${((pago2.body?.payment?.exchangeDiffVesCentimos ?? 0) / 100).toFixed(2)}`,
 );
+const historicoTotal =
+  (pago1.body?.payment?.historicalVesCentimos ?? 0) +
+  (pago2.body?.payment?.historicalVesCentimos ?? 0);
+const diferencialTotal =
+  (pago1.body?.payment?.exchangeDiffVesCentimos ?? 0) +
+  (pago2.body?.payment?.exchangeDiffVesCentimos ?? 0);
 check(
-  'la clínica es contribuyente ordinario: no percibe IGTF',
-  enDivisas.body?.payment?.appliesIgtf === false &&
-    enDivisas.body?.payment?.igtfAmountCentsUsd === 0,
-  `IGTF US$ ${((enDivisas.body?.payment?.igtfAmountCentsUsd ?? 0) / 100).toFixed(2)}`,
+  'CP-01 · Σ histórico = 60.000,00 Bs. (cuadra con la factura) y Σ diferencial = +200,00 Bs.',
+  total === CP_TOTAL_CENTIMOS &&
+    totalVes === 6_000_000 &&
+    historicoTotal === totalVes &&
+    diferencialTotal === 20_000,
+  `Σ histórico Bs. ${(historicoTotal / 100).toFixed(2)} · Σ diferencial Bs. ${(diferencialTotal / 100).toFixed(2)}`,
 );
 
 /* ── 10) La factura con sus cobros ─────────────────────────────────────────── */
@@ -625,6 +685,31 @@ check(
     .map((pago) => `${String(pago.receiptLabel)} ${String(pago.pdfSha256).slice(0, 8)}`)
     .join(' · '),
 );
+check(
+  'los acumuladores del detalle cuadran con los cobros (ADR 0069)',
+  factura.body?.totalHistoricalPaidVesCentimos === 6_000_000 &&
+    factura.body?.totalExchangeDiffVesCentimos === 20_000 &&
+    factura.body?.currentDebtAtTodayRateVesCentimos === 0,
+  `histórico ${String(factura.body?.totalHistoricalPaidVesCentimos)} · diferencial ${String(factura.body?.totalExchangeDiffVesCentimos)} · deuda hoy ${String(factura.body?.currentDebtAtTodayRateVesCentimos)}`,
+);
+
+const resumenLibros = await call('/api/v1/billing/books/summary');
+check(
+  'el resumen del período cuadra: neto = ganancias − pérdidas + reversiones',
+  resumenLibros.status === 200 &&
+    resumenLibros.body?.exchangeDiff?.netoVesCentimos ===
+      resumenLibros.body?.exchangeDiff?.gananciasVesCentimos -
+        resumenLibros.body?.exchangeDiff?.perdidasVesCentimos +
+        resumenLibros.body?.exchangeDiff?.reversionesVesCentimos,
+  `neto Bs. ${((resumenLibros.body?.exchangeDiff?.netoVesCentimos ?? 0) / 100).toFixed(2)}`,
+);
+check(
+  'el arqueo del IGTF separa Caja Divisas de Banco/Caja Bs.',
+  resumenLibros.status === 200 &&
+    typeof resumenLibros.body?.igtf?.igtfCajaDivisasCentsUsd === 'number' &&
+    typeof resumenLibros.body?.igtf?.igtfCajaBsVesCentimos === 'number',
+  `caja USD ${String(resumenLibros.body?.igtf?.igtfCajaDivisasCentsUsd)} · caja Bs. ${String(resumenLibros.body?.igtf?.igtfCajaBsVesCentimos)}`,
+);
 
 /* ── 11) Auditoría ─────────────────────────────────────────────────────────── */
 
@@ -644,13 +729,13 @@ check(
 );
 
 const eventosCobro = await esperarAuditoria(
-  `entityType=payment&entityId=${enBolivares.body?.payment?.id}&action=payment_received&pageSize=50`,
+  `entityType=payment&entityId=${pago1.body?.payment?.id}&action=payment_received&pageSize=50`,
 );
 check(
   'la auditoría registra el cobro, con el antes y el después del saldo',
   eventosCobro.length > 0 &&
     (eventosCobro[0]?.before ?? {}).balanceCentsUsd === total &&
-    (eventosCobro[0]?.after ?? {}).balanceCentsUsd === saldo,
+    (eventosCobro[0]?.after ?? {}).balanceCentsUsd === 1_000,
   `${String(eventosCobro[0]?.before?.balanceCentsUsd)} → ${String(eventosCobro[0]?.after?.balanceCentsUsd)}`,
 );
 
