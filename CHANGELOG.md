@@ -4,6 +4,43 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — Los tokens de los canales se comprueban y quedan guardados · 2026-10-14
+
+En el instalador de Windows se pedían los tokens de Telegram y de WhatsApp y **no se hacía nada con
+ellos**: ni se comprobaban contra la API —como sí hace el de Fedora, que responde el nombre del bot
+y detecta el chat del administrador— ni existía la garantía de que quedaran escritos. Con
+`--solo=desplegar` se perdían **siempre**, porque quien los escribe es la pieza 2 (el
+aprovisionador) y esa pieza no se ejecuta en ese modo: se pedían, se usaban para nada y se
+esfumaban al terminar, sin un solo aviso.
+
+Ahora, en la puesta en marcha:
+
+- El token se **comprueba contra Telegram** (`getMe`): si vale, se enseña `@nombre` y ese nombre se
+  guarda como `TELEGRAM_BOT_USERNAME`, que es el que arma el enlace `t.me/<usuario>` del récipe.
+  Un token más corto de 20 caracteres no se guarda (no es un token de BotFather) y uno que Telegram
+  no confirme se avisa y se guarda igual, para poder corregirlo después.
+- El chat del administrador **se detecta**, no se pregunta: se pide escribirle «/start» al bot y se
+  lee su `chat.id` de las actualizaciones (tres intentos). Antes se pedía un número que nadie sabe
+  de memoria y, sin él, el bot de administración no puede avisar de nada.
+- Y las credenciales de los canales **quedan guardadas en `notifications.env` siempre**: si la
+  corrida no va a ejecutar la pieza 2, se la llama en modo «solo archivos» (escribe los `.env`, sin
+  tocar bases ni claves de firma) antes de desplegar.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `instalar.ps1` | Comprueba los dos tokens (`getMe`), completa el usuario del bot, detecta el chat del administrador y guarda los canales por su cuenta cuando la pieza 2 no va a correr. Además `--solo=desplegar` vuelve a pedir la contraseña de PostgreSQL: su paso 10/10 crea el rol de respaldo y sin ella se quedaba sin crear (con aviso) |
+| `comun.ps1` | `Get-BotTelegram` (`getMe`, con TLS 1.2 explícito: PowerShell 5.1 no siempre lo negocia y el fallo parece «no hay internet») y `Select-ChatDeActualizaciones` + `Get-ChatTelegram` |
+| `20-aprovisionar.ps1` | Acepta `--solo-archivos` (escribe los `.env` y nada más) y en ese modo no pide la contraseña de PostgreSQL |
+| `aprovisionar.mjs` | En modo «solo archivos» ya no dice «los 9 servicios tienen credencial que conecta», que era falso: ahí no se comprueba ninguna conexión |
+
+> **Verificado** con el aprovisionador real sobre un directorio de pruebas: los tokens entran en
+> `notifications.env` en la primera pasada y **se conservan** en una segunda sin ellos (la regla de
+> `escribirEnv`). El extractor del chat se probó con cargas reales de Telegram, incluida la que
+> trae `my_chat_member` en vez de `message` —que con `Set-StrictMode` lanzaba una excepción que el
+> `catch` se comía, dejando el chat sin detectar en silencio—.
+
+> **Sin migración.** Es el instalador: no toca el código desplegado, ni las bases, ni la SPA.
+
 ## [Instalador] — Los servicios ya arrancan de verdad: PM2 no usaba `fork` · 2026-10-14
 
 La instalación llegaba al paso 7/10, PM2 daba los once procesos por «online» y **ninguno abría su

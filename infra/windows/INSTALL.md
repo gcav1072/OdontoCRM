@@ -140,14 +140,19 @@ para no tener que pelearse después con los archivos de `C:\ProgramData\OdontoCR
 | Pregunta | Para qué | Si se omite |
 | :--- | :--- | :--- |
 | **Contraseña del administrador** | es la cuenta con la que se entra la primera vez | se genera una temporal y se imprime UNA vez (queda en `C:\ProgramData\OdontoCRM\contrasena-inicial.txt`) |
-| **Contraseña de `postgres` de PostgreSQL** | es la llave del *motor*: sin ella no se pueden crear las bases (en Windows no hay socket «peer») | si PostgreSQL ya estaba instalado, la instalación se detiene antes de crear las bases; si lo instala la pieza 1, se usa la que digas |
-| **Token del bot de Telegram** | los avisos salen de verdad | el bot queda en **modo simulado** y los avisos esperan en la bandeja |
+| **Contraseña de `postgres` de PostgreSQL** | es la llave del *motor*: sin ella no se pueden crear las bases (en Windows no hay socket «peer») ni el rol de respaldo | si PostgreSQL ya estaba instalado, la instalación se detiene antes de crear las bases; si lo instala la pieza 1, se usa la que digas |
+| **Token del bot de Telegram** | los avisos salen de verdad | el bot queda en **modo simulado** y los avisos esperan en la bandeja. El token se **comprueba contra Telegram** y su nombre (`@usuario`) se guarda solo |
+| **Token del bot de administración** | avisa al dueño de los fallos del sistema | no hay avisos de infraestructura. El **chat se detecta solo**: se te pide escribirle «/start» al bot |
 | **WhatsApp Cloud API** | activa ese canal | el canal no se activa; lo demás funciona igual |
 
 Se crea **una sola cuenta: `admin`**. El resto del personal se da de alta desde `/usuarios`.
 Los tokens van a `C:\ProgramData\OdontoCRM\env` (solo Administradores y el servicio, en
 lectura) y no se imprimen. La contraseña de PostgreSQL **no se guarda en ningún sitio**: la
 pide cada vez y solo vive en la memoria del instalador.
+
+> **Los canales se guardan siempre**, aunque se ejecute una sola pieza (`--solo=desplegar`): quien
+> escribe los tokens es el aprovisionador, así que el instalador lo llama en modo «solo archivos»
+> cuando esa pieza no va a correr. Antes se pedían y se perdían al terminar, sin avisar.
 
 > **PostgreSQL: los tres casos.** El instalador nunca deja el servidor sin poder crear las
 > bases: si el motor ya estaba y la contraseña se sabe, la **comprueba**; si lo acaba de
@@ -287,6 +292,8 @@ completo en una máquina nueva o tras un fallo, sigue
 | `HTTP 502` desde fuera pero `https://127.0.0.1` va bien | El firewall o el gateway: `Get-NetFirewallRule -DisplayName 'OdontoCRM Web (HTTPS)'`, y `pm2 status`. |
 | Los PDF (récipe, factura, reportes) devuelven 503 | Falta Chromium: `.\40-verificar.ps1` lo señala; repite la pieza 3 (`30-desplegar.ps1`). |
 | `C:\OdontoCRM` tiene cosas que no puso el instalador | El instalador se niega a clonar donde hay algo ajeno y te dice **qué** encontró. Muévelo aparte (`Rename-Item C:\OdontoCRM C:\OdontoCRM.viejo`) y repite. Las carpetas `data`, `logs` y `backups` **no** cuentan: son suyas y se conservan |
+| `sin PG_ADMIN_URL no puedo crear el rol de respaldo` | La pieza 3 lo necesita para su paso 10/10: repite `instalar.ps1 --solo=desplegar` y escribe la contraseña de `postgres` cuando la pida, o ejecuta `infra\windows\backup\crear-rol-respaldo.ps1` (también la pide). |
+| Los avisos de Telegram no salen (quedan «modo simulado») | El token no quedó en `C:\ProgramData\OdontoCRM\env\notifications.env`, o es incorrecto: compruébalo abriendo `https://api.telegram.org/bot<token>/getMe` en el navegador. Repite `instalar.ps1 --solo=desplegar` con el token y se guardará. |
 | `password authentication failed` | Vuelve a aprovisionar (`20-aprovisionar.ps1`): converge la base a lo que dicen los archivos. |
 | El puerto 443 no responde desde otro aparato | La red de Windows debe estar en perfil **Privado**: las reglas se crean solo para ese perfil. |
 | `psql: error: … no password supplied` | Falta `C:\ProgramData\OdontoCRM\env\.pgpass` o `backup.env`: ejecuta `crear-rol-respaldo.ps1`. |
