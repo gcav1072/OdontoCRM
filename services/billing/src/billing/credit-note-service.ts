@@ -8,10 +8,10 @@ import { EVENT_TOPICS } from '@odontocrm/events';
 import { ConflictError, NotFoundError } from '@odontocrm/kernel';
 import type { BrandLookup, LetterheadLookup } from '@odontocrm/kernel';
 import { buildStorageKey, type BlobStore } from '@odontocrm/storage';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 
 import type { BillingDb } from '../db/client.js';
-import { creditNotes, invoices } from '../db/schema.js';
+import { creditNotes, invoices, payments } from '../db/schema.js';
 import { renderCreditNoteHtml } from '../documents/credit-note-pdf.js';
 import type { ActorContext } from '../shared/context.js';
 import { auditPayload, publish } from '../shared/events.js';
@@ -203,6 +203,28 @@ export const voidInvoice = async (
   const creditNoteNumber = await nextCreditNoteNumber(deps.db);
   const creditNoteLabel = formatCreditNoteNumber(creditNoteNumber);
   const issuedAt = new Date();
+
+  /**
+   * El doble escenario (ADR 0069): la Nota de Crédito fiscal **siempre** sale a la tasa original de
+   * la factura —anula exactamente el monto del Libro de Ventas—, pero el diferencial cambiario
+   * depende de si el dinero **volvió**:
+   *
+   * - `ADMINISTRATIVE`: no hubo devolución; la ganancia/pérdida ya realizada se **conserva**;
+   * - `REFUND`: se reversa el diferencial acumulado de los cobros **vigentes** de la factura
+   *   (`-Σ`, los cobros anulados no cuentan porque su diferencial ya no se realizó).
+   */
+  const reversaDiferencial =
+    input.cancellationType === 'REFUND'
+      ? await (async () => {
+          const [suma] = await deps.db
+            .select({
+              diferencial: sql<number>`coalesce(sum(${payments.exchangeDiffVesCentimos}), 0)::bigint`,
+            })
+            .from(payments)
+            .where(and(eq(payments.invoiceId, invoiceId), isNull(payments.voidedAt)));
+          return -Number(suma?.diferencial ?? 0);
+        })()
+      : 0;
   const identidad = deps.letterheadLookup === undefined ? null : await deps.letterheadLookup();
   const marca = deps.brandLookup === undefined ? null : await deps.brandLookup();
 
@@ -245,6 +267,8 @@ export const voidInvoice = async (
           invoiceIssuedAt: factura.issuedAt ?? issuedAt,
           invoiceTotalCentsUsd: factura.totalCentsUsd,
           kind: 'total',
+          cancellationType: input.cancellationType,
+          reversedExchangeDiffVesCentimos: reversaDiferencial,
           reason: input.reason,
           totalCentsUsd: factura.totalCentsUsd,
           exchangeRateMicros: rateMicros,
@@ -293,6 +317,8 @@ export const voidInvoice = async (
             invoiceNumber: numberLabel,
             totalCentsUsd: factura.totalCentsUsd,
             totalVesCentimos: factura.totalVesCentimos,
+            cancellationType: input.cancellationType,
+            reversedExchangeDiffVesCentimos: reversaDiferencial,
           },
           invoice: { invoiceId, status: 'anulada' },
         },
@@ -320,6 +346,8 @@ export const voidInvoice = async (
       invoiceIssuedAt: (factura.issuedAt ?? issuedAt).toISOString(),
       invoiceTotalCentsUsd: factura.totalCentsUsd,
       kind: 'total',
+      cancellationType: input.cancellationType,
+      reversedExchangeDiffVesCentimos: reversaDiferencial,
       reason: input.reason,
       totalCentsUsd: factura.totalCentsUsd,
       exchangeRateMicros: rateMicros,

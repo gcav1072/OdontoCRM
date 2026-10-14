@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { discardDraft, voidInvoice } from './billing/credit-note-service.js';
 import { loadBillingConfig } from './config.js';
 import { createBillingDatabase } from './db/client.js';
-import { creditNotes, invoices } from './db/schema.js';
+import { creditNotes, invoices, payments } from './db/schema.js';
 
 /**
  * Pruebas de integración de la **anulación con nota de crédito** (B8; Art. 22 y 23; ADR 0048) contra
@@ -143,7 +143,8 @@ describeWithDatabase('anular con nota de crédito', () => {
       .delete(outboxEvents)
       .where(sql`${outboxEvents.envelope}->'payload'->>'actorUsername' = ${MARKER}`);
     if (idsFacturas.length > 0) {
-      // Las notas van antes: la factura no se puede borrar mientras la referencie (`restrict`).
+      // Los cobros van primero (`restrict` en la factura), después las notas y al final las facturas.
+      await handle.db.delete(payments).where(inArray(payments.invoiceId, idsFacturas));
       await handle.db.delete(creditNotes).where(inArray(creditNotes.invoiceId, idsFacturas));
       await handle.db.delete(invoices).where(inArray(invoices.id, idsFacturas));
     }
@@ -154,7 +155,12 @@ describeWithDatabase('anular con nota de crédito', () => {
   it('anular una factura emitida emite la nota y conserva la factura', async () => {
     const { id, numero, emitidaEn } = await factura('emitida');
 
-    const resultado = await voidInvoice(deps(), id, { reason: MOTIVO }, actor);
+    const resultado = await voidInvoice(
+      deps(),
+      id,
+      { reason: MOTIVO, cancellationType: 'ADMINISTRATIVE' },
+      actor,
+    );
     const nota = resultado.creditNote;
     expect(nota).not.toBeNull();
     if (nota === null)
@@ -185,6 +191,9 @@ describeWithDatabase('anular con nota de crédito', () => {
     expect(new Date(nota.invoiceIssuedAt).getTime()).toBe(emitidaEn.getTime());
     expect(nota).toMatchObject({
       kind: 'total',
+      cancellationType: 'ADMINISTRATIVE',
+      // Anulación administrativa: no hubo devolución y el diferencial realizado se conserva.
+      reversedExchangeDiffVesCentimos: 0,
       reason: MOTIVO,
       invoiceTotalCentsUsd: TOTAL,
       totalCentsUsd: TOTAL,
@@ -203,6 +212,8 @@ describeWithDatabase('anular con nota de crédito', () => {
       invoiceNumber: numero,
       invoiceTotalCentsUsd: TOTAL,
       kind: 'total',
+      cancellationType: 'ADMINISTRATIVE',
+      reversedExchangeDiffVesCentimos: 0,
       reason: MOTIVO,
       pdfSha256: huellaPdf,
       issuedByUsername: MARKER,
@@ -255,7 +266,12 @@ describeWithDatabase('anular con nota de crédito', () => {
     if (primera === null) throw new Error('la primera prueba no dejó nota de crédito');
 
     const { id } = await factura('emitida');
-    const resultado = await voidInvoice(deps(), id, { reason: 'Otra anulación' }, actor);
+    const resultado = await voidInvoice(
+      deps(),
+      id,
+      { reason: 'Otra anulación', cancellationType: 'ADMINISTRATIVE' },
+      actor,
+    );
 
     expect(resultado.creditNote?.creditNoteNumber).toBe(primera.creditNoteNumber + 1);
     expect(resultado.creditNote?.creditNoteLabel).toBe(
@@ -266,7 +282,12 @@ describeWithDatabase('anular con nota de crédito', () => {
   it('un borrador se descarta sin nota de crédito', async () => {
     const { id } = await factura('borrador');
 
-    const resultado = await discardDraft(handle.db, id, { reason: MOTIVO }, actor);
+    const resultado = await discardDraft(
+      handle.db,
+      id,
+      { reason: MOTIVO, cancellationType: 'ADMINISTRATIVE' },
+      actor,
+    );
     expect(resultado.invoice).toMatchObject({ id, status: 'anulada', voidReason: MOTIVO });
     // Nunca fue un documento: no consumió número fiscal y no lleva nota.
     expect(resultado.creditNote).toBeNull();
@@ -284,19 +305,21 @@ describeWithDatabase('anular con nota de crédito', () => {
     );
 
     // Descartar lo ya anulado choca, y a un borrador no se le da nota de crédito.
-    await expect(discardDraft(handle.db, id, { reason: MOTIVO }, actor)).rejects.toThrow(
-      /ya está emitida/,
-    );
+    await expect(
+      discardDraft(handle.db, id, { reason: MOTIVO, cancellationType: 'ADMINISTRATIVE' }, actor),
+    ).rejects.toThrow(/ya está emitida/);
     const otro = await factura('borrador');
-    await expect(voidInvoice(deps(), otro.id, { reason: MOTIVO }, actor)).rejects.toThrow(
-      /borrador/,
-    );
+    await expect(
+      voidInvoice(deps(), otro.id, { reason: MOTIVO, cancellationType: 'ADMINISTRATIVE' }, actor),
+    ).rejects.toThrow(/borrador/);
   });
 
   it('una factura pagada se rechaza hasta devolver sus cobros', async () => {
     const { id } = await factura('pagada');
 
-    const error = await voidInvoice(deps(), id, { reason: MOTIVO }, actor).catch((e: unknown) => e);
+    const error = await voidInvoice(deps(), id, { reason: MOTIVO, cancellationType: 'REFUND' }, actor).catch(
+      (e: unknown) => e,
+    );
     expect(error).toBeInstanceOf(ConflictError);
     expect((error as ConflictError).status).toBe(409);
     expect((error as Error).message).toMatch(/pagada/);
@@ -312,9 +335,9 @@ describeWithDatabase('anular con nota de crédito', () => {
 
   it('anular dos veces choca con 409', async () => {
     const { id } = await factura('emitida');
-    await voidInvoice(deps(), id, { reason: MOTIVO }, actor);
+    await voidInvoice(deps(), id, { reason: MOTIVO, cancellationType: 'ADMINISTRATIVE' }, actor);
 
-    const error = await voidInvoice(deps(), id, { reason: 'otra vez' }, actor).catch(
+    const error = await voidInvoice(deps(), id, { reason: 'otra vez', cancellationType: 'ADMINISTRATIVE' }, actor).catch(
       (e: unknown) => e,
     );
     expect(error).toBeInstanceOf(ConflictError);
@@ -323,5 +346,72 @@ describeWithDatabase('anular con nota de crédito', () => {
 
     // Una sola nota por factura: la segunda anulación no llegó a emitir.
     expect(await notasDe(id)).toHaveLength(1);
+  });
+
+  /**
+   * CP-05 (ADR 0069): los dos escenarios de la anulación sobre una factura con **diferencial
+   * cambiario realizado**. La Nota de Crédito fiscal sale igual en los dos —a la tasa original—, pero
+   * solo el reembolso real reversa el diferencial.
+   */
+  it('CP-05: ADMINISTRATIVE conserva el diferencial; REFUND lo reversa', async () => {
+    const cobroConDiferencial = async (invoiceId: string): Promise<void> => {
+      const [{ numero: recibo }] = (
+        await handle.db.execute(sql`select nextval('receipt_number_seq') as numero`)
+      ).rows as [{ numero: string | number }];
+      await handle.db.insert(payments).values({
+        invoiceId,
+        receiptNumber: Number(recibo),
+        method: 'pago_movil',
+        tenderedAmount: 3_020_000, // 30.200,00 Bs. (200,00 de más: ganancia cambiaria)
+        tenderedCurrency: 'VES',
+        amountCentsUsd: 3000,
+        exchangeRateMicros: TASA,
+        imputationPolicy: 'tasa_del_pago',
+        effectiveDate: '2026-10-04',
+        historicalAmountVesCentimos: vesCentimosFromUsd(3000, TASA),
+        exchangeDiffVesCentimos: 20_000, // +200,00 Bs.
+        receivedByUserId: '00000000-0000-0000-0000-000000000000',
+        receivedByUsername: MARKER,
+      });
+      await handle.db
+        .update(invoices)
+        .set({ status: 'parcial', balanceCentsUsd: TOTAL - 3000 })
+        .where(eq(invoices.id, invoiceId));
+    };
+
+    // Escenario A: anulación administrativa (refacturación, sin devolución de dinero).
+    const { id: idAdmin } = await factura('emitida');
+    await cobroConDiferencial(idAdmin);
+    const admin = await voidInvoice(
+      deps(),
+      idAdmin,
+      { reason: 'Factura con datos equivocados', cancellationType: 'ADMINISTRATIVE' },
+      actor,
+    );
+    expect(admin.creditNote).toMatchObject({
+      cancellationType: 'ADMINISTRATIVE',
+      // La ganancia cambiaria ya ocurrió: se conserva.
+      reversedExchangeDiffVesCentimos: 0,
+    });
+
+    // Escenario B: reembolso real del dinero al paciente.
+    const { id: idRefund } = await factura('emitida');
+    await cobroConDiferencial(idRefund);
+    const reembolso = await voidInvoice(
+      deps(),
+      idRefund,
+      { reason: 'Se devuelve el dinero al paciente', cancellationType: 'REFUND' },
+      actor,
+    );
+    expect(reembolso.creditNote).toMatchObject({
+      cancellationType: 'REFUND',
+      // El diferencial se reversa: -Σ de los cobros vigentes.
+      reversedExchangeDiffVesCentimos: -20_000,
+    });
+
+    // Y la nota fiscal es la misma en los dos escenarios: a la tasa original de la factura.
+    expect(admin.creditNote?.exchangeRateMicros).toBe(TASA);
+    expect(reembolso.creditNote?.exchangeRateMicros).toBe(TASA);
+    expect(admin.creditNote?.totalVesCentimos).toBe(reembolso.creditNote?.totalVesCentimos);
   });
 });
