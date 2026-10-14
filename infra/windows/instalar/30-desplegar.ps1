@@ -384,12 +384,19 @@ else {
   & powershell -NoProfile -ExecutionPolicy Bypass -File $instaladorPm2
   if ($LASTEXITCODE -ne 0) { Escribir-Aviso 'la instalación del servicio de PM2 reportó un problema' }
 
+  # `pm2-installer` deja `PM2_HOME` en el entorno de MÁQUINA y pide abrir una consola nueva: aquí
+  # no se puede (esta sesión sigue instalando), así que se trae lo que dejó y se usa el `pm2` de
+  # la máquina. Sin esto, los procesos se arrancarían en el PM2 del USUARIO —otro home distinto—
+  # y el servicio (LocalService) no vería ninguno.
+  $pm2 = Get-Pm2Cmd
+  Escribir-Detalle "pm2 → $pm2   ·   PM2_HOME → $env:PM2_HOME"
+
   # La lista de procesos se fija para que el servicio la restaure al arrancar Windows.
   Push-Location $OdontoCode
   try {
-    & pm2 delete all *> $null
-    & pm2 start (Join-Path $OdontoRepo 'infra\windows\ecosystem.produccion.config.cjs') *> $null
-    & pm2 save *> $null
+    & $pm2 delete all *> $null
+    & $pm2 start (Join-Path $OdontoRepo 'infra\windows\ecosystem.produccion.config.cjs') *> $null
+    & $pm2 save *> $null
     Escribir-Ok "los $($info.procesos.Count) procesos arrancados y fijados (pm2 save)"
   }
   finally { Pop-Location }

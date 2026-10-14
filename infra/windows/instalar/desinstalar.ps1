@@ -115,8 +115,8 @@ if ($svcPm2) {
 }
 else { Escribir-Detalle 'no hay servicio de PM2' }
 
-# Los procesos de PM2 que quedaran vivos.
-if (-not $DryRun) { & pm2 kill *> $null 2>&1 }
+# Los procesos de PM2 que quedaran vivos (con el `pm2` de la máquina, no el del usuario).
+if (-not $DryRun) { & (Get-Pm2Cmd) kill *> $null 2>&1 }
 
 $svcCaddy = Get-Service -Name 'caddy' -ErrorAction SilentlyContinue
 if ($svcCaddy) {

@@ -484,6 +484,97 @@ function Get-CarpetasPropiasDelCodigo {
   return ($propias | Sort-Object -Unique)
 }
 
+# ── El entorno de MÁQUINA, traído a la sesión actual ─────────────────────────
+# `pm2-installer` deja `PM2_HOME` y el prefijo global de npm en el entorno de **máquina** y avisa
+# de que hay que abrir una consola nueva para verlos («close this window and start a new terminal
+# session»). En una instalación encadenada eso no es una opción: las piezas 3 y 4 corren en la
+# MISMA sesión que lanzó el instalador, así que sin esto `pm2` se resolvería por el PATH del
+# USUARIO —que puede tener su propio `pm2` de desarrollo en `%APPDATA%\npm`— y con el home por
+# defecto (`%USERPROFILE%\.pm2`), que es un PM2 DISTINTO del que supervisa el servicio. El
+# resultado sería el peor de los posibles: los procesos se arrancarían donde el servicio no los ve
+# y el instalador diría que todo fue bien.
+#
+# Se lee del registro (ámbito de máquina) y se trae SOLO lo que falte: el PATH de la máquina va
+# DELANTE (como en un proceso nuevo, donde `Path` = máquina + usuario) y las variables se copian si
+# esta sesión no las trae ya (lo que puso el operador manda).
+function Importar-EntornoDeMaquina {
+  param([string[]]$Variables = @())
+  $maquina = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+  if ($maquina) {
+    $actual = @($env:Path -split ';')
+    $faltan = @(($maquina -split ';') | Where-Object { $_ -and ($actual -notcontains $_) })
+    if ($faltan.Count -gt 0) { $env:Path = ($faltan -join ';') + ';' + $env:Path }
+  }
+  foreach ($nombre in $Variables) {
+    if (-not [Environment]::GetEnvironmentVariable($nombre)) {
+      $valor = [Environment]::GetEnvironmentVariable($nombre, 'Machine')
+      if ($valor) { Set-Item -Path "Env:$nombre" -Value $valor }
+    }
+  }
+}
+
+# El `pm2.cmd` de la MÁQUINA (el del prefijo global de npm), no el que cada usuario tenga en su
+# `%APPDATA%\npm`: el servicio corre como LocalService y solo ve el primero. Devuelve la ruta, o
+# `pm2` a secas si no aparece (para fallar con el error de siempre en vez de en silencio).
+function Get-Pm2Cmd {
+  Importar-EntornoDeMaquina -Variables @('PM2_HOME')
+  foreach ($dir in ($env:Path -split ';')) {
+    if (-not $dir) { continue }
+    $candidato = Join-Path $dir 'pm2.cmd'
+    if (Test-Path $candidato) { return $candidato }
+  }
+  return 'pm2'
+}
+
+# ── Los «pipes» de PM2: en Windows solo puede haber UN demonio por máquina ────
+# PM2 nombra sus «pipes» en FIJO y global —`\\.\pipe\rpc.sock` y `\\.\pipe\pub.sock`— en vez de
+# llevar el `PM2_HOME` dentro (`pm2/paths.js` lo marca con un `@todo` explícito). Consecuencia que
+# tumbó una instalación entera: el demonio que arranca `npm run setup` **como administrador**
+# (instala `pm2-logrotate` con `pm2 install`) se queda DUEÑO de esos pipes, y el servicio —que corre
+# como `LocalService`— recibe `connect EPERM //./pipe/pub.sock` al conectar, se cae y `winsw` lo
+# deja en `Stopped` tras agotar sus reintentos. El servidor «queda instalado» y no corre nada.
+#
+# ¿Están ocupados ahora mismo? Sirve para saber si un demonio ajeno sigue vivo (y para comprobar,
+# por efecto, que el que los creó es el del servicio).
+function Test-Pm2PipesLibres {
+  $pipes = @([System.IO.Directory]::GetFiles('\\.\pipe\') |
+      Where-Object { $_ -match '\\(rpc|pub)\.sock$' })
+  return ($pipes.Count -eq 0)
+}
+
+# Deja libres los pipes: `pm2 kill` alcanza al demonio que los tenga (es el único camino posible, y
+# por eso mismo desde aquí solo se puede matar el que corresponda a ESTA cuenta). Devuelve `$true`
+# si al terminar están libres. NO se ejecuta en `--dry-run`: mata procesos.
+function Clear-Pm2Global {
+  $pm2 = Get-Pm2Cmd
+  try { & $pm2 kill *> $null 2>&1 } catch { }
+  Start-Sleep -Milliseconds 800
+  return (Test-Pm2PipesLibres)
+}
+
+# ── El servicio de PM2: arrancarlo y comprobar que SIGUE vivo ────────────────
+# No basta con `Start-Service`: si los pipes están ocupados, `winsw` lo reintenta y lo deja en
+# `Stopped` (el arranque «sale bien» y el servidor no corre nada). Y hay un motivo más para no
+# ejecutar `pm2` a la ligera desde una consola de administrador: si no hay demonio, **PM2 arranca
+# uno de la cuenta del que llama**, se queda con los pipes globales y entonces es el SERVICIO el
+# que ya no puede arrancar. Por eso `odontocrm` y la verificación pasan por aquí antes de hablar
+# con PM2.
+function Confirmar-ServicioPm2 {
+  param([int]$Segundos = 10)
+  $servicio = Get-Service -Name 'pm2*' -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $servicio) { return $false }
+  if ($servicio.Status -ne 'Running') {
+    # `-ErrorAction Stop`: sin esto PowerShell escribe el fallo y sigue (el `catch` no lo vería).
+    try { Start-Service -Name $servicio.Name -ErrorAction Stop } catch { return $false }
+  }
+  for ($i = 0; $i -lt $Segundos; $i++) {
+    $actual = Get-Service -Name $servicio.Name -ErrorAction SilentlyContinue
+    if ($actual -and $actual.Status -eq 'Running') { return $true }
+    Start-Sleep -Seconds 1
+  }
+  return $false
+}
+
 # ── El navegador de los PDF (Chromium de Playwright) ─────────────────────────
 # Lo necesitan el récipe A5 (`clinical`), la factura y el recibo (`billing`) y los reportes.
 # **No viene con el código**: Playwright lo descarga aparte y los servicios lo buscan en

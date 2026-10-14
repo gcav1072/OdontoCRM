@@ -19,9 +19,18 @@
 # Windows no se crea ese usuario). Por eso los `.env` y el certificado llevan ACL de
 # lectura para ese SID —los pone `20-aprovisionar.ps1`— y los logs/datos, de escritura.
 #
-# > PENDIENTE WINDOWS: validar en una máquina real (PM2 no soporta nvm-for-windows: Node
-#   tiene que ser una instalación estándar). Si `pm2-installer` no sirviera, el repliegue
-#   es la opción A del plan (un servicio por proceso con WinSW).
+# > NOTA WINDOWS (aprendida en una máquina real, 2026-10-14): en Windows PM2 nombra sus
+#   «pipes» en FIJO y global (`\\.\pipe\rpc.sock` y `\\.\pipe\pub.sock`, con un `@todo` en
+#   `pm2/paths.js`), así que en la máquina solo puede haber UN demonio de PM2. El `npm run setup`
+#   de este instalador instala `pm2-logrotate` con `pm2 install` COMO ADMINISTRADOR, y eso deja un
+#   demonio del administrador dueño de los pipes: el servicio —que corre como `LocalService`—
+#   recibe `connect EPERM` y `winsw` lo deja en `Stopped` tras sus reintentos. Por eso este guion
+#   hace `pm2 kill` (Clear-Pm2Global) antes de arrancar el servicio. Y por el mismo motivo, en esta
+#   máquina no debe convivir un PM2 de desarrollo: se pelearían por los pipes.
+#
+# > TAMBIÉN: PM2 no soporta nvm-for-windows (Node tiene que ser una instalación estándar). Si
+#   `pm2-installer` no sirviera, el repliegue es la opción A del plan (un servicio por proceso con
+#   WinSW).
 # =============================================================================
 
 . "$PSScriptRoot\..\instalar\comun.ps1"
@@ -44,12 +53,47 @@ Escribir-Detalle "pm2-installer v$PM2_INSTALLER_VERSION"
 Escribir-Detalle "PM2_HOME → $PM2_HOME"
 if ($DryRun) { Escribir-Aviso '--dry-run: no se cambia nada' }
 
+# ── Dejar los «pipes» libres y arrancar EL SERVICIO ────────
+# Aquí está el detalle que costó una instalación entera. `npm run setup` instala `pm2-logrotate`
+# llamando a `pm2 install` **como administrador**: eso arranca un demonio de PM2 de la cuenta del
+# administrador que se queda con los «pipes» GLOBALES de PM2 (`\\.\pipe\rpc.sock` y `pub.sock`, de
+# nombre fijo: ver la cabecera). Como el servicio corre como `LocalService`, al conectar recibe
+# `EPERM` y se cae; `winsw` lo reintenta tres veces y lo deja en `Stopped`. El servidor queda
+# «instalado» sin correr nada. Se le quitan los pipes a ese demonio para que los cree el servicio,
+# que es quien tiene que ser su dueño, y se comprueba POR EFECTO: `pm2 jlist` tiene que responder.
+function Iniciar-Pm2DelServicio {
+  if (Clear-Pm2Global) {
+    Escribir-Ok 'los «pipes» de PM2 quedaron libres (sin demonios de otra cuenta)'
+  }
+  else {
+    Escribir-Aviso 'quedan «pipes» de PM2 ocupados: hay OTRO PM2 vivo en esta máquina'
+    Escribir-Detalle 'ciérralo (o `pm2 kill` en su consola): si no, el servicio de PM2 no puede arrancar'
+  }
+  $svc = Get-Service -Name 'pm2*' -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $svc) { return $false }
+  # `winsw` agota sus reintentos y se rinde, así que al estado hay que darle una vuelta limpia
+  # (un `Start-Service` sobre un servicio rendido no siempre lo despierta).
+  try { Restart-Service -Name $svc.Name -Force -ErrorAction Stop } catch { }
+  if (-not (Confirmar-ServicioPm2)) { return $false }
+  Escribir-Ok "servicio de PM2 en marcha: $($svc.Name)"
+  # La prueba de verdad: hablarle al PM2 DEL SERVICIO (no al que arrancó el `setup`). Si responde,
+  # los pipes son suyos y el servicio está haciendo su trabajo.
+  & (Get-Pm2Cmd) jlist *> $null 2>&1
+  if ($LASTEXITCODE -eq 0) { Escribir-Ok 'el demonio del servicio responde (pm2 jlist)' }
+  else { Escribir-Aviso 'el servicio está en marcha pero su demonio no responde a `pm2 jlist`' }
+  Escribir-Detalle 'para hablar con PM2 hace falta una consola de Administrador (corre como LocalService)'
+  return $true
+}
+
 # ── ¿Ya está? El servicio es el candado (idempotente). ───────────────────────
 $servicio = Get-Service -Name 'pm2*' -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($servicio -and -not $Forzar) {
   Escribir-Ok "el servicio de PM2 ya está instalado: $($servicio.Name) ($($servicio.Status))"
   if ($servicio.Status -ne 'Running' -and -not $DryRun) {
-    Invocar "arrancar $($servicio.Name)" { Start-Service -Name $servicio.Name }
+    if (-not (Iniciar-Pm2DelServicio)) {
+      Escribir-Aviso 'el servicio de PM2 no consigue quedarse en marcha'
+      Escribir-Detalle "mira $OdontoEtc\pm2\service\service.log (¿hay otro PM2 vivo?)"
+    }
   }
   return
 }
@@ -117,14 +161,8 @@ try {
 }
 finally { Pop-Location }
 
-# ── 4. Comprobar que el servicio quedó vivo ─────────────────────────────────
-$servicio = Get-Service -Name 'pm2*' -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($servicio) {
-  if ($servicio.Status -ne 'Running') { Start-Service -Name $servicio.Name }
-  Escribir-Ok "servicio de PM2 instalado y arrancado: $($servicio.Name)"
-  Escribir-Detalle 'para hablar con PM2 hace falta una consola de Administrador (corre como LocalService)'
-}
-else {
-  Escribir-Aviso 'no veo el servicio de PM2: revisa la salida de «npm run setup»'
-  Morir 'no se pudo dejar PM2 como servicio'
-}
+# ── 4. Arrancar el servicio con los «pipes» en su sitio ──────────────────────
+if (Iniciar-Pm2DelServicio) { exit 0 }
+Escribir-Aviso 'el servicio de PM2 no consigue quedarse en marcha'
+Escribir-Detalle "mira $OdontoEtc\pm2\service\service.log"
+Morir 'no se pudo dejar PM2 como servicio'

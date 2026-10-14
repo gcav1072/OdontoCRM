@@ -91,7 +91,19 @@ Escribir-Paso "2/7 · Los $($info.procesos.Count) procesos (PM2)"
 if ($Rapido) { Escribir-Detalle 'omitido (--rapido)' }
 else {
   $crudo = $null
-  try { $crudo = & pm2 jlist 2>$null } catch { }
+  # El `pm2` de la máquina: si esta comprobación corre en la MISMA sesión que acaba de instalar
+  # PM2, el PATH de aquí es anterior al servicio y apuntaría al `pm2` del usuario.
+  #
+  # Y el servicio se comprueba ANTES de invocar nada: `pm2` arranca un demonio si no lo encuentra,
+  # así que una comprobación no puede lanzarlo a la ligera —ese demonio sería de ESTA cuenta, se
+  # quedaría con los «pipes» globales de PM2 y el servicio ya no podría arrancar—. Se informa en
+  # vez de crearlo sin querer.
+  if (-not (Confirmar-ServicioPm2 -Segundos 3)) {
+    Fallo 'el servicio de PM2 no está en marcha (Get-Service pm2*)'
+  }
+  else {
+    try { $crudo = & (Get-Pm2Cmd) jlist 2>$null } catch { }
+  }
   $lista = $null
   if ($crudo) {
     $desde = $crudo.IndexOf('['); $hasta = $crudo.LastIndexOf(']')

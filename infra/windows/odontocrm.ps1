@@ -38,6 +38,28 @@ $Resto = if ($args.Count -gt 1) { $args[1..($args.Count - 1)] } else { @() }
 $info = Get-Info
 $puertoGateway = $info.puertoGateway
 
+# El `pm2` de la MÁQUINA (el del servicio), no el que pueda tener el usuario en `%APPDATA%\npm`:
+# `odontocrm` corre en consolas que pueden ser anteriores a la instalación de PM2 —o tener un pm2
+# de desarrollo— y hablarle al PM2 equivocado sería peor que fallar. Es también el «reinicia la
+# terminal» que pide `pm2-installer`: aquí se resuelve solo.
+#
+# Y antes de usarlo se confirma el SERVICIO, por el motivo de siempre: en Windows PM2 usa «pipes»
+# globales y solo puede haber un demonio por máquina. Si no hay ninguno, `pm2` (esta consola es de
+# Administrador) arrancaría uno de NUESTRA cuenta, se quedaría con los pipes y el servicio —que
+# corre como LocalService— ya no podría arrancar. Se resuelve una sola vez por ejecución.
+$Pm2Cmd = $null
+$Pm2Confirmado = $false
+function Get-Pm2 {
+  if (-not $Pm2Cmd) { $script:Pm2Cmd = Get-Pm2Cmd }
+  if (-not $Pm2Confirmado) {
+    $script:Pm2Confirmado = $true
+    if (-not (Confirmar-ServicioPm2 -Segundos 5)) {
+      Escribir-Aviso 'el servicio de PM2 no está en marcha: no puedo hablar con los procesos'
+    }
+  }
+  return $script:Pm2Cmd
+}
+
 # Apunta con qué IP quedó todo adaptado: la tarea programada (`red --arreglar --si-cambio`)
 # lo mira para no reemitir el certificado ni reiniciar nada mientras la red no cambie.
 function Guardar-IpRed {
@@ -364,7 +386,7 @@ switch ($Orden) {
 
   { $_ -in @('servicios', 'ps') } {
     Afirmar-Administrador
-    & pm2 list
+    & (Get-Pm2) list
     Write-Host ''
     Get-Service -Name 'pm2*', 'caddy', 'postgresql*' -ErrorAction SilentlyContinue |
       Format-Table Name, Status, StartType -AutoSize
@@ -380,8 +402,8 @@ switch ($Orden) {
       { $_ -in @('postgres', 'postgresql') } {
         Get-EventLog -LogName Application -Source '*postgres*' -Newest ([int]$lineas) -ErrorAction SilentlyContinue
       }
-      { $_ -in @('gateway', 'web') } { & pm2 logs odontocrm-$que --lines $lineas --nostream }
-      default { & pm2 logs "odontocrm-$que" --lines $lineas --nostream }
+      { $_ -in @('gateway', 'web') } { & (Get-Pm2) logs odontocrm-$que --lines $lineas --nostream }
+      default { & (Get-Pm2) logs "odontocrm-$que" --lines $lineas --nostream }
     }
     exit 0
   }
@@ -563,7 +585,7 @@ switch ($Orden) {
       [IO.File]::WriteAllText($archivo, $nuevo, (New-Object System.Text.UTF8Encoding($false)))
       Proteger-Archivo -Ruta $archivo -LecturaServicio
       Escribir-Ok "WEB_ORIGIN=https://$nombre, https://$ip"
-      & pm2 restart odontocrm-identity odontocrm-clinical odontocrm-gateway *> $null
+      & (Get-Pm2) restart odontocrm-identity odontocrm-clinical odontocrm-gateway *> $null
       Escribir-Ok 'identity, clinical y el gateway reiniciados (leen el origen permitido)'
     }
 
@@ -615,10 +637,10 @@ switch ($Orden) {
 
     # El gateway PRIMERO: es la puerta. Si se para al final, las peticiones en curso se
     # quedan colgadas contra servicios que ya no están.
-    & pm2 stop odontocrm-gateway *> $null
+    & (Get-Pm2) stop odontocrm-gateway *> $null
     Escribir-Ok 'gateway detenido (la puerta)'
     $parados = 0
-    foreach ($s in $info.servicios) { if (& pm2 stop "odontocrm-$($s.nombre)" *> $null) { $parados++ } }
+    foreach ($s in $info.servicios) { if (& (Get-Pm2) stop "odontocrm-$($s.nombre)" *> $null) { $parados++ } }
     Escribir-Ok "$parados servicio(s) detenido(s)"
 
     if ($todo) {
@@ -644,7 +666,7 @@ switch ($Orden) {
     $svcCaddy = Get-Service -Name 'caddy' -ErrorAction SilentlyContinue
     if ($svcCaddy -and $svcCaddy.Status -ne 'Running') { Start-Service -Name 'caddy' }
     Escribir-Ok 'Caddy en marcha'
-    & pm2 start all *> $null
+    & (Get-Pm2) start all *> $null
     Escribir-Ok 'servicios arrancados; comprobando…'
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $OdontoCode 'infra\windows\instalar\40-verificar.ps1') --rapido
     exit $LASTEXITCODE
@@ -657,7 +679,7 @@ switch ($Orden) {
     if ($svcPg -and $svcPg.Status -ne 'Running') { Start-Service -Name $svcPg.Name; Escribir-Ok 'PostgreSQL estaba parado: arrancado' }
     $svcCaddy = Get-Service -Name 'caddy' -ErrorAction SilentlyContinue
     if ($svcCaddy -and $svcCaddy.Status -ne 'Running') { Start-Service -Name 'caddy'; Escribir-Ok 'Caddy estaba parado: arrancado' }
-    & pm2 restart all *> $null
+    & (Get-Pm2) restart all *> $null
     Escribir-Ok 'servicios reiniciados; comprobando…'
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $OdontoCode 'infra\windows\instalar\40-verificar.ps1') --rapido
     exit $LASTEXITCODE
@@ -708,7 +730,7 @@ switch ($Orden) {
       }
     }
     finally { Pop-Location }
-    & pm2 restart all *> $null
+    & (Get-Pm2) restart all *> $null
     Escribir-Aviso 'no se aplicaron migraciones: si el cambio toca el esquema, usa «odontocrm actualizar»'
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $OdontoCode 'infra\windows\instalar\40-verificar.ps1') --rapido
     exit $LASTEXITCODE
@@ -728,7 +750,7 @@ switch ($Orden) {
         Proteger-Archivo -Ruta $archivo -LecturaServicio
         if ($valor -eq 'true') { Escribir-Aviso 'ojo: con NODE_ENV=production el modo test sigue bloqueado (ADR 0020)' }
         Escribir-Ok "modo test $accion en odontocrm.env (reiniciando los servicios…)"
-        & pm2 restart all *> $null
+        & (Get-Pm2) restart all *> $null
       }
       'estado' {
         Select-String -Path $archivo -Pattern '^(TEST_MODE|ALLOW_TEST_MODE)=' -ErrorAction SilentlyContinue |
