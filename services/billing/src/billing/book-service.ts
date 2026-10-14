@@ -5,7 +5,10 @@ import {
   paymentMethodLabel,
   rateDateInCaracas,
   type BookQuery,
+  type ExchangeDiffBookRow,
+  type ExchangeDiffSummary,
   type IgtfBookRow,
+  type IgtfSummary,
   type SalesBookRow,
 } from '@odontocrm/contracts';
 import { sql } from 'drizzle-orm';
@@ -194,4 +197,153 @@ export const igtfBookRows = async (
     igtf: unidades(fila.igtfAmountCentsUsd),
     igtfBs: unidades(fila.igtfAmountVesCentimos),
   }));
+};
+
+/* ── El diferencial cambiario y el destino del IGTF (ADR 0069, Escuela A) ──── */
+
+/** El día del cobro en este libro es su **Fecha Valor** (el devengado), no el del tecleo. */
+const diaDeCobro = sql`${payments.effectiveDate}`;
+
+/**
+ * El **Estado de Ganancias y Pérdidas por Diferencial Cambiario**: una fila por cobro vigente (un
+ * cobro anulado no «realizó» nada) y una por **reversión por reembolso** (la Nota de Crédito que
+ * deshizo el diferencial). La suma de `diferencialBs` es el neto del período.
+ */
+export const exchangeDiffBookRows = async (
+  db: BillingDb,
+  rango: { from: string; to: string },
+): Promise<ExchangeDiffBookRow[]> => {
+  const cobros = await db
+    .select({
+      effectiveDate: payments.effectiveDate,
+      receiptNumber: payments.receiptNumber,
+      exchangeRateMicros: payments.exchangeRateMicros,
+      exchangeDiffVesCentimos: payments.exchangeDiffVesCentimos,
+      series: invoices.series,
+      invoiceNumber: invoices.invoiceNumber,
+    })
+    .from(payments)
+    .innerJoin(invoices, sql`${invoices.id} = ${payments.invoiceId}`)
+    .where(
+      sql`${payments.voidedAt} is null
+        and ${diaDeCobro} between ${rango.from}::date and ${rango.to}::date`,
+    )
+    .orderBy(payments.effectiveDate);
+
+  const filas: ExchangeDiffBookRow[] = cobros.map((fila) => ({
+    fecha: fila.effectiveDate,
+    documento: `${formatReceiptNumber(fila.receiptNumber)} · ${
+      fila.invoiceNumber === null
+        ? '(sin número)'
+        : formatInvoiceNumber(fila.series, fila.invoiceNumber)
+    }`,
+    concepto: 'Cobro',
+    tasa: tasaEnUnidades(fila.exchangeRateMicros),
+    diferencialBs: unidades(fila.exchangeDiffVesCentimos),
+  }));
+
+  const notas = await db
+    .select({
+      creditNoteNumber: creditNotes.creditNoteNumber,
+      issuedAt: creditNotes.issuedAt,
+      exchangeRateMicros: creditNotes.exchangeRateMicros,
+      reversed: creditNotes.reversedExchangeDiffVesCentimos,
+    })
+    .from(creditNotes)
+    .where(
+      sql`${creditNotes.cancellationType} = 'REFUND'
+        and (${creditNotes.issuedAt} at time zone 'America/Caracas')::date
+          between ${rango.from}::date and ${rango.to}::date`,
+    )
+    .orderBy(creditNotes.issuedAt);
+
+  for (const nota of notas) {
+    filas.push({
+      fecha: diaEnCaracas(nota.issuedAt),
+      documento: formatCreditNoteNumber(nota.creditNoteNumber),
+      concepto: 'Reversión por reembolso',
+      tasa: tasaEnUnidades(nota.exchangeRateMicros),
+      diferencialBs: unidades(nota.reversed),
+    });
+  }
+
+  return filas.sort((a, b) => a.fecha.localeCompare(b.fecha));
+};
+
+/**
+ * El resumen del período, en céntimos enteros (nunca sobre los números impresos):
+ * `Neto = Σ Ganancias − Σ Pérdidas + Σ Reversiones por reembolso` (ADR 0069).
+ */
+export const exchangeDiffSummary = async (
+  db: BillingDb,
+  rango: { from: string; to: string },
+): Promise<ExchangeDiffSummary> => {
+  const [pagos] = await db
+    .select({
+      ganancias: sql<number>`coalesce(sum(case when ${payments.exchangeDiffVesCentimos} > 0
+        then ${payments.exchangeDiffVesCentimos} else 0 end), 0)::bigint`,
+      perdidas: sql<number>`coalesce(sum(case when ${payments.exchangeDiffVesCentimos} < 0
+        then -${payments.exchangeDiffVesCentimos} else 0 end), 0)::bigint`,
+    })
+    .from(payments)
+    .where(
+      sql`${payments.voidedAt} is null
+        and ${diaDeCobro} between ${rango.from}::date and ${rango.to}::date`,
+    );
+  const [notas] = await db
+    .select({
+      reversiones: sql<number>`coalesce(sum(${creditNotes.reversedExchangeDiffVesCentimos}), 0)::bigint`,
+    })
+    .from(creditNotes)
+    .where(
+      sql`${creditNotes.cancellationType} = 'REFUND'
+        and (${creditNotes.issuedAt} at time zone 'America/Caracas')::date
+          between ${rango.from}::date and ${rango.to}::date`,
+    );
+
+  const ganancias = Number(pagos?.ganancias ?? 0);
+  const perdidas = Number(pagos?.perdidas ?? 0);
+  const reversiones = Number(notas?.reversiones ?? 0);
+  return {
+    gananciasVesCentimos: ganancias,
+    perdidasVesCentimos: perdidas,
+    reversionesVesCentimos: reversiones,
+    netoVesCentimos: ganancias - perdidas + reversiones,
+  };
+};
+
+/**
+ * El **Reporte de Percepción IGTF y Destino de Caja**: lo que la clínica percibió (la base y el
+ * tributo, para la declaración SENIAT) y el **arqueo físico** separado —Caja Divisas contra
+ * Banco/Caja Bs.— de la misma percepción. Lo que debita el banco no entra: no pasó por la caja.
+ */
+export const igtfSummary = async (
+  db: BillingDb,
+  rango: { from: string; to: string },
+): Promise<IgtfSummary> => {
+  const [fila] = await db
+    .select({
+      baseDivisasCentsUsd: sql<number>`coalesce(sum(case when ${payments.igtfCollectedCurrency} is not null
+        then ${payments.amountCentsUsd} else 0 end), 0)::bigint`,
+      igtfCentsUsd: sql<number>`coalesce(sum(${payments.igtfAmountCentsUsd}), 0)::bigint`,
+      igtfVesCentimos: sql<number>`coalesce(sum(${payments.igtfAmountVesCentimos}), 0)::bigint`,
+      igtfCajaDivisasCentsUsd: sql<number>`coalesce(sum(case when ${payments.igtfCollectedCurrency} = 'USD'
+        then ${payments.igtfAmountCentsUsd} else 0 end), 0)::bigint`,
+      igtfCajaBsVesCentimos: sql<number>`coalesce(sum(case when ${payments.igtfCollectedCurrency} = 'VES'
+        then ${payments.igtfAmountVesCentimos} else 0 end), 0)::bigint`,
+    })
+    .from(payments)
+    .where(
+      sql`${payments.appliesIgtf} = true and ${payments.voidedAt} is null
+        and (${payments.createdAt} at time zone 'America/Caracas')::date
+          between ${rango.from}::date and ${rango.to}::date`,
+    );
+
+  return {
+    baseDivisasCentsUsd: Number(fila?.baseDivisasCentsUsd ?? 0),
+    igtfCentsUsd: Number(fila?.igtfCentsUsd ?? 0),
+    igtfVesCentimos: Number(fila?.igtfVesCentimos ?? 0),
+    igtfCajaDivisasCentsUsd: Number(fila?.igtfCajaDivisasCentsUsd ?? 0),
+    igtfCajaBsVesCentimos: Number(fila?.igtfCajaBsVesCentimos ?? 0),
+  };
 };

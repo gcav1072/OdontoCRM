@@ -1,8 +1,21 @@
-import { bookFileName, bookQuerySchema, igtfBookToCsv, salesBookToCsv } from '@odontocrm/contracts';
+import {
+  bookFileName,
+  bookQuerySchema,
+  exchangeDiffBookToCsv,
+  igtfBookToCsv,
+  salesBookToCsv,
+} from '@odontocrm/contracts';
 import { parseOrThrow, requirePermission } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 
-import { igtfBookRows, rangoDelLibro, salesBookRows } from '../billing/book-service.js';
+import {
+  exchangeDiffBookRows,
+  exchangeDiffSummary,
+  igtfBookRows,
+  igtfSummary,
+  rangoDelLibro,
+  salesBookRows,
+} from '../billing/book-service.js';
 import type { BillingServices } from '../services.js';
 
 /**
@@ -35,5 +48,38 @@ export const registerBookRoutes = (app: FastifyInstance, services: BillingServic
       .header('content-type', 'text/csv; charset=utf-8')
       .header('content-disposition', `attachment; filename="${bookFileName('igtf', query)}"`);
     return csv;
+  });
+
+  /**
+   * **Estado de Ganancias y Pérdidas por Diferencial Cambiario** (ADR 0069, Escuela A): cobros con su
+   * diferencial y reversiones por reembolso. Es el reporte contable del que la ley no pide Nota de
+   * Débito: lo que rinde la clínica en su lugar.
+   */
+  app.get(
+    '/api/v1/billing/books/exchange-diff.csv',
+    { preHandler: read },
+    async (request, reply) => {
+      const query = parseOrThrow(bookQuerySchema, request.query);
+      const csv = exchangeDiffBookToCsv(await exchangeDiffBookRows(db, rangoDelLibro(query)));
+      reply
+        .header('content-type', 'text/csv; charset=utf-8')
+        .header(
+          'content-disposition',
+          `attachment; filename="${bookFileName('cambiario', query)}"`,
+        );
+      return csv;
+    },
+  );
+
+  /** Los resúmenes del período: el neto cambiario y el IGTF con su arqueo (Caja USD vs Banco Bs.). */
+  app.get('/api/v1/billing/books/summary', { preHandler: read }, async (request) => {
+    const query = parseOrThrow(bookQuerySchema, request.query);
+    const rango = rangoDelLibro(query);
+    return {
+      from: rango.from,
+      to: rango.to,
+      exchangeDiff: await exchangeDiffSummary(db, rango),
+      igtf: await igtfSummary(db, rango),
+    };
   });
 };
