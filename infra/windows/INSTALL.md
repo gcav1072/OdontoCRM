@@ -177,6 +177,13 @@ pide cada vez y solo vive en la memoria del instalador.
 | Comando `odontocrm` | `C:\ProgramData\OdontoCRM\bin\cmd` (en el PATH) | todos |
 | PM2 | `C:\ProgramData\pm2` · prefijo npm `C:\ProgramData\npm` | `LocalService` |
 
+> **Un solo PM2 por máquina.** En Windows PM2 nombra sus «pipes» en fijo y global
+> (`\\.\pipe\rpc.sock` y `\\.\pipe\pub.sock`), así que **solo puede haber un demonio de PM2** a la
+> vez. El del servidor es el que arranca el **servicio** (como `LocalService`); si en esta máquina
+> hay además un PM2 de desarrollo, los dos se pelearán por los pipes y el servicio quedará caído.
+> Tampoco hace falta reiniciar la consola tras instalar PM2: el instalador y `odontocrm` se llevan
+> el entorno de máquina (`PM2_HOME`) por su cuenta.
+
 Los servicios corren como **`NT AUTHORITY\LocalService`** (PM2 y Caddy) y se conceden permisos
 **por SID**, no por nombre, porque en un Windows en español la cuenta se llama «SERVICIO LOCAL».
 
@@ -274,7 +281,8 @@ completo en una máquina nueva o tras un fallo, sigue
 | `no encuentro «node»` | Node no está en el PATH: ejecuta `10-preparar.ps1` (o instálalo desde nodejs.org, instalación **estándar**, no `nvm`). |
 | Al ejecutar un `.ps1` no arranca y salen símbolos raros | El archivo perdió el BOM: guárdalo como **UTF-8 con BOM**. |
 | `no se puede cargar el archivo …pm2.ps1` | Política de ejecución: `Set-ExecutionPolicy -Scope LocalMachine RemoteSigned`. |
-| PM2 no ve los procesos / `pm2 list` sale vacío | PM2 corre como `LocalService`: habla con él desde una consola de **Administrador**. |
+| PM2 no ve los procesos / `pm2 list` sale vacío | PM2 corre como `LocalService`: habla con él desde una consola de **Administrador**. Si además tienes un PM2 de desarrollo en la misma máquina, se pelean por los «pipes» globales de PM2: para el servidor, uno solo |
+| El servicio `pm2.exe` está en `Stopped` | Suele ser un demonio de PM2 de **otra cuenta** ocupando los pipes: `pm2 kill` en la consola de esa cuenta y `Restart-Service pm2.exe`. El instalador lo hace solo; el log está en `C:\ProgramData\pm2\service\service.log` |
 | `HTTP 502` desde fuera pero `https://127.0.0.1` va bien | El firewall o el gateway: `Get-NetFirewallRule -DisplayName 'OdontoCRM Web (HTTPS)'`, y `pm2 status`. |
 | Los PDF (récipe, factura, reportes) devuelven 503 | Falta Chromium: `.\40-verificar.ps1` lo señala; repite la pieza 3 (`30-desplegar.ps1`). |
 | `C:\OdontoCRM` tiene cosas que no puso el instalador | El instalador se niega a clonar donde hay algo ajeno y te dice **qué** encontró. Muévelo aparte (`Rename-Item C:\OdontoCRM C:\OdontoCRM.viejo`) y repite. Las carpetas `data`, `logs` y `backups` **no** cuentan: son suyas y se conservan |

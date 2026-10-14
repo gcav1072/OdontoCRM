@@ -4,6 +4,39 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — PM2: el del servidor es el de la máquina, y el servicio arranca · 2026-10-14
+
+La instalación llegaba al paso 7/10, `pm2-installer` terminaba con «close this window and start a new
+terminal session» y el servicio de PM2 quedaba en **`Stopped`**: el servidor «estaba instalado» y no
+corría ningún proceso. Eran dos defectos distintos que se tapaban entre sí.
+
+El primero es que `pm2-installer` deja `PM2_HOME` y el prefijo global de npm en el entorno de
+**máquina**, y las piezas 3 y 4 corren en la **misma sesión** que lanzó el instalador: ahí `pm2` se
+resuelve por el PATH del usuario (que puede tener su propio `pm2` de desarrollo en `%APPDATA%\npm`) y
+con el home por defecto (`%USERPROFILE%\.pm2`). Es decir, los procesos se habrían arrancado en un PM2
+que el servicio no ve —y el instalador habría dicho que todo fue bien—. Ahora se trae el entorno de
+máquina a la sesión y se usa siempre el `pm2` de la máquina, sin reiniciar ninguna consola.
+
+El segundo es el que de verdad tumbaba el servicio, y está en PM2: en Windows nombra sus «pipes» en
+**fijo y global** (`\\.\pipe\rpc.sock` y `\\.\pipe\pub.sock`; hay un `@todo` en `pm2/paths.js`), así
+que en una máquina solo puede haber **un** demonio de PM2. `npm run setup` instala `pm2-logrotate`
+con `pm2 install` **como administrador**, y ese demonio del administrador se queda dueño de los
+pipes: el servicio, que corre como `LocalService`, recibe `connect EPERM //./pipe/pub.sock`, se cae y
+`winsw` lo deja en `Stopped` tras agotar sus reintentos. Ahora se le quitan los pipes a ese demonio
+justo antes de arrancar el servicio, y la comprobación es **por efecto**: `pm2 jlist` tiene que
+responder, que es lo que demuestra que el demonio en marcha es el del servicio.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `comun.ps1` | `Importar-EntornoDeMaquina` (PATH y variables de máquina, sin reiniciar la consola), `Get-Pm2Cmd` (el `pm2` de la máquina, no el del usuario), `Test-Pm2PipesLibres`, `Clear-Pm2Global` y `Confirmar-ServicioPm2` |
+| `instalar-pm2.ps1` | Quita el demonio que dejó el `setup` antes de arrancar el servicio, y comprueba que el servicio sigue vivo y que su demonio responde |
+| `30-desplegar.ps1` | Usa ese `pm2` y dice en pantalla cuál es y con qué `PM2_HOME` |
+| `40-verificar.ps1` · `odontocrm.ps1` · `desinstalar.ps1` | Confirman el servicio antes de hablar con PM2: un `pm2` a secas **arranca un demonio de la cuenta del que llama** si no encuentra ninguno, y entonces el que ya no puede arrancar es el servicio |
+
+> **Consecuencia para el servidor: un solo PM2.** Como los pipes son globales, en la máquina del
+> consultorio no puede convivir un PM2 de desarrollo (se pelearían por ellos). Queda dicho en
+> `INSTALL.md`.
+
 ## [Instalador] — El instalador ya pasa de la pieza 3/4 en una máquina limpia · 2026-10-14
 
 La pieza 3 se detenía en su primer paso con «`C:\OdontoCRM` no está vacío y no es un clon de git», y
