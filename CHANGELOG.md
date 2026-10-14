@@ -33,9 +33,11 @@ responder, que es lo que demuestra que el demonio en marcha es el del servicio.
 | `30-desplegar.ps1` | Usa ese `pm2` y dice en pantalla cuál es y con qué `PM2_HOME` |
 | `40-verificar.ps1` · `odontocrm.ps1` · `desinstalar.ps1` | Confirman el servicio antes de hablar con PM2: un `pm2` a secas **arranca un demonio de la cuenta del que llama** si no encuentra ninguno, y entonces el que ya no puede arrancar es el servicio |
 
-> **Consecuencia para el servidor: un solo PM2.** Como los pipes son globales, en la máquina del
-> consultorio no puede convivir un PM2 de desarrollo (se pelearían por ellos). Queda dicho en
-> `INSTALL.md`.
+> **Consecuencia: un solo PM2 por máquina.** Como los pipes son globales, el demonio que los tiene
+> atiende a todos los `pm2`, así que no pueden convivir el servicio del consultorio y un PM2 de
+> desarrollo en la misma máquina: en un sentido la pila de desarrollo acaba dentro del servicio, y
+> en el otro el servicio no arranca. Queda dicho en `INSTALL.md` y, para el caso de la misma PC que
+> desarrolla y hace de servidor, en [`DESARROLLO.md`](infra/windows/DESARROLLO.md) §3.
 
 ## [Instalador] — El instalador ya pasa de la pieza 3/4 en una máquina limpia · 2026-10-14
 

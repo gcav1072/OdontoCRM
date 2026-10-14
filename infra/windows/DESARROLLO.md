@@ -56,6 +56,24 @@ npm run stack:down             # la para
 confundas con la producción**: el servidor usa
 `infra/windows/ecosystem.produccion.config.cjs` (rutas absolutas y secretos en ProgramData).
 
+> **PM2 en Windows es UNO por máquina.** Sus «pipes» tienen nombre fijo y global
+> (`\\.\pipe\rpc.sock` y `\\.\pipe\pub.sock`; hay un `@todo` en `pm2/paths.js`), así que el demonio
+> que los tiene atiende a **todos** los `pm2` —el CLI hace `pingDaemon` por el pipe y reutiliza al
+> que escuche, sea cual sea su `PM2_HOME`—. Si esta misma máquina tiene además una instalación de
+> producción ([`INSTALL.md`](INSTALL.md)), eso se nota en las dos direcciones:
+>
+> - Con el **servicio** de producción en marcha, `npm run stack:fijo` no arranca «tu» PM2: sus
+>   órdenes van al demonio del servicio (que corre como `LocalService`), así que la pila de
+>   desarrollo acabaría dentro de él y `pm2 save` escribiría en tu dump. Mezclarlos no tiene sentido.
+> - Al revés: con un demonio de desarrollo vivo, el servicio de producción **no puede arrancar**
+>   (`connect EPERM //./pipe/pub.sock` en `C:\ProgramData\pm2\service\service.log`) y `winsw` lo deja
+>   en `Stopped` tras sus reintentos.
+>
+> Regla: **uno a la vez**. Antes de probar la producción, ningún `pm2` de desarrollo en marcha (el
+> instalador se ocupa de quitar el que deje la propia instalación). Para volver a desarrollo, retira
+> antes el servicio de producción con `infra\windows\instalar\desinstalar.ps1` y arranca
+> `npm run stack:fijo`.
+
 ## 4. Verificación
 
 ```powershell
@@ -81,6 +99,7 @@ Salidas esperadas:
 | `Falta services/identity/dist/db/migrate.js` | Compila primero: `npm run build`. |
 | El gateway no arranca con `listen EACCES` | En algunas máquinas el **8080** lo ocupa el servicio de red del host (`hns`/Hyper-V). El proyecto usa **8090**; comprueba con `Get-NetTCPConnection -LocalPort 8090`. |
 | Los PDF devuelven 503 | Falta Chromium: `npx playwright install chromium` (en el servidor lo baja `30-desplegar.ps1`). |
+| El servicio `pm2.exe` está en `Stopped` o sale `connect EPERM //./pipe/pub.sock` | Otro PM2 (el de desarrollo, por ejemplo) tiene los «pipes», que en Windows son únicos: mira la nota de §3 y deja uno solo. |
 
 ## 6. Qué NO se instala
 
