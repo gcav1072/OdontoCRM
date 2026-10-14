@@ -4,6 +4,31 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — Los servicios ya arrancan de verdad: PM2 no usaba `fork` · 2026-10-14
+
+La instalación llegaba al paso 7/10, PM2 daba los once procesos por «online» y **ninguno abría su
+puerto**: la pieza se quedaba en «esperando a que escuchen…» y el servidor terminaba la instalación
+sin un solo servicio en marcha. En el registro del demonio no había ni un error y los
+`out.log`/`error.log` de cada aplicación estaban **vacíos**, así que el síntoma parecía un cuelgue sin
+causa.
+
+La causa está en cómo carga PM2 las aplicaciones: el ecosistema de producción declaraba
+`instances: 1`, y en PM2 declarar `instances` —aunque sea `1`— cambia el modo a **cluster**. El
+contenedor de cluster de PM2 5.2.2 carga la app con `import(process.env.pm_exec_path)`, es decir con
+una **ruta** y no con una URL, y en Windows el cargador ESM de Node lee `C:\…` como el esquema `c:` y
+lo rechaza con `ERR_UNSUPPORTED_ESM_URL_SCHEME`. El contenedor de `fork` sí lo hace bien
+(`url.pathToFileURL`). En Fedora el mismo modo cluster funciona **por casualidad**: allí la ruta
+absoluta es `/opt/…` y el cargador la acepta. El ecosistema de desarrollo de Windows nunca falló
+porque no declara `instances`, así que PM2 usaba fork por defecto.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `ecosystem.produccion.config.cjs` | `exec_mode: 'fork'` explícito y **sin** `instances`, en las once apps (el bot de administración incluido: además, `stop_exit_codes` solo se respeta en fork) |
+| `ecosystem.config.cjs` (desarrollo) | Aviso de por qué no se añade `instances` nunca: es la línea que enciende el modo cluster |
+
+> **Sin migración.** Es configuración de supervisión: entra con la pieza 3 (`30-desplegar.ps1`) o con
+> `odontocrm actualizar`. No toca el código desplegado, ni las bases, ni la SPA.
+
 ## [Instalador] — PM2: el del servidor es el de la máquina, y el servicio arranca · 2026-10-14
 
 La instalación llegaba al paso 7/10, `pm2-installer` terminaba con «close this window and start a new
