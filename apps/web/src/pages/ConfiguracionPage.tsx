@@ -13,6 +13,7 @@ import { AcentoSection } from '../components/config/AcentoSection';
 import { CanalesSection } from '../components/config/CanalesSection';
 import { MarcaSection } from '../components/config/MarcaSection';
 import { PantallasSection } from '../components/config/PantallasSection';
+import { TributarioSection } from '../components/config/TributarioSection';
 import { NoticeBanner } from '../components/NoticeBanner';
 import { CancellationPolicyCard } from '../components/notifications/CancellationPolicyCard';
 import { useNotice } from '../hooks/useNotice';
@@ -108,6 +109,7 @@ export const ConfiguracionPage = () => {
             onNotice={avisar}
           />
           <CanalesSection vista={vista} onNotice={avisar} />
+          <TributarioSection onNotice={avisar} />
           <CancellationPolicyCard onNotice={(variant, message) => mostrar({ variant, message })} />
         </>
       )}
