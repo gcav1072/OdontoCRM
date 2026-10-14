@@ -117,6 +117,9 @@ import {
   type InvoiceStatus,
   type SetExchangeRateInput,
   type BillingRate,
+  type BillingSettings,
+  type CreditNoteCancellationType,
+  type UpdateBillingSettingsInput,
   type AppSettingsView,
   type AppSettingsInput,
   type BrandSettings,
@@ -546,11 +549,27 @@ export const billingApi = {
   voidPayment: (id: string, reason: string): Promise<BillingPaymentResult> =>
     api.post<BillingPaymentResult>(`/billing/payments/${id}/void`, { reason }),
   /** **Anular una factura emitida**: exige motivo y emite su nota de crédito (Art. 22 y 23). */
-  voidInvoice: (id: string, reason: string): Promise<BillingInvoiceVoided> =>
-    api.post<BillingInvoiceVoided>(`/billing/invoices/${id}/void`, { reason }),
-  /** La tasa del día, y si hay que confirmarla por el hueco (M8). */
-  rateToday: (signal?: AbortSignal): Promise<BillingRateStatus> =>
-    api.get<BillingRateStatus>('/billing/rates/today', { signal }),
+  voidInvoice: (
+    id: string,
+    reason: string,
+    cancellationType: CreditNoteCancellationType = 'ADMINISTRATIVE',
+  ): Promise<BillingInvoiceVoided> =>
+    api.post<BillingInvoiceVoided>(`/billing/invoices/${id}/void`, {
+      reason,
+      cancellationType,
+    }),
+  /** La tasa del día (o de una Fecha Valor), y si hay que confirmarla por el hueco (M8). */
+  rateToday: (signal?: AbortSignal, date?: string): Promise<BillingRateStatus> =>
+    api.get<BillingRateStatus>('/billing/rates/today', {
+      query: date === undefined ? {} : ({ date } as QueryParams),
+      signal,
+    }),
+  /** La configuración fiscal de la caja (SPE, alícuota del IGTF…). */
+  settings: (signal?: AbortSignal): Promise<BillingSettings> =>
+    api.get<BillingSettings>('/billing/settings', { signal }),
+  /** El `PATCH` tributario: solo el `admin` (lo vuelve a comprobar el servicio). */
+  updateSettings: (input: UpdateBillingSettingsInput): Promise<BillingSettings> =>
+    api.patch<BillingSettings>('/billing/settings', input),
   /** Fijar (o corregir, con motivo) la tasa del día: la caja no llama a internet. */
   setRate: (input: SetExchangeRateInput): Promise<BillingRate> =>
     api.post<BillingRate>('/billing/rates', input),

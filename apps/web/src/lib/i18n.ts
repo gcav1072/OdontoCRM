@@ -182,6 +182,20 @@ const DICCIONARIO = {
     'Los ajustes de toda la clínica: cómo se ven los documentos, el color de la interfaz, los textos de las pantallas, los sillones y los canales de mensajería.',
   'config.soloAdmin': 'Solo el administrador puede ver y cambiar esta configuración.',
   'config.guardado': 'Configuración guardada.',
+  'config.tributario.titulo': 'Régimen tributario (IGTF)',
+  'config.tributario.descripcion':
+    'La percepción del IGTF y su alícuota. El resto de la facturación sigue las reglas fiscales de siempre.',
+  'config.tributario.spe': 'Soy Sujeto Pasivo Especial (Agente de Percepción IGTF)',
+  'config.tributario.speAyuda':
+    'Lo notifica el SENIAT, no se autodeclara: al encenderlo, deja constancia de la fecha y el oficio.',
+  'config.tributario.fecha': 'Fecha de la notificación del SENIAT',
+  'config.tributario.oficio': 'Oficio o providencia',
+  'config.tributario.alicuota': 'Alícuota del IGTF (%)',
+  'config.tributario.alicuotaAyuda':
+    '3,00 = 3,00 %. Se copia en cada cobro: cambiarla aquí no reescribe lo ya percibido.',
+  'config.tributario.nota':
+    'Con el IGTF, la base en divisas entra a Caja Divisas y el 3 % —en divisas o en bolívares— se declara aparte en cada recibo.',
+  'config.tributario.guardado': 'Configuración tributaria guardada.',
   'config.error': 'No se pudo guardar la configuración',
   'config.restaurar': 'Restaurar por defecto',
   'config.desdeCodigo': 'Estos valores vienen del código; se aplican hasta que guardes aquí.',
@@ -1048,8 +1062,24 @@ const DICCIONARIO = {
   // Cobrar
   'caja.cobrar': 'Cobrar',
   'caja.cobro.titulo': 'Cobrar la factura {numero}',
-  'caja.cobro.texto': 'Se registra el recibo con la tasa del día del pago.',
+  'caja.cobro.texto': 'Se registra el recibo con la tasa de la fecha valor del pago.',
   'caja.cobro.medio': 'Medio de pago',
+  'caja.cobro.fechaValor': 'Fecha valor (fecha del pago en banco)',
+  'caja.cobro.fechaValorAyuda':
+    'Por defecto, hoy. Un pago del fin de semana se valora con la tasa del viernes.',
+  'caja.cobro.imputacionHistorica': 'Abono nominal a la factura (tasa de emisión)',
+  'caja.cobro.diferencial': 'Diferencial cambiario (tasa de la fecha valor)',
+  'caja.cobro.ganancia': 'ganancia cambiaria',
+  'caja.cobro.perdida': 'pérdida cambiaria',
+  'caja.cobro.redondeoAbsorbido':
+    'Ajuste de redondeo absorbido en el diferencial cambiario — salda el 100 % de la deuda',
+  'caja.cobro.igtfTitulo': 'IGTF — Sujeto Pasivo Especial',
+  'caja.cobro.igtfDestino': '¿Cómo entrega el paciente el IGTF?',
+  'caja.cobro.igtfEnUsd': 'En divisas (entra a Caja Divisas)',
+  'caja.cobro.igtfEnBs': 'En bolívares (entra a Banco/Caja Bs.)',
+  'caja.cobro.igtfMedio': 'Medio del pago del IGTF',
+  'caja.cobro.igtfReferencia': 'Referencia (Pago Móvil / punto)',
+  'caja.cobro.igtfFaltaDestino': 'Declara en qué moneda entregó el paciente el IGTF.',
   'caja.cobro.monto': 'Monto entregado',
   'caja.cobro.montoBs': 'En céntimos de bolívares (730,84 = Bs. 730,84)',
   'caja.cobro.montoUsd': 'En céntimos de dólares (12,34 = US$ 12,34)',
@@ -1070,6 +1100,13 @@ const DICCIONARIO = {
     'La factura no se borra ni se edita: se emite una nota de crédito que la deja sin efecto (Art. 22 y 23).',
   'caja.anular.motivo': 'Motivo de la anulación',
   'caja.anular.motivoAyuda': 'Queda copiado en la nota de crédito y en la auditoría.',
+  'caja.anular.tipo': 'Tipo de anulación',
+  'caja.anular.tipoAyuda':
+    'La nota de crédito fiscal es la misma en los dos casos: siempre a la tasa original de la factura.',
+  'caja.anular.tipoAdministrativa':
+    'Anulación administrativa / refacturación — sin devolución de dinero (conserva el diferencial cambiario realizado)',
+  'caja.anular.tipoReembolso':
+    'Reembolso de dinero al paciente (reversa el diferencial cambiario registrado)',
   'caja.anular.exito': 'Factura anulada con la nota {nota}',
   'caja.anular.pagada': 'Está pagada: anula antes sus cobros y vuelve a intentarlo.',
   'caja.cobro.anular': 'Anular el cobro',
@@ -1109,6 +1146,11 @@ const DICCIONARIO = {
   // El detalle del documento
   'caja.doc.titulo': 'Documento',
   'caja.doc.tasa': 'Tasa congelada',
+  'caja.doc.saldoAlEmitir': 'Equivalente en Bs. al emitir',
+  'caja.doc.saldoHoy': 'Monto a cobrar si paga hoy',
+  'caja.doc.diferencialAcum': 'Diferencial cambiario acumulado',
+  'caja.doc.igtfAcum': 'IGTF percibido',
+  'caja.doc.fechaValor': 'Fecha valor',
   'caja.doc.tasaBorrador': 'Tasa del borrador',
   'caja.doc.emitida': 'Emitida',
   'caja.doc.anulada': 'Anulada el {fecha}',

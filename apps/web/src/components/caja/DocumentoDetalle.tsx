@@ -9,6 +9,7 @@ import {
   formatBs,
   puedeReimprimirse,
   reimpresionesEnTexto,
+  saldoEnBs,
   tasaEnTexto,
 } from '../../lib/caja';
 import { billingApi } from '../../lib/endpoints';
@@ -118,6 +119,47 @@ export const DocumentoDetalle = ({
         <dd className="text-right tabular-nums text-ink">
           US$ {formatBs(documento.balanceCentsUsd)}
         </dd>
+        {/* La misma deuda a las dos tasas (ADR 0069): lo que se debía al emitir y lo que vale hoy. */}
+        {documento.balanceCentsUsd > 0 && saldoEnBs(documento.balanceCentsUsd, documento.exchangeRateMicros) !== null && (
+          <>
+            <dt className="text-ink-muted">
+              {t('caja.doc.saldoAlEmitir')} ({tasaEnTexto(documento.exchangeRateMicros)})
+            </dt>
+            <dd className="text-right tabular-nums text-ink">
+              Bs. {formatBs(saldoEnBs(documento.balanceCentsUsd, documento.exchangeRateMicros) ?? 0)}
+            </dd>
+            {detalle !== undefined && (
+              <>
+                <dt className="text-ink-muted">{t('caja.doc.saldoHoy')}</dt>
+                <dd className="text-right tabular-nums text-ink">
+                  Bs. {formatBs(detalle.currentDebtAtTodayRateVesCentimos)}
+                </dd>
+              </>
+            )}
+          </>
+        )}
+        {detalle !== undefined && detalle.totalExchangeDiffVesCentimos !== 0 && (
+          <>
+            <dt className="text-ink-muted">{t('caja.doc.diferencialAcum')}</dt>
+            <dd className="text-right tabular-nums text-ink">
+              {detalle.totalExchangeDiffVesCentimos > 0 ? '+' : ''} Bs.{' '}
+              {formatBs(detalle.totalExchangeDiffVesCentimos)}
+              <span className="ml-2 text-xs text-ink-muted">
+                {detalle.totalExchangeDiffVesCentimos > 0
+                  ? t('caja.cobro.ganancia')
+                  : t('caja.cobro.perdida')}
+              </span>
+            </dd>
+          </>
+        )}
+        {detalle !== undefined && detalle.totalIgtfCentsUsd > 0 && (
+          <>
+            <dt className="text-ink-muted">{t('caja.doc.igtfAcum')}</dt>
+            <dd className="text-right tabular-nums text-ink">
+              US$ {formatBs(detalle.totalIgtfCentsUsd)} · Bs. {formatBs(detalle.totalIgtfVesCentimos)}
+            </dd>
+          </>
+        )}
         <dt className="text-ink-muted">{t('caja.col.reimpresiones')}</dt>
         <dd className="text-right text-ink">{reimpresionesEnTexto(documento.printCount)}</dd>
       </dl>
@@ -195,10 +237,27 @@ export const DocumentoDetalle = ({
             <li key={cobro.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
               <span className="font-medium text-ink">{cobro.receiptLabel}</span>
               <span className="text-ink-muted">{formatDateTime(cobro.createdAt)}</span>
+              <span className="text-ink-muted">
+                {t('caja.doc.fechaValor')}: {cobro.effectiveDate} · {tasaEnTexto(cobro.exchangeRateMicros)}
+              </span>
               <span className="tabular-nums text-ink">
                 {cobro.tenderedCurrency === 'USD' ? 'US$' : 'Bs.'} {formatBs(cobro.tenderedAmount)}
               </span>
               <span className="text-ink-muted">→ US$ {formatBs(cobro.amountCentsUsd)}</span>
+              {cobro.exchangeDiffVesCentimos !== 0 && (
+                <span className="tabular-nums text-ink-muted">
+                  {cobro.exchangeDiffVesCentimos > 0 ? '+' : ''} Bs.{' '}
+                  {formatBs(cobro.exchangeDiffVesCentimos)}
+                </span>
+              )}
+              {cobro.igtfAmountCentsUsd > 0 && (
+                <Badge variant="info">
+                  IGTF US$ {formatBs(cobro.igtfAmountCentsUsd)}
+                  {cobro.igtfCollectedCurrency === 'VES'
+                    ? ` · Bs. ${formatBs(cobro.igtfAmountVesCentimos)}`
+                    : ''}
+                </Badge>
+              )}
               {cobro.voidedAt !== null && <Badge variant="danger">{t('caja.cobro.anulado')}</Badge>}
               <span className="flex-1" />
               <Button

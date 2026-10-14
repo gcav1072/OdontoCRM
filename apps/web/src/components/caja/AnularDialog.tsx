@@ -1,6 +1,8 @@
 import { useMutation } from '@tanstack/react-query';
-import { Alert, Button, Dialog, Field, Input } from '@odontocrm/ui';
+import { Alert, Button, Dialog, Field, Input, Select } from '@odontocrm/ui';
 import { useState } from 'react';
+
+import type { CreditNoteCancellationType } from '@odontocrm/contracts';
 
 import { apiErrorMessage } from '../../lib/api';
 import { billingApi } from '../../lib/endpoints';
@@ -33,12 +35,15 @@ export const AnularFacturaDialog = ({
   onDone,
 }: AnularFacturaDialogProps) => {
   const [motivo, setMotivo] = useState('');
+  /** El doble escenario de la anulación (ADR 0069): por defecto, administrativa. */
+  const [cancellationType, setCancellationType] =
+    useState<CreditNoteCancellationType>('ADMINISTRATIVE');
 
   const anular = useMutation({
     mutationFn: () =>
       modo === 'borrador'
         ? billingApi.discardDraft(documento.id, motivo.trim())
-        : billingApi.voidInvoice(documento.id, motivo.trim()),
+        : billingApi.voidInvoice(documento.id, motivo.trim(), cancellationType),
   });
 
   const esBorrador = modo === 'borrador';
@@ -94,6 +99,20 @@ export const AnularFacturaDialog = ({
           <Alert variant="danger" title={t('secretaria.error.accion')}>
             {apiErrorMessage(anular.error)}
           </Alert>
+        )}
+
+        {!esBorrador && (
+          <Field label={t('caja.anular.tipo')} hint={t('caja.anular.tipoAyuda')}>
+            <Select
+              value={cancellationType}
+              onChange={(evento) =>
+                setCancellationType(evento.target.value as CreditNoteCancellationType)
+              }
+            >
+              <option value="ADMINISTRATIVE">{t('caja.anular.tipoAdministrativa')}</option>
+              <option value="REFUND">{t('caja.anular.tipoReembolso')}</option>
+            </Select>
+          </Field>
         )}
 
         <Field

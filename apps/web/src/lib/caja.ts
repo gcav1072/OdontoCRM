@@ -1,6 +1,10 @@
 import {
+  bsPaymentBreakdown,
+  divisasPaymentBreakdown,
   findPaymentMethod,
   formatRateMicros,
+  igtfDecision,
+  igtfToCollectCents,
   invoiceTotalsFromItems,
   ivaCentsForItem,
   IVA_GENERAL_BASIS_POINTS,
@@ -11,6 +15,7 @@ import {
   type DraftItemInput,
   type ImputationPolicy,
   type InvoiceTotals,
+  type PaymentMethodCode,
   type TaxCategory,
   type ToothSurface,
 } from '@odontocrm/contracts';
@@ -272,13 +277,30 @@ export interface ImputacionPrevista {
   cents: number | null;
   /** Lo que hay que avisar antes de cobrar (o `null` si todo está en orden). */
   aviso: string | null;
+  /** Imputación histórica a la tasa de emisión (ADR 0069); `null` si aún no se puede calcular. */
+  historicalVesCentimos: number | null;
+  /** Diferencial cambiario que quedará registrado (positivo = ganancia, negativo = pérdida). */
+  exchangeDiffVesCentimos: number | null;
+  /**
+   * La tolerancia ±0,05 USD absorbió el residuo del cobro y con él se salda el **100 %** de la deuda:
+   * es el badge «ajuste de redondeo absorbido» (ADR 0069).
+   */
+  absorbeRedondeo: boolean;
 }
+
+const PREVISUALIZACION_VACIA: ImputacionPrevista = {
+  cents: null,
+  aviso: null,
+  historicalVesCentimos: null,
+  exchangeDiffVesCentimos: null,
+  absorbeRedondeo: false,
+};
 
 /**
  * Lo que se va a imputar con lo tecleado, **con la regla del servidor**: la moneda la declara el medio
- * de pago y, en bolívares, la política decide si se imputa a la tasa del pago o a la de la factura. La
- * cuenta la hacen los helpers del contrato, así que es la misma que va a hacer el servicio: la pantalla
- * **no** tiene su propia aritmética de dinero.
+ * de pago y la descomposición (imputado / histórico / diferencial, con la tolerancia de ±0,05 USD) la
+ * hacen los helpers del **contrato** (`bsPaymentBreakdown`, `divisasPaymentBreakdown`), así que es la
+ * misma que va a hacer el servicio: la pantalla **no** tiene su propia aritmética de dinero.
  */
 export const imputacionPrevista = (input: {
   tenderedText: string;
@@ -290,21 +312,110 @@ export const imputacionPrevista = (input: {
 }): ImputacionPrevista => {
   const tecleado = parseUsdToCents(input.tenderedText);
   if (tecleado === null || tecleado <= 0) {
-    return { cents: null, aviso: 'Escribe el monto que entregó el paciente (por ejemplo 12,34).' };
-  }
-
-  const moneda = findPaymentMethod(input.method)?.currency ?? 'VES';
-  if (moneda === 'USD') {
     return {
-      cents: tecleado,
-      aviso: tecleado > input.balanceCentsUsd ? 'El monto supera el saldo.' : null,
+      ...PREVISUALIZACION_VACIA,
+      aviso: 'Escribe el monto que entregó el paciente (por ejemplo 12,34).',
     };
   }
 
-  const tasa = input.policy === 'tasa_de_la_factura' ? input.invoiceRateMicros : input.rateMicros;
-  if (tasa === null || tasa <= 0) {
-    return { cents: null, aviso: 'No hay tasa publicada: fíjala antes de cobrar.' };
+  const moneda = findPaymentMethod(input.method)?.currency ?? 'VES';
+  const tasaEmision = input.invoiceRateMicros;
+
+  if (moneda === 'USD') {
+    if (tecleado > input.balanceCentsUsd) {
+      return {
+        ...PREVISUALIZACION_VACIA,
+        cents: tecleado,
+        aviso: 'El monto supera el saldo.',
+      };
+    }
+    // En divisas no hay diferencial cambiario; lo histórico se valora a la tasa de emisión.
+    const desglose =
+      tasaEmision === null || tasaEmision <= 0
+        ? null
+        : divisasPaymentBreakdown({
+            tenderedCentsUsd: tecleado,
+            balanceCentsUsd: input.balanceCentsUsd,
+            rateEmissionMicros: tasaEmision,
+          });
+    return {
+      cents: tecleado,
+      aviso: null,
+      historicalVesCentimos: desglose?.historicalVesCentimos ?? null,
+      exchangeDiffVesCentimos: desglose?.exchangeDiffVesCentimos ?? null,
+      absorbeRedondeo: false,
+    };
   }
-  const cents = usdCentsFromVes(tecleado, tasa);
-  return { cents, aviso: cents > input.balanceCentsUsd ? 'El monto supera el saldo.' : null };
+
+  const tasa = input.policy === 'tasa_de_la_factura' ? tasaEmision : input.rateMicros;
+  if (tasa === null || tasa <= 0) {
+    return {
+      ...PREVISUALIZACION_VACIA,
+      aviso: 'No hay tasa publicada: fíjala antes de cobrar.',
+    };
+  }
+  const desglose = bsPaymentBreakdown({
+    tenderedVesCentimos: tecleado,
+    balanceCentsUsd: input.balanceCentsUsd,
+    rateEmissionMicros: tasaEmision ?? tasa,
+    ratePaymentMicros: tasa,
+  });
+  if (desglose === null) {
+    return {
+      ...PREVISUALIZACION_VACIA,
+      cents: usdCentsFromVes(tecleado, tasa),
+      aviso: 'El monto supera el saldo.',
+    };
+  }
+  return {
+    cents: desglose.amountCentsUsd,
+    aviso: null,
+    historicalVesCentimos: desglose.historicalVesCentimos,
+    exchangeDiffVesCentimos: desglose.exchangeDiffVesCentimos,
+    absorbeRedondeo: desglose.absorbsRounding,
+  };
+};
+
+/** Lo que se causa por IGTF en un cobro (ADR 0069): solo lo que percibe la clínica. */
+export interface IgtfPrevisto {
+  /** `true` cuando este cobro tiene IGTF que la clínica percibe y debe declararse. */
+  aplica: boolean;
+  /** La alícuota copiada al cobro, en puntos básicos (300 = 3,00 %). */
+  basisPoints: number;
+  /** El tributo en céntimos de USD. */
+  amountCentsUsd: number;
+  /** El mismo tributo en bolívares, a la tasa del cobro (`null` sin tasa). */
+  amountVesCentimos: number | null;
+  /** Por qué no aplica (o qué implica): es lo que muestra la pantalla de caja. */
+  motivo: string;
+}
+
+/**
+ * El IGTF previsto de un cobro, con **la misma regla que el servicio**: la causa la decide el medio de
+ * pago y la calificación de la clínica (`igtfDecision`), y la alícuota viene de la configuración.
+ */
+export const igtfPrevisto = (input: {
+  method: string;
+  amountCentsUsd: number;
+  rateMicros: number | null;
+  isSpecialTaxpayer: boolean;
+  igtfRateBp: number;
+}): IgtfPrevisto => {
+  const decision = igtfDecision({
+    method: input.method as PaymentMethodCode,
+    isSpecialTaxpayer: input.isSpecialTaxpayer,
+    basisPoints: input.igtfRateBp,
+  });
+  const aplica = decision.applies && decision.perceivedBy === 'clinica';
+  const amountCentsUsd = aplica ? igtfToCollectCents(decision, input.amountCentsUsd) : 0;
+  return {
+    aplica,
+    basisPoints: decision.basisPoints,
+    amountCentsUsd,
+    amountVesCentimos:
+      input.rateMicros === null || input.rateMicros <= 0
+        ? null
+        : vesCentimosFromUsd(amountCentsUsd, input.rateMicros),
+    motivo: decision.reason,
+  };
 };

@@ -853,6 +853,7 @@ export const CajaPage = () => {
             totalCentsUsd: dialogo.documento.totalCentsUsd,
             balanceCentsUsd: dialogo.documento.balanceCentsUsd,
             exchangeRateMicros: dialogo.documento.exchangeRateMicros,
+            issuedAt: dialogo.documento.issuedAt,
           }}
           rateMicros={tasa.data?.current?.rateMicros ?? null}
           needsConfirmation={tasa.data?.needsConfirmation ?? false}

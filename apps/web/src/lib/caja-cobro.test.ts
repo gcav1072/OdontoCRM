@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   estadoDeFactura,
+  igtfPrevisto,
   imputacionPrevista,
   puedeEmitirse,
   saldoEnBs,
@@ -123,5 +124,103 @@ describe('lo que se va a imputar con lo tecleado', () => {
     expect(imputacionPrevista({ ...base, rateMicros: null, tenderedText: '100' }).aviso).toContain(
       'No hay tasa publicada',
     );
+  });
+});
+
+describe('la descomposición del cobro que se ve antes de confirmar (ADR 0069)', () => {
+  const base = {
+    method: 'pago_movil',
+    // 1.020,00 Bs./USD hoy; la factura se emitió a 1.000,00. Deuda: $10,00.
+    rateMicros: 1_020_000_000,
+    invoiceRateMicros: 1_000_000_000,
+    policy: 'tasa_del_pago' as const,
+    balanceCentsUsd: 1_000,
+  };
+
+  it('el pago exacto muestra imputación histórica y ganancia cambiaria', () => {
+    const previsto = imputacionPrevista({ ...base, tenderedText: '10200,00' });
+    expect(previsto.cents).toBe(1_000);
+    expect(previsto.historicalVesCentimos).toBe(1_000_000); // 10.000,00 Bs. a la tasa de emisión
+    expect(previsto.exchangeDiffVesCentimos).toBe(20_000); // +200,00 Bs.
+    expect(previsto.absorbeRedondeo).toBe(false);
+    expect(previsto.aviso).toBeNull();
+  });
+
+  it('el Pago Móvil redondeado al bolívar entero cierra la deuda y avisa la absorción', () => {
+    // 10.234,00 Bs. cuando lo exacto son 10.234,70: el residuo se absorbe en el diferencial.
+    const previsto = imputacionPrevista({
+      ...base,
+      rateMicros: 1_023_470_000,
+      tenderedText: '10234,00',
+    });
+    expect(previsto.cents).toBe(1_000);
+    expect(previsto.aviso).toBeNull();
+    expect(previsto.absorbeRedondeo).toBe(true);
+    expect(previsto.exchangeDiffVesCentimos).toBe(23_400); // +234,00 Bs.
+  });
+
+  it('un sobrepago real se avisa: la tolerancia no lo absorbe', () => {
+    // 10.300,00 Bs. valen 1.010 céntimos: diez de más, más allá de los ±5.
+    expect(imputacionPrevista({ ...base, tenderedText: '10300,00' }).aviso).toBe(
+      'El monto supera el saldo.',
+    );
+    expect(imputacionPrevista({ ...base, tenderedText: '10300,00' }).cents).toBe(1010);
+    expect(imputacionPrevista({ ...base, tenderedText: '10300,00' }).absorbeRedondeo).toBe(false);
+  });
+
+  it('en divisas la previsión dice que no habrá diferencial cambiario', () => {
+    const previsto = imputacionPrevista({ ...base, method: 'cash_usd', tenderedText: '10' });
+    expect(previsto.cents).toBe(1_000);
+    expect(previsto.exchangeDiffVesCentimos).toBe(0);
+    expect(previsto.historicalVesCentimos).toBe(1_000_000);
+    expect(previsto.absorbeRedondeo).toBe(false);
+  });
+});
+
+describe('el IGTF previsto del cobro (ADR 0069)', () => {
+  it('con SPE el 3 % se causa y se convierte a la tasa del cobro', () => {
+    const previsto = igtfPrevisto({
+      method: 'cash_usd',
+      amountCentsUsd: 1_000,
+      rateMicros: 1_020_000_000,
+      isSpecialTaxpayer: true,
+      igtfRateBp: 300,
+    });
+    expect(previsto).toMatchObject({ aplica: true, basisPoints: 300, amountCentsUsd: 30 });
+    expect(previsto.amountVesCentimos).toBe(30_600); // 0,30 USD a 1.020,00 → 306,00 Bs.
+  });
+
+  it('sin SPE no se cobra nada, y lo que debita el banco tampoco', () => {
+    expect(
+      igtfPrevisto({
+        method: 'cash_usd',
+        amountCentsUsd: 1_000,
+        rateMicros: 1_020_000_000,
+        isSpecialTaxpayer: false,
+        igtfRateBp: 300,
+      }).aplica,
+    ).toBe(false);
+    // Tarjeta en divisas: lo debita el banco (Art. 4.5); cobrarlo sería cobrar dos veces.
+    expect(
+      igtfPrevisto({
+        method: 'card_usd',
+        amountCentsUsd: 1_000,
+        rateMicros: 1_020_000_000,
+        isSpecialTaxpayer: true,
+        igtfRateBp: 300,
+      }).aplica,
+    ).toBe(false);
+  });
+
+  it('una alícuota configurada distinta se respeta (cambiar la ley es configuración)', () => {
+    expect(
+      igtfPrevisto({
+        method: 'cash_usd',
+        amountCentsUsd: 1_000,
+        rateMicros: 1_020_000_000,
+        isSpecialTaxpayer: true,
+        igtfRateBp: 500,
+      }).amountCentsUsd,
+    ).toBe(50);
   });
 });
