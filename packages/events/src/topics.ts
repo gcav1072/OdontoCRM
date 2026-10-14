@@ -79,6 +79,8 @@ export const EVENT_TOPICS = {
   paymentVoided: 'billing.payment.voided',
   creditNoteIssued: 'billing.credit_note.issued',
   rateSet: 'billing.rate.set',
+  /** La configuración fiscal de la caja (SPE, alícuota del IGTF): cada cambio queda auditado. */
+  settingsChanged: 'billing.settings.changed',
   /**
    * Alta de un lote de formas libres autorizado. No está en la tabla del §3.5 del plan —que resume los
    * actos de dinero—, pero es un acto **fiscal** con rango y providencia: tiene que quedar auditado.
