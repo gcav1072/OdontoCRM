@@ -63,6 +63,12 @@ camino del 16 % tiene que quedar activo y probado.
 
 ## Consecuencias
 
+> **Ampliación (fase 12, [ADR 0069](0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md)):**
+> la alícuota del IGTF pasa a **configuración** (`billing_settings.igtf_rate_bp`, 300 = 3,00 %) y, cuando
+> el tributo lo percibe la clínica, el cajero declara **en qué moneda lo entregó el paciente**
+> (`igtf_collected_currency`: divisas → Caja Divisas; bolívares → Banco/Caja Bs. con referencia del
+> Pago Móvil). El recibo certifica la percepción y hay reporte quincenal de arqueo.
+
 - ✅ Cambiar una alícuota es un `insert` con vigencia, no una migración ni un `update` que reescriba la
   historia: lo emitido conserva la alícuota que se aplicó.
 - ✅ El desglose exento/gravado sale en el documento y en el **libro de ventas** (base desglosada por

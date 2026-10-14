@@ -57,6 +57,12 @@ día del pago.
 
 ## Consecuencias
 
+> **Ampliación (fase 12, [ADR 0069](0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md)):**
+> el cobro declara su **Fecha Valor** (`effective_date`, por defecto el día del registro), la tasa que
+> se congela es la vigente para esa fecha —la del viernes en un pago de fin de semana— y la diferencia
+> frente a la tasa de emisión se desglosa como **diferencial cambiario** (`historical_amount_ves_centimos`
+> + `exchange_diff_ves_centimos`) en el recibo y en el reporte contable (Escuela A).
+
 - ✅ Reimpresión y auditoría muestran **exactamente lo que decía el papel**: la tasa aplicada no se
   recalcula al volver a mirar.
 - ✅ El módulo **funciona sin internet**: la caja nunca llama al BCV; si la captura automática falla, la
