@@ -87,11 +87,21 @@ function Copiar-Codigo {
     # entre unidades distintas fallan). El coste, para este repositorio, es de segundos.
     & git clone --local --no-hardlinks --quiet $Origen $temporal
     if ($LASTEXITCODE -ne 0) { Morir "no pude clonar el repositorio en $temporal" }
-    if (Test-Path $Destino) { Remove-Item -Recurse -Force $Destino }
-    Move-Item -Path $temporal -Destination $Destino
     if ($rama -and $rama -ne 'HEAD') {
-      & git -C $Destino checkout --quiet -B $rama $commit 2>$null
+      & git -C $temporal checkout --quiet -B $rama $commit 2>$null
     }
+    # El contenido del clon se COPIA encima del destino; NO se borra el destino para mover la
+    # carpeta en su lugar. En Windows el destino ya trae las carpetas del instalador (datos,
+    # logs y respaldos, con sus permisos), así que un `Remove-Item -Recurse -Force` borraría el
+    # almacén entero —radiografías incluidas— y volvería a dejar los datos sin permiso.
+    # robocopy arrastra también los archivos con punto (`.gitattributes`), que un comodín de
+    # PowerShell no toca, y **no borra lo que no está en el origen** (eso sería `/MIR`).
+    New-Item -ItemType Directory -Force -Path $Destino | Out-Null
+    & robocopy $temporal $Destino /E /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) {
+      Morir "robocopy falló (código $LASTEXITCODE) al poner el código en $Destino"
+    }
+    Remove-Item -Recurse -Force $temporal
     Escribir-Ok "código clonado en $Destino (rama $rama, commit $commit)"
   }
   else {
@@ -104,18 +114,37 @@ function Copiar-Codigo {
   # El código lo LEE LocalService (PM2); los permisos los puso 10-preparar.ps1 en la carpeta.
 }
 
+# Las carpetas de datos/logs/respaldos que ya creó la pieza 1 dentro de $OdontoCode NO cuentan
+# como «algo dentro»: el código y los datos comparten carpeta en Windows (ver comun.ps1).
+$propias = Get-CarpetasPropiasDelCodigo
+$aijenas = @()
+if (Test-Path $OdontoCode) {
+  $aijenas = @(Get-ChildItem -Path $OdontoCode -Force -ErrorAction SilentlyContinue |
+      Where-Object { $propias -notcontains $_.Name })
+}
+
 if ($DryRun) {
   Escribir-Detalle "[dry-run] clonar $OdontoRepo → $OdontoCode (rama $rama, commit $commit)"
 }
 elseif (Test-Path (Join-Path $OdontoCode '.git')) {
   Escribir-Ok "ya hay un clon en $OdontoCode (rama $rama, commit $commit): se conserva"
 }
-elseif ((Test-Path $OdontoCode) -and (Get-ChildItem $OdontoCode -ErrorAction SilentlyContinue)) {
-  Morir "$OdontoCode no está vacío y no es un clon de git. No lo borro por si hay algo dentro:
-    muévelo aparte (p. ej. Rename-Item $OdontoCode ${OdontoCode}.viejo) y vuelve a ejecutar."
+elseif ($aijenas.Count -gt 0) {
+  # El mensaje va entre PARÉNTESIS: en PowerShell los argumentos de un comando se separan por
+  # espacios, así que `Morir "a" + "b"` le pasaría el `+` como un argumento suelto.
+  Morir ("$OdontoCode tiene cosas que no puso el instalador y no lo borro por si acaso:`n" +
+    "    $(($aijenas | ForEach-Object { $_.Name }) -join ', ')`n" +
+    "    Muévelas aparte (p. ej. Rename-Item $OdontoCode ${OdontoCode}.viejo) y vuelve a ejecutar.")
 }
 else {
   Copiar-Codigo -Origen $OdontoRepo -Destino $OdontoCode
+}
+
+# El código se clona JUNTO a las carpetas propias, así que git las ve como «sin seguimiento». Se
+# dice una vez, para que nadie se asuste al mirar `git status` en el servidor (y para que quede
+# claro que no se versionan: el `.gitignore` de la raíz ya ignora datos, logs y respaldos).
+if (-not $DryRun -and $propias.Count -gt 0) {
+  Escribir-Detalle "carpetas del instalador conservadas en $OdontoCode\: $($propias -join ', ')"
 }
 
 # ════════════════════════════════════════════════════════════════════════════

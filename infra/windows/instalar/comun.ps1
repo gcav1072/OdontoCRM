@@ -461,6 +461,29 @@ function Reiniciar-ClavePostgres {
   return (Probar-ClavePostgres -Usuario $Usuario -Equipo $Equipo -Puerto $Puerto -Base $Base -Clave $Clave)
 }
 
+# ── La carpeta del código es también la de los datos ─────────────────────────
+# En Windows los datos, los logs y los respaldos viven DENTRO de la carpeta del código
+# (`C:\OdontoCRM\data`, `…\logs`, `…\backups`), a diferencia de Fedora, donde el código está
+# en `/opt/odontocrm` y los datos en `/var/lib/odontocrm`. Consecuencia que costó una tarde: la
+# pieza 1 crea esas carpetas ANTES de que la pieza 3 clone el código, así que la carpeta del
+# código nunca está vacía. Sin esta lista, la pieza 3 creía que había «algo de otro» dentro y se
+# negaba a clonar: el instalador no pasaba de 1/10 en una máquina limpia.
+#
+# Devuelve los nombres de PRIMER NIVEL de esas carpetas (los que ya no se pueden tocar al clonar).
+# Se derivan de las rutas configuradas, no se escriben a mano: si alguien mueve los datos por
+# entorno (`ODONTOCRM_DATA_DIR`), la lista se ajusta sola; y si viven fuera del código, sale vacía.
+function Get-CarpetasPropiasDelCodigo {
+  $prefijo = $OdontoCode.TrimEnd('\') + '\'
+  $propias = @()
+  foreach ($ruta in @($OdontoDatos, $OdontoLogs, $OdontoBackups)) {
+    if ($ruta -and $ruta.StartsWith($prefijo, [StringComparison]::OrdinalIgnoreCase)) {
+      $resto = $ruta.Substring($prefijo.Length)
+      if ($resto) { $propias += ($resto -split '[\\/]')[0] }
+    }
+  }
+  return ($propias | Sort-Object -Unique)
+}
+
 # ── El navegador de los PDF (Chromium de Playwright) ─────────────────────────
 # Lo necesitan el récipe A5 (`clinical`), la factura y el recibo (`billing`) y los reportes.
 # **No viene con el código**: Playwright lo descarga aparte y los servicios lo buscan en

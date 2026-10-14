@@ -30,6 +30,12 @@ tmp/
 *.backup
 *.sql.gz
 
+# En el servidor de Windows el clon vive en `C:\OdontoCRM` y los datos del consultorio en
+# `C:\OdontoCRM\{data,backups}` (ver infra/windows/INSTALL.md §6): sin estas dos líneas, un
+# `git status` en el servidor saldría sucio y un `git add -A` subiría radiografías y respaldos.
+/data/
+/backups/
+
 # ─── Logs ────────────────────────────────────────────────────────────────────
 logs/
 *.log
