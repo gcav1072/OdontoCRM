@@ -860,21 +860,30 @@ const sembrarFacturacion = async (client) => {
       await client.query(
         `insert into payments (
            id, invoice_id, receipt_number, method, reference, tendered_amount, tendered_currency,
-           amount_cents_usd, exchange_rate_micros, imputation_policy, fx_difference_cents_usd,
+           amount_cents_usd, exchange_rate_micros, imputation_policy,
+           effective_date, historical_amount_ves_centimos, exchange_diff_ves_centimos,
+           fx_difference_cents_usd,
            applies_igtf, igtf_basis_points, igtf_perceived_by, igtf_amount_cents_usd, igtf_amount_ves_centimos,
+           igtf_collected_currency, igtf_payment_method, igtf_payment_reference,
            pdf_path, pdf_sha256, print_count, last_printed_at,
            received_by_user_id, received_by_username, is_test, created_at, voided_at, void_reason, voided_by_user_id
          ) values (
-           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,0,null,
-           $19,$20,true,$21,$22,$23,$24
+           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,0,null,
+           $25,$26,true,$27,$28,$29,$30
          )
          on conflict (id) do update set
            amount_cents_usd = excluded.amount_cents_usd, tendered_amount = excluded.tendered_amount,
            exchange_rate_micros = excluded.exchange_rate_micros, fx_difference_cents_usd = excluded.fx_difference_cents_usd,
+           effective_date = excluded.effective_date,
+           historical_amount_ves_centimos = excluded.historical_amount_ves_centimos,
+           exchange_diff_ves_centimos = excluded.exchange_diff_ves_centimos,
            applies_igtf = excluded.applies_igtf, igtf_basis_points = excluded.igtf_basis_points,
            igtf_perceived_by = excluded.igtf_perceived_by,
            igtf_amount_cents_usd = excluded.igtf_amount_cents_usd,
            igtf_amount_ves_centimos = excluded.igtf_amount_ves_centimos,
+           igtf_collected_currency = excluded.igtf_collected_currency,
+           igtf_payment_method = excluded.igtf_payment_method,
+           igtf_payment_reference = excluded.igtf_payment_reference,
            pdf_path = excluded.pdf_path, pdf_sha256 = excluded.pdf_sha256,
            voided_at = excluded.voided_at, void_reason = excluded.void_reason`,
         [
@@ -888,12 +897,18 @@ const sembrarFacturacion = async (client) => {
           pago.amountCentsUsd,
           pago.exchangeRateMicros,
           pago.imputationPolicy,
+          pago.effectiveDate,
+          pago.historicalVesCentimos,
+          pago.exchangeDiffVesCentimos,
           pago.fxDifferenceCentsUsd,
           pago.appliesIgtf,
           pago.igtfBasisPoints,
           pago.igtfPerceivedBy,
           pago.igtfAmountCentsUsd,
           pago.igtfAmountVesCentimos,
+          pago.igtfCollectedCurrency,
+          pago.igtfPaymentMethod,
+          pago.igtfPaymentReference,
           recibo.path,
           recibo.sha256,
           SISTEMA_USER_ID,
@@ -925,11 +940,14 @@ const sembrarFacturacion = async (client) => {
     await client.query(
       `insert into credit_notes (
          id, credit_note_number, invoice_id, invoice_number, invoice_issued_at, invoice_total_cents_usd,
-         kind, reason, total_cents_usd, exchange_rate_micros, total_ves_centimos,
+         kind, cancellation_type, reversed_exchange_diff_ves_centimos, reason, total_cents_usd,
+         exchange_rate_micros, total_ves_centimos,
          pdf_path, pdf_sha256, is_test, issued_by_user_id, issued_by_username, issued_at
-       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true,$14,$15,$16)
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,true,$16,$17,$18)
        on conflict (id) do update set
          reason = excluded.reason, total_cents_usd = excluded.total_cents_usd,
+         cancellation_type = excluded.cancellation_type,
+         reversed_exchange_diff_ves_centimos = excluded.reversed_exchange_diff_ves_centimos,
          exchange_rate_micros = excluded.exchange_rate_micros,
          total_ves_centimos = excluded.total_ves_centimos,
          pdf_path = excluded.pdf_path, pdf_sha256 = excluded.pdf_sha256,
@@ -942,6 +960,8 @@ const sembrarFacturacion = async (client) => {
         invoice.issuedAt,
         invoice.totalCentsUsd,
         nota.kind,
+        nota.cancellationType,
+        nota.reversedExchangeDiffVesCentimos,
         nota.reason,
         nota.totalCentsUsd,
         nota.exchangeRateMicros,

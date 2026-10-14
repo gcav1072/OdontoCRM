@@ -13,8 +13,10 @@ import {
   usdCentsFromVes,
   vesCentimosFromUsd,
   type CatalogKind,
+  type CreditNoteCancellationType,
   type Currency,
   type DocType,
+  type IgtfCollectedCurrency,
   type IgtfPerceiver,
   type ImputationPolicy,
   type InvoiceStatus,
@@ -202,12 +204,21 @@ export interface TestWorldPayment {
   amountCentsUsd: number;
   exchangeRateMicros: number;
   imputationPolicy: ImputationPolicy;
+  /** Fecha Valor (ADR 0069): el día del comprobante bancario al que aplica la tasa. */
+  effectiveDate: string;
+  /** Imputación histórica a la tasa de emisión y diferencial cambiario realizado. */
+  historicalVesCentimos: number;
+  exchangeDiffVesCentimos: number;
   fxDifferenceCentsUsd: number;
   appliesIgtf: boolean;
   igtfBasisPoints: number;
   igtfPerceivedBy: IgtfPerceiver | null;
   igtfAmountCentsUsd: number;
   igtfAmountVesCentimos: number;
+  /** Destino del IGTF percibido por la clínica (ADR 0069); `null` si no lo percibe. */
+  igtfCollectedCurrency: IgtfCollectedCurrency | null;
+  igtfPaymentMethod: string | null;
+  igtfPaymentReference: string | null;
   receivedByUsername: string;
   createdAt: string;
   voidedAt: string | null;
@@ -222,6 +233,9 @@ export interface TestWorldCreditNote {
   creditNoteNumber: number;
   reason: string;
   kind: 'total';
+  /** El doble escenario (ADR 0069); en el mundo de prueba, siempre administrativo. */
+  cancellationType: CreditNoteCancellationType;
+  reversedExchangeDiffVesCentimos: number;
   totalCentsUsd: number;
   exchangeRateMicros: number;
   totalVesCentimos: number;
@@ -592,6 +606,9 @@ export const buildBillingWorld = (input: BuildBillingWorldInput): TestWorldBilli
           ? 0
           : Math.sign(diferenciaBs) *
             usdCentsFromVes(Math.abs(diferenciaBs), tasaDeEmision.rateMicros);
+      /** La descomposición tripartita (ADR 0069), exactamente como la calcula el servicio. */
+      const historicalVesCentimos = enBsImpresos;
+      const exchangeDiffVesCentimos = moneda === 'USD' ? 0 : diferenciaBs;
 
       // Hoy la clínica es contribuyente ordinario: solo los medios bancarizados en
       // divisas quedan marcados como «lo debita el banco» (y no se le cobran al
@@ -617,12 +634,19 @@ export const buildBillingWorld = (input: BuildBillingWorldInput): TestWorldBilli
         amountCentsUsd: montoCentsUsd,
         exchangeRateMicros: tasaDelPago,
         imputationPolicy: 'tasa_del_pago',
+        effectiveDate: diaDe(pagadoEn),
+        historicalVesCentimos,
+        exchangeDiffVesCentimos,
         fxDifferenceCentsUsd,
         appliesIgtf: decision.applies,
         igtfBasisPoints: decision.applies ? decision.basisPoints : 0,
         igtfPerceivedBy: decision.perceivedBy,
         igtfAmountCentsUsd,
         igtfAmountVesCentimos: vesCentimosFromUsd(igtfAmountCentsUsd, tasaDelPago),
+        // La clínica no es SPE en el mundo de prueba: el IGTF nunca se percibe en caja.
+        igtfCollectedCurrency: null,
+        igtfPaymentMethod: null,
+        igtfPaymentReference: null,
         receivedByUsername: SEED_ACTOR_USERNAME,
         createdAt: pagadoEn,
         voidedAt: anuladoEn,
@@ -680,6 +704,9 @@ export const buildBillingWorld = (input: BuildBillingWorldInput): TestWorldBilli
         creditNoteNumber: numeroDeNota,
         reason: motivo,
         kind: 'total',
+        // Sin cobros que devolver: anulación administrativa, sin diferencial que reversar.
+        cancellationType: 'ADMINISTRATIVE',
+        reversedExchangeDiffVesCentimos: 0,
         totalCentsUsd: totales.totalCentsUsd,
         exchangeRateMicros: tasaDeEmision.rateMicros,
         totalVesCentimos: venBs.totalVesCentimos,
