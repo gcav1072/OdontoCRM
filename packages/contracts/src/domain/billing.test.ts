@@ -5,8 +5,13 @@ import {
   INVOICE_TRANSITIONS,
   IVA_GENERAL_BASIS_POINTS,
   PAYMENT_METHODS,
+  ROUNDING_TOLERANCE_CENTS_USD,
   automaticInvoiceTransitions,
+  billingSettingsSchema,
+  bsPaymentBreakdown,
   canTransitionInvoice,
+  collectPaymentSchema,
+  divisasPaymentBreakdown,
   divideHalfUp,
   findPaymentMethod,
   formatCreditNoteNumber,
@@ -31,8 +36,10 @@ import {
   rateToMicros,
   resolveIgtfRule,
   taxCategoryLetter,
+  updateBillingSettingsSchema,
   usdCentsFromVes,
   vesCentimosFromUsd,
+  voidInvoiceSchema,
 } from './billing.js';
 import { INVOICE_STATUSES } from './enums.js';
 
@@ -449,5 +456,268 @@ describe('medios de pago y números impresos', () => {
   it('la letra de la partida es la que exige la Providencia 0071', () => {
     expect(taxCategoryLetter('exento')).toBe('(E)');
     expect(taxCategoryLetter('general')).toBe('(G)');
+  });
+});
+
+/* ── ADR 0069: diferencial cambiario por Fecha Valor e IGTF configurable ───── */
+
+/** Las tasas del caso del contador: emisión 1.000,00 y pago 1.020,00 Bs./USD, en micros. */
+const TASA_EMISION = 1_000_000_000;
+const TASA_PAGO = 1_020_000_000;
+
+describe('descomposición tripartita del cobro en Bs. (ADR 0069, Escuela A)', () => {
+  it('CP-01: abono el día de emisión y pago extemporáneo: cuadra con la factura y deja +200,00 Bs.', () => {
+    // Factura de $60,00 emitida a 1.000,00 Bs. La deuda vive en USD; los Bs son el medio.
+    const pago1 = bsPaymentBreakdown({
+      tenderedVesCentimos: 5_000_000, // 50.000,00 Bs. el día 1, a 1.000,00
+      balanceCentsUsd: 6_000,
+      rateEmissionMicros: TASA_EMISION,
+      ratePaymentMicros: TASA_EMISION,
+    });
+    expect(pago1).toEqual({
+      amountCentsUsd: 5_000,
+      historicalVesCentimos: 5_000_000,
+      exchangeDiffVesCentimos: 0,
+      closesBalance: false,
+      absorbsRounding: false,
+    });
+
+    // Día 4: quedan $10,00 y el paciente transfiere 10.200,00 Bs. a la tasa de hoy (1.020,00).
+    const pago2 = bsPaymentBreakdown({
+      tenderedVesCentimos: 1_020_000,
+      balanceCentsUsd: 1_000,
+      rateEmissionMicros: TASA_EMISION,
+      ratePaymentMicros: TASA_PAGO,
+    });
+    expect(pago2).toEqual({
+      amountCentsUsd: 1_000,
+      historicalVesCentimos: 1_000_000, // 10.000,00 Bs.: extingue la cuenta nominal
+      exchangeDiffVesCentimos: 20_000, // +200,00 Bs.: ganancia cambiaria realizada
+      closesBalance: true,
+      // Pagó el importe exacto del saldo: no hay residuo de redondeo que absorber.
+      absorbsRounding: false,
+    });
+
+    // Σ histórico = 60.000,00 Bs.: cuadra con el total congelado de la factura (Libro de Ventas).
+    expect((pago1?.historicalVesCentimos ?? 0) + (pago2?.historicalVesCentimos ?? 0)).toBe(6_000_000);
+  });
+
+  it('CP-02: la Fecha Valor de un domingo se valora con la tasa del viernes', () => {
+    // Transferencia hecha el domingo y registrada el lunes: el cajero declara effectiveDate =
+    // domingo y la tasa vigente para esa fecha es la del viernes (1.010,00), no la del lunes.
+    const cobro = bsPaymentBreakdown({
+      tenderedVesCentimos: 1_010_000, // 10.100,00 Bs.
+      balanceCentsUsd: 1_000,
+      rateEmissionMicros: TASA_EMISION,
+      ratePaymentMicros: 1_010_000_000,
+    });
+    expect(cobro).toEqual({
+      amountCentsUsd: 1_000, // amortiza exactamente $10,00
+      historicalVesCentimos: 1_000_000,
+      exchangeDiffVesCentimos: 10_000, // +100,00 Bs.
+      closesBalance: true,
+      absorbsRounding: false,
+    });
+  });
+
+  it('CP-03: el residuo de un Pago Móvil en bolívares enteros se absorbe y cierra el 100 %', () => {
+    // Saldo $10,00; tasa de la Fecha Valor 1.023,47 (lo exacto: 10.234,70 Bs.); el paciente
+    // transfiere 10.234,00 Bs. La conversión da 999,93 céntimos → 1.000: la deuda cierra sin
+    // saldo zombi de $0,01 y el residuo queda en el diferencial cambiario.
+    const cobro = bsPaymentBreakdown({
+      tenderedVesCentimos: 1_023_400,
+      balanceCentsUsd: 1_000,
+      rateEmissionMicros: TASA_EMISION,
+      ratePaymentMicros: 1_023_470_000,
+    });
+    expect(cobro).toEqual({
+      amountCentsUsd: 1_000,
+      historicalVesCentimos: 1_000_000, // 10.000,00 Bs.
+      exchangeDiffVesCentimos: 23_400, // +234,00 Bs.
+      closesBalance: true,
+      // Faltaban 0,70 Bs. del importe exacto: el residuo se absorbe y se avisa en caja.
+      absorbsRounding: true,
+    });
+  });
+
+  it('la tolerancia es de ±5 céntimos de USD: dentro cierra la deuda, fuera se rechaza', () => {
+    expect(ROUNDING_TOLERANCE_CENTS_USD).toBe(5);
+    const base = {
+      balanceCentsUsd: 1_000,
+      rateEmissionMicros: TASA_EMISION,
+      ratePaymentMicros: TASA_EMISION,
+    };
+    // 9.965,00 Bs. → 996,5 céntimos → 997: faltan 3 (≤ 5), la deuda cierra igual y la pérdida
+    // cambiaria de −35,00 Bs. se absorbe en el diferencial.
+    expect(bsPaymentBreakdown({ ...base, tenderedVesCentimos: 996_500 })).toEqual({
+      amountCentsUsd: 1_000,
+      historicalVesCentimos: 1_000_000,
+      exchangeDiffVesCentimos: -3_500,
+      closesBalance: true,
+      absorbsRounding: true,
+    });
+    // 10.050,00 Bs. → 1.005: cinco céntimos de más, justo en el límite; se absorben.
+    expect(bsPaymentBreakdown({ ...base, tenderedVesCentimos: 1_005_000 })?.closesBalance).toBe(true);
+    // 10.070,00 Bs. → 1.007: siete de más. Un sobrepago real se rechaza, no se calla.
+    expect(bsPaymentBreakdown({ ...base, tenderedVesCentimos: 1_007_000 })).toBeNull();
+  });
+
+  it('en divisas no hay diferencial cambiario (Δ = 0), y de más es de más', () => {
+    expect(
+      divisasPaymentBreakdown({
+        tenderedCentsUsd: 5_000,
+        balanceCentsUsd: 6_000,
+        rateEmissionMicros: TASA_EMISION,
+      }),
+    ).toEqual({
+      amountCentsUsd: 5_000,
+      historicalVesCentimos: 5_000_000,
+      exchangeDiffVesCentimos: 0,
+    });
+    // En divisas el paciente entrega céntimos exactos: no hay residuo que absorber.
+    expect(
+      divisasPaymentBreakdown({
+        tenderedCentsUsd: 6_001,
+        balanceCentsUsd: 6_000,
+        rateEmissionMicros: TASA_EMISION,
+      }),
+    ).toBeNull();
+    expect(
+      divisasPaymentBreakdown({
+        tenderedCentsUsd: 6_000,
+        balanceCentsUsd: 6_000,
+        rateEmissionMicros: TASA_EMISION,
+      })?.amountCentsUsd,
+    ).toBe(6_000);
+  });
+
+  it('CP-04: el IGTF del SPE se calcula con la alícuota configurada y se declara en su moneda', () => {
+    // La alícuota configurada (billing_settings.igtf_rate_bp) manda sobre la del contrato.
+    const decision = igtfDecision({
+      method: 'cash_usd',
+      isSpecialTaxpayer: true,
+      basisPoints: 300,
+    });
+    expect(decision.applies).toBe(true);
+    expect(decision.perceivedBy).toBe('clinica');
+    expect(decision.basisPoints).toBe(300);
+
+    // $10,00 de base → 0,30 USD de IGTF; entregado por Pago Móvil a 1.020,00 → 306,00 Bs.
+    const igtfUsd = igtfToCollectCents(decision, 1_000);
+    expect(igtfUsd).toBe(30);
+    expect(vesCentimosFromUsd(igtfUsd, TASA_PAGO)).toBe(30_600);
+
+    // Una alícuota configurada distinta se copia al cobro (cambiar la ley es configuración).
+    const otra = igtfDecision({ method: 'cash_usd', isSpecialTaxpayer: true, basisPoints: 500 });
+    expect(igtfToCollectCents(otra, 1_000)).toBe(50);
+  });
+});
+
+describe('los campos nuevos del contrato (ADR 0069)', () => {
+  it('el cobro declara Fecha Valor y el destino del IGTF, y lo desconocido se rechaza', () => {
+    const conFecha = collectPaymentSchema.parse({
+      method: 'pago_movil',
+      tenderedAmount: 1_020_000,
+      effectiveDate: '2026-10-04',
+    });
+    expect(conFecha.effectiveDate).toBe('2026-10-04');
+    // Sin Fecha Valor la pone el servidor (el día de Caracas al registrar): aquí sigue vacía.
+    const sinFecha = collectPaymentSchema.parse({ method: 'cash_usd', tenderedAmount: 1_000 });
+    expect(sinFecha.effectiveDate).toBeUndefined();
+    expect(sinFecha.confirmRate).toBe(false);
+    expect(sinFecha.igtfCollectedCurrency).toBeUndefined();
+
+    expect(
+      collectPaymentSchema.safeParse({
+        method: 'cash_usd',
+        tenderedAmount: 1_000,
+        effectiveDate: '04/10/2026',
+      }).success,
+    ).toBe(false);
+    expect(
+      collectPaymentSchema.safeParse({
+        method: 'cash_usd',
+        tenderedAmount: 1_000,
+        igtfCollectedCurrency: 'Bs',
+      }).success,
+    ).toBe(false);
+    expect(
+      collectPaymentSchema.safeParse({ method: 'cash_usd', tenderedAmount: 1_000, sorpresa: true })
+        .success,
+    ).toBe(false);
+
+    // El IGTF entregado en bolívares lleva su comprobante (Pago Móvil, punto…).
+    const igtfEnBs = collectPaymentSchema.parse({
+      method: 'cash_usd',
+      tenderedAmount: 1_000,
+      igtfCollectedCurrency: 'VES',
+      igtfPaymentMethod: 'pago_movil',
+      igtfPaymentReference: '0123-456789',
+    });
+    expect(igtfEnBs.igtfCollectedCurrency).toBe('VES');
+    expect(igtfEnBs.igtfPaymentReference).toBe('0123-456789');
+  });
+
+  it('la anulación por defecto es administrativa; el reembolso se pide explícitamente', () => {
+    expect(
+      voidInvoiceSchema.parse({ reason: 'Factura con datos equivocados' }).cancellationType,
+    ).toBe('ADMINISTRATIVE');
+    expect(
+      voidInvoiceSchema.parse({
+        reason: 'Se devuelve el dinero al paciente',
+        cancellationType: 'REFUND',
+      }).cancellationType,
+    ).toBe('REFUND');
+    expect(
+      voidInvoiceSchema.safeParse({ reason: 'Motivo que vale', cancellationType: 'DEVOLVER' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('la configuración tributaria se parchea en parcial: lo que no se manda, no se toca', () => {
+    const vacio = updateBillingSettingsSchema.parse({});
+    expect(vacio.isSpecialTaxpayer).toBeUndefined();
+    expect(vacio.igtfRateBp).toBeUndefined();
+
+    expect(
+      updateBillingSettingsSchema.parse({
+        isSpecialTaxpayer: true,
+        speNotifiedAt: '2026-10-14',
+        speReference: 'Oficio 42',
+        igtfRateBp: 300,
+      }),
+    ).toEqual({
+      isSpecialTaxpayer: true,
+      speNotifiedAt: '2026-10-14',
+      speReference: 'Oficio 42',
+      igtfRateBp: 300,
+    });
+
+    expect(updateBillingSettingsSchema.safeParse({ igtfRateBp: 10_001 }).success).toBe(false);
+    expect(updateBillingSettingsSchema.safeParse({ igtfRateBp: -1 }).success).toBe(false);
+    expect(updateBillingSettingsSchema.safeParse({ speNotifiedAt: '14/10/2026' }).success).toBe(
+      false,
+    );
+    // Lo que no es tributario no entra por esta puerta.
+    expect(
+      updateBillingSettingsSchema.safeParse({
+        igtfRateBp: 300,
+        imputationPolicy: 'tasa_del_pago',
+      }).success,
+    ).toBe(false);
+
+    // El contrato de lectura exige la alícuota: sin ella no hay configuración que validar.
+    const ajustes = billingSettingsSchema.parse({
+      isSpecialTaxpayer: true,
+      speNotifiedAt: '2026-10-14',
+      speReference: 'Oficio 42',
+      igtfRateBp: 300,
+      imputationPolicy: 'tasa_del_pago',
+      rateGraceDays: 5,
+      foreignCurrencyIvaBasisPoints: 0,
+      updatedAt: '2026-10-14T10:00:00.000Z',
+    });
+    expect(ajustes.igtfRateBp).toBe(300);
+    expect(billingSettingsSchema.safeParse({ ...ajustes, igtfRateBp: 20_000 }).success).toBe(false);
   });
 });

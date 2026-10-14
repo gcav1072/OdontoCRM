@@ -3,7 +3,13 @@ import { z } from 'zod';
 
 import { optionalText } from '../common/optional.js';
 import { paginationQuerySchema } from '../common/pagination.js';
-import { INVOICE_STATUSES, type InvoiceStatus, type Role } from './enums.js';
+import {
+  CREDIT_NOTE_CANCELLATION_TYPES,
+  IGTF_COLLECTED_CURRENCIES,
+  INVOICE_STATUSES,
+  type InvoiceStatus,
+  type Role,
+} from './enums.js';
 import { toothNumberSchema, toothSurfaceSchema } from './odontogram.js';
 
 /**
@@ -285,6 +291,42 @@ export const FOREIGN_CURRENCY_IVA_BASIS_POINTS_DEFAULT = 0;
 export const taxCategoryLetter = (category: TaxCategory): string =>
   category === 'general' ? '(G)' : '(E)';
 
+/**
+ * La configuración fiscal de la clínica (una sola fila en `billing_settings`, ADR 0045 y 0069).
+ * `isSpecialTaxpayer` **no se autodeclara**: lo notifica el SENIAT, y el panel guarda la fecha y el
+ * oficio de la calificación junto al interruptor. `igtfRateBp` es la alícuota que se aplica cuando el
+ * tributo se causa (300 = 3,00 %): vive en configuración y se **copia** en cada cobro, como el IVA.
+ */
+export const billingSettingsSchema = z.object({
+  isSpecialTaxpayer: z.boolean(),
+  speNotifiedAt: z.string().nullable(),
+  speReference: z.string().nullable(),
+  /** Alícuota del IGTF en puntos básicos (300 = 3,00 %). */
+  igtfRateBp: z.number().int().min(0).max(10000),
+  imputationPolicy: z.enum(IMPUTATION_POLICIES),
+  rateGraceDays: z.number().int(),
+  foreignCurrencyIvaBasisPoints: z.number().int(),
+  updatedAt: z.string(),
+});
+
+export type BillingSettings = z.infer<typeof billingSettingsSchema>;
+
+/**
+ * El `PATCH` de configuración: **parcial** — lo que no se manda, no se toca. Un campo sin mandar nunca
+ * reescribe un valor ya configurado (por eso `igtfRateBp` es opcional y sin `default`: el 300 lo pone
+ * la base al sembrar la fila, no el parser).
+ */
+export const updateBillingSettingsSchema = z
+  .object({
+    isSpecialTaxpayer: z.boolean().optional(),
+    speNotifiedAt: z.iso.date().nullable().optional(),
+    speReference: optionalText(60),
+    igtfRateBp: z.number().int().min(0).max(10000).optional(),
+  })
+  .strict();
+
+export type UpdateBillingSettingsInput = z.infer<typeof updateBillingSettingsSchema>;
+
 /* ── 4. IGTF: qué medio lo causa y quién lo entera ────────────────────────── */
 
 /** Una fila de `igtf_rules`: la alícuota y quién percibe, con fecha de vigencia. */
@@ -330,11 +372,16 @@ export const igtfDecision = (input: {
   readonly method: PaymentMethodCode;
   readonly isSpecialTaxpayer: boolean;
   readonly rule?: IgtfRule | null;
+  /**
+   * La alícuota configurada en `billing_settings.igtf_rate_bp` (ADR 0069): manda sobre la del
+   * contrato; una fila de `igtf_rules` con vigencia la sigue sobreescribiendo.
+   */
+  readonly basisPoints?: number;
 }): IgtfDecision => {
   const { isSpecialTaxpayer } = input;
   const medio = findPaymentMethod(input.method);
   const declarado: IgtfPerceiverRule = input.rule?.perceivedBy ?? medio?.percibe ?? null;
-  const puntos = input.rule?.basisPoints ?? IGTF_DIVISAS_BASIS_POINTS;
+  const puntos = input.rule?.basisPoints ?? input.basisPoints ?? IGTF_DIVISAS_BASIS_POINTS;
 
   switch (declarado) {
     case 'no_aplica':
@@ -478,6 +525,107 @@ export const usdCentsFromVes = (vesCentimos: number, rateMicros: number): number
     ),
     'los céntimos de USD',
   );
+};
+
+/**
+ * Tolerancia de redondeo (ADR 0069): **±5 céntimos de USD**. Un Pago Móvil entrega bolívares
+ * **enteros** y la conversión deja residuos («debo $10,00 y transferí el equivalente a $9,999»): si el
+ * residuo cabe en la tolerancia, el cobro **liquida el 100 %** de la deuda y la diferencia se absorbe
+ * en el diferencial cambiario, en vez de dejar un saldo zombi de $0,01 que nadie puede cobrar.
+ */
+export const ROUNDING_TOLERANCE_CENTS_USD = 5;
+
+/** La descomposición tripartita de un cobro en bolívares (ADR 0069, Escuela A). */
+export interface BsPaymentBreakdown {
+  /** Lo imputado a la deuda en céntimos de USD ($A_{\text{USD}}$). */
+  readonly amountCentsUsd: number;
+  /** Imputación histórica a la tasa de **emisión** ($H_{\text{Bs}}$): extingue la cuenta nominal. */
+  readonly historicalVesCentimos: number;
+  /** Diferencial cambiario realizado ($\Delta = P_{\text{Bs}} - H_{\text{Bs}}$). */
+  readonly exchangeDiffVesCentimos: number;
+  /** `true` cuando la tolerancia ±0,05 USD cerró la deuda al 100 %. */
+  readonly closesBalance: boolean;
+  /**
+   * `true` cuando hubo **residuo que absorber**: la conversión del cobro no daba exactamente el saldo
+   * y la tolerancia lo redondeó a él. Es lo que la caja muestra como «ajuste de redondeo absorbido».
+   */
+  readonly absorbsRounding: boolean;
+}
+
+/**
+ * Descompone un cobro en bolívares: lo imputado ($A_{\text{USD}}$), lo histórico ($H_{\text{Bs}}$, los
+ * USD amortizados a la tasa de emisión) y el diferencial cambiario. Es la Sección 2.A del algoritmo,
+ * en enteros, y **la única regla**: la caja, el servidor y las pruebas llaman a esto.
+ *
+ * Devuelve **`null` cuando hay sobrepago real** —lo entregado supera el saldo en más de la
+ * tolerancia— y el cobro se rechaza: absorber un sobrepago sería cobrar de más y callarse.
+ */
+export const bsPaymentBreakdown = (input: {
+  /** Lo que entró al banco o a la caja, en céntimos de Bs. ($P_{\text{Bs}}$). */
+  readonly tenderedVesCentimos: number;
+  /** El saldo pendiente de la factura, en céntimos de USD ($S_{\text{USD}}$). */
+  readonly balanceCentsUsd: number;
+  /** La tasa **congelada de la factura** ($T_{\text{emisión}}$), en micros. */
+  readonly rateEmissionMicros: number;
+  /** La tasa de la **Fecha Valor** del cobro ($T_{\text{pago}}$), en micros. */
+  readonly ratePaymentMicros: number;
+}): BsPaymentBreakdown | null => {
+  const saldo = enteroSeguro(input.balanceCentsUsd, 'el saldo');
+  const tasaPago = enteroSeguro(input.ratePaymentMicros, 'la tasa en micros');
+  const bruto = usdCentsFromVes(input.tenderedVesCentimos, tasaPago);
+  if (bruto - saldo > ROUNDING_TOLERANCE_CENTS_USD) return null;
+  const cierra = Math.abs(saldo - bruto) <= ROUNDING_TOLERANCE_CENTS_USD;
+  const amountCentsUsd = cierra ? saldo : bruto;
+  const historicalVesCentimos = vesCentimosFromUsd(amountCentsUsd, input.rateEmissionMicros);
+  /**
+   * ¿Hubo residuo que absorber? El paciente pagó **exactamente** lo que pide el saldo a la tasa de la
+   * fecha valor cuando `saldo × tasa = entregado × 10⁶` (en céntimos·micros, sin coma flotante). Si
+   * cierra la deuda sin esa igualdad —un Pago Móvil redondeado al bolívar entero—, el residuo se
+   * absorbe en el diferencial y la caja lo muestra.
+   */
+  const exacto =
+    BigInt(saldo) * BigInt(tasaPago) ===
+    BigInt(enteroSeguro(input.tenderedVesCentimos, 'los céntimos de Bs.')) * MICROS_POR_UNIDAD;
+  return {
+    amountCentsUsd,
+    historicalVesCentimos,
+    exchangeDiffVesCentimos: input.tenderedVesCentimos - historicalVesCentimos,
+    closesBalance: cierra,
+    absorbsRounding: cierra && !exacto,
+  };
+};
+
+/** La descomposición de un cobro en divisas (ADR 0069, Sección 2.B). */
+export interface DivisasPaymentBreakdown {
+  /** Lo imputado a la deuda: en divisas, lo entregado es lo imputado. */
+  readonly amountCentsUsd: number;
+  /** Imputación histórica a la tasa de emisión (la moneda funcional es el USD). */
+  readonly historicalVesCentimos: number;
+  /**
+   * **Cero siempre**: un cobro en divisas no genera diferencial cambiario en caja de bolívares —no se
+   * convirtió nada—. Lo que sí puede causar es IGTF, y eso es cuenta aparte.
+   */
+  readonly exchangeDiffVesCentimos: 0;
+}
+
+/**
+ * Un cobro en divisas imputa lo entregado, valora lo histórico a la tasa de emisión y **no** genera
+ * diferencial. `null` = sobrepago (aquí **no** hay tolerancia: en divisas el paciente entrega céntimos
+ * exactos, y de más es de más).
+ */
+export const divisasPaymentBreakdown = (input: {
+  readonly tenderedCentsUsd: number;
+  readonly balanceCentsUsd: number;
+  readonly rateEmissionMicros: number;
+}): DivisasPaymentBreakdown | null => {
+  const entregado = enteroSeguro(input.tenderedCentsUsd, 'lo entregado en céntimos de USD');
+  const saldo = enteroSeguro(input.balanceCentsUsd, 'el saldo');
+  if (entregado > saldo) return null;
+  return {
+    amountCentsUsd: entregado,
+    historicalVesCentimos: vesCentimosFromUsd(entregado, input.rateEmissionMicros),
+    exchangeDiffVesCentimos: 0,
+  };
 };
 
 /** Aplica puntos básicos a una base en céntimos (300 = 3,00 %). */
@@ -890,6 +1038,18 @@ export const collectPaymentSchema = z
     tenderedAmount: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     /** Referencia del pago (número de operación, de Zelle, del punto de venta…). */
     reference: optionalText(60),
+    /**
+     * **Fecha Valor** (ADR 0069): el día del comprobante bancario, no el del tecleo. Por defecto, el
+     * día de Caracas al registrar; con ella se elige la tasa que se congela en el cobro. Un pago móvil
+     * del **domingo** registrado el lunes se valora con la tasa del viernes. `AAAA-MM-DD`.
+     */
+    effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha va en AAAA-MM-DD').optional(),
+    /** En qué moneda entregó el paciente el IGTF que percibe la clínica (ADR 0069). */
+    igtfCollectedCurrency: z.enum(IGTF_COLLECTED_CURRENCIES).optional(),
+    /** Medio con el que el paciente cubrió el IGTF en Bs. (Pago Móvil, punto…). */
+    igtfPaymentMethod: optionalText(60),
+    /** La operación de ese medio: el comprobante del IGTF entregado en bolívares. */
+    igtfPaymentReference: optionalText(60),
     /** Confirma cobrar con una tasa que arrastra más días de los tolerados (M8). */
     confirmRate: z.boolean().default(false),
   })
@@ -907,10 +1067,19 @@ export const billingPaymentSchema = z.object({
   tenderedCurrency: z.enum(CURRENCIES),
   /** Lo imputado a la deuda, en céntimos de USD. */
   amountCentsUsd: z.number().int(),
-  /** La tasa **congelada de este pago**. */
+  /** La tasa **congelada de este pago**: la vigente para su Fecha Valor. */
   exchangeRateMicros: z.number().int(),
   /** La política con la que se imputó (B6), registrada en cada pago. */
   imputationPolicy: z.enum(IMPUTATION_POLICIES),
+  /** Fecha Valor (ADR 0069): el día del comprobante bancario al que aplica la tasa. */
+  effectiveDate: z.string(),
+  /**
+   * Imputación histórica a la tasa de **emisión** (ADR 0069): los USD amortizados valorados como en
+   * el Libro de Ventas. Con los demás cobros vigentes, cuadra con `totalVesCentimos` de la factura.
+   */
+  historicalVesCentimos: z.number().int(),
+  /** Diferencial cambiario realizado (positivo = ganancia; negativo = pérdida). */
+  exchangeDiffVesCentimos: z.number().int(),
   /** Informativo: los Bs de diferencia con lo impreso, valorados a la tasa de la factura. */
   fxDifferenceCentsUsd: z.number().int(),
   appliesIgtf: z.boolean(),
@@ -919,6 +1088,13 @@ export const billingPaymentSchema = z.object({
   igtfPerceivedBy: z.enum(IGTF_PERCEIVERS).nullable(),
   igtfAmountCentsUsd: z.number().int(),
   igtfAmountVesCentimos: z.number().int(),
+  /**
+   * Destino del IGTF percibido (ADR 0069): `USD` = entró con la base a Caja Divisas; `VES` = entró a
+   * Banco/Caja Bolívares a la tasa de la Fecha Valor. `null` cuando la clínica no lo percibe.
+   */
+  igtfCollectedCurrency: z.enum(IGTF_COLLECTED_CURRENCIES).nullable(),
+  igtfPaymentMethod: z.string().nullable(),
+  igtfPaymentReference: z.string().nullable(),
   pdfSha256: z.string().nullable(),
   receivedByUsername: z.string(),
   createdAt: z.string(),
@@ -951,6 +1127,22 @@ export type VoidPaymentInput = z.infer<typeof voidPaymentSchema>;
 /** La factura con sus cobros: lo que necesita el historial de la caja. */
 export const billingInvoiceDetailSchema = billingDraftDetailSchema.extend({
   payments: z.array(billingPaymentSchema),
+  /**
+   * Los acumuladores de caja (ADR 0069), solo de cobros **vigentes** (los anulados no cuentan):
+   * `Σ histórico` cuadra con `totalVesCentimos` del documento —la cuenta por cobrar nominal se extingue
+   * en la moneda en la que se contabilizó— y `Σ diferencial` es la ganancia/pérdida cambiaria real.
+   */
+  totalHistoricalPaidVesCentimos: z.number().int(),
+  totalActualPaidVesCentimos: z.number().int(),
+  totalExchangeDiffVesCentimos: z.number().int(),
+  /** IGTF percibido por la clínica en esta factura, en las dos monedas. */
+  totalIgtfCentsUsd: z.number().int(),
+  totalIgtfVesCentimos: z.number().int(),
+  /**
+   * Cuántos bolívares debe el paciente **si paga hoy**, a la tasa BCV vigente (no a la de emisión):
+   * lo que muestra la caja junto al saldo, para que el monto a transferir no se adivine.
+   */
+  currentDebtAtTodayRateVesCentimos: z.number().int(),
 });
 
 export type BillingInvoiceDetail = z.infer<typeof billingInvoiceDetailSchema>;
@@ -959,7 +1151,16 @@ export type BillingInvoiceDetail = z.infer<typeof billingInvoiceDetailSchema>;
 
 /** Anular exige motivo; el descartar un borrador, también (el `CHECK` lo pide para toda fila anulada). */
 export const voidInvoiceSchema = z
-  .object({ reason: z.string().trim().min(5, 'Explica por qué se anula').max(200) })
+  .object({
+    reason: z.string().trim().min(5, 'Explica por qué se anula').max(200),
+    /**
+     * El **doble escenario** de la anulación (ADR 0069): `ADMINISTRATIVE` (por defecto) es una
+     * anulación administrativa o refacturación **sin devolución de dinero**, y conserva el diferencial
+     * cambiario ya realizado; `REFUND` es un reembolso real al paciente, y lo reversa. La Nota de
+     * Crédito fiscal es **la misma** en los dos casos: siempre a la tasa original de la factura.
+     */
+    cancellationType: z.enum(CREDIT_NOTE_CANCELLATION_TYPES).default('ADMINISTRATIVE'),
+  })
   .strict();
 
 export type VoidInvoiceInput = z.infer<typeof voidInvoiceSchema>;
@@ -981,6 +1182,13 @@ export const billingCreditNoteSchema = z.object({
   invoiceTotalCentsUsd: z.number().int(),
   /** `total` anula la factura entera; `parcial` (todavía sin usar) ajusta partidas. */
   kind: z.enum(['total', 'parcial']),
+  /** `ADMINISTRATIVE` conserva el diferencial cambiario; `REFUND` lo reversa (ADR 0069). */
+  cancellationType: z.enum(CREDIT_NOTE_CANCELLATION_TYPES),
+  /**
+   * Diferencial cambiario reversado por un reembolso real: `-Σ` de los cobros vigentes de la factura
+   * (`0` en una anulación administrativa). Es lo que hace que el neto cambiario del período cuadre.
+   */
+  reversedExchangeDiffVesCentimos: z.number().int(),
   reason: z.string(),
   totalCentsUsd: z.number().int(),
   exchangeRateMicros: z.number().int(),
@@ -1082,12 +1290,65 @@ export const IGTF_BOOK_COLUMNS: readonly CsvColumn[] = [
 export const igtfBookToCsv = (rows: readonly IgtfBookRow[]): string =>
   buildCsv(IGTF_BOOK_COLUMNS, rows);
 
+/* ── 15.b El diferencial cambiario y el destino del IGTF (ADR 0069) ────────── */
+
+/**
+ * Una fila del **Estado de Ganancias y Pérdidas por Diferencial Cambiario** (Escuela A): lo que pasó
+ * con cada cobro y con cada reembolso, en bolívares y con signo. El día es el de la **Fecha Valor**
+ * (el devengado del cobro); el de la reversión, el de la nota de crédito.
+ */
+export interface ExchangeDiffBookRow extends Record<string, CsvValue> {
+  fecha: string;
+  documento: string;
+  concepto: string;
+  /** La tasa que valorizó la operación, en Bs./US$. */
+  tasa: number;
+  /** El diferencial realizado (o reversado), en bolívares; signo incluido. */
+  diferencialBs: number;
+}
+
+export const EXCHANGE_DIFF_BOOK_COLUMNS: readonly CsvColumn[] = [
+  { key: 'fecha', label: 'Fecha' },
+  { key: 'documento', label: 'Documento' },
+  { key: 'concepto', label: 'Concepto' },
+  { key: 'tasa', label: 'Tasa Bs./US$' },
+  { key: 'diferencialBs', label: 'Diferencial Bs.' },
+];
+
+export const exchangeDiffBookToCsv = (rows: readonly ExchangeDiffBookRow[]): string =>
+  buildCsv(EXCHANGE_DIFF_BOOK_COLUMNS, rows);
+
+/** El resumen del período: ganancias, pérdidas y reversiones, con el neto que se rinde. */
+export interface ExchangeDiffSummary {
+  /** Σ de los diferenciales positivos de los cobros. */
+  gananciasVesCentimos: number;
+  /** Σ (en positivo) de los diferenciales negativos de los cobros. */
+  perdidasVesCentimos: number;
+  /** Σ de las reversiones por reembolso (`reversed_exchange_diff`, ya en negativo). */
+  reversionesVesCentimos: number;
+  /** `Neto = Ganancias − Pérdidas + Reversiones` (ADR 0069). */
+  netoVesCentimos: number;
+}
+
+/** El resumen de percepción del IGTF: lo que se declara y lo que cuadra en el arqueo físico. */
+export interface IgtfSummary {
+  /** Base imponible en divisas percibida por la clínica (lo que declara al SENIAT). */
+  baseDivisasCentsUsd: number;
+  /** IGTF causado, en las dos monedas. */
+  igtfCentsUsd: number;
+  igtfVesCentimos: number;
+  /** Arqueo: lo que entró a **Caja Divisas** (percepción en USD). */
+  igtfCajaDivisasCentsUsd: number;
+  /** Arqueo: lo que entró a **Banco/Caja Bs.** (percepción en bolívares). */
+  igtfCajaBsVesCentimos: number;
+}
+
 /**
  * El nombre del archivo: `libro-de-ventas-<desde>_<hasta>.csv`. Se limpia todo lo que no sea
  * `[0-9A-Za-z._-]` porque el valor viaja a una cabecera HTTP (`content-disposition`): comillas o
  * saltos de línea ahí son una inyección de cabeceras.
  */
-export const bookFileName = (tipo: 'ventas' | 'igtf', query: BookQuery): string => {
+export const bookFileName = (tipo: 'ventas' | 'igtf' | 'cambiario', query: BookQuery): string => {
   const parte = (valor: string | undefined, porDefecto: string): string => {
     if (valor === undefined || valor === '') return porDefecto;
     const limpio = valor.replace(/[^0-9A-Za-z._-]/g, '-');

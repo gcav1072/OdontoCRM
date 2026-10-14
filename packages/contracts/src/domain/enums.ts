@@ -203,6 +203,22 @@ export type PrescriptionStatus = (typeof PRESCRIPTION_STATUSES)[number];
 export const INVOICE_STATUSES = ['borrador', 'emitida', 'parcial', 'pagada', 'anulada'] as const;
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
+/**
+ * En qué moneda entregó el paciente el IGTF que percibe la clínica (ADR 0069): `USD` entra con la
+ * base a Caja Divisas; `VES` (Pago Móvil, punto) entra a Banco/Caja Bolívares a la tasa de la Fecha
+ * Valor. Usa los mismos valores que `CURRENCIES`, para que un cobro no hable dos idiomas.
+ */
+export const IGTF_COLLECTED_CURRENCIES = ['USD', 'VES'] as const;
+export type IgtfCollectedCurrency = (typeof IGTF_COLLECTED_CURRENCIES)[number];
+
+/**
+ * El doble escenario de la Nota de Crédito (ADR 0069): `ADMINISTRATIVE` es una anulación
+ * administrativa o refacturación **sin devolución de dinero** (el diferencial cambiario realizado se
+ * conserva); `REFUND` es un reembolso real (el diferencial se reversa).
+ */
+export const CREDIT_NOTE_CANCELLATION_TYPES = ['ADMINISTRATIVE', 'REFUND'] as const;
+export type CreditNoteCancellationType = (typeof CREDIT_NOTE_CANCELLATION_TYPES)[number];
+
 export const NOTIFICATION_STATUSES = [
   'queued',
   'sending',
