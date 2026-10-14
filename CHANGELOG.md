@@ -4,6 +4,32 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — El instalador ya pasa de la pieza 3/4 en una máquina limpia · 2026-10-14
+
+La pieza 3 se detenía en su primer paso con «`C:\OdontoCRM` no está vacío y no es un clon de git», y
+la carpeta estaba «llena» precisamente porque **la había llenado el propio instalador**: en Windows
+los datos, los logs y los respaldos viven dentro de la carpeta del código (`C:\OdontoCRM\data`,
+`…\logs`, `…\backups`) y la pieza 1 los crea antes de que la pieza 3 clone. En Fedora ese choque no
+existe —código en `/opt/odontocrm`, datos en `/var/lib/odontocrm`—, así que el espejo de Windows
+heredó una comprobación que allí era inofensiva y aquí hacía **imposible terminar la instalación**.
+
+Al destrabar la comprobación apareció el segundo problema, que era peor: la copia del código hacía
+`Remove-Item -Recurse -Force` sobre la carpeta de destino para poner el clon en su lugar, así que
+habría borrado el almacén (radiografías y PDFs), los logs y los respaldos de una instalación en
+marcha, además de los permisos que la pieza 1 deja en las carpetas de datos. Ahora el clon se copia
+**encima** con `robocopy /E` —que no borra lo que no está en el origen— y las carpetas del
+instalador se conservan; y si en la carpeta hay algo que **no** puso el instalador, se dice cuál y no
+se toca nada.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `comun.ps1` | `Get-CarpetasPropiasDelCodigo`: los nombres de primer nivel que el instalador ya creó dentro del código (derivados de las rutas configuradas, no escritos a mano) |
+| `30-desplegar.ps1` | La guardia del paso 1/10 ignora esas carpetas y, si hay algo ajeno, lo **lista** en vez de hablar de «algo dentro»; el clon se copia con `robocopy /E` en vez de borrar el destino |
+| `.gitignore` | `/data/` y `/backups/`: el clon del servidor no ensucia `git status` ni sube datos clínicos en un `git add -A` |
+
+> **Sin migración.** Es infraestructura de instalación: no toca el código desplegado, ni las bases,
+> ni la SPA.
+
 ## [Instalador] — En Windows, PostgreSQL ya no deja la instalación a medias · 2026-10-14
 
 En una PC **sin PostgreSQL**, el instalador de Windows se detenía en la pieza 2/4 con «falta el

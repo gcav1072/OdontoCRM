@@ -180,6 +180,12 @@ pide cada vez y solo vive en la memoria del instalador.
 Los servicios corren como **`NT AUTHORITY\LocalService`** (PM2 y Caddy) y se conceden permisos
 **por SID**, no por nombre, porque en un Windows en español la cuenta se llama «SERVICIO LOCAL».
 
+> **El código y los datos comparten carpeta.** El clon del repositorio vive en `C:\OdontoCRM`,
+> junto a `data`, `logs` y `backups` (en Fedora son árboles distintos: `/opt/odontocrm` y
+> `/var/lib/odontocrm`). Por eso el instalador **no** exige que esa carpeta esté vacía —la llena él
+> mismo en la pieza 1—, clona conservando esas carpetas y `.gitignore` las ignora, para que
+> `git status` en el servidor salga limpio y un `git add -A` no suba datos clínicos.
+
 ## 7. El certificado en los equipos
 
 El TLS es **interno**: el navegador avisa la primera vez hasta que se instala la CA en cada
@@ -271,6 +277,7 @@ completo en una máquina nueva o tras un fallo, sigue
 | PM2 no ve los procesos / `pm2 list` sale vacío | PM2 corre como `LocalService`: habla con él desde una consola de **Administrador**. |
 | `HTTP 502` desde fuera pero `https://127.0.0.1` va bien | El firewall o el gateway: `Get-NetFirewallRule -DisplayName 'OdontoCRM Web (HTTPS)'`, y `pm2 status`. |
 | Los PDF (récipe, factura, reportes) devuelven 503 | Falta Chromium: `.\40-verificar.ps1` lo señala; repite la pieza 3 (`30-desplegar.ps1`). |
+| `C:\OdontoCRM` tiene cosas que no puso el instalador | El instalador se niega a clonar donde hay algo ajeno y te dice **qué** encontró. Muévelo aparte (`Rename-Item C:\OdontoCRM C:\OdontoCRM.viejo`) y repite. Las carpetas `data`, `logs` y `backups` **no** cuentan: son suyas y se conservan |
 | `password authentication failed` | Vuelve a aprovisionar (`20-aprovisionar.ps1`): converge la base a lo que dicen los archivos. |
 | El puerto 443 no responde desde otro aparato | La red de Windows debe estar en perfil **Privado**: las reglas se crean solo para ese perfil. |
 | `psql: error: … no password supplied` | Falta `C:\ProgramData\OdontoCRM\env\.pgpass` o `backup.env`: ejecuta `crear-rol-respaldo.ps1`. |
