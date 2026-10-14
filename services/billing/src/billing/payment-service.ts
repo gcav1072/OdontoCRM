@@ -1,4 +1,6 @@
 import {
+  bsPaymentBreakdown,
+  divisasPaymentBreakdown,
   findPaymentMethod,
   formatInvoiceNumber,
   formatReceiptNumber,
@@ -11,6 +13,7 @@ import {
   type BillingPayment,
   type BillingPaymentResult,
   type CollectPaymentInput,
+  type IgtfCollectedCurrency,
   type ImputationPolicy,
   type VoidPaymentInput,
 } from '@odontocrm/contracts';
@@ -23,7 +26,7 @@ import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { BillingDb } from '../db/client.js';
 import { billingSettings, invoices, payments } from '../db/schema.js';
 import { renderReceiptHtml } from '../documents/receipt-pdf.js';
-import { rateStatus } from '../rates/rate-service.js';
+import { rateForDate, rateStatus } from '../rates/rate-service.js';
 import type { ActorContext } from '../shared/context.js';
 import { auditPayload, publish } from '../shared/events.js';
 import { getInvoice } from './invoice-service.js';
@@ -75,12 +78,18 @@ interface FilaPago {
   amountCentsUsd: number;
   exchangeRateMicros: number;
   imputationPolicy: string;
+  effectiveDate: string;
+  historicalVesCentimos: number;
+  exchangeDiffVesCentimos: number;
   fxDifferenceCentsUsd: number;
   appliesIgtf: boolean;
   igtfBasisPoints: number;
   igtfPerceivedBy: string | null;
   igtfAmountCentsUsd: number;
   igtfAmountVesCentimos: number;
+  igtfCollectedCurrency: string | null;
+  igtfPaymentMethod: string | null;
+  igtfPaymentReference: string | null;
   pdfSha256: string | null;
   receivedByUsername: string;
   createdAt: Date;
@@ -99,12 +108,18 @@ const aPago = (fila: FilaPago): BillingPayment => ({
   amountCentsUsd: fila.amountCentsUsd,
   exchangeRateMicros: fila.exchangeRateMicros,
   imputationPolicy: fila.imputationPolicy as ImputationPolicy,
+  effectiveDate: fila.effectiveDate,
+  historicalVesCentimos: fila.historicalVesCentimos,
+  exchangeDiffVesCentimos: fila.exchangeDiffVesCentimos,
   fxDifferenceCentsUsd: fila.fxDifferenceCentsUsd,
   appliesIgtf: fila.appliesIgtf,
   igtfBasisPoints: fila.igtfBasisPoints,
   igtfPerceivedBy: fila.igtfPerceivedBy as BillingPayment['igtfPerceivedBy'],
   igtfAmountCentsUsd: fila.igtfAmountCentsUsd,
   igtfAmountVesCentimos: fila.igtfAmountVesCentimos,
+  igtfCollectedCurrency: fila.igtfCollectedCurrency as IgtfCollectedCurrency | null,
+  igtfPaymentMethod: fila.igtfPaymentMethod,
+  igtfPaymentReference: fila.igtfPaymentReference,
   pdfSha256: fila.pdfSha256,
   receivedByUsername: fila.receivedByUsername,
   createdAt: fila.createdAt.toISOString(),
@@ -122,12 +137,18 @@ const columnasPago = {
   amountCentsUsd: payments.amountCentsUsd,
   exchangeRateMicros: payments.exchangeRateMicros,
   imputationPolicy: payments.imputationPolicy,
+  effectiveDate: payments.effectiveDate,
+  historicalVesCentimos: payments.historicalAmountVesCentimos,
+  exchangeDiffVesCentimos: payments.exchangeDiffVesCentimos,
   fxDifferenceCentsUsd: payments.fxDifferenceCentsUsd,
   appliesIgtf: payments.appliesIgtf,
   igtfBasisPoints: payments.igtfBasisPoints,
   igtfPerceivedBy: payments.igtfPerceivedBy,
   igtfAmountCentsUsd: payments.igtfAmountCentsUsd,
   igtfAmountVesCentimos: payments.igtfAmountVesCentimos,
+  igtfCollectedCurrency: payments.igtfCollectedCurrency,
+  igtfPaymentMethod: payments.igtfPaymentMethod,
+  igtfPaymentReference: payments.igtfPaymentReference,
   pdfSha256: payments.pdfSha256,
   receivedByUsername: payments.receivedByUsername,
   createdAt: payments.createdAt,
@@ -157,6 +178,55 @@ export const balanceFromPayments = async (db: BillingDb, invoiceId: string): Pro
   return Number(fila?.cobrado ?? 0);
 };
 
+/**
+ * Los acumuladores de caja de una factura (ADR 0069), solo de cobros **vigentes**: `Σ histórico`
+ * cuadra con `totalVesCentimos` del documento, `Σ diferencial` es la ganancia/pérdida cambiaria
+ * realizada y `Σ real` (= histórico + diferencial) es lo que entró a caja o banco valorado en Bs.
+ */
+export const invoicePaymentTotals = async (
+  db: BillingDb,
+  invoiceId: string,
+): Promise<{
+  totalHistoricalPaidVesCentimos: number;
+  totalActualPaidVesCentimos: number;
+  totalExchangeDiffVesCentimos: number;
+  totalIgtfCentsUsd: number;
+  totalIgtfVesCentimos: number;
+}> => {
+  const [fila] = await db
+    .select({
+      historical: sql<number>`coalesce(sum(${payments.historicalAmountVesCentimos}), 0)::bigint`,
+      diferencial: sql<number>`coalesce(sum(${payments.exchangeDiffVesCentimos}), 0)::bigint`,
+      igtfCentsUsd: sql<number>`coalesce(sum(${payments.igtfAmountCentsUsd}), 0)::bigint`,
+      igtfVes: sql<number>`coalesce(sum(${payments.igtfAmountVesCentimos}), 0)::bigint`,
+    })
+    .from(payments)
+    .where(and(eq(payments.invoiceId, invoiceId), isNull(payments.voidedAt)));
+  const historical = Number(fila?.historical ?? 0);
+  const diferencial = Number(fila?.diferencial ?? 0);
+  return {
+    totalHistoricalPaidVesCentimos: historical,
+    totalActualPaidVesCentimos: historical + diferencial,
+    totalExchangeDiffVesCentimos: diferencial,
+    totalIgtfCentsUsd: Number(fila?.igtfCentsUsd ?? 0),
+    totalIgtfVesCentimos: Number(fila?.igtfVes ?? 0),
+  };
+};
+
+/**
+ * Cuántos bolívares debe el paciente **si paga hoy**: el saldo en USD a la tasa BCV vigente. Si hoy
+ * no hay tasa publicada (o ninguna hasta hoy), se usa la **congelada de la factura**: peor es dejar
+ * la caja sin un monto que transferir.
+ */
+export const currentDebtAtTodayRate = async (
+  db: BillingDb,
+  factura: { balanceCentsUsd: number; exchangeRateMicros: number | null },
+): Promise<number> => {
+  const vigente = await rateForDate(db, rateDateInCaracas());
+  const tasa = (vigente?.rate.rateMicros ?? 0) > 0 ? (vigente?.rate.rateMicros ?? 0) : (factura.exchangeRateMicros ?? 0);
+  return tasa > 0 ? vesCentimosFromUsd(factura.balanceCentsUsd, tasa) : 0;
+};
+
 export const collectPayment = async (
   deps: PaymentDeps,
   invoiceId: string,
@@ -182,11 +252,36 @@ export const collectPayment = async (
   const politica = (ajustes?.imputationPolicy ?? 'tasa_del_pago') as ImputationPolicy;
   const esSpe = ajustes?.isSpecialTaxpayer ?? false;
 
-  // La tasa **del pago**: es la que manda para imputar (Convenio Cambiario Art. 8.a).
-  const tasaDelDia = await rateStatus(deps.db, rateDateInCaracas());
+  /**
+   * La **Fecha Valor** (ADR 0069): el día del comprobante bancario, por defecto el de Caracas al
+   * registrar. Nunca futura y nunca anterior a la emisión de la factura: la tasa que se congela es la
+   * vigente para **esta** fecha —la del viernes en un pago móvil del domingo, que es lo que dice el
+   * comprobante—.
+   */
+  const hoy = rateDateInCaracas();
+  const effectiveDate = input.effectiveDate ?? hoy;
+  if (effectiveDate > hoy) {
+    throw new ConflictError('La fecha valor no puede ser futura', {
+      extensions: { effectiveDate, today: hoy },
+    });
+  }
+  const [emision] = await deps.db
+    .select({ issuedAt: invoices.issuedAt })
+    .from(invoices)
+    .where(eq(invoices.id, invoiceId))
+    .limit(1);
+  const diaEmision = emision?.issuedAt == null ? null : rateDateInCaracas(emision.issuedAt);
+  if (diaEmision !== null && effectiveDate < diaEmision) {
+    throw new ConflictError('La fecha valor no puede ser anterior a la emisión de la factura', {
+      extensions: { effectiveDate, issueDate: diaEmision },
+    });
+  }
+
+  // La tasa **del pago**: la vigente para la Fecha Valor (Convenio Cambiario Art. 8.a).
+  const tasaDelDia = await rateStatus(deps.db, effectiveDate);
   if (tasaDelDia.current === null) {
     throw new ConflictError('No hay ninguna tasa publicada: fíjala antes de cobrar', {
-      extensions: { invoiceId },
+      extensions: { invoiceId, effectiveDate },
     });
   }
   if (tasaDelDia.needsConfirmation && !input.confirmRate) {
@@ -200,38 +295,84 @@ export const collectPayment = async (
   const moneda: 'USD' | 'VES' = findPaymentMethod(input.method)?.currency ?? 'VES';
   const pendiente = factura.balanceCentsUsd;
   const tasaFactura = factura.exchangeRateMicros ?? tasaDelDia.current.rateMicros;
+  /**
+   * La tasa que valoriza este cobro: la de la Fecha Valor, salvo con la política
+   * `tasa_de_la_factura`, en la que el paciente paga exactamente los Bs impresos.
+   */
+  const tasaPago = politica === 'tasa_del_pago' ? tasaDelDia.current.rateMicros : tasaFactura;
 
   /**
-   * Lo que se imputa a la deuda, en céntimos de USD:
-   *  - en divisas, lo entregado es lo imputado;
-   *  - en bolívares, depende de la política: a la tasa del pago (lo que describe el Art. 8.a) o a la
-   *    tasa impresa en la factura (el paciente paga exactamente los Bs del papel).
+   * La descomposición del cobro (ADR 0069), en un solo sitio del contrato: lo imputado, lo histórico
+   * (a la tasa de emisión) y el diferencial cambiario. En bolívares manda la tolerancia de ±5 céntimos
+   * de USD —un Pago Móvil en bolívares enteros deja residuos, y absorberlos cierra la deuda al 100 %
+   * en vez de dejar un saldo zombi—; en divisas, sobrepago es sobrepago.
    */
-  const amountCentsUsd =
+  const desglose =
     moneda === 'USD'
-      ? input.tenderedAmount
-      : usdCentsFromVes(
-          input.tenderedAmount,
-          politica === 'tasa_del_pago' ? tasaDelDia.current.rateMicros : tasaFactura,
-        );
-
-  if (amountCentsUsd > pendiente) {
+      ? divisasPaymentBreakdown({
+          tenderedCentsUsd: input.tenderedAmount,
+          balanceCentsUsd: pendiente,
+          rateEmissionMicros: tasaFactura,
+        })
+      : bsPaymentBreakdown({
+          tenderedVesCentimos: input.tenderedAmount,
+          balanceCentsUsd: pendiente,
+          rateEmissionMicros: tasaFactura,
+          ratePaymentMicros: tasaPago,
+        });
+  if (desglose === null) {
     throw new ConflictError('El monto supera el saldo de la factura', {
-      extensions: { balanceCentsUsd: pendiente, amountCentsUsd },
+      extensions: { balanceCentsUsd: pendiente, tenderedAmount: input.tenderedAmount },
     });
   }
+  const amountCentsUsd = desglose.amountCentsUsd;
+  if (amountCentsUsd <= 0) {
+    throw new ConflictError('El monto entregado no alcanza un céntimo de dólar', {
+      extensions: { tenderedAmount: input.tenderedAmount },
+    });
+  }
+  const historicalVesCentimos = desglose.historicalVesCentimos;
+  const exchangeDiffVesCentimos = desglose.exchangeDiffVesCentimos;
 
-  // El diferencial es informativo: lo que el paciente pagó frente a lo que decía el papel.
-  const enBsImpresos = vesCentimosFromUsd(amountCentsUsd, tasaFactura);
-  const diferenciaBs = input.tenderedAmount - enBsImpresos;
+  // El diferencial en USD es informativo (lo que el paciente pagó frente a lo impreso en el papel).
+  const diferenciaBs = moneda === 'USD' ? 0 : input.tenderedAmount - historicalVesCentimos;
   const fxDifferenceCentsUsd =
     moneda === 'USD' || diferenciaBs === 0
       ? 0
       : Math.sign(diferenciaBs) * usdCentsFromVes(Math.abs(diferenciaBs), tasaFactura);
 
-  // El IGTF lo decide el medio y la calificación de la clínica (hoy: no SPE ⇒ no se percibe nada).
-  const decision = igtfDecision({ method: input.method, isSpecialTaxpayer: esSpe, rule: null });
+  /**
+   * El IGTF lo decide el medio y la calificación de la clínica (ADR 0045), con la alícuota de la
+   * configuración (ADR 0069). Cuando lo **percibe la clínica**, el cajero declara en qué moneda lo
+   * entregó el paciente: en divisas entra con la base a Caja Divisas; en bolívares, convertido a la
+   * tasa de la Fecha Valor, entra a Banco/Caja Bs. con su comprobante.
+   */
+  const decision = igtfDecision({
+    method: input.method,
+    isSpecialTaxpayer: esSpe,
+    rule: null,
+    basisPoints: ajustes?.igtfRateBp,
+  });
+  const loPercibeLaClinica = decision.applies && decision.perceivedBy === 'clinica';
+  if (loPercibeLaClinica && input.igtfCollectedCurrency === undefined) {
+    throw new ConflictError(
+      'Declara en qué moneda entregó el paciente el IGTF: en divisas (Caja Divisas) o en bolívares (Banco/Caja Bs.)',
+      { extensions: { invoiceId, igtfBasisPoints: decision.basisPoints } },
+    );
+  }
+  if (!loPercibeLaClinica && input.igtfCollectedCurrency !== undefined) {
+    throw new ConflictError('Este cobro no tiene IGTF que percibir en caja: quita la moneda declarada', {
+      extensions: { invoiceId, perceivedBy: decision.perceivedBy },
+    });
+  }
   const igtfAmountCentsUsd = igtfToCollectCents(decision, amountCentsUsd);
+  const igtfCollectedCurrency: IgtfCollectedCurrency | null = loPercibeLaClinica
+    ? (input.igtfCollectedCurrency ?? null)
+    : null;
+  const igtfPaymentMethod =
+    igtfCollectedCurrency === 'VES' ? (input.igtfPaymentMethod ?? null) : null;
+  const igtfPaymentReference =
+    igtfCollectedCurrency === 'VES' ? (input.igtfPaymentReference ?? null) : null;
 
   const receiptNumber = await nextReceiptNumber(deps.db);
   const receiptLabel = formatReceiptNumber(receiptNumber);
@@ -262,6 +403,10 @@ export const collectPayment = async (
     tenderedCurrency: moneda,
     amountCentsUsd,
     rateMicros: tasaDelDia.current.rateMicros,
+    rateEmissionMicros: tasaFactura,
+    effectiveDate,
+    historicalVesCentimos,
+    exchangeDiffVesCentimos,
     imputationPolicy: politica,
     fxDifferenceCentsUsd,
     igtf: {
@@ -270,6 +415,9 @@ export const collectPayment = async (
       basisPoints: decision.basisPoints,
       amountCentsUsd: igtfAmountCentsUsd,
       amountVesCentimos: vesCentimosFromUsd(igtfAmountCentsUsd, tasaDelDia.current.rateMicros),
+      collectedCurrency: igtfCollectedCurrency,
+      paymentMethod: igtfPaymentMethod,
+      paymentReference: igtfPaymentReference,
     },
     totalCentsUsd: factura.totalCentsUsd,
     balanceCentsUsd: nuevoSaldo,
@@ -295,6 +443,9 @@ export const collectPayment = async (
           amountCentsUsd,
           exchangeRateMicros: tasaDelDia.current?.rateMicros ?? tasaFactura,
           imputationPolicy: politica,
+          effectiveDate,
+          historicalAmountVesCentimos: historicalVesCentimos,
+          exchangeDiffVesCentimos,
           fxDifferenceCentsUsd,
           appliesIgtf: decision.applies,
           igtfBasisPoints: decision.applies ? decision.basisPoints : 0,
@@ -304,6 +455,9 @@ export const collectPayment = async (
             igtfAmountCentsUsd,
             tasaDelDia.current?.rateMicros ?? tasaFactura,
           ),
+          igtfCollectedCurrency,
+          igtfPaymentMethod,
+          igtfPaymentReference,
           pdfPath: archivo.path,
           pdfSha256: archivo.sha256,
           receivedByUserId: actor.actorId ?? '00000000-0000-0000-0000-000000000000',
@@ -343,7 +497,16 @@ export const collectPayment = async (
             tenderedAmount: input.tenderedAmount,
             tenderedCurrency: moneda,
             rateMicros: tasaDelDia.current?.rateMicros ?? tasaFactura,
+            effectiveDate,
+            historicalVesCentimos,
+            exchangeDiffVesCentimos,
             igtf: decision.applies ? decision.basisPoints : 0,
+            igtfAmountCentsUsd,
+            igtfAmountVesCentimos: vesCentimosFromUsd(
+              igtfAmountCentsUsd,
+              tasaDelDia.current?.rateMicros ?? tasaFactura,
+            ),
+            igtfCollectedCurrency,
             balanceCentsUsd: nuevoSaldo,
           },
         },

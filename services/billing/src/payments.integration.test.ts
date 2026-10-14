@@ -166,7 +166,14 @@ describeWithDatabase('cobrar', () => {
     const resultado = await collectPayment(
       deps(),
       invoiceId,
-      { method: 'pago_movil', tenderedAmount: enBs, reference: 'op-12345', confirmRate: false },
+      {
+        method: 'pago_movil',
+        tenderedAmount: enBs,
+        reference: 'op-12345',
+        igtfPaymentMethod: null,
+        igtfPaymentReference: null,
+        confirmRate: false,
+      },
       actor,
     );
     idsPagos.push(resultado.payment.id);
@@ -176,6 +183,10 @@ describeWithDatabase('cobrar', () => {
       amountCentsUsd: TOTAL,
       exchangeRateMicros: TASA,
       imputationPolicy: 'tasa_del_pago',
+      // Fecha Valor = hoy y la descomposición cuadra: mismo día, sin diferencial (ADR 0069).
+      effectiveDate: HOY,
+      historicalVesCentimos: enBs,
+      exchangeDiffVesCentimos: 0,
       // El medio no causa IGTF y la clínica no es SPE: no se percibe nada.
       appliesIgtf: false,
       igtfPerceivedBy: null,
@@ -198,13 +209,22 @@ describeWithDatabase('cobrar', () => {
     const resultado = await collectPayment(
       deps(),
       invoiceId,
-      { method: 'cash_usd', tenderedAmount: 3000, reference: null, confirmRate: false },
+      {
+        method: 'cash_usd',
+        tenderedAmount: 3000,
+        reference: null,
+        igtfPaymentMethod: null,
+        igtfPaymentReference: null,
+        confirmRate: false,
+      },
       actor,
     );
     idsPagos.push(resultado.payment.id);
 
     expect(resultado.payment.tenderedCurrency).toBe('USD');
     expect(resultado.payment.amountCentsUsd).toBe(3000);
+    // En divisas no hay diferencial cambiario: la moneda funcional es el USD (ADR 0069).
+    expect(resultado.payment.exchangeDiffVesCentimos).toBe(0);
     expect(resultado.invoice).toMatchObject({ status: 'parcial', balanceCentsUsd: TOTAL - 3000 });
   });
 
@@ -219,6 +239,8 @@ describeWithDatabase('cobrar', () => {
           // En bolívares: hay que entregar **más** de lo que vale la deuda (1.000,00 Bs. de más).
           tenderedAmount: vesCentimosFromUsd(TOTAL, TASA) + 100_000,
           reference: null,
+          igtfPaymentMethod: null,
+          igtfPaymentReference: null,
           confirmRate: false,
         },
         actor,
@@ -236,19 +258,34 @@ describeWithDatabase('cobrar', () => {
       const resultado = await collectPayment(
         deps(),
         invoiceId,
-        { method: 'cash_usd', tenderedAmount: 3000, reference: 'zelle-1', confirmRate: false },
+        {
+          method: 'cash_usd',
+          tenderedAmount: 3000,
+          reference: 'zelle-1',
+          // El IGTF lo percibe la clínica y el paciente lo entrega en bolívares (Pago Móvil).
+          igtfCollectedCurrency: 'VES',
+          igtfPaymentMethod: 'pago_movil',
+          igtfPaymentReference: 'pm-998877',
+          confirmRate: false,
+        },
         actor,
       );
       idsPagos.push(resultado.payment.id);
 
-      // El tributo se **registra** pero no engorda la deuda: es dinero de terceros.
+      // El tributo se **registra** pero no engorda la deuda: es dinero de terceros. Y su destino
+      // queda declarado: en bolívares, a Banco/Caja Bs. (ADR 0069).
       expect(resultado.payment).toMatchObject({
         appliesIgtf: true,
         igtfBasisPoints: 300,
         igtfPerceivedBy: 'clinica',
         igtfAmountCentsUsd: 90,
+        igtfCollectedCurrency: 'VES',
+        igtfPaymentMethod: 'pago_movil',
+        igtfPaymentReference: 'pm-998877',
         amountCentsUsd: 3000,
       });
+      // 0,90 USD a la tasa de la fecha valor.
+      expect(resultado.payment.igtfAmountVesCentimos).toBe(vesCentimosFromUsd(90, TASA));
     } finally {
       await handle.db
         .update(billingSettings)
@@ -257,12 +294,76 @@ describeWithDatabase('cobrar', () => {
     }
   });
 
+  it('sin declarar en qué moneda se entregó el IGTF, el cobro no entra', async () => {
+    await handle.db
+      .update(billingSettings)
+      .set({ isSpecialTaxpayer: true })
+      .where(eq(billingSettings.id, 1));
+    try {
+      const invoiceId = await facturaEmitida(900_006);
+      await expect(
+        collectPayment(
+          deps(),
+          invoiceId,
+          {
+            method: 'cash_usd',
+            tenderedAmount: 3000,
+            reference: null,
+            igtfPaymentMethod: null,
+            igtfPaymentReference: null,
+            confirmRate: false,
+          },
+          actor,
+        ),
+      ).rejects.toThrow(/en qué moneda/);
+    } finally {
+      await handle.db
+        .update(billingSettings)
+        .set({ isSpecialTaxpayer: false })
+        .where(eq(billingSettings.id, 1));
+    }
+  });
+
+  it('la tolerancia de ±0,05 USD cierra la deuda y el residuo va al diferencial', async () => {
+    const invoiceId = await facturaEmitida(900_007);
+    // Faltan 1,00 Bs. del exacto (≈ 0,27 USD): dentro de la tolerancia, la deuda cierra igual y el
+    // residuo se absorbe en el diferencial cambiario (pérdida de −1,00 Bs.), sin saldo zombi.
+    const resultado = await collectPayment(
+      deps(),
+      invoiceId,
+      {
+        method: 'pago_movil',
+        tenderedAmount: vesCentimosFromUsd(TOTAL, TASA) - 100,
+        reference: 'pm-redondo',
+        igtfPaymentMethod: null,
+        igtfPaymentReference: null,
+        confirmRate: false,
+      },
+      actor,
+    );
+    idsPagos.push(resultado.payment.id);
+
+    expect(resultado.payment).toMatchObject({
+      amountCentsUsd: TOTAL,
+      historicalVesCentimos: vesCentimosFromUsd(TOTAL, TASA),
+      exchangeDiffVesCentimos: -100,
+    });
+    expect(resultado.invoice).toMatchObject({ status: 'pagada', balanceCentsUsd: 0 });
+  });
+
   it('anular un cobro devuelve el saldo y retrocede el estado', async () => {
     const invoiceId = await facturaEmitida(900_005);
     const cobro = await collectPayment(
       deps(),
       invoiceId,
-      { method: 'cash_usd', tenderedAmount: TOTAL, reference: null, confirmRate: false },
+      {
+        method: 'cash_usd',
+        tenderedAmount: TOTAL,
+        reference: null,
+        igtfPaymentMethod: null,
+        igtfPaymentReference: null,
+        confirmRate: false,
+      },
       actor,
     );
     idsPagos.push(cobro.payment.id);

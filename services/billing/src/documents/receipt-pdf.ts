@@ -41,7 +41,16 @@ export interface ReceiptPdfInput {
   tenderedAmount: number;
   tenderedCurrency: 'USD' | 'VES';
   amountCentsUsd: number;
+  /** La tasa de la **Fecha Valor** del cobro ($T_{\text{pago}}$). */
   rateMicros: number;
+  /** La tasa **congelada de la factura** ($T_{\text{emisión}}$): la del Libro de Ventas. */
+  rateEmissionMicros: number;
+  /** Fecha Valor: el día del comprobante bancario al que aplica la tasa (ADR 0069). */
+  effectiveDate: string;
+  /** Imputación histórica a la tasa de emisión: lo que extingue la cuenta nominal. */
+  historicalVesCentimos: number;
+  /** Diferencial cambiario realizado (positivo = ganancia; negativo = pérdida). */
+  exchangeDiffVesCentimos: number;
   imputationPolicy: string;
   fxDifferenceCentsUsd: number;
   igtf: {
@@ -50,6 +59,10 @@ export interface ReceiptPdfInput {
     basisPoints: number;
     amountCentsUsd: number;
     amountVesCentimos: number;
+    /** En qué moneda lo entregó el paciente (ADR 0069); `null` si la clínica no lo percibe. */
+    collectedCurrency: 'USD' | 'VES' | null;
+    paymentMethod: string | null;
+    paymentReference: string | null;
   };
   totalCentsUsd: number;
   balanceCentsUsd: number;
@@ -87,8 +100,13 @@ export const renderReceiptHtml = async (input: ReceiptPdfInput): Promise<string>
     input.brand?.letterhead ?? BRAND.letterhead,
     { subtitle: clinic.legalName },
   );
-  const enBs = (cents: number): string =>
-    dinero(Math.round((cents * input.rateMicros) / 1_000_000));
+  /** La Fecha Valor es un día (`AAAA-MM-DD`): se imprime en el papel como cualquier fecha fiscal. */
+  const fechaValor = fechaFiscal(new Date(`${input.effectiveDate}T12:00:00-04:00`));
+  /** El desglose del diferencial solo se explica en cobros en bolívares (ADR 0069, Escuela A). */
+  const conDesglose =
+    input.tenderedCurrency === 'VES' &&
+    input.exchangeDiffVesCentimos !== 0 &&
+    input.imputationPolicy === 'tasa_del_pago';
 
   return `<!doctype html>
 <html lang="es">
@@ -111,6 +129,8 @@ export const renderReceiptHtml = async (input: ReceiptPdfInput): Promise<string>
   td.etiqueta { color: var(--brand-ink-muted); width: 55mm; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .saldo td { border-top: 1pt solid var(--brand-ink); font-weight: 700; font-size: 12pt; }
+  .desglose { margin-top: 2mm; }
+  .desglose td { font-size: 9pt; }
   .igtf { margin-top: 4mm; border: .6pt dashed var(--brand-ink-subtle); padding: 2mm; font-size: 8.5pt; }
   .leyendas { margin-top: 5mm; font-size: 8pt; color: var(--brand-ink-strong); }
   .pie { margin-top: 8mm; font-size: 8pt; color: var(--brand-ink-muted); }
@@ -133,9 +153,11 @@ export const renderReceiptHtml = async (input: ReceiptPdfInput): Promise<string>
     <tr><td class="etiqueta">Paciente</td><td>${escapar(input.patient.name)}</td></tr>
     <tr><td class="etiqueta">Documento</td><td>${escapar(`${input.patient.docType}-${input.patient.docNumber}`)}</td></tr>
     <tr><td class="etiqueta">Medio de pago</td><td>${escapar(paymentMethodLabel(input.method))}</td></tr>
+    <tr><td class="etiqueta">Fecha valor del pago</td><td>${fechaValor}</td></tr>
     <tr><td class="etiqueta">Monto entregado</td><td class="num">${input.tenderedCurrency === 'USD' ? 'US$' : 'Bs.'} ${dinero(input.tenderedAmount)}</td></tr>
-    <tr><td class="etiqueta">Tasa aplicada</td><td class="num">${escapar(formatRateMicros(input.rateMicros))} Bs./USD</td></tr>
-    <tr><td class="etiqueta">Imputado a la deuda</td><td class="num">US$ ${dinero(input.amountCentsUsd)} · Bs. ${enBs(input.amountCentsUsd)}</td></tr>
+    <tr><td class="etiqueta">Tasa BCV aplicada (fecha valor)</td><td class="num">${escapar(formatRateMicros(input.rateMicros))} Bs./USD</td></tr>
+    <tr><td class="etiqueta">Tasa de emisión de la factura</td><td class="num">${escapar(formatRateMicros(input.rateEmissionMicros))} Bs./USD</td></tr>
+    <tr><td class="etiqueta">Imputado a la deuda</td><td class="num">US$ ${dinero(input.amountCentsUsd)} · Bs. ${dinero(input.historicalVesCentimos)}</td></tr>
     ${
       input.fxDifferenceCentsUsd === 0
         ? ''
@@ -146,11 +168,29 @@ export const renderReceiptHtml = async (input: ReceiptPdfInput): Promise<string>
   </table>
 
   ${
+    conDesglose
+      ? `<table class="desglose">
+    <tr><td class="etiqueta">Imputación a la factura (tasa de emisión ${escapar(formatRateMicros(input.rateEmissionMicros))})</td><td class="num">Bs. ${dinero(input.historicalVesCentimos)}</td></tr>
+    <tr><td class="etiqueta">Ajuste por diferencial cambiario (tasa ${escapar(formatRateMicros(input.rateMicros))}) — ${input.exchangeDiffVesCentimos > 0 ? 'ganancia cambiaria' : 'pérdida cambiaria'}</td><td class="num">${input.exchangeDiffVesCentimos > 0 ? '+' : '−'} Bs. ${dinero(Math.abs(input.exchangeDiffVesCentimos))}</td></tr>
+    <tr class="saldo"><td class="etiqueta">Total recibido en caja/banco</td><td class="num">Bs. ${dinero(input.tenderedAmount)}</td></tr>
+  </table>`
+      : ''
+  }
+
+  ${
     input.igtf.applies
-      ? `<div class="igtf">IGTF ${porcentaje(input.igtf.basisPoints)} %: ${
+      ? `<div class="igtf">${
           input.igtf.perceivedBy === 'banco'
-            ? 'lo debita el banco (no se cobra en caja)'
-            : `percibido por la clínica: US$ ${dinero(input.igtf.amountCentsUsd)} · Bs. ${dinero(input.igtf.amountVesCentimos)}`
+            ? `IGTF ${porcentaje(input.igtf.basisPoints)} % sobre la base en divisas: lo debita el banco (no se cobra en caja).`
+            : `Base imponible en divisas: US$ ${dinero(input.amountCentsUsd)} · IGTF (${porcentaje(input.igtf.basisPoints)} %): US$ ${dinero(input.igtf.amountCentsUsd)} (Bs. ${dinero(input.igtf.amountVesCentimos)}) — percibido en: ${
+                input.igtf.collectedCurrency === 'USD'
+                  ? 'divisas (Caja Divisas)'
+                  : `bolívares (Banco/Caja Bs.${
+                      input.igtf.paymentReference === null
+                        ? ''
+                        : ` · ${escapar(input.igtf.paymentMethod ?? 'pago')} ${escapar(input.igtf.paymentReference)}`
+                    })`
+              }. No forma parte del monto de la factura: es dinero de terceros que se entera.`
         }</div>`
       : '<div class="igtf">IGTF: no percibido (la clínica no está calificada como Sujeto Pasivo Especial). No forma parte de este cobro.</div>'
   }

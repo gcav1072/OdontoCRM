@@ -160,14 +160,26 @@ describeWithDatabase('el historial de la caja y la reimpresión', () => {
     const cobro = await collectPayment(
       deps(),
       emitida,
-      { method: 'cash_ves', tenderedAmount: 73_084, reference: null, confirmRate: false },
+      {
+        method: 'cash_ves',
+        tenderedAmount: 73_084,
+        reference: null,
+        igtfPaymentMethod: null,
+        igtfPaymentReference: null,
+        confirmRate: false,
+      },
       actor,
     );
     idPago = cobro.payment.id;
 
     const anulada = await borradorDe();
     await issueInvoice(deps(), anulada, actor);
-    await voidInvoice(deps(), anulada, { reason: 'La paciente cambió de tratamiento' }, actor);
+    await voidInvoice(
+      deps(),
+      anulada,
+      { reason: 'La paciente cambió de tratamiento', cancellationType: 'ADMINISTRATIVE' },
+      actor,
+    );
     idFacturaAnulada = anulada;
   });
 
