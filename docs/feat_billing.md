@@ -1746,3 +1746,23 @@ que habrían quedado dormidos.
 **Configuración que deja sembrada el arranque** (además de la del Anexo A): catálogo con los 28 servicios
 exentos + bienes de ejemplo al 16 % · libro de compras **no** implementado · `CLINIC_*` con genéricos
 `CAMBIAR_*` en el `.env` común · `billing:void` extendido a la secretaría.
+
+---
+
+## Adendo (fase 12): diferencial cambiario por Fecha Valor e IGTF configurable
+
+Este plan se ejecutó tal cual en la Fase 11. La **Fase 12** lo **amplía** sin contradecirlo
+([ADR 0069](adr/0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md)):
+
+- el cobro declara su **Fecha Valor** (`effective_date`) y se valora con la tasa vigente para esa
+  fecha (la del viernes en un pago de fin de semana);
+- la descomposición **tripartita** (recibido / histórico a la tasa de emisión / diferencial cambiario)
+  vive en el contrato (`bsPaymentBreakdown`) y en cada cobro;
+- la tolerancia de **±0,05 USD** absorbe el residuo de un Pago Móvil redondeado y salda el 100 %;
+- el IGTF del SPE tiene **alícuota de configuración** y **destino declarado** (Caja Divisas vs
+  Banco/Caja Bs.), con reporte de percepción y arqueo;
+- las Notas de Crédito distinguen `ADMINISTRATIVE` (conserva el diferencial) de `REFUND` (lo reversa).
+
+Los nombres de la sección 3 de este documento son los propuestos entonces; los **vigentes** son los
+del contrato real (p. ej. `CreatePaymentSchema` → `collectPaymentSchema`, `PaymentSchema` →
+`billingPaymentSchema`, y la moneda se escribe `VES`, no `BS`).

@@ -4,6 +4,31 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Fase 12] — Diferencial cambiario por Fecha Valor e IGTF configurable (ADR 0069) · 2026-10-14
+
+El cobro en bolívares se descompone en tres montos —lo **recibido**, lo **imputado** a la tasa de
+emisión y el **diferencial cambiario**— y la tasa del cobro es la de su **Fecha Valor** (la del
+comprobante bancario: un pago móvil del **domingo** se valora con la tasa del **viernes**). Con eso se
+cierran tres huecos de golpe: el recibo explica por qué los Bs. que entraron no son los impresos, el
+residuo de un Pago Móvil redondeado al bolívar entero se **absorbe** (±0,05 USD) y salda el 100 % de la
+deuda en vez de dejar un saldo zombi, y el IGTF del Sujeto Pasivo Especial se percibe con **destino
+declarado** (Caja Divisas o Banco/Caja Bs., con la referencia del Pago Móvil). Las Notas de Crédito
+distinguen la anulación **administrativa** (sin devolución: conserva el diferencial ya realizado) del
+**reembolso real** (lo reversa), y la nota fiscal sale igual en los dos casos: siempre a la tasa
+original de la factura. El diferencial no se factura con Nota de Débito (Escuela A): se rinde con el
+**Estado de Ganancias y Pérdidas cambiarias** y el **Reporte de Percepción IGTF** con su arqueo.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `packages/contracts` | `bsPaymentBreakdown`/`divisasPaymentBreakdown` (tolerancia ±5¢, `absorbsRounding`), `igtfDecision` con alícuota de configuración, `effectiveDate` e `igtf*` en el cobro, acumuladores en el detalle de la factura, `cancellationType` en la anulación, libros cambiario y de IGTF |
+| `services/billing` | Migración `0005` (con backfill de los cobros previos a diferencial cero), Fecha Valor y descomposición en `payment-service`, doble escenario en `credit-note-service`, recibo con desglose y bloque fiscal, `settings-service` + `GET/PATCH /settings` (solo el `admin` toca), resúmenes de libros |
+| `apps/web` | `CobroDialog`: Fecha Valor, autocompletar del saldo, tarjeta de previsualización contable, badge de redondeo y selector de destino del IGTF; `DocumentoDetalle`: deuda a doble tasa y columnas por cobro; `AnularDialog`: tipo de anulación; `TributarioSection` en el panel |
+| `packages/testing` + `tools` | Fábricas con los campos nuevos, seed/verificación al día y `smoke-billing` reproduce el caso **CP-01** exacto (US$ 60 a 1.000 → 50.000 Bs. → tasa 1.020 → 10.200 Bs. = +200,00 Bs.) |
+
+> **Migración.** `npm run db:migrate` (billing): la `0005` añade las columnas y backfillea los cobros
+> previos (Fecha Valor = día del registro en Caracas; histórico = lo recibido; diferencial = 0). Para
+> generar migraciones nuevas hay que reconstruir contratos antes: `npm run build -w @odontocrm/contracts`.
+
 ## [Instalador] — El proxy arranca: el binario no lo podía ejecutar el servicio · 2026-10-14
 
 El servicio `caddy` quedaba en `Stopped`, así que desde la LAN no se entraba: la última parte del
