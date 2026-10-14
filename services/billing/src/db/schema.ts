@@ -1,6 +1,8 @@
 import {
   CATALOG_KINDS,
+  CREDIT_NOTE_CANCELLATION_TYPES,
   CURRENCIES,
+  IGTF_COLLECTED_CURRENCIES,
   IGTF_PERCEIVERS,
   IMPUTATION_POLICIES,
   INVOICE_STATUSES,
@@ -107,6 +109,12 @@ export const billingSettings = pgTable(
     speNotifiedAt: date('spe_notified_at'),
     /** Oficio o providencia de la calificación. */
     speReference: text('spe_reference'),
+    /**
+     * Alícuota del IGTF en puntos básicos (300 = 3,00 %), ADR 0069: vive en configuración y se
+     * **copia** en cada cobro (`igtf_basis_points`), como el IVA — cambiarla no reescribe lo ya
+     * percibido.
+     */
+    igtfRateBp: integer('igtf_rate_bp').notNull().default(300),
     /** Política de imputación de pagos en Bs (B6): la decide la clínica, no el redondeo. */
     imputationPolicy: text('imputation_policy').notNull().default('tasa_del_pago'),
     /** Días de arrastre tolerados antes de exigir confirmación al cobrar. */
@@ -131,6 +139,7 @@ export const billingSettings = pgTable(
       'chk_billing_settings_extra_iva',
       sql`${table.foreignCurrencyIvaBasisPoints} between 0 and 10000`,
     ),
+    check('chk_billing_settings_igtf', sql`${table.igtfRateBp} between 0 and 10000`),
     check('chk_billing_settings_grace', sql`${table.rateGraceDays} between 0 and 60`),
   ],
 );
@@ -411,6 +420,25 @@ export const payments = pgTable(
     /** Tasa congelada de **este** pago y la política con la que se imputó. */
     exchangeRateMicros: bigint('exchange_rate_micros', { mode: 'number' }).notNull(),
     imputationPolicy: text('imputation_policy').notNull(),
+    /**
+     * **Fecha Valor** (ADR 0069): el día del comprobante bancario al que aplica la tasa congelada —
+     * no el del tecleo. Un pago móvil del domingo registrado el lunes se valora con la tasa del
+     * viernes, porque la tasa vigente se busca por **esta** fecha.
+     */
+    effectiveDate: date('effective_date').notNull(),
+    /**
+     * Descomposición tripartita (ADR 0069, Escuela A): `historical` son los USD amortizados a la
+     * **tasa de emisión** (extingue la cuenta por cobrar nominal; `Σ` de los cobros vigentes cuadra
+     * con `total_ves_centimos` del documento) y `exchange_diff` es el diferencial cambiario
+     * realizado (`tendered − historical`, positivo = ganancia). En cobros en divisas, `exchange_diff`
+     * es 0: la moneda funcional es el USD y no hubo conversión en caja de bolívares.
+     */
+    historicalAmountVesCentimos: bigint('historical_amount_ves_centimos', { mode: 'number' })
+      .notNull()
+      .default(0),
+    exchangeDiffVesCentimos: bigint('exchange_diff_ves_centimos', { mode: 'number' })
+      .notNull()
+      .default(0),
     /** Diferencial cambiario respecto de la tasa de la factura (informativo). */
     fxDifferenceCentsUsd: integer('fx_difference_cents_usd').notNull().default(0),
 
@@ -423,6 +451,15 @@ export const payments = pgTable(
     igtfAmountVesCentimos: bigint('igtf_amount_ves_centimos', { mode: 'number' })
       .notNull()
       .default(0),
+    /**
+     * Destino del IGTF percibido (ADR 0069): `USD` = el paciente lo entregó en divisas y entra con la
+     * base a **Caja Divisas**; `VES` = lo entregó en bolívares (Pago Móvil, punto) y entra a
+     * **Banco/Caja Bolívares**, con el medio y el comprobante en `igtf_payment_*`. `null` cuando la
+     * clínica no lo percibe (lo debita el banco, o no es SPE).
+     */
+    igtfCollectedCurrency: text('igtf_collected_currency'),
+    igtfPaymentMethod: text('igtf_payment_method'),
+    igtfPaymentReference: text('igtf_payment_reference'),
 
     pdfPath: text('pdf_path'),
     pdfSha256: text('pdf_sha256'),
@@ -460,6 +497,18 @@ export const payments = pgTable(
         or (${table.appliesIgtf} = true and ${table.igtfAmountCentsUsd} >= 0
             and ${table.igtfPerceivedBy} in (${sqlLiteralList(IGTF_PERCEIVERS)}))`,
     ),
+    /** El destino del IGTF se declara en las dos monedas del contrato, ni una más. */
+    check(
+      'chk_payments_igtf_currency',
+      sql`${table.igtfCollectedCurrency} is null
+        or ${table.igtfCollectedCurrency} in (${sqlLiteralList(IGTF_COLLECTED_CURRENCIES)})`,
+    ),
+    /** El destino solo existe cuando la clínica **percibe** el IGTF (no cuando lo debita el banco). */
+    check(
+      'chk_payments_igtf_destino',
+      sql`${table.igtfCollectedCurrency} is null
+        or (${table.appliesIgtf} = true and ${table.igtfPerceivedBy} = 'clinica')`,
+    ),
     check(
       'chk_payments_void_reason',
       sql`${table.voidedAt} is null or ${table.voidReason} is not null`,
@@ -487,6 +536,17 @@ export const creditNotes = pgTable(
     invoiceTotalCentsUsd: integer('invoice_total_cents_usd').notNull(),
     /** `total` = anula la factura entera; `parcial` = ajuste de partidas (Art. 22: las dos). */
     kind: text('kind').notNull().default('total'),
+    /**
+     * El doble escenario de la anulación (ADR 0069): `ADMINISTRATIVE` no devuelve dinero y
+     * **conserva** el diferencial cambiario realizado; `REFUND` es un reembolso real y lo reversa en
+     * `reversed_exchange_diff_ves_centimos` (`-Σ` de los cobros vigentes de la factura).
+     */
+    cancellationType: text('cancellation_type').notNull().default('ADMINISTRATIVE'),
+    reversedExchangeDiffVesCentimos: bigint('reversed_exchange_diff_ves_centimos', {
+      mode: 'number',
+    })
+      .notNull()
+      .default(0),
     reason: text('reason').notNull(),
     totalCentsUsd: integer('total_cents_usd').notNull(),
     exchangeRateMicros: bigint('exchange_rate_micros', { mode: 'number' }).notNull(),
@@ -503,6 +563,16 @@ export const creditNotes = pgTable(
     index('idx_credit_notes_invoice').on(table.invoiceId),
     check('chk_credit_notes_total', sql`${table.totalCentsUsd} > 0`),
     check('chk_credit_notes_kind', sql`${table.kind} in ('total', 'parcial')`),
+    check(
+      'chk_credit_notes_cancellation',
+      sql`${table.cancellationType} in (${sqlLiteralList(CREDIT_NOTE_CANCELLATION_TYPES)})`,
+    ),
+    /** Solo un **reembolso real** reversa el diferencial cambiario (ADR 0069). */
+    check(
+      'chk_credit_notes_reversal',
+      sql`${table.cancellationType} = 'REFUND'
+        or ${table.reversedExchangeDiffVesCentimos} = 0`,
+    ),
     check(
       'chk_credit_notes_reference',
       sql`${table.invoiceNumber} > 0 and ${table.invoiceTotalCentsUsd} > 0`,
