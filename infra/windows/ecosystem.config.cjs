@@ -12,6 +12,13 @@
  *
  * Los servicios que aún no existen se añaden al final de su fase correspondiente
  * (ver docs/PLAN_MAESTRO_FASES.md §13).
+ *
+ * **OJO: NO añadas `instances` aquí.** En PM2, declarar `instances` (aunque sea `1`) cambia el
+ * modo a **cluster**, y el contenedor de cluster de PM2 5.2.2 carga las apps con una RUTA en vez
+ * de una URL `file://`, lo que en Windows revienta con `ERR_UNSUPPORTED_ESM_URL_SCHEME` (lee
+ * `C:\…` como el esquema `c:`): las apps quedan «online» sin cargarse y sin abrir puerto. Sin
+ * `instances`, PM2 usa **fork** y todo va bien. El ecosistema de producción lleva
+ * `exec_mode: 'fork'` explícito por el mismo motivo.
  */
 const path = require('node:path');
 

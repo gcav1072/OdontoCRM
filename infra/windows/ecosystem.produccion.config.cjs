@@ -14,8 +14,16 @@
  * ── Regla de oro: UN SOLO SUPERVISOR ─────────────────────────────────────────
  * Si usas PM2 (el supervisor de Windows), **no** levantes la pila de desarrollo
  * (`stack:fijo`) a la vez: los dos quieren los mismos puertos y uno falla con
- * `EADDRINUSE` (ADR 0037).
- *
+ * `EADDRINUSE` (ADR 0037). *
+ * ── Regla de oro 2: `exec_mode: 'fork'` y NUNCA `instances` ─────────────
+ * Cada app lo declara explícitamente más abajo. En PM2, poner `instances` (aunque sea `1`)
+ * cambia el modo a **cluster**, y el contenedor de cluster de PM2 5.2.2 hace
+ * `import(process.env.pm_exec_path)` con una **ruta** en vez de una URL `file://`: en Windows
+ * el cargador ESM de Node lee `C:\…` como el esquema `c:` y falla con
+ * `ERR_UNSUPPORTED_ESM_URL_SCHEME`. El proceso queda «online» **sin cargar la aplicación**:
+ * ningún puerto escucha y no hay nada en los registros (el síntoma que costó una tarde).
+ * En Fedora el cluster funciona por casualidad, porque una ruta POSIX (`/opt/…`) sí es válida.
+ * Los servicios son de UNA instancia, así que `fork` no renuncia a nada. *
  * ── Variables de entorno: los DOS archivos, como en desarrollo ───────────────
  * El arranque real usa dos archivos:
  *   node --env-file-if-exists=…\odontocrm.env --env-file-if-exists=…\<servicio>.env
@@ -59,7 +67,17 @@ const servicio = (nombre, entrada) => ({
     `--env-file-if-exists=${path.join(envDir, `${nombre}.env`)}`,
   ],
   env: { NODE_ENV: 'production' },
-  instances: 1,
+  /**
+   * **`fork`, explícito, y NUNCA `instances`.** En PM2, poner `instances` (aunque sea `1`) cambia
+   * el modo a **cluster**, y el contenedor de cluster de PM2 5.2.2 carga las apps con
+   * `import(process.env.pm_exec_path)` —una RUTA, no una URL—, que en Windows el cargador ESM de
+   * Node rechaza con `ERR_UNSUPPORTED_ESM_URL_SCHEME` (lee `C:\…` como el esquema `c:`). El hijo
+   * queda «online» sin cargar la app: **ningún puerto escucha y no hay nada en los registros**.
+   * El contenedor de `fork` sí lo hace bien (`url.pathToFileURL`). En Fedora el modo cluster
+   * funciona por casualidad (una ruta POSIX `/opt/…` sí es válida para el cargador).
+   * Como cada servicio es de UNA instancia, `fork` no renuncia a nada.
+   */
+  exec_mode: 'fork',
   autorestart: true,
   max_restarts: 20,
   restart_delay: 3000,
@@ -112,7 +130,7 @@ const botAdmin = () => ({
     ODONTOCRM_ADMIN_TMP_DIR: path.join(codigo, 'data', 'tmp'),
     ODONTOCRM_BACKUP_MANUAL_DIR: path.join(codigo, 'data', 'respaldo-manual'),
   },
-  instances: 1,
+  exec_mode: 'fork',
   autorestart: true,
   stop_exit_codes: [0],
   max_restarts: 20,
