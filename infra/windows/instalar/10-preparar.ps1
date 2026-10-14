@@ -367,6 +367,11 @@ function Descargar-Binario {
   $destino = Join-Path $OdontoBin $Nombre
   if (Test-Path $destino) {
     Escribir-Ok "$Nombre ya está en $OdontoBin"
+    # Los permisos se revisan SIEMPRE, también cuando el binario ya estaba: al moverlo desde
+    # `%TEMP%` conserva las ACL de esa carpeta (sin LocalService), así que una instalación
+    # anterior lo dejó ilegible para Caddy —que corre como LocalService— y su servicio no
+    # arranca con un `%%5` que no dice nada. Esto lo repara al volver a pasar por aquí.
+    Permitir-EjecucionAlServicio -Ruta $destino
     return
   }
   if ($DryRun) {
@@ -399,6 +404,8 @@ function Descargar-Binario {
     else {
       Move-Item -Path $temporal -Destination $destino -Force
     }
+    # El binario queda listo para que lo lance Caddy (LocalService): ver `comun.ps1`.
+    Permitir-EjecucionAlServicio -Ruta $destino
   }
   finally {
     if (Test-Path $temporal) { Remove-Item -Path $temporal -Force -ErrorAction SilentlyContinue }

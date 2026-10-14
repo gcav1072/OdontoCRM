@@ -629,6 +629,21 @@ function Get-ChatTelegram {
   return $null
 }
 
+# Un EJECUTABLE que va a lanzar una cuenta de servicio (Caddy corre como LocalService) necesita
+# `RX` —leer Y ejecutar—, no `R`: Windows exige `FILE_EXECUTE` para crear el proceso, y un `R` a
+# secas deja el arranque en «acceso denegado».
+#
+# Y hay que darlo EXPLÍCITAMENTE: los binarios se descargan en `%TEMP%` y se mueven a su carpeta,
+# y al moverlos conservan las ACL de `%TEMP%` (del usuario Administrador, sin LocalService y con la
+# herencia bloqueada). La carpeta de destino SÍ tiene el permiso del servicio, pero al archivo no
+# le llega. Síntoma exacto: el servicio no arranca y el registro de eventos solo dice `%%5`.
+function Permitir-EjecucionAlServicio {
+  param([string]$Ruta)
+  if ($DryRun) { return }
+  if (-not (Test-Path $Ruta)) { return }
+  & icacls $Ruta /grant "${SidServicioLocal}:(RX)" | Out-Null
+}
+
 # ── El navegador de los PDF (Chromium de Playwright) ─────────────────────────
 # Lo necesitan el récipe A5 (`clinical`), la factura y el recibo (`billing`) y los reportes.
 # **No viene con el código**: Playwright lo descarga aparte y los servicios lo buscan en

@@ -150,8 +150,23 @@ else {
     Invocar 'actualizar el binPath del servicio caddy' {
       & sc.exe config caddy binPath= $binPath | Out-Null
     }
-    Restart-Service -Name 'caddy' -Force
-    Escribir-Ok 'servicio caddy reiniciado'
+    # El resultado se COMPRUEBA. `Restart-Service` lanza si el servicio no arranca, y antes se
+    # decía «servicio caddy reiniciado» de todas formas: el proxy quedaba caído y la instalación
+    # parecía correcta (la SPA y la API respondían 0 y nadie sabía por qué).
+    # `-ErrorAction Stop`: sin eso PowerShell escribe el fallo y sigue (el `catch` no lo ve).
+    try { Restart-Service -Name 'caddy' -Force -ErrorAction Stop } catch { }
+    $estado = (Get-Service -Name 'caddy' -ErrorAction SilentlyContinue).Status
+    if ($estado -eq 'Running') {
+      Escribir-Ok 'servicio caddy reiniciado'
+    }
+    else {
+      Escribir-Error "el servicio caddy no arrancó (estado: $estado)"
+      Escribir-Detalle 'suele ser un permiso: el servicio corre como LocalService y tiene que poder'
+      Escribir-Detalle "LEER Y EJECUTAR $caddy  ·  y leer $destinoConf"
+      Escribir-Detalle 'mira el motivo exacto con:'
+      Escribir-Detalle '  Get-EventLog System -Source "Service Control Manager" -Newest 5'
+      Morir 'sin el proxy inverso no se entra desde la LAN'
+    }
   }
   else {
     Invocar 'crear el servicio caddy (arranque automático, LocalService)' {
@@ -159,8 +174,19 @@ else {
       & sc.exe create caddy start= auto binPath= $binPath obj= 'NT AUTHORITY\LocalService' | Out-Null
       & sc.exe description caddy 'OdontoCRM · reverse proxy con TLS interno (Caddy)' | Out-Null
     }
-    Start-Service -Name 'caddy'
-    Escribir-Ok 'servicio caddy creado y arrancado'
+    # Igual que arriba: se comprueba el efecto, no que la orden no diera error.
+    try { Start-Service -Name 'caddy' -ErrorAction Stop } catch { }
+    $estado = (Get-Service -Name 'caddy' -ErrorAction SilentlyContinue).Status
+    if ($estado -eq 'Running') {
+      Escribir-Ok 'servicio caddy creado y arrancado'
+    }
+    else {
+      Escribir-Error "el servicio caddy quedó creado pero no arrancó (estado: $estado)"
+      Escribir-Detalle "comprueba que LocalService pueda LEER Y EJECUTAR $caddy"
+      Escribir-Detalle 'mira el motivo exacto con:'
+      Escribir-Detalle '  Get-EventLog System -Source "Service Control Manager" -Newest 5'
+      Morir 'sin el proxy inverso no se entra desde la LAN'
+    }
   }
 
   # Recargar el proxy si ya estaba corriendo (aplica el Caddyfile nuevo sin cortar).
