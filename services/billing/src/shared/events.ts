@@ -41,7 +41,7 @@ export interface AuditInput {
   action: DomainAuditPayload['action'];
   summary: string;
   /** Qué se auditó; por defecto, un documento de cobro (la factura). */
-  entityType?: 'invoice' | 'payment' | 'credit_note' | 'exchange_rate' | 'catalog_item';
+  entityType?: 'invoice' | 'payment' | 'credit_note' | 'exchange_rate' | 'catalog_item' | 'billing_settings';
   changedFields?: string[];
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;

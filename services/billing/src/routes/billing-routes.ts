@@ -3,6 +3,7 @@ import {
   collectPaymentSchema,
   issueInvoiceSchema,
   replaceDraftItemsSchema,
+  updateBillingSettingsSchema,
   voidInvoiceSchema,
   voidPaymentSchema,
 } from '@odontocrm/contracts';
@@ -12,7 +13,8 @@ import { z } from 'zod';
 
 import { discardDraft, voidInvoice } from '../billing/credit-note-service.js';
 import { issueInvoice } from '../billing/issue-service.js';
-import { collectPayment, listInvoicePayments, voidPayment } from '../billing/payment-service.js';
+import { collectPayment, currentDebtAtTodayRate, invoicePaymentTotals, listInvoicePayments, voidPayment } from '../billing/payment-service.js';
+import { getBillingSettings, updateBillingSettings } from '../billing/settings-service.js';
 import {
   getDraft,
   getInvoice,
@@ -39,6 +41,8 @@ export const registerBillingRoutes = (app: FastifyInstance, services: BillingSer
   const write = requirePermission('billing:write');
   const collect = requirePermission('billing:collect');
   const voidInvoicePermission = requirePermission('billing:void');
+  /** Solo el `admin` toca la configuración fiscal (SPE y alícuota del IGTF, ADR 0069). */
+  const settings = requirePermission('settings:manage');
 
   /** Pendientes de caja: las sesiones cerradas cuyo borrador sigue sin emitir. */
   app.get('/api/v1/billing/drafts', { preHandler: read }, async () => ({
@@ -121,10 +125,16 @@ export const registerBillingRoutes = (app: FastifyInstance, services: BillingSer
     return resultado;
   });
 
-  /** La factura con sus cobros: para reimprimir el recibo o ver el saldo. */
+  /** La factura con sus cobros y sus acumuladores de caja (ADR 0069): saldo, diferencial e IGTF. */
   app.get('/api/v1/billing/invoices/:id', { preHandler: read }, async (request) => {
     const { id } = parseOrThrow(invoiceParamsSchema, request.params);
-    return { ...(await getInvoice(db, id)), payments: await listInvoicePayments(db, id) };
+    const factura = await getInvoice(db, id);
+    return {
+      ...factura,
+      payments: await listInvoicePayments(db, id),
+      ...(await invoicePaymentTotals(db, id)),
+      currentDebtAtTodayRateVesCentimos: await currentDebtAtTodayRate(db, factura),
+    };
   });
 
   /**
@@ -181,7 +191,18 @@ export const registerBillingRoutes = (app: FastifyInstance, services: BillingSer
     kickOutbox?.();
     return resultado;
   });
+  /**
+   * La configuración fiscal de la caja (ADR 0045 y 0069). **Leerla** la puede la caja —el diálogo de
+   * cobro necesita saber si la clínica es SPE y con qué alícuota—; **tocarla**, solo el `admin`.
+   */
+  app.get('/api/v1/billing/settings', { preHandler: read }, async () => getBillingSettings(db));
 
+  app.patch('/api/v1/billing/settings', { preHandler: settings }, async (request) => {
+    const input = parseOrThrow(updateBillingSettingsSchema, request.body);
+    const resultado = await updateBillingSettings(db, input, actorFrom(request));
+    kickOutbox?.();
+    return resultado;
+  });
   /** El arancel: lo que la caja puede aÃ±adir a mano (un cepillo, un gel). */
   app.get('/api/v1/billing/catalog', { preHandler: read }, async () => ({
     items: await listCatalog(db),
