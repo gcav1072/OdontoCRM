@@ -4,6 +4,25 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — Reinstalar PM2 sobre restos no creaba ningún servicio · 2026-10-15
+
+El segundo ensayo de instalación limpio volvió a morir con `Could not find "pm2.exe" service after 10 attempts`,
+y sin desinstalar de por medio. La causa: **node-windows decide que el servicio «ya está instalado»
+mirando solo los archivos** `daemon\pm2.exe` y `daemon\pm2.xml`, no el servicio de Windows. El
+`desinstalar.ps1` del 10/14 borró el servicio pero dejó `C:\ProgramData\pm2`; al reinstalar,
+node-windows respondió «Already installed.», **no creó ningún servicio** (lo confirma el registro de
+Windows: ni servicio ni clave), y el paso que cambia la cuenta a `LocalService` se quedó buscando
+`pm2.exe` en WMI diez segundos. La teoría de la víspera —servicio «marcado para eliminación»— no era:
+el mensaje de «zombie» que añadimos no llegó a salir.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `servicios/instalar-pm2.ps1` | Antes del `setup`, si hay **archivos de servicio sin servicio detrás**, se retiran (y se dice por qué): node-windows instala de verdad. Si quedan archivos y no se pueden borrar, el error apunta al «marcado para eliminación» (reiniciar Windows). Y las rutas del log que decían `$OdontoEtc\pm2\service\service.log` —que no existe— apuntan a `$PM2_HOME\service\service.log` |
+| `instalar/desinstalar.ps1` | La desinstalación retira ahora `C:\ProgramData\pm2` (el wrapper de node-windows) y las variables de máquina `PM2_HOME`/`PM2_INSTALL_DIRECTORY`/`PM2_SERVICE_DIRECTORY`: sin esto, **cada desinstalar dejaba la siguiente instalación rota** |
+
+> **Sin migración.** Es el instalador. En una máquina ya tocada basta con volver a pasar
+> `servicios\instalar-pm2.ps1`: el paso nuevo detecta los restos y los retira solo.
+
 ## [Instalador] — La instalación limpia terminaba; el bot volvía a escuchar · 2026-10-14
 
 Revisión de la salida del instalador del 2026-10-14 y de la lógica del bot de administración, con
