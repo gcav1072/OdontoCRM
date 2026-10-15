@@ -41,8 +41,29 @@ public class OdontoTrustAll : ICertificatePolicy {
   }
   catch { }
 }
+# El código de la respuesta HTTP, VEÁNDOLO todo. `Invoke-WebRequest` no sirve para esto:
+# sigue las redirecciones (http → https salía «200» donde hay un 301) y LANZA en los 4xx
+# (el SSE sin token devuelve 401 y se veía como «0», como si la URL estuviera rota). Con
+# `HttpWebRequest` se ve el código de la PRIMERA respuesta sin leer el cuerpo —que en un SSE
+# no termina nunca— y los 4xx/5xx vuelven como números, no como excepciones.
 function Get-Codigo { param([string]$Url)
-  try { return [int](Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 8).StatusCode } catch { return 0 }
+  try {
+    $peticion = [Net.HttpWebRequest]::Create($Url)
+    $peticion.AllowAutoRedirect = $false
+    $peticion.Timeout = 8000
+    $peticion.ReadWriteTimeout = 8000
+    try {
+      $respuesta = $peticion.GetResponse()
+      try { return [int]$respuesta.StatusCode } finally { $respuesta.Close() }
+    }
+    catch [Net.WebException] {
+      if ($_.Exception.Response) {
+        try { return [int]$_.Exception.Response.StatusCode } finally { $_.Exception.Response.Close() }
+      }
+      return 0
+    }
+  }
+  catch { return 0 }
 }
 
 # ── 1/7 · Credenciales y usuarios ───────────────────────────────────────────
@@ -97,33 +118,56 @@ else {
   # Y el servicio se comprueba ANTES de invocar nada: `pm2` arranca un demonio si no lo encuentra,
   # así que una comprobación no puede lanzarlo a la ligera —ese demonio sería de ESTA cuenta, se
   # quedaría con los «pipes» globales de PM2 y el servicio ya no podría arrancar—. Se informa en
-  # vez de crearlo sin querer.
+  # vez de crearlo sin querer. Y la llamada va con techo de tiempo: este mismo `jlist` se quedó
+  # colgado para siempre en la instalación del 2026-10-15.
   if (-not (Confirmar-ServicioPm2 -Segundos 3)) {
     Fallo 'el servicio de PM2 no está en marcha (Get-Service pm2*)'
   }
   else {
-    try { $crudo = & (Get-Pm2Cmd) jlist 2>$null } catch { }
+    $resultado = Invocar-Pm2 -Argumentos @('jlist') -Segundos 20
+    if ($resultado.Codigo -eq 0) { $crudo = $resultado.Salida }
+    elseif ($resultado.TiempoAgotado) {
+      Fallo 'el demonio de PM2 no respondió a `pm2 jlist` (agotado el tiempo de espera)'
+      $null = Clear-DemoniosSueltos
+    }
+    else { Fallo "«pm2 jlist» salió con código $($resultado.Codigo): no puedo leer los procesos" }
   }
   $lista = $null
   if ($crudo) {
-    $desde = $crudo.IndexOf('['); $hasta = $crudo.LastIndexOf(']')
-    if ($desde -ge 0 -and $hasta -gt $desde) {
-      try { $lista = $crudo.Substring($desde, $hasta - $desde + 1) | ConvertFrom-Json } catch { }
+    # El JSON COMPLETO de `pm2 jlist` no lo puede parsear PowerShell 5.1: el `env` de cada
+    # proceso trae `username` y `USERNAME` —claves que solo difieren en mayúsculas— y
+    # `ConvertFrom-Json` las da por duplicadas y LANZA. Se lo come Node (tools/pm2-resumen.mjs)
+    # y de vuelta solo llega nombre y estado: esto dejó la verificación del 2026-10-15 diciendo
+    # «no está en PM2» diez veces con los diez procesos en marcha.
+    $resumen = Join-Path $OdontoRepo 'tools\pm2-resumen.mjs'
+    if (Test-Path $resumen) {
+      $salida = $crudo | & node $resumen 2>$null
+      if ($LASTEXITCODE -eq 0 -and $salida) {
+        try { $lista = ($salida -join "`n") | ConvertFrom-Json } catch { }
+      }
+      if (-not $lista) { Fallo 'no pude leer el resumen de `pm2 jlist` (tools\pm2-resumen.mjs): no compruebo los procesos uno a uno' }
     }
+    else { Fallo "falta ${resumen}: no puedo leer la lista de procesos de PM2" }
   }
 
   $fallos = 0
-  foreach ($p in $info.procesos) {
-    $nombre = $p.proceso
-    $app = if ($lista) { $lista | Where-Object { $_.name -eq $nombre } | Select-Object -First 1 } else { $null }
-    if (-not $app) { Fallo "$nombre no está en PM2"; $fallos++; continue }
-    if ($app.pm2_env.status -ne 'online') { Fallo "$nombre está en $($app.pm2_env.status)"; $fallos++; continue }
-    $health = Get-Codigo "http://127.0.0.1:$($p.puerto)/health"
-    $ready = Get-Codigo "http://127.0.0.1:$($p.puerto)/ready"
-    if ($health -eq 200 -and $ready -eq 200) { Escribir-Ok "$($p.nombre) :$($p.puerto) /health 200 · /ready 200" }
-    else { Fallo "$($p.nombre) :$($p.puerto) /health $health · /ready $ready"; $fallos++ }
+  if ($crudo -and -not $lista) {
+    # Sin lista no tiene sentido decir diez veces «no está en PM2»: el fallo ya está dicho arriba.
+    $fallos = 1
   }
-  if ($fallos -eq 0) { Escribir-Ok "los $($info.procesos.Count) procesos están bien" }
+  else {
+    foreach ($p in $info.procesos) {
+      $nombre = $p.proceso
+      $app = if ($lista) { $lista | Where-Object { $_.nombre -eq $nombre } | Select-Object -First 1 } else { $null }
+      if (-not $app) { Fallo "$nombre no está en PM2"; $fallos++; continue }
+      if ($app.estado -ne 'online') { Fallo "$nombre está en $($app.estado)"; $fallos++; continue }
+      $health = Get-Codigo "http://127.0.0.1:$($p.puerto)/health"
+      $ready = Get-Codigo "http://127.0.0.1:$($p.puerto)/ready"
+      if ($health -eq 200 -and $ready -eq 200) { Escribir-Ok "$($p.nombre) :$($p.puerto) /health 200 · /ready 200" }
+      else { Fallo "$($p.nombre) :$($p.puerto) /health $health · /ready $ready"; $fallos++ }
+    }
+    if ($fallos -eq 0) { Escribir-Ok "los $($info.procesos.Count) procesos están bien" }
+  }
 }
 
 # ── 3/7 · La aplicación por HTTPS ───────────────────────────────────────────

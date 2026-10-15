@@ -76,11 +76,28 @@ function Iniciar-Pm2DelServicio {
   try { Restart-Service -Name $svc.Name -Force -ErrorAction Stop } catch { }
   if (-not (Confirmar-ServicioPm2)) { return $false }
   Escribir-Ok "servicio de PM2 en marcha: $($svc.Name)"
+  # OJO con el reloj: el servicio pasa a `Running` ANTES de que su PM2 publique los «pipes» y,
+  # si el CLI llega en ese hueco, no encuentra demonio y SE MONTA UNO PROPIO (del
+  # Administrador) que se queda con ellos: el instalador se quedó aquí colgado para siempre el
+  # 2026-10-15. Se espera al bus del servicio antes de tocar el CLI.
+  if (-not (Esperar-MessageBusPm2)) {
+    Escribir-Aviso 'el servicio está en marcha pero su «message bus» no llega a publicarse'
+    Escribir-Detalle "mira $PM2_HOME\service\service.log"
+    return $false
+  }
   # La prueba de verdad: hablarle al PM2 DEL SERVICIO (no al que arrancó el `setup`). Si responde,
-  # los pipes son suyos y el servicio está haciendo su trabajo.
-  & (Get-Pm2Cmd) jlist *> $null 2>&1
-  if ($LASTEXITCODE -eq 0) { Escribir-Ok 'el demonio del servicio responde (pm2 jlist)' }
-  else { Escribir-Aviso 'el servicio está en marcha pero su demonio no responde a `pm2 jlist`' }
+  # los pipes son suyos y el servicio está haciendo su trabajo. Con techo de tiempo: este mismo
+  # `jlist` fue el que se colgó sin responder nunca.
+  $resultado = Invocar-Pm2 -Argumentos @('jlist') -Segundos 20
+  if (-not $resultado.TiempoAgotado -and $resultado.Codigo -eq 0) {
+    Escribir-Ok 'el demonio del servicio responde (pm2 jlist)'
+  }
+  else {
+    Escribir-Aviso 'el servicio está en marcha pero su demonio no responde a `pm2 jlist`'
+    # Si el CLI llegó a montarse su demonio en el intento, que no quede: volvería a dejar los
+    # «pipes» tomados y el servicio ya no podría arrancar más.
+    $null = Clear-DemoniosSueltos
+  }
   Escribir-Detalle 'para hablar con PM2 hace falta una consola de Administrador (corre como LocalService)'
   return $true
 }
@@ -173,6 +190,13 @@ try {
   }
 
   # ── 3. Crear el servicio y confirmar que arranca ───────────────────────────
+  # Antes de nada, los «pipes» libres: el `setup` arranca el servicio mientras su propio
+  # `pm2 install` (el logrotate) deja un demonio del Administrador dueño de ellos, y las
+  # primeras caídas del servicio son `connect EPERM` (2026-10-15: dos de tres intentos de
+  # winsw). Si además queda vivo un demonio de antes —una consola de desarrollo, un CLI
+  # suelto—, el servicio NO arranca en todo el `setup` y el error que se ve después no apunta
+  # a la causa.
+  Clear-Pm2Global | Out-Null
   Escribir-Detalle 'creando el servicio de Windows (una sola vez)…'
   & npm run setup 2>&1 | ForEach-Object { Escribir-Detalle $_ }
   if ($LASTEXITCODE -ne 0) {

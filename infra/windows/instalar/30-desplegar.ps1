@@ -402,12 +402,21 @@ else {
     Morir 'sin el servicio de PM2 los procesos no reviven solos ni arrancan con Windows'
   }
 
-  # La lista de procesos se fija para que el servicio la restaure al arrancar Windows.
+  # La lista de procesos se fija para que el servicio la restaure al arrancar Windows. Todo por
+  # `Invocar-Pm2` (con techo de tiempo): `pm2` se espera a su demonio sin prisa y ya colgó una
+  # instalación entera aquí (2026-10-15).
   Push-Location $OdontoCode
   try {
-    & $pm2 delete all *> $null
-    & $pm2 start (Join-Path $OdontoRepo 'infra\windows\ecosystem.produccion.config.cjs') *> $null
-    & $pm2 save *> $null
+    $null = Invocar-Pm2 -Argumentos @('delete', 'all') -Segundos 60 -Directorio $OdontoCode
+    $arranque = Invocar-Pm2 -Argumentos @('start', (Join-Path $OdontoRepo 'infra\windows\ecosystem.produccion.config.cjs')) `
+      -Segundos 120 -Directorio $OdontoCode
+    if ($arranque.TiempoAgotado) {
+      Escribir-Aviso '«pm2 start» no respondió en dos minutos: miro abajo cuáles escuchan de verdad'
+    }
+    elseif ($arranque.Codigo -ne 0) {
+      Escribir-Aviso "«pm2 start» salió con código $($arranque.Codigo)"
+    }
+    $null = Invocar-Pm2 -Argumentos @('save') -Segundos 30
     Escribir-Ok "los $($info.procesos.Count) procesos arrancados y fijados (pm2 save)"
   }
   finally { Pop-Location }

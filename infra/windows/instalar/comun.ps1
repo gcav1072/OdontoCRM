@@ -542,12 +542,77 @@ function Test-Pm2PipesLibres {
   return ($pipes.Count -eq 0)
 }
 
-# Deja libres los pipes: `pm2 kill` alcanza al demonio que los tenga (es el único camino posible, y
-# por eso mismo desde aquí solo se puede matar el que corresponda a ESTA cuenta). Devuelve `$true`
-# si al terminar están libres. NO se ejecuta en `--dry-run`: mata procesos.
-function Clear-Pm2Global {
+# ── Invocar `pm2` SIN poderse colgar ─────────────────────────────────────────
+# El CLI de PM2 espera a su demonio sin prisa (y si no lo encuentra, ¡se monta uno él!): en la
+# instalación del 2026-10-15 un `pm2 jlist` se quedó pegado para siempre y con él todo el
+# instalador, esperando una respuesta que nunca llegó. Toda llamada a `pm2` desde los guiones
+# pasa por aquí, con techo de tiempo. Devuelve `{ Codigo, Salida, TiempoAgotado }`; el código
+# 124 marca «no respondió».
+function Invocar-Pm2 {
+  param([string[]]$Argumentos, [int]$Segundos = 30, [string]$Directorio = '')
   $pm2 = Get-Pm2Cmd
-  try { & $pm2 kill *> $null 2>&1 } catch { }
+  $trabajo = Start-Job -ScriptBlock {
+    param($ejecutable, $argumentos, $directorio)
+    if ($directorio) { Set-Location $directorio }
+    $salida = & $ejecutable @argumentos 2>$null | Out-String
+    [pscustomobject]@{ Salida = $salida; Codigo = $LASTEXITCODE }
+  } -ArgumentList $pm2, $Argumentos, $Directorio
+  if (Wait-Job -Job $trabajo -Timeout $Segundos) {
+    $resultado = Receive-Job -Job $trabajo
+    Remove-Job -Job $trabajo -Force
+    return @{ Codigo = $resultado.Codigo; Salida = $resultado.Salida; TiempoAgotado = $false }
+  }
+  Stop-Job -Job $trabajo -ErrorAction SilentlyContinue
+  Remove-Job -Job $trabajo -Force -ErrorAction SilentlyContinue
+  return @{ Codigo = 124; Salida = ''; TiempoAgotado = $true }
+}
+
+# ── Demonios sueltos de PM2: se retiran ──────────────────────────────────────
+# El PM2 del servicio corre en «no daemon mode» (DENTRO del servicio: `pm2.daemon_mode = false`
+# en el `index.js` de pm2-installer), así que en esta máquina TODO `pm2\lib\Daemon.js` es un
+# demonio suelto que se montó un CLI: un `pm2 jlist` a destiempo, una consola de desarrollo…
+# Son los que dejan los «pipes» globales tomados y al servicio le dan `connect EPERM`
+# (2026-10-15: primero una consola de prueba y luego el propio `jlist` del instalador).
+# `pm2 kill` no siempre llega a matarlos —quedó uno zombie, sin pipes pero vivo—, así que aquí
+# se retiran por PID. Devuelve cuántos retiró.
+function Clear-DemoniosSueltos {
+  $retirados = 0
+  foreach ($proc in @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue)) {
+    if ($proc.CommandLine -notmatch 'pm2[\\/]lib[\\/]Daemon\.js') { continue }
+    try {
+      Stop-Process -Id $proc.ProcessId -Force -ErrorAction Stop
+      $retirados++
+      Escribir-Detalle "demonio suelto de PM2 retirado (PID $($proc.ProcessId))"
+    }
+    catch { Escribir-Aviso "no pude retirar el demonio suelto PID $($proc.ProcessId): $($_.Exception.Message)" }
+  }
+  return $retirados
+}
+
+# ── Esperar al «message bus» del servicio ────────────────────────────────────
+# Los `rpc.sock`/`pub.sock` tardan un segundo en publicarse DESPUÉS de que el servicio pasa a
+# `Running`, y si el CLI llega antes no encuentra demonio y se monta uno propio (del
+# Administrador) que roba los «pipes» y deja la instalación colgada. Antes de hablarle a PM2
+# desde los guiones se espera a que su bus esté publicado.
+function Esperar-MessageBusPm2 {
+  param([int]$Segundos = 20)
+  for ($i = 0; $i -lt $Segundos; $i++) {
+    if (-not (Test-Pm2PipesLibres)) { return $true }
+    Start-Sleep -Seconds 1
+  }
+  return $false
+}
+
+# Deja libres los pipes: `pm2 kill` le pide al demonio dueño de ellos que se apague (si ya están
+# libres no se invoca nada: un CLI sin demonio delante podría montarse uno solo para morir).
+# Después se retiran los demonios sueltos, que es quien de verdad los soltó la última vez.
+# Devuelve `$true` si al terminar están libres. NO se ejecuta en `--dry-run`: mata procesos.
+function Clear-Pm2Global {
+  if (-not (Test-Pm2PipesLibres)) {
+    $resultado = Invocar-Pm2 -Argumentos @('kill') -Segundos 15
+    if ($resultado.TiempoAgotado) { Escribir-Aviso '«pm2 kill» no respondió: retiro los demonios a mano' }
+  }
+  $null = Clear-DemoniosSueltos
   Start-Sleep -Milliseconds 800
   return (Test-Pm2PipesLibres)
 }
