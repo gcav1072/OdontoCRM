@@ -319,3 +319,8 @@ firewall, los directorios de datos **y las bases y los roles** —y antes **guar
 y un `pg_dump` de cada base en `C:\OdontoCRM-antes-de-desinstalar-<fecha>\`—. Con
 `--conservar-datos` no borra adjuntos, registros ni respaldos. **Node.js, PostgreSQL y sus
 datos de instalación no se tocan**, a propósito.
+
+Si el volcado de una base falló, esa base **no se borra** (el motivo queda en
+`<base>.dump.error` dentro de la carpeta de la copia); y si no se pudo volcar ninguna, no se
+borra ninguna. Ojo: las bases `odonto_*` son **las mismas** del stack de desarrollo
+(`npm run dev`): lo que haya entrado por cualquiera de los dos pilas se borra aquí.

@@ -4,6 +4,50 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — El respaldo diario no arrancaba: el rol moría con la «ó» y las bases llegaban con comillas · 2026-10-15
+
+En una instalación limpia, el paso 10/10 terminaba con «PostgreSQL rechazó la creación del
+rol» y el respaldo diario se quedaba **sin rol**. El SQL de `crear-rol-respaldo.ps1` llevaba
+comentarios con acentos y PowerShell 5.1 entrega los argumentos de los comandos nativos en la
+codificación ANSI de la máquina: PostgreSQL respondía «secuencia de bytes no válida para
+codificación "UTF8": 0xf3» —la `ó` de «conexión»—. Y cuando el respaldo por fin corría, moría
+con «Caracteres no válidos en la ruta de acceso»: `backup.env` escribe
+`DATABASES="a b c"` **entre comillas** y el lector partía por espacios sin quitarlas, así que
+cada base llegaba con su comilla pegada (`"odonto_identity`, `odonto_events"`) y la ruta del
+volcado no era una ruta. Ahora el SQL va por **archivo UTF-8** (`psql -f`, los comentarios
+pueden seguir en español) y el parseo de `DATABASES` quita las comillas envolventes.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `backup/crear-rol-respaldo.ps1` | El SQL se escribe en un temporal UTF-8 y se pasa con `psql -f`: por `-c`, un acento bastaba para que PostgreSQL rechazara la consulta entera (y el rol no se creaba) |
+| `backup/odontocrm-backup.ps1` | El parseo de `DATABASES` quita las comillas envolventes del valor (y de cada nombre): con `DATABASES="a b c"` los volcados morían con «Caracteres no válidos en la ruta de acceso» |
+
+> **Sin migración.** Es la cadena de respaldos. En una máquina donde el rol de respaldo no
+> llegó a crearse: `backup\crear-rol-respaldo.ps1` (pide la contraseña de `postgres`); y
+> `odontocrm respaldar` sirve para comprobar la cadena entera.
+
+## [Instalador] — La desinstalación no borraba las bases: los pacientes sobrevivían · 2026-10-15
+
+`desinstalar.ps1 --si` terminaba diciendo «bases y roles retirados»… y las bases seguían ahí,
+con los pacientes de instalaciones anteriores (da igual que hubieran entrado por el servidor o
+por `npm run dev`: las dos pilas comparten las mismas bases `odonto_*`). El paso 5/7 las
+borraba **todas dentro de un bloque `DO $$…$$`**, que corre como función, y PostgreSQL responde
+«DROP DATABASE no puede ser ejecutado desde una función»… con un solo aviso genérico al final
+que no decía qué había pasado. Ahora se borra **base a base, una sentencia `psql` por objeto**
+(como hace `desinstalar.sh` de Fedora), los roles van después de sus bases —el rol solo se
+puede borrar cuando ya no es dueño de nada—, cada fallo se enseña con su motivo, y se cumple la
+promesa que ya hacía el paso 1: **si el volcado de una base falló, esa base no se borra** (y si
+no se pudo volcar ninguna, no se borra ninguna).
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `instalar/desinstalar.ps1` | Paso 5/7 como el de Fedora: `DROP DATABASE IF EXISTS … WITH (FORCE)` por base y `DROP ROLE IF EXISTS` por rol, cada uno con su resultado a la vista; las bases cuyo `pg_dump` falló quedan marcadas y NO se borran (tampoco si faltaba `pg_dump`/`.pgpass` y no se volcó nada) |
+| `infra/windows/INSTALL.md` | §11 Desinstalar: el guardián del volcado, y el aviso de que las bases `odonto_*` son las mismas del stack de desarrollo |
+
+> **Sin migración.** Es el desinstalador. Quien ya desinstaló y le quedaron bases vivas: vuelve
+> a pasar `desinstalar.ps1 --si` (el paso 5 es idempotente) o bórralas a mano:
+> `DROP DATABASE IF EXISTS "odonto_x" WITH (FORCE);`
+
 ## [Instalador] — La LAN no llegaba y todo salía en verde: la red en «Público» · 2026-10-15
 
 Desde los aparatos de la consulta `192.168.9.119` no cargaba, y la verificación acababa de
