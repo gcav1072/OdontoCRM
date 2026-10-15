@@ -121,6 +121,35 @@ else { Escribir-Detalle 'no hay servicio de PM2' }
 # Los procesos de PM2 que quedaran vivos (con el `pm2` de la máquina, no el del usuario).
 if (-not $DryRun) { & (Get-Pm2Cmd) kill *> $null 2>&1 }
 
+# Los RESTOS de node-windows: `C:\ProgramData\pm2` (el wrapper `daemon\pm2.exe` + `pm2.xml`).
+# Sin esto, la próxima instalación queda rota: node-windows decide «Already installed»
+# mirando esos ARCHIVOS (no el servicio) y no crea ningún servicio —«Could not find "pm2.exe"
+# service after 10 attempts»— (trampa real del 2026-10-15: el desinstalar dejaba los archivos
+# y el reinstalar no creaba el servicio). También se retiran las variables de máquina que
+# dejó `setup-service.ps1`.
+$restosPm2 = 'C:\ProgramData\pm2'
+if (Test-Path $restosPm2) {
+  if ($DryRun) { Escribir-Detalle "[dry-run] borraría los restos de PM2: $restosPm2" }
+  else {
+    try {
+      Remove-Item -Recurse -Force $restosPm2 -ErrorAction Stop
+      Escribir-Ok "restos de PM2 retirados: $restosPm2"
+    }
+    catch {
+      Escribir-Aviso "no pude borrar ${restosPm2}: $($_.Exception.Message)"
+      Escribir-Detalle 'si quedan archivos, la próxima instalación los detecta y los retira sola'
+    }
+  }
+}
+if (-not $DryRun) {
+  foreach ($v in @('PM2_HOME', 'PM2_INSTALL_DIRECTORY', 'PM2_SERVICE_DIRECTORY')) {
+    if ([Environment]::GetEnvironmentVariable($v, 'Machine')) {
+      [Environment]::SetEnvironmentVariable($v, $null, 'Machine')
+      Escribir-Ok "variable de máquina retirada: $v"
+    }
+  }
+}
+
 $svcCaddy = Get-Service -Name 'caddy' -ErrorAction SilentlyContinue
 if ($svcCaddy) {
   Invocar 'detener y quitar el servicio de Caddy' {
