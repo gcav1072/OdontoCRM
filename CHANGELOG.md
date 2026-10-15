@@ -4,6 +4,25 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — La «contraseña temporal» de una reinstalación no abría nada · 2026-10-15
+
+Al re-ejecutar `instalar.ps1` sobre una instalación ya existente —todo en verde—, el paso 6/10
+generaba e imprimía una contraseña temporal **nueva**… que no servía para entrar: el seed
+**omite los usuarios que ya existen** (sin `--reset`) y no había tocado la del `admin`. El
+operador se quedaba apuntada una clave que no abría nada, mientras la original —la de la
+primera siembra— se pisaba en `contrasena-inicial.txt`. Ahora el mensaje y el archivo dicen que
+la temporal solo vale si la cuenta **se acaba de crear**, y llevan la receta de regeneración
+(`seed.js --reset --usuarios=admin`, RUNBOOK §5).
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `instalar/30-desplegar.ps1` | La contraseña temporal se imprime y se guarda **con su condición**: solo vale si la cuenta se acaba de crear, porque el seed no cambia la de los usuarios que ya existen. El archivo incluye la receta para regenerarla |
+| `infra/windows/INSTALL.md` | Fila nueva en la tabla de problemas: «La contraseña temporal del instalador no entra» |
+
+> **Sin migración.** Solo mensajes e instalador. Si una clave ya quedó perdida, se regenera con
+> `$env:SEED_PASSWORD_ADMIN='<clave nueva>'` y
+> `odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset --usuarios=admin`.
+
 ## [Instalador] — La verificación falseaba diez procesos ausentes y un `pm2` a destiempo colgaba la instalación · 2026-10-15
 
 Revisión del instalador de Windows probándolo entero en la PC de pruebas. La instalación ya
