@@ -355,14 +355,25 @@ else {
     Escribir-Ok "usuarios al día: $usuarios"
     if ($generada) {
       # La temporal se deja en un archivo de Administradores (0600 equivalente) y se imprime.
+      # OJO con las reinstalaciones: el seed OMITE los usuarios que ya existen, así que esta
+      # clave solo es la de verdad si la cuenta se acaba de CREAR. Antes se imprimía igual y en
+      # una re-ejecución quedaba apuntada una contraseña que no abría nada (2026-10-15).
       $informe = Join-Path $OdontoEtc 'contrasena-inicial.txt'
-      "Contraseña temporal de $usuarios : $claveAdmin" | Set-Content -Path $informe -Encoding UTF8
+      @(
+        "Contraseña temporal de $usuarios : $claveAdmin"
+        'Vale SOLO si la cuenta acaba de crearse: el seed no cambia la de los usuarios que ya'
+        'existen. Si esta no entra, regenera la contraseña con el seed (RUNBOOK §5):'
+        '  $env:SEED_PASSWORD_ADMIN = ''<clave nueva>'''
+        '  odontocrm con-entorno identity -- node services/identity/dist/seed.js --reset --usuarios=admin'
+      ) | Set-Content -Path $informe -Encoding UTF8
       Proteger-Archivo -Ruta $informe
       Write-Host ''
       Write-Host "  Contraseña temporal: $claveAdmin" -ForegroundColor Yellow
       Write-Host '  (se pide cambiarla al primer ingreso; queda en ' -NoNewline
       Write-Host $informe -NoNewline
       Write-Host ')'
+      Write-Host '  Solo vale si la cuenta se acaba de crear: en una reinstalación el seed no' -ForegroundColor Yellow
+      Write-Host '  cambia la contraseña de los usuarios que ya existen (RUNBOOK §5, --reset).' -ForegroundColor Yellow
       Write-Host ''
     }
   }
