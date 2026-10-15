@@ -4,6 +4,27 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — La LAN no llegaba y todo salía en verde: la red en «Público» · 2026-10-15
+
+Desde los aparatos de la consulta `192.168.9.119` no cargaba, y la verificación acababa de
+decir «Todo correcto». Las reglas del firewall **estaban** (80 y 443, perfil privado) y Caddy
+escuchaba bien; el candado era otro: Windows clasificó la red de la máquina como **Pública**
+(«Red del monte 5G», lo normal en cualquier red nueva) y las reglas —a propósito— solo abren el
+perfil **privado**, así que el 80/443 quedaban cerrados CON las reglas puestas. Ni el
+instalador, ni `40-verificar.ps1`, ni `odontocrm red` —que promete «se puede entrar desde otro
+equipo»— miraban el perfil de la red activa: por eso el verde. Ahora `30-desplegar.ps1` pasa la
+red activa a perfil privado (diciéndolo), `40-verificar.ps1` lo señala como **fallo** con el
+comando para arreglarlo, y `odontocrm red` lo comprueba y lo repara en su `--arreglar`.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `instalar/30-desplegar.ps1` | `Asegurar-RedPrivada`: si la red activa está en perfil público, se pone en privado (las reglas solo cubren ese perfil) y se dice; si Windows no deja (red sin identificar), error con el paso a mano |
+| `instalar/40-verificar.ps1` | 5/7 comprueba ahora el perfil de la red ACTIVA: en «Público» es un fallo —con el `Set-NetConnectionProfile` que lo arregla— aunque las dos reglas estén presentes |
+| `infra/windows/odontocrm.ps1` | `red` gana el chequeo del perfil (1 de sus 4 comprobaciones) y su `--arreglar` lo pasa a privado; de paso, el SAN del certificado se lee por OID (2.5.29.17) —con el `FriendlyName` localizado decía «NO incluye la IP» con el certificado bien, y `--arreglar` reemitía sin motivo— |
+
+> **Sin migración.** Es instalador y operación. En una máquina ya instalada con la LAN
+> bloqueada: `Set-NetConnectionProfile -NetworkCategory Private` (o `odontocrm red --arreglar`).
+
 ## [Instalador] — La «contraseña temporal» de una reinstalación no abría nada · 2026-10-15
 
 Al re-ejecutar `instalar.ps1` sobre una instalación ya existente —todo en verde—, el paso 6/10

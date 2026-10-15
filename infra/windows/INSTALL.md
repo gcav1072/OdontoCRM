@@ -301,7 +301,7 @@ completo en una máquina nueva o tras un fallo, sigue
 | La «contraseña temporal» del instalador no entra | El instalador genera una **nueva** en cada ejecución, pero el seed **omite los usuarios que ya existen**: solo es la de verdad si la cuenta se acaba de crear. En una reinstalación, regenera la clave con `seed.js --reset --usuarios=admin` y `SEED_PASSWORD_ADMIN` (RUNBOOK §5, «Usuarios») |
 | Los avisos de Telegram no salen (quedan «modo simulado») | El token no quedó en `C:\ProgramData\OdontoCRM\env\notifications.env`, o es incorrecto: compruébalo abriendo `https://api.telegram.org/bot<token>/getMe` en el navegador. Repite `instalar.ps1 --solo=desplegar` con el token y se guardará. |
 | `password authentication failed` | Vuelve a aprovisionar (`20-aprovisionar.ps1`): converge la base a lo que dicen los archivos. |
-| El puerto 443 no responde desde otro aparato | La red de Windows debe estar en perfil **Privado**: las reglas se crean solo para ese perfil. |
+| El puerto 443 no responde desde otro aparato | La red de Windows debe estar en perfil **Privado**: las reglas se crean solo para ese perfil. El instalador lo pone solo y `40-verificar.ps1` lo señala como fallo; a mano: `Set-NetConnectionProfile -NetworkCategory Private` |
 | `psql: error: … no password supplied` | Falta `C:\ProgramData\OdontoCRM\env\.pgpass` o `backup.env`: ejecuta `crear-rol-respaldo.ps1`. |
 
 ## 11. Desinstalar
