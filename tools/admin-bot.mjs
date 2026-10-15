@@ -58,7 +58,7 @@ if (pedirAyuda) {
 }
 
 let bot = await crearBotAdmin();
-if (bot === null) {
+if (bot === null && unaVez) {
   // NO es un fallo: es una instalación sin bot de administración. Se sale con 0 para que el
   // supervisor (PM2 con `stop_exit_codes: [0]`, systemd con `Restart=on-failure`) NO lo
   // reinicie en bucle.
@@ -66,6 +66,16 @@ if (bot === null) {
     'sin bot de administración configurado (faltan ADMIN_TELEGRAM_BOT_TOKEN / ADMIN_TELEGRAM_CHAT_ID): no hay nada que escuchar.',
   );
   process.exit(0);
+}
+if (bot === null) {
+  // Tampoco es un fallo, pero aquí NO se sale: las credenciales pueden llegar después (el panel
+  // las guarda en caliente, y al arrancar la máquina la base de identity todavía no responde).
+  // Un `exit(0)` en ese momento dejaba el servicio «muerto en verde» —ni PM2 (`stop_exit_codes`)
+  // ni systemd (`Restart=on-failure`) lo reinician— y el bot no volvía a escuchar hasta que
+  // alguien lo arrancara a mano: `/estado` no respondía NUNCA aunque el resto funcionaba.
+  console.log(
+    'sin bot de administración todavía (sin credenciales, o la base de identity no responde): reintentaré cada 60 s',
+  );
 }
 
 /** Segundos de long polling: el máximo útil de Telegram (menos peticiones, más inmediato). */
@@ -187,6 +197,7 @@ const atender = async (mensaje) => {
 
 /** Un ciclo de long polling: saca las actualizaciones y las atiende. */
 const ciclo = async (timeoutSeconds) => {
+  if (bot === null) return;
   const updates = await bot.getUpdates(offset, timeoutSeconds);
   for (const update of updates) {
     offset = update.update_id + 1;
@@ -203,6 +214,7 @@ const ciclo = async (timeoutSeconds) => {
 };
 
 const registrarMenu = async () => {
+  if (bot === null) return;
   // Idempotente: se registra en cada arranque (Telegram lo guarda por bot). Si falla, el bot
   // sigue funcionando: solo se pierde el menú desplegable.
   await bot.setMyCommands(toAdminMenuCommands()).catch((fallo) => {
@@ -231,10 +243,18 @@ const revisarCredenciales = async () => {
   // Si el panel no tiene credenciales (o la base no responde), `crearBotAdmin` devuelve `null`
   // y se sigue con las actuales: un fallo transitorio no puede dejar al bot sin escuchar.
   const nuevo = await crearBotAdmin().catch(() => null);
-  if (nuevo === null || nuevo.firma === bot.firma) return;
+  // `bot` puede ser `null` (arranque sin credenciales): en ese caso CUALQUIER novedad se adopta.
+  // Antes `bot.firma` lanzaba `TypeError` aquí y el bot nunca llegaba a adoptar las credenciales
+  // que aparecieran después: se quedaba sordo para siempre.
+  if (nuevo === null || (bot !== null && nuevo.firma === bot.firma)) return;
 
+  const primero = bot === null;
   bot = nuevo;
-  console.log('credenciales del bot actualizadas desde el panel');
+  console.log(
+    primero
+      ? `bot de administración disponible (chat ${bot.chatId}): escuchando`
+      : 'credenciales del bot actualizadas desde el panel',
+  );
   // El menú de Telegram vive por bot: si cambió el token, hay que registrarlo en el nuevo.
   await registrarMenu();
 };
@@ -249,7 +269,9 @@ const main = async () => {
     return;
   }
 
-  console.log(`Bot de administración escuchando (chat ${bot.chatId}).`);
+  if (bot !== null) {
+    console.log(`Bot de administración escuchando (chat ${bot.chatId}).`);
+  }
   let parando = false;
   const parar = () => {
     parando = true;
@@ -260,6 +282,12 @@ const main = async () => {
   while (!parando) {
     try {
       await revisarCredenciales();
+      if (bot === null) {
+        // Sin credenciales todavía: sin este respiro el bucle giraría en vacío (el `ciclo`
+        // devuelve enseguida) quemando CPU hasta que el panel tenga el token.
+        await new Promise((seguir) => setTimeout(seguir, REVISAR_CREDENCIALES_MS));
+        continue;
+      }
       await ciclo(POLL_TIMEOUT);
     } catch (fallo) {
       console.error(`falló el sondeo: ${fallo instanceof Error ? fallo.message : fallo}`);
