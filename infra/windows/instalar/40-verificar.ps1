@@ -233,6 +233,19 @@ else {
     else { Fallo "falta la regla de firewall «$regla»: desde otro aparato no cargará" }
   }
 
+  # ¿La red ACTIVA está en un perfil que las reglas cubren? Las reglas solo abren el perfil
+  # PRIVADO (a propósito: el servidor no se publica en redes ajenas), y Windows clasifica como
+  # pública cualquier red nueva. Con la red en «Público» el 80/443 quedan cerrados CON las dos
+  # reglas presentes: las reglas estaban y de la LAN no se llegaba (2026-10-15).
+  $publicas = @(Get-NetConnectionProfile -ErrorAction SilentlyContinue |
+      Where-Object { $_.NetworkCategory -eq 'Public' })
+  foreach ($red in $publicas) {
+    Fallo "la red «$($red.Name)» está en perfil PÚBLICO: las reglas solo abren el privado y desde la LAN no se llega"
+    Escribir-Detalle "arreglar:  Set-NetConnectionProfile -InterfaceIndex $($red.InterfaceIndex) -NetworkCategory Private"
+    Escribir-Detalle '(o repite .\30-desplegar.ps1, que lo pone solo)'
+  }
+  if ($publicas.Count -eq 0) { Escribir-Ok 'la red activa está en perfil privado: las reglas la cubren' }
+
   # Lo que NO debe estar publicado: la base, cada servicio y la puerta. Se mira a qué
   # dirección escucha cada puerto; lo que solo está en 127.0.0.1/::1 está bien.
   $publicados = 0

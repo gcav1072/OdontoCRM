@@ -513,19 +513,30 @@ switch ($Orden) {
 
     $problemas = 0
 
-    # 1) Firewall: las reglas del 80 y 443 en el perfil privado.
+    # 1) Perfil de la red: las reglas solo abren el PRIVADO y Windows clasifica como pública
+    #    cualquier red nueva; con la red en «Público» nadie entra CON las reglas puestas.
+    $publicas = @(Get-NetConnectionProfile -ErrorAction SilentlyContinue |
+        Where-Object { $_.NetworkCategory -eq 'Public' })
+    foreach ($red in $publicas) {
+      Escribir-Aviso "la red «$($red.Name)» está en perfil PÚBLICO: Windows bloquea el 80/443"; $problemas++
+    }
+    if ($publicas.Count -eq 0) { Escribir-Ok 'la red activa está en perfil privado' }
+
+    # 2) Firewall: las reglas del 80 y 443 en el perfil privado.
     foreach ($regla in @('OdontoCRM Web (HTTP)', 'OdontoCRM Web (HTTPS)')) {
       if (Get-NetFirewallRule -DisplayName $regla -ErrorAction SilentlyContinue) { Escribir-Ok "firewall: «$regla» presente" }
       else { Escribir-Aviso "falta la regla «$regla»: nadie de la red podrá entrar"; $problemas++ }
     }
 
-    # 2) Certificado: ¿cubre la IP de ahora?
+    # 3) Certificado: ¿cubre la IP de ahora? El SAN se lee por OID (2.5.29.17): el
+    #    `FriendlyName` está localizado en Windows en español y este chequeo decía «NO incluye»
+    #    con el certificado bien (el mismo arreglo que en 40-verificar.ps1 el 2026-10-14).
     $cert = Join-Path $OdontoTls 'odontocrm.crt'
     $cubre = $false
     if (Test-Path $cert) {
       try {
         $x509 = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($cert)
-        $san = ($x509.Extensions | Where-Object { $_.Oid.FriendlyName -like '*Subject Alternative Name*' })
+        $san = ($x509.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.17' })
         $textoSan = if ($san) { $san.Format($false) } else { '' }
         $cubre = $textoSan -like "*$ip*"
       }
@@ -534,7 +545,7 @@ switch ($Orden) {
     if ($cubre) { Escribir-Ok "el certificado incluye $ip" }
     else { Escribir-Aviso "el certificado NO incluye $ip (se emitió para la red anterior)"; $problemas++ }
 
-    # 3) CORS: ¿WEB_ORIGIN admite esa dirección? Si no, el login falla sin decir por qué.
+    # 4) CORS: ¿WEB_ORIGIN admite esa dirección? Si no, el login falla sin decir por qué.
     $origenes = Get-ValorEnv -Archivo (Join-Path $OdontoEnv 'odontocrm.env') -Clave 'WEB_ORIGIN'
     if ($origenes -and $origenes -like "*$ip*") { Escribir-Ok 'WEB_ORIGIN admite la IP actual' }
     else { Escribir-Aviso "WEB_ORIGIN no incluye https://$ip (hoy: $origenes)"; $problemas++ }
@@ -555,7 +566,16 @@ switch ($Orden) {
     # ── Arreglo automático ───────────────────────────────────────────────────
     Write-Host 'Arreglando la red actual' -ForegroundColor White
 
-    # a) Firewall: recrear las reglas si faltan.
+    # a) Perfil de la red: privado, que es donde las reglas dejan entrar.
+    foreach ($red in $publicas) {
+      try {
+        Set-NetConnectionProfile -InterfaceIndex $red.InterfaceIndex -NetworkCategory Private -ErrorAction Stop
+        Escribir-Ok "red «$($red.Name)» pasa a perfil PRIVADO"
+      }
+      catch { Escribir-Aviso "no pude cambiar el perfil de «$($red.Name)»: $($_.Exception.Message)" }
+    }
+
+    # b) Firewall: recrear las reglas si faltan.
     foreach ($par in @(@('OdontoCRM Web (HTTP)', 80), @('OdontoCRM Web (HTTPS)', 443))) {
       if (-not (Get-NetFirewallRule -DisplayName $par[0] -ErrorAction SilentlyContinue)) {
         New-NetFirewallRule -DisplayName $par[0] -Direction Inbound -LocalPort $par[1] `
@@ -564,7 +584,7 @@ switch ($Orden) {
       }
     }
 
-    # b) Certificado reemitido con la IP de ahora. MISMA CA: los equipos que ya la tengan
+    # c) Certificado reemitido con la IP de ahora. MISMA CA: los equipos que ya la tengan
     #    instalada no tienen que hacer nada.
     $mkcert = Join-Path $OdontoBin 'mkcert.exe'
     if (Test-Path $mkcert) {
@@ -577,7 +597,7 @@ switch ($Orden) {
       else { Escribir-Aviso 'no pude reemitir el certificado' }
     }
 
-    # c) CORS: el nombre y la IP de ahora.
+    # d) CORS: el nombre y la IP de ahora.
     $archivo = Join-Path $OdontoEnv 'odontocrm.env'
     if (Test-Path $archivo) {
       $texto = Get-Content -Raw $archivo
@@ -589,7 +609,7 @@ switch ($Orden) {
       Escribir-Ok 'identity, clinical y el gateway reiniciados (leen el origen permitido)'
     }
 
-    # d) El proxy: regenerar la CA/scripts con la IP de ahora y recargar.
+    # e) El proxy: regenerar la CA/scripts con la IP de ahora y recargar.
     $instaladorCaddy = Join-Path $OdontoCode 'infra\windows\caddy\instalar.ps1'
     if (Test-Path $instaladorCaddy) {
       & powershell -NoProfile -ExecutionPolicy Bypass -File $instaladorCaddy "--nombre=$nombre" "--ip=$ip"

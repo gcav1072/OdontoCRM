@@ -586,9 +586,31 @@ function Asegurar-ReglaFirewall {
   Escribir-Ok "80 y 443 abiertos para la LAN — regla «$Nombre»"
 }
 
+# Y el otro candado del mismo problema: las reglas SOLO cubren el perfil privado (a propósito:
+# el servidor no se publica en redes ajenas), pero Windows clasifica como PÚBLICA cualquier red
+# nueva —una «red 5G», una toma de la sala— y ahí el 80/443 quedan cerrados CON las reglas
+# puestas (2026-10-15: la LAN no llegaba y el instalador decía «regla presente»). El servidor de
+# la consulta vive en su LAN de confianza: la red activa pasa a perfil privado y se dice.
+function Asegurar-RedPrivada {
+  foreach ($red in @(Get-NetConnectionProfile -ErrorAction SilentlyContinue)) {
+    if ($red.NetworkCategory -ne 'Public') { continue }
+    Escribir-Aviso "la red «$($red.Name)» está en perfil PÚBLICO: Windows bloquea el 80/443 de la LAN"
+    try {
+      Set-NetConnectionProfile -InterfaceIndex $red.InterfaceIndex -NetworkCategory Private -ErrorAction Stop
+      Escribir-Ok "«$($red.Name)» pasa a perfil PRIVADO (las reglas del firewall ya la dejan entrar)"
+    }
+    catch {
+      Escribir-Error "no pude cambiar el perfil de «$($red.Name)»: $($_.Exception.Message)"
+      Escribir-Detalle 'hazlo a mano:  Set-NetConnectionProfile -NetworkCategory Private'
+      Escribir-Detalle '(si Windows no deja, es una red sin identificar: ponle nombre en el Centro de redes)'
+    }
+  }
+}
+
 if (-not $DryRun) {
   Asegurar-ReglaFirewall -Nombre 'OdontoCRM Web (HTTP)' -Puerto 80
   Asegurar-ReglaFirewall -Nombre 'OdontoCRM Web (HTTPS)' -Puerto 443
+  Asegurar-RedPrivada
 }
 
 # ════════════════════════════════════════════════════════════════════════════
