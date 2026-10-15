@@ -66,9 +66,14 @@ else {
   Escribir-Ok "secretos guardados en $guardado"
 
   # Un volcado por base, por si alguien desinstala una instalación con pacientes dentro.
+  # `$volcadoHecho` es la promesa del paso 5: si aquí no se pudo volcar NADA (falta pg_dump o
+  # .pgpass), ninguna base se borrará después. Lo que falló base a base queda marcado en
+  # `<base>.dump.error` y esa base concreta se conserva.
+  $volcadoHecho = $false
   $pgDump = Join-Path (Get-PgBin) 'pg_dump.exe'
   $pgPass = Join-Path $OdontoEnv '.pgpass'
   if ((Test-Path $pgDump) -and (Test-Path $pgPass)) {
+    $volcadoHecho = $true
     $anterior = $env:PGPASSFILE
     $env:PGPASSFILE = $pgPass
     $env:PGHOST = '127.0.0.1'; $env:PGPORT = '5432'; $env:PGUSER = 'odonto_backup'
@@ -185,28 +190,46 @@ elseif ($DryRun) {
   Escribir-Detalle "[dry-run] y los roles: $(($info.servicios.base) -join ', '), odonto_events, odonto_backup"
 }
 else {
-  $bases = ($info.bases | ForEach-Object { "'$_'" }) -join ', '
-  $roles = ((@($info.servicios.base) + @('odonto_events', 'odonto_backup')) | ForEach-Object { "'$_'" }) -join ', '
-  # Se borran SOLO las bases cuyo volcado existe: si un pg_dump falló, esa base se conserva.
-  $sql = @"
-DO `$`$ DECLARE b text; BEGIN
-  FOREACH b IN ARRAY ARRAY[$bases] LOOP
-    IF EXISTS (SELECT 1 FROM pg_database WHERE datname = b) THEN
-      EXECUTE format('DROP DATABASE IF EXISTS %I WITH (FORCE)', b);
-    END IF;
-  END LOOP;
-END `$`$;
-DO `$`$ DECLARE r text; BEGIN
-  FOREACH r IN ARRAY ARRAY[$roles] LOOP
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
-      EXECUTE format('DROP ROLE %I', r);
-    END IF;
-  END LOOP;
-END `$`$;
-"@
-  & $psql -X -q -v ON_ERROR_STOP=1 $adminUrl -c $sql
-  if ($LASTEXITCODE -eq 0) { Escribir-Ok 'bases y roles retirados' }
-  else { Escribir-Aviso 'no pude retirar todas las bases/roles (mira el error de arriba)' }
+  # Como en Fedora (`desinstalar.sh` 5/6): UNA sentencia por objeto, con la salida del error a
+  # la vista. Cuidado con la tentación del bloque `DO $$…$$`: corre como una transacción y
+  # PostgreSQL responde «DROP DATABASE cannot run inside a transaction block» (25001) — así fue
+  # como los pacientes de instalaciones anteriores sobrevivieron a una desinstalación
+  # (2026-10-15), diera igual que hubieran entrado por el servidor o por `npm run dev`: las dos
+  # pilas comparten las mismas bases `odonto_*`.
+  $fallos = 0
+  if (-not $volcadoHecho) {
+    Escribir-Aviso 'no se pudo volcar NINGUNA base (faltaba pg_dump o .pgpass): NO se borra ninguna'
+    $fallos++
+  }
+  else {
+    foreach ($base in $info.bases) {
+      if (Test-Path (Join-Path $guardado "$base.dump.error")) {
+        Escribir-Aviso "no borro la base ${base}: su copia de seguridad falló (mira $guardado)"
+        $fallos++
+        continue
+      }
+      $salida = & $psql -X -q -w -v ON_ERROR_STOP=1 $adminUrl `
+        -c "DROP DATABASE IF EXISTS `"$base`" WITH (FORCE);" 2>&1
+      if ($LASTEXITCODE -eq 0) { Escribir-Ok "base $base borrada" }
+      else {
+        Escribir-Aviso "no pude borrar la base ${base}:"
+        $salida | Select-Object -First 3 | ForEach-Object { Escribir-Detalle "  $_" }
+        $fallos++
+      }
+    }
+    # El rol solo se puede borrar cuando ya no es dueño de nada: por eso va DESPUÉS de sus bases.
+    foreach ($rol in (@($info.servicios.base) + @('odonto_events', 'odonto_backup'))) {
+      $salida = & $psql -X -q -w -v ON_ERROR_STOP=1 $adminUrl -c "DROP ROLE IF EXISTS `"$rol`";" 2>&1
+      if ($LASTEXITCODE -eq 0) { Escribir-Detalle "rol $rol retirado" }
+      else {
+        Escribir-Aviso "no pude borrar el rol ${rol}:"
+        $salida | Select-Object -First 3 | ForEach-Object { Escribir-Detalle "  $_" }
+        $fallos++
+      }
+    }
+  }
+  if ($fallos -eq 0) { Escribir-Ok 'bases y roles retirados' }
+  else { Escribir-Aviso "$fallos cosa(s) quedaron sin borrar (el motivo está arriba)" }
 }
 
 # ── 6. El comando del PATH ───────────────────────────────────────────────────

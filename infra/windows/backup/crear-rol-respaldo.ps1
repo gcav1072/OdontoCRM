@@ -91,8 +91,19 @@ DO `$`$ DECLARE b text; BEGIN
 END `$`$;
 "@
 
-& $psql -X -q -v ON_ERROR_STOP=1 $AdminUrl -c $sql
-if ($LASTEXITCODE -ne 0) { Morir 'PostgreSQL rechazó la creación del rol (mira el error de arriba)' }
+# El SQL va por ARCHIVO (`psql -f`) y no por `-c`: PowerShell 5.1 entrega los argumentos de
+# los comandos nativos en la codificación ANSI de la máquina, y un solo acento basta para que
+# PostgreSQL responda «secuencia de bytes no válida para codificación "UTF8"» (fue la `ó` de
+# «conexión» en un comentario, 2026-10-15: el rol de respaldo no se creó en una instalación
+# limpia y el respaldo diario se quedaba sin rol). El archivo se escribe en UTF-8 y psql lo
+# manda tal cual: los comentarios pueden seguir escribiéndose en español.
+$sqlFile = Join-Path $env:TEMP "odontocrm-rol-respaldo-$PID.sql"
+[IO.File]::WriteAllText($sqlFile, $sql, (New-Object System.Text.UTF8Encoding($false)))
+try {
+  & $psql -X -q -v ON_ERROR_STOP=1 $AdminUrl -f $sqlFile
+  if ($LASTEXITCODE -ne 0) { Morir 'PostgreSQL rechazó la creación del rol (mira el error de arriba)' }
+}
+finally { Remove-Item -Path $sqlFile -Force -ErrorAction SilentlyContinue }
 Escribir-Ok "rol $Rol creado/actualizado con permiso de lectura"
 
 # ── .pgpass y backup.env ─────────────────────────────────────────────────────

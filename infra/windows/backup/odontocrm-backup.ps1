@@ -91,7 +91,15 @@ if ($configFile -and (Test-Path $configFile)) {
         'PGPASSFILE' { $PgPassFile = $valor }
         'STORAGE_DIR' { $StorageDir = $valor }
         'PGBIN_DIR' { if (-not $pgbinArg) { $PgBinDir = $valor } }
-        'DATABASES' { if ($DbList.Count -eq 0) { $DbList = $valor -split '\s+' | Where-Object { $_ } } }
+        # `crear-rol-respaldo.ps1` escribe el valor ENTRE COMILLAS (`DATABASES="a b c"`); si no
+        # se quitan, cada nombre sale con su comilla pegada —`"odonto_identity`, `odonto_events"`—
+        # y la ruta del volcado muere con «Caracteres no válidos en la ruta de acceso» (2026-10-15).
+        'DATABASES' {
+          if ($DbList.Count -eq 0) {
+            $limpio = $valor.Trim().Trim('"').Trim("'")
+            $DbList = @($limpio -split '\s+' | Where-Object { $_ } | ForEach-Object { $_.Trim('"').Trim("'") })
+          }
+        }
         default { }
       }
     }
