@@ -49,9 +49,14 @@ if ((Test-Path $pgPass) -and -not $Rotar) {
   }
 }
 if (-not $clave) {
-  $bytes = New-Object byte[] 24
+  # Contraseña de 32 caracteres hexadecimales a partir de 16 bytes aleatorios (128 bits).
+  # Ojo con la trampa que rompió la instalación del 2026-10-14: la base64 de 24 bytes da 32
+  # caracteres PERO al quitar los símbolos (`+`, `/`, `=`) se queda a veces con MENOS de 32 y
+  # `Substring(0, 32)` lanza «el índice y la longitud deben hacer referencia a una ubicación
+  # en la cadena». El hex SIEMPRE tiene exactamente dos caracteres por byte: nunca falla.
+  $bytes = New-Object byte[] 16
   [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-  $clave = ([Convert]::ToBase64String($bytes) -replace '[^A-Za-z0-9]', '').Substring(0, 32)
+  $clave = [BitConverter]::ToString($bytes).Replace('-', '').ToLowerInvariant()
 }
 
 if ($DryRun) {
