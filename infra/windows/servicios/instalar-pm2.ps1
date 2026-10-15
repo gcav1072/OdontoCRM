@@ -156,6 +156,23 @@ try {
   Escribir-Detalle 'creando el servicio de Windows (una sola vez)…'
   & npm run setup 2>&1 | ForEach-Object { Escribir-Detalle $_ }
   if ($LASTEXITCODE -ne 0) {
+    # Un reintento no estorba: node-windows espera ~10 veces a que el servicio aparezca y
+    # en una máquina cargada se queda corto (así falló el 2026-10-14).
+    Escribir-Aviso '«npm run setup» falló; reintento una vez…'
+    Start-Sleep -Seconds 5
+    & npm run setup 2>&1 | ForEach-Object { Escribir-Detalle $_ }
+  }
+  if ($LASTEXITCODE -ne 0) {
+    # El fallo más frecuente: el servicio anterior quedó **«marcado para eliminación»** por
+    # un desinstalar sin reiniciar. Windows reserva el nombre hasta que se reinicie (o se
+    # cierren las consolas con un handle abierto) y node-windows no puede crearlo: termina
+    # con «Could not find "pm2.exe" service after 10 attempts», que no dice nada útil.
+    $zombie = (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\pm2.exe') -and
+      (-not (Get-Service -Name 'pm2*' -ErrorAction SilentlyContinue))
+    if ($zombie) {
+      Escribir-Error 'el servicio de PM2 anterior quedó «marcado para eliminación» y Windows no deja crear otro con ese nombre'
+      Escribir-Detalle 'reinicia Windows (o cierra servicios.msc y las consolas que lo tengan abierto) y repite'
+    }
     Morir "«npm run setup» falló (código $LASTEXITCODE). Mira la salida de arriba."
   }
 }

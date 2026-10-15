@@ -391,6 +391,17 @@ else {
   $pm2 = Get-Pm2Cmd
   Escribir-Detalle "pm2 → $pm2   ·   PM2_HOME → $env:PM2_HOME"
 
+  # OJO: si el servicio de PM2 NO está en marcha, `pm2 delete all`/`pm2 start` aquí arrancarían
+  # un demonio de ESTA cuenta (Administrador): se quedaría con los «pipes» globales, los
+  # procesos correrían sin supervisión y el servicio ya no podría arrancar nunca. Pasó el
+  # 2026-10-14: «npm run setup» falló, el instalador siguió igual y todo quedó «funcionando»
+  # sin servicio detrás. Ahora se comprueba ANTES y, sin servicio, no se toca PM2.
+  if (-not (Confirmar-ServicioPm2)) {
+    Escribir-Error 'el servicio de PM2 no está en marcha: NO arranco los procesos (sería sin supervisión)'
+    Escribir-Detalle "mira $env:ProgramData\pm2\service\service.log y repite:  .\servicios\instalar-pm2.ps1 --forzar"
+    Morir 'sin el servicio de PM2 los procesos no reviven solos ni arrancan con Windows'
+  }
+
   # La lista de procesos se fija para que el servicio la restaure al arrancar Windows.
   Push-Location $OdontoCode
   try {
