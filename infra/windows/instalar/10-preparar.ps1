@@ -298,6 +298,44 @@ else {
   }
 }
 
+# ── 3b. postgresql.conf: SOLO localhost ─────────────────────────────────────
+# El instalador de EDB deja `listen_addresses = '*'` (o lo comenta y vale '*'): la base
+# queda visible para TODA la LAN y la verificación lo señala como fallo. Los servicios
+# entran por 127.0.0.1; nadie más necesita ver el 5432.
+$pgConf = $null
+if ($pgBin) {
+  $candidatoConf = Join-Path (Split-Path $pgBin -Parent) 'data\postgresql.conf'
+  if (Test-Path $candidatoConf) { $pgConf = $candidatoConf }
+}
+if (-not $pgConf) {
+  Escribir-Aviso 'no encuentro postgresql.conf: comprueba a mano que listen_addresses = localhost'
+}
+else {
+  $textoConf = Get-Content -Path $pgConf -Raw
+  # Se pisa la línea activa (sin comentar) o se descomenta la de ejemplo.
+  $nuevoConf = $textoConf -replace "(?m)^\s*#?\s*listen_addresses\s*=.*$", "listen_addresses = 'localhost'"
+  if ($nuevoConf -eq $textoConf) {
+    Escribir-Ok "listen_addresses ya está restringido en ${pgConf}"
+  }
+  else {
+    Invocar "poner listen_addresses = 'localhost' en $pgConf" {
+      Copy-Item -Path $pgConf -Destination "$pgConf.antes-de-odontocrm" -Force
+      [IO.File]::WriteAllText($pgConf, $nuevoConf, (New-Object System.Text.UTF8Encoding($false)))
+      # `listen_addresses` NO es recargable: exige reiniciar el motor.
+      $svcPg = Get-ServicioPostgres
+      if ($svcPg) {
+        Restart-Service -Name $svcPg.Name -Force -ErrorAction SilentlyContinue
+        if (Esperar-Puerto -Puerto 5432 -Segundos 30) {
+          Escribir-Ok 'PostgreSQL reiniciado y escuchando solo en localhost'
+        }
+        else {
+          Escribir-Aviso 'PostgreSQL no volvió a escuchar tras el reinicio (míralo antes de seguir)'
+        }
+      }
+    }
+  }
+}
+
 # ── 4. PATH de la máquina ────────────────────────────────────────────────────
 Escribir-Paso '4/7 · PATH de la máquina'
 
