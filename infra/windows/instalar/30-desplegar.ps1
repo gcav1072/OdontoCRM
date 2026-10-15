@@ -157,19 +157,30 @@ if ($DryRun) {
 else {
   Push-Location $OdontoCode
   try {
-    $registro = Join-Path $env:TEMP 'odontocrm-npm-ci.log'
-    & npm ci --silent *> $registro
-    if ($LASTEXITCODE -ne 0) {
-      Get-Content $registro -Tail 20 | ForEach-Object { Escribir-Detalle $_ }
-      Morir "falló «npm ci» (registro: $registro). ¿Hay conexión a internet?"
-    }
-    Escribir-Ok 'dependencias instaladas (npm ci)'
+    # Entorno limpio (Con-EntornoNpmLimpio): con NODE_ENV=production en la consola, `npm ci`
+    # deja node_modules SIN las devDependencies y la compilación muere con «'tsc' no se
+    # reconoce» (2026-10-15).
+    Con-EntornoNpmLimpio {
+      $registro = Join-Path $env:TEMP 'odontocrm-npm-ci.log'
+      & npm ci --silent *> $registro
+      if ($LASTEXITCODE -ne 0) {
+        Get-Content $registro -Tail 20 | ForEach-Object { Escribir-Detalle $_ }
+        Morir "falló «npm ci» (registro: $registro). ¿Hay conexión a internet?"
+      }
+      Escribir-Ok 'dependencias instaladas (npm ci)'
 
-    $registro = Join-Path $env:TEMP 'odontocrm-build.log'
-    & npm run build *> $registro
-    if ($LASTEXITCODE -ne 0) {
-      Get-Content $registro -Tail 25 | ForEach-Object { Escribir-Detalle $_ }
-      Morir "falló la compilación (registro: $registro)"
+      # Red de seguridad: sin `tsc` no hay compilación, y preferimos decir la causa aquí que
+      # dejar que el paso siguiente muera con el «no se reconoce» de siempre.
+      if (-not (Test-Path (Join-Path $OdontoCode 'node_modules\.bin\tsc.cmd'))) {
+        Morir 'npm ci dejó node_modules SIN las devDependencies (¿NODE_ENV=production o NPM_CONFIG_OMIT=dev en la consola?): sin tsc no hay compilación'
+      }
+
+      $registro = Join-Path $env:TEMP 'odontocrm-build.log'
+      & npm run build *> $registro
+      if ($LASTEXITCODE -ne 0) {
+        Get-Content $registro -Tail 25 | ForEach-Object { Escribir-Detalle $_ }
+        Morir "falló la compilación (registro: $registro)"
+      }
     }
     Escribir-Ok 'compilado: servicios, paquetes y la interfaz web'
     $faltan = Get-EntrypointsFaltantes

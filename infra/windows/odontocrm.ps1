@@ -115,13 +115,22 @@ function Invocar-Node {
   param([string[]]$Argumentos)
   Push-Location $OdontoCode
   try {
+    $anteriorDir = $env:ODONTOCRM_ENV_DIR
+    $anteriorNodeEnv = $env:NODE_ENV
     $env:ODONTOCRM_ENV_DIR = $OdontoEnv
     $env:NODE_ENV = 'production'
     & node @Argumentos
     return $LASTEXITCODE
   }
   finally {
-    Remove-Item Env:\ODONTOCRM_ENV_DIR -ErrorAction SilentlyContinue
+    # Se RESTAURAN y no se borran (2026-10-15): invocado en la misma sesión —un `.ps1` a
+    # secas, sin pasar por el `.cmd`—, estas variables se quedaban puestas en la consola, y un
+    # `npm ci` posterior con `NODE_ENV=production` dejaba node_modules SIN devDependencies:
+    # la instalación moría con «'tsc' no se reconoce como un comando interno o externo».
+    if ($null -eq $anteriorDir) { Remove-Item Env:\ODONTOCRM_ENV_DIR -ErrorAction SilentlyContinue }
+    else { $env:ODONTOCRM_ENV_DIR = $anteriorDir }
+    if ($null -eq $anteriorNodeEnv) { Remove-Item Env:\NODE_ENV -ErrorAction SilentlyContinue }
+    else { $env:NODE_ENV = $anteriorNodeEnv }
     Pop-Location
   }
 }
@@ -732,13 +741,17 @@ switch ($Orden) {
     Push-Location $OdontoCode
     try {
       & git rev-parse --short HEAD 2>$null | ForEach-Object { Escribir-Ok "versión en el disco: $_" }
-      & npm ci --silent
-      if ($LASTEXITCODE -ne 0) { Morir 'falló npm ci' }
-      $registro = Join-Path $env:TEMP 'odontocrm-build.log'
-      & npm run build *> $registro
-      if ($LASTEXITCODE -ne 0) {
-        Get-Content $registro -Tail 30 | ForEach-Object { Escribir-Detalle $_ }
-        Morir "falló la compilación (registro: $registro)"
+      # Entorno limpio: si la consola trae NODE_ENV=production, `npm ci` BORRA las
+      # devDependencies y la compilación muere sin `tsc` (ver Con-EntornoNpmLimpio).
+      Con-EntornoNpmLimpio {
+        & npm ci --silent
+        if ($LASTEXITCODE -ne 0) { Morir 'falló npm ci' }
+        $registro = Join-Path $env:TEMP 'odontocrm-build.log'
+        & npm run build *> $registro
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content $registro -Tail 30 | ForEach-Object { Escribir-Detalle $_ }
+          Morir "falló la compilación (registro: $registro)"
+        }
       }
       Escribir-Ok 'compilado (TypeScript → dist/ y la SPA en apps/web/dist)'
       $faltan = Get-EntrypointsFaltantes
@@ -756,13 +769,17 @@ switch ($Orden) {
     Afirmar-Administrador
     Push-Location $OdontoCode
     try {
-      & npm ci --silent
-      if ($LASTEXITCODE -ne 0) { Morir 'falló npm ci' }
-      $registro = Join-Path $env:TEMP 'odontocrm-build.log'
-      & npm run build *> $registro
-      if ($LASTEXITCODE -ne 0) {
-        Get-Content $registro -Tail 30 | ForEach-Object { Escribir-Detalle $_ }
-        Morir "falló la compilación (registro: $registro)"
+      # Entorno limpio: si la consola trae NODE_ENV=production, `npm ci` BORRA las
+      # devDependencies y la compilación muere sin `tsc` (ver Con-EntornoNpmLimpio).
+      Con-EntornoNpmLimpio {
+        & npm ci --silent
+        if ($LASTEXITCODE -ne 0) { Morir 'falló npm ci' }
+        $registro = Join-Path $env:TEMP 'odontocrm-build.log'
+        & npm run build *> $registro
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content $registro -Tail 30 | ForEach-Object { Escribir-Detalle $_ }
+          Morir "falló la compilación (registro: $registro)"
+        }
       }
       Escribir-Ok 'compilado (TypeScript → dist/)'
       $faltan = Get-EntrypointsFaltantes

@@ -175,6 +175,30 @@ function Invocar {
   & $Accion
 }
 
+# ── npm con el entorno LIMPIO ────────────────────────────────────────────────
+# `npm ci`/`npm install` **omiten y borran** las devDependencies si ven `NODE_ENV=production`
+# (o `NPM_CONFIG_OMIT=dev` / `NPM_CONFIG_PRODUCTION`), y la compilación necesita `tsc`, que
+# vive en ellas. El 2026-10-15 una instalación murió en su paso 2/10 con «'tsc' no se reconoce
+# como un comando interno o externo» porque la consola traía `NODE_ENV=production` de un
+# `odontocrm` ejecutado en ella antes. Toda instalación de dependencias + compilación de los
+# guiones pasa por aquí, y el entorno de la consola se queda como estaba.
+function Con-EntornoNpmLimpio {
+  param([scriptblock]$Accion)
+  $protegidas = @('NODE_ENV', 'NPM_CONFIG_PRODUCTION', 'NPM_CONFIG_OMIT')
+  $anterior = @{}
+  foreach ($k in $protegidas) {
+    $anterior[$k] = [Environment]::GetEnvironmentVariable($k)
+    Remove-Item -Path "Env:\$k" -ErrorAction SilentlyContinue
+  }
+  try { & $Accion }
+  finally {
+    foreach ($k in $protegidas) {
+      if ($null -eq $anterior[$k]) { Remove-Item -Path "Env:\$k" -ErrorAction SilentlyContinue }
+      else { Set-Item -Path "Env:\$k" -Value $anterior[$k] }
+    }
+  }
+}
+
 # ── Directorios y permisos ───────────────────────────────────────────────────
 # `Acceso`: Escritura (los datos que el servicio produce) · Lectura (lo que solo lee) ·
 # Ninguno (solo Administradores).
