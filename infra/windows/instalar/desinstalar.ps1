@@ -93,8 +93,11 @@ else {
 }
 
 # ── 2. Tareas programadas ────────────────────────────────────────────────────
+# Las CUATRO que registra tareas\registrar-tareas.ps1. Ojo con la trampa del 2026-10-14:
+# aquí solo se borraban tres y «OdontoCRM · verificar respaldo» sobrevivía a la
+# desinstalación (con su aviso semanal por el bot de administración).
 Escribir-Paso '2/7 · Tareas programadas'
-foreach ($n in @('OdontoCRM · respaldo diario', 'OdontoCRM · alertas', 'OdontoCRM · red')) {
+foreach ($n in @('OdontoCRM · respaldo diario', 'OdontoCRM · alertas', 'OdontoCRM · red', 'OdontoCRM · verificar respaldo')) {
   $t = Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue
   if ($t) {
     Invocar "retirar la tarea «$n»" { Unregister-ScheduledTask -TaskName $n -Confirm:$false }
