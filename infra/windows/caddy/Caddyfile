@@ -22,14 +22,19 @@
 :80 {
 	# La CA en los formatos que pide cada aparato, ANTES del redirect (si no, caen en el 301).
 	# Android y Linux leen el PEM; Windows prefiere el DER (doble clic).
+	# Ojo con el nombre: el archivo publicado es `odontocrm-ca.crt` (como en Fedora, donde el
+	# nginx hace `alias`); sin el `rewrite`, el `file_server` busca `ca.crt` y devuelve 404 —
+	# «no pude descargar la CA» (fallo real del 2026-10-14).
 	handle /ca.crt {
 		root * __CA__
+		rewrite * /odontocrm-ca.crt
 		header Content-Type application/x-x509-ca-cert
 		header Content-Disposition 'attachment; filename="odontocrm-ca.crt"'
 		file_server
 	}
 	handle /ca.der {
 		root * __CA__
+		rewrite * /odontocrm-ca.der
 		header Content-Type application/x-x509-ca-cert
 		header Content-Disposition 'attachment; filename="odontocrm-ca.der"'
 		file_server
@@ -70,11 +75,13 @@
 	# La CA también por HTTPS (por si alguien la abre ya con confianza).
 	handle /ca.crt {
 		root * __CA__
+		rewrite * /odontocrm-ca.crt
 		header Content-Type application/x-x509-ca-cert
 		file_server
 	}
 	handle /ca.der {
 		root * __CA__
+		rewrite * /odontocrm-ca.der
 		header Content-Type application/x-x509-ca-cert
 		file_server
 	}

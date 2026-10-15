@@ -452,8 +452,34 @@ $clave = Join-Path $OdontoTls 'odontocrm.key'
 $mkcert = Join-Path $OdontoBin 'mkcert.exe'
 $nombres = @($Nombre, 'localhost', '127.0.0.1', $Ip) | Where-Object { $_ } | Select-Object -Unique
 
+# ¿El certificado existente cubre los nombres de AHORA? El nombre mDNS y la IP cambian de
+# red en red: un certificado de una instalación anterior ya no vale y la verificación lo
+# señala («NO cubre 192.168.x.x: los equipos que entren así verán un aviso»).
+function Test-CertificadoCubre {
+  param([string]$Ruta, [string[]]$Esperados)
+  if (-not (Test-Path $Ruta)) { return $false }
+  try {
+    $x509 = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($Ruta)
+    # El SAN se busca por OID (2.5.29.17), NO por `FriendlyName`: en Windows en español el
+    # nombre amigable es «Nombre alternativo del sujeto» y el patrón inglés no engancha
+    # (quedaba `$textoSan` vacío y el certificado «no cubría» nada aunque lo cubriera).
+    $san = $x509.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.17' }
+    $textoSan = if ($san) { $san.Format($false) } else { '' }
+    foreach ($n in $Esperados) { if ($n -and $textoSan -notlike "*$n*") { return $false } }
+    return $true
+  }
+  catch { return $false }
+}
+
+$reemitir = $false
 if ((Test-Path $cert) -and (Test-Path $clave)) {
-  Escribir-Ok "ya hay un certificado en ${cert}: se conserva"
+  if (Test-CertificadoCubre -Ruta $cert -Esperados $nombres) {
+    Escribir-Ok "ya hay un certificado en ${cert} y cubre los nombres de ahora: se conserva"
+  }
+  else {
+    Escribir-Aviso "el certificado de ${cert} NO cubre «$($nombres -join ', ')» (¿otra IP u otro nombre?): se reemite"
+    $reemitir = $true
+  }
 }
 elseif ($DryRun) {
   Escribir-Detalle "[dry-run] mkcert -install && mkcert $($nombres -join ' ')"
@@ -462,30 +488,39 @@ elseif (-not (Test-Path $mkcert)) {
   Escribir-Aviso "mkcert no está en $OdontoBin (lo baja 10-preparar.ps1): sin certificado, el proxy no arranca"
 }
 else {
-  # La CA de mkcert vive en el perfil del usuario que la crea; se fija una carpeta estable
-  # para que entre en el respaldo de configuración y no dependa del perfil.
-  $env:CAROOT = Join-Path $OdontoTls 'ca'
-  New-Item -ItemType Directory -Force -Path $env:CAROOT | Out-Null
-  & $mkcert -install 2>&1 | Out-Null
-  & $mkcert -key-file $clave -cert-file $cert @nombres 2>&1 | Out-Null
-  if (Test-Path $cert) {
-    Proteger-Archivo -Ruta $clave -LecturaServicio
-    Proteger-Archivo -Ruta $cert -LecturaServicio
-    Escribir-Ok "certificado emitido para: $($nombres -join ' ')"
-  }
-  else {
-    Escribir-Aviso 'no pude emitir el certificado con mkcert'
-  }
+  $reemitir = $true
+}
 
-  # La CA interna: sin ella no se puede quitar el aviso en los aparatos, y si se pierde hay
-  # que emitir certificados nuevos en TODOS. Se guarda junto al resto de la configuración.
-  $raizCa = Join-Path $env:CAROOT 'rootCA.pem'
-  if (Test-Path $raizCa) {
-    Copy-Item -Path $raizCa -Destination (Join-Path $OdontoTls 'odontocrm-ca.crt') -Force
-    Escribir-Ok 'CA interna guardada en la carpeta de TLS (entra en el respaldo de configuración)'
+if ($reemitir -and -not $DryRun) {
+  if (-not (Test-Path $mkcert)) {
+    Escribir-Aviso "mkcert no está en $OdontoBin (lo baja 10-preparar.ps1): no puedo reemitir el certificado"
   }
   else {
-    Escribir-Aviso "no encuentro la CA de mkcert en $raizCa"
+    # La CA de mkcert vive en el perfil del usuario que la crea; se fija una carpeta estable
+    # para que entre en el respaldo de configuración y no dependa del perfil.
+    $env:CAROOT = Join-Path $OdontoTls 'ca'
+    New-Item -ItemType Directory -Force -Path $env:CAROOT | Out-Null
+    & $mkcert -install 2>&1 | Out-Null
+    & $mkcert -key-file $clave -cert-file $cert @nombres 2>&1 | Out-Null
+    if (Test-Path $cert) {
+      Proteger-Archivo -Ruta $clave -LecturaServicio
+      Proteger-Archivo -Ruta $cert -LecturaServicio
+      Escribir-Ok "certificado emitido para: $($nombres -join ' ')"
+    }
+    else {
+      Escribir-Aviso 'no pude emitir el certificado con mkcert'
+    }
+
+    # La CA interna: sin ella no se puede quitar el aviso en los aparatos, y si se pierde hay
+    # que emitir certificados nuevos en TODOS. Se guarda junto al resto de la configuración.
+    $raizCa = Join-Path $env:CAROOT 'rootCA.pem'
+    if (Test-Path $raizCa) {
+      Copy-Item -Path $raizCa -Destination (Join-Path $OdontoTls 'odontocrm-ca.crt') -Force
+      Escribir-Ok 'CA interna guardada en la carpeta de TLS (entra en el respaldo de configuración)'
+    }
+    else {
+      Escribir-Aviso "no encuentro la CA de mkcert en $raizCa"
+    }
   }
 }
 
