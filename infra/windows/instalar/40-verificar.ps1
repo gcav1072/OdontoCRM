@@ -166,7 +166,9 @@ else {
   try {
     $x509 = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($cert)
     Escribir-Ok "certificado válido hasta $($x509.NotAfter.ToString('yyyy-MM-dd'))"
-    $san = $x509.Extensions | Where-Object { $_.Oid.FriendlyName -like '*Subject Alternative Name*' }
+    # Por OID (2.5.29.17): `FriendlyName` está localizado en Windows en español («Nombre
+    # alternativo del sujeto») y el patrón inglés no engancha: todo parecía «NO cubierto».
+    $san = $x509.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.17' }
     $textoSan = if ($san) { $san.Format($false) } else { '' }
     foreach ($esperado in @($Ip)) {
       if ($esperado -and $textoSan -like "*$esperado*") { Escribir-Ok "  cubre $esperado" }
@@ -237,7 +239,9 @@ Escribir-Paso '7/7 · Cifrado del almacén y respaldos restaurables'
 # ¿Tienen los servicios que guardan archivos su clave de cifrado?
 $sinClave = @()
 $conAlmacen = @()
-foreach ($servicio in $info.servicios.name) {
+# El campo es `nombre` (no `name`): con `Set-StrictMode` `$info.servicios.name` lanza
+# «no se encuentra la propiedad 'name'» y la verificación MORÍA en mitad del 7/7 (2026-10-14).
+foreach ($servicio in @($info.servicios | ForEach-Object { $_.nombre })) {
   $archivo = Join-Path $OdontoEnv "$servicio.env"
   if (-not (Test-Path $archivo)) { continue }
   $contenido = Get-Content $archivo -Raw -ErrorAction SilentlyContinue
