@@ -1322,6 +1322,15 @@ EOF
     done
     ok "$parados servicio(s) detenido(s)"
 
+    # Las alertas se SILENCIAN con el apagado intencional (decisión del 2026-10-14): un
+    # `parar` a propósito no sonaba como avería, y el temporizador de alertas —que corre
+    # cada 5 min— no dejaba de avisar de que «no funciona ningún servicio». Se desactiva
+    # (no solo se para) para que aguante también un reinicio de la máquina; `arrancar` lo
+    # vuelve a activar. Sin esto, el bot del consultorio recibía un aviso cada 5 minutos.
+    systemctl disable --now odontocrm-alertas.timer >/dev/null 2>&1 || true
+    systemctl stop odontocrm-alertas.service >/dev/null 2>&1 || true
+    ok 'alertas silenciadas hasta «odontocrm arrancar»'
+
     if (( todo )); then
       # PostgreSQL al final y a propósito: los servicios ya están parados, así que no
       # hay nadie a quien dejar a medias.
@@ -1347,6 +1356,9 @@ EOF
     ok "${#SERVICIOS[@]} servicios arrancados"
     systemctl start odontocrm-gateway.service >/dev/null 2>&1 || av 'no pude arrancar el gateway'
     ok 'gateway arrancado; comprobando que los nueve escuchen…'
+    # Las alertas vuelven con el arrancar: eran las que `parar` silenció a propósito.
+    systemctl enable --now odontocrm-alertas.timer >/dev/null 2>&1 || av 'no pude reactivar el temporizador de alertas'
+    ok 'alertas reactivadas'
     exec "$0" verificar
     ;;
 
@@ -1369,6 +1381,8 @@ EOF
     # El gateway al FINAL: así no atiende peticiones mientras sus servicios reinician.
     systemctl restart odontocrm-gateway.service >/dev/null 2>&1 || av 'no pude reiniciar el gateway'
     ok 'gateway reiniciado; comprobando que los nueve escuchen…'
+    # Igual que en `arrancar`: si antes hubo un `parar`, las alertas quedaron silenciadas.
+    systemctl enable --now odontocrm-alertas.timer >/dev/null 2>&1 || av 'no pude reactivar el temporizador de alertas'
     exec "$0" verificar
     ;;
 

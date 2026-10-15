@@ -643,6 +643,16 @@ switch ($Orden) {
     foreach ($s in $info.servicios) { if (& (Get-Pm2) stop "odontocrm-$($s.nombre)" *> $null) { $parados++ } }
     Escribir-Ok "$parados servicio(s) detenido(s)"
 
+    # Las alertas se SILENCIAN con el apagado intencional (decisión del 2026-10-14): un
+    # `parar` a propósito no sonaba como avería, y la tarea «OdontoCRM · alertas» (cada
+    # 5 min) no dejaba de avisar de que «no funciona ningún servicio». Se DESACTIVA (no
+    # solo se detiene) para que aguante un reinicio de Windows; `arrancar` la reactiva.
+    $tareaAlertas = Get-ScheduledTask -TaskName 'OdontoCRM · alertas' -ErrorAction SilentlyContinue
+    if ($tareaAlertas) {
+      Disable-ScheduledTask -TaskName 'OdontoCRM · alertas' -ErrorAction SilentlyContinue | Out-Null
+      Escribir-Ok 'alertas silenciadas hasta «odontocrm arrancar»'
+    }
+
     if ($todo) {
       # Al final y a propósito: los servicios ya están parados.
       Stop-Service -Name 'caddy' -ErrorAction SilentlyContinue
@@ -668,6 +678,12 @@ switch ($Orden) {
     Escribir-Ok 'Caddy en marcha'
     & (Get-Pm2) start all *> $null
     Escribir-Ok 'servicios arrancados; comprobando…'
+    # Las alertas vuelven con el arrancar: eran las que `parar` silenció a propósito.
+    $tareaAlertas = Get-ScheduledTask -TaskName 'OdontoCRM · alertas' -ErrorAction SilentlyContinue
+    if ($tareaAlertas) {
+      Enable-ScheduledTask -TaskName 'OdontoCRM · alertas' -ErrorAction SilentlyContinue | Out-Null
+      Escribir-Ok 'alertas reactivadas'
+    }
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $OdontoCode 'infra\windows\instalar\40-verificar.ps1') --rapido
     exit $LASTEXITCODE
   }
@@ -681,6 +697,12 @@ switch ($Orden) {
     if ($svcCaddy -and $svcCaddy.Status -ne 'Running') { Start-Service -Name 'caddy'; Escribir-Ok 'Caddy estaba parado: arrancado' }
     & (Get-Pm2) restart all *> $null
     Escribir-Ok 'servicios reiniciados; comprobando…'
+    # Igual que en `arrancar`: si antes hubo un `parar`, las alertas quedaron silenciadas.
+    $tareaAlertas = Get-ScheduledTask -TaskName 'OdontoCRM · alertas' -ErrorAction SilentlyContinue
+    if ($tareaAlertas -and $tareaAlertas.State -ne 'Ready') {
+      Enable-ScheduledTask -TaskName 'OdontoCRM · alertas' -ErrorAction SilentlyContinue | Out-Null
+      Escribir-Ok 'alertas reactivadas'
+    }
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $OdontoCode 'infra\windows\instalar\40-verificar.ps1') --rapido
     exit $LASTEXITCODE
   }
