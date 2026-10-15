@@ -92,7 +92,7 @@ if ($servicio -and -not $Forzar) {
   if ($servicio.Status -ne 'Running' -and -not $DryRun) {
     if (-not (Iniciar-Pm2DelServicio)) {
       Escribir-Aviso 'el servicio de PM2 no consigue quedarse en marcha'
-      Escribir-Detalle "mira $OdontoEtc\pm2\service\service.log (¿hay otro PM2 vivo?)"
+      Escribir-Detalle "mira $PM2_HOME\service\service.log (¿hay otro PM2 vivo?)"
     }
   }
   return
@@ -152,6 +152,26 @@ try {
     & npm run configure-policy 2>&1 | Out-Null
   }
 
+  # ── 2b. Restos de una instalación anterior: ARCHIVOS sin servicio ──────────
+  # TRAMPA (2026-10-15, la que rompió dos instalaciones): node-windows considera el
+  # servicio «instalado» mirando solo los archivos `daemon\pm2.exe` y `daemon\pm2.xml`
+  # (`exists` de node-windows), NO el servicio de Windows. `desinstalar.ps1` borraba el
+  # servicio pero dejaba `C:\ProgramData\pm2`; al reinstalar, node-windows respondía
+  # «Already installed.», **no creaba ningún servicio**, y el paso siguiente moría con el
+  # críptico «Could not find "pm2.exe" service after 10 attempts». Si hay archivos sin
+  # servicio detrás, se retiran para que la instalación sea de verdad.
+  $dirServicioPm2 = Join-Path $PM2_HOME 'service'
+  $restosPm2 = Join-Path $dirServicioPm2 'daemon\pm2.xml'
+  if ((-not (Get-Service -Name 'pm2*' -ErrorAction SilentlyContinue)) -and (Test-Path $restosPm2)) {
+    Escribir-Aviso 'hay restos de una instalación anterior (archivos de servicio pero ningún servicio de Windows)'
+    Escribir-Detalle 'node-windows diría «Already installed» y no crearía el servicio: los retiro'
+    try { Remove-Item -Recurse -Force $dirServicioPm2 -ErrorAction Stop } catch { }
+    if (Test-Path $restosPm2) {
+      Morir "no pude retirar los restos de $dirServicioPm2 (¿servicio «marcado para eliminación»?): reinicia Windows y repite"
+    }
+    Escribir-Ok "restos retirados: $dirServicioPm2"
+  }
+
   # ── 3. Crear el servicio y confirmar que arranca ───────────────────────────
   Escribir-Detalle 'creando el servicio de Windows (una sola vez)…'
   & npm run setup 2>&1 | ForEach-Object { Escribir-Detalle $_ }
@@ -163,10 +183,11 @@ try {
     & npm run setup 2>&1 | ForEach-Object { Escribir-Detalle $_ }
   }
   if ($LASTEXITCODE -ne 0) {
-    # El fallo más frecuente: el servicio anterior quedó **«marcado para eliminación»** por
-    # un desinstalar sin reiniciar. Windows reserva el nombre hasta que se reinicie (o se
-    # cierren las consolas con un handle abierto) y node-windows no puede crearlo: termina
-    # con «Could not find "pm2.exe" service after 10 attempts», que no dice nada útil.
+    # Los restos «archivos sin servicio» ya se limpiaron arriba (2b). Si aún falla, queda la
+    # otra causa: el servicio anterior quedó **«marcado para eliminación»** por un desinstalar
+    # sin reiniciar. Windows reserva el nombre hasta que se reinicie (o se cierren las consolas
+    # con un handle abierto) y node-windows no puede crearlo: termina con
+    # «Could not find "pm2.exe" service after 10 attempts», que no dice nada útil.
     $zombie = (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\pm2.exe') -and
       (-not (Get-Service -Name 'pm2*' -ErrorAction SilentlyContinue))
     if ($zombie) {
@@ -181,5 +202,5 @@ finally { Pop-Location }
 # ── 4. Arrancar el servicio con los «pipes» en su sitio ──────────────────────
 if (Iniciar-Pm2DelServicio) { exit 0 }
 Escribir-Aviso 'el servicio de PM2 no consigue quedarse en marcha'
-Escribir-Detalle "mira $OdontoEtc\pm2\service\service.log"
+Escribir-Detalle "mira $PM2_HOME\service\service.log"
 Morir 'no se pudo dejar PM2 como servicio'
