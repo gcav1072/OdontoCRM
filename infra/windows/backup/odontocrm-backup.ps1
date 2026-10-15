@@ -336,8 +336,11 @@ if (-not $DryRun) {
     if (-not (Test-Volcado -Archivo $archivo -Etiqueta ([IO.Path]::GetFileName($archivo)))) { $fallosVerif++ }
   }
 
-  # SHA256SUMS de todo lo que hay en el directorio del día.
-  $pendientes = @(Get-ChildItem -Path $runDir -File | Where-Object { $_.Name -ne 'SHA256SUMS' })
+  # SHA256SUMS de todo lo que hay en el directorio del día. `manifest.txt` queda FUERA (como
+  # en tools/lib/admin-informes.mjs): se escribe después de las sumas y en una segunda pasada
+  # del mismo día las cubriría con su contenido VIEJO —«la suma de manifest.txt NO coincide»
+  # y el respaldo salía con exit 3 aunque los volcados estuvieran bien (2026-10-15)—.
+  $pendientes = @(Get-ChildItem -Path $runDir -File | Where-Object { $_.Name -notin @('SHA256SUMS', 'manifest.txt') })
   $lineasSuma = foreach ($f in $pendientes) {
     $h = (Get-FileHash -Path $f.FullName -Algorithm SHA256).Hash.ToLower()
     "$h  $($f.Name)"
