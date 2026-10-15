@@ -15,12 +15,17 @@ con «Caracteres no válidos en la ruta de acceso»: `backup.env` escribe
 `DATABASES="a b c"` **entre comillas** y el lector partía por espacios sin quitarlas, así que
 cada base llegaba con su comilla pegada (`"odonto_identity`, `odonto_events"`) y la ruta del
 volcado no era una ruta. Ahora el SQL va por **archivo UTF-8** (`psql -f`, los comentarios
-pueden seguir en español) y el parseo de `DATABASES` quita las comillas envolventes.
+pueden seguir en español) y el parseo de `DATABASES` quita las comillas envolventes. Y la
+**segunda pasada del mismo día** moría en la verificación: `SHA256SUMS` cubría todo lo que había
+en la carpeta del día —incluido el `manifest.txt` de la ejecución anterior— y el manifiesto se
+reescribía después, con lo que su suma quedaba vieja («la suma de manifest.txt NO coincide»,
+exit 3 con los volcados bien). El manifiesto queda ahora fuera de las sumas, como en
+`tools/lib/admin-informes.mjs`.
 
 | Pieza | Qué cambia |
 | :--- | :--- |
 | `backup/crear-rol-respaldo.ps1` | El SQL se escribe en un temporal UTF-8 y se pasa con `psql -f`: por `-c`, un acento bastaba para que PostgreSQL rechazara la consulta entera (y el rol no se creaba) |
-| `backup/odontocrm-backup.ps1` | El parseo de `DATABASES` quita las comillas envolventes del valor (y de cada nombre): con `DATABASES="a b c"` los volcados morían con «Caracteres no válidos en la ruta de acceso» |
+| `backup/odontocrm-backup.ps1` | El parseo de `DATABASES` quita las comillas envolventes del valor (y de cada nombre): con `DATABASES="a b c"` los volcados morían con «Caracteres no válidos en la ruta de acceso»; y `manifest.txt` queda fuera de `SHA256SUMS` (con él dentro, la segunda pasada del día fallaba la verificación con el manifiesto viejo) |
 
 > **Sin migración.** Es la cadena de respaldos. En una máquina donde el rol de respaldo no
 > llegó a crearse: `backup\crear-rol-respaldo.ps1` (pide la contraseña de `postgres`); y
