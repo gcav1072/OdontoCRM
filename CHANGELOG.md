@@ -4,6 +4,32 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — La instalación limpia terminaba; el bot volvía a escuchar · 2026-10-14
+
+Revisión de la salida del instalador del 2026-10-14 y de la lógica del bot de administración, con
+seis defectos reales. El de fondo: **`npm run setup` fallaba** (`Could not find "pm2.exe" service
+after 10 attempts` —el servicio anterior quedaba «marcado para eliminación» tras desinstalar sin
+reiniciar—) y la pieza 7 seguía de todas formas con `pm2 delete all` y `pm2 start`, que arrancaban
+un **demonio del Administrador** con los «pipes» globales de PM2: los procesos quedaban vivos sin
+servicio detrás, y el servicio ya no podía arrancar nunca. Con eso en pie, el resto de la salida
+era la cascada: la verificación **moría** en el 7/7 y no comprobaba nada de lo que venía detrás.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `servicios/instalar-pm2.ps1` | Reintenta `npm run setup` una vez, y si el servicio quedó zombie lo dice («reinicia Windows y repite») en vez del críptico `Could not find…` |
+| `30-desplegar.ps1` | **Comprueba el servicio ANTES de tocar PM2**: sin servicio no arranca nada (sería sin supervisión); certificado: se reemite con mkcert si el existente no cubre el nombre o la IP de ahora (SAN por OID 2.5.29.17) |
+| `40-verificar.ps1` | `$info.servicios.name` → `.nombre` (con `StrictMode` lanzaba y mataba el paso 7/7); el SAN se lee por OID, no por `FriendlyName` (localizado en Windows en español: todo salía «NO cubierto») |
+| `caddy/Caddyfile` | `/ca.crt` y `/ca.der` reescriben a `odontocrm-ca.*`: `file_server` buscaba `ca.crt` y devolvía 404 («no pude descargar la CA») |
+| `backup/crear-rol-respaldo.ps1` | La contraseña ya no usa `Substring(0, 32)` sobre una base64 sin símbolos (se quedaba corta y lanzaba): ahora 32 hexadecimales de 16 bytes aleatorios |
+| `10-preparar.ps1` | `listen_addresses = 'localhost'` en `postgresql.conf` (con copia previa y reinicio, que es lo único que lo aplica): el 5432 quedaba publicado en toda la LAN |
+| `desinstalar.ps1` | Se retiran **las cuatro** tareas: faltaba «OdontoCRM · verificar respaldo», que seguía disparándose tras desinstalar |
+| `infra/fedora/odontocrm` + `windows/odontocrm.ps1` | `parar` **silencia las alertas** (desactiva la tarea/el timer, para que aguante un reinicio) y `arrancar`/`reiniciar` las reactivan: un apagado a propósito dejaba un «N problema(s)» cada 5 minutos en el bot |
+| `tools/admin-bot.mjs` | El bot ya **no sale con 0** al arrancar sin credenciales (la base de identity tarda; el panel aún no tiene el token): queda esperando y reintenta cada 60 s. Antes quedaba «muerto en verde» para PM2 y systemd y `/estado` no respondía **nunca**, aunque el botón «probar bot» del panel funcionase (ese manda desde el servicio; el bot es el que escucha). `revisarCredenciales` ya no lanza `TypeError` sobre `bot.firma` cuando `bot` es `null` |
+
+> **Sin migración.** Todo es instalador, herramientas de consola y el bot. Para que entre en un
+> servidor ya instalado basta con volver a pasar las piezas 1 y 3 (o `odontocrm parar`/`arrancar`
+> para el arreglo de las alertas).
+
 ## [Fase 12] — Diferencial cambiario por Fecha Valor e IGTF configurable (ADR 0069) · 2026-10-14
 
 El cobro en bolívares se descompone en tres montos —lo **recibido**, lo **imputado** a la tasa de
