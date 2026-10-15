@@ -4,6 +4,43 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — La verificación falseaba diez procesos ausentes y un `pm2` a destiempo colgaba la instalación · 2026-10-15
+
+Revisión del instalador de Windows probándolo entero en la PC de pruebas. La instalación ya
+terminaba, pero la verificación de cierre dejaba «10 problema(s)»… y **ninguno era del
+servidor**: los diez procesos estaban en marcha y respondiendo su `/health`. El origen era el
+parseo de `pm2 jlist`: su JSON trae el `env` **completo** de cada proceso, con `username` y
+`USERNAME` conviviendo (claves que solo difieren en mayúsculas), y el `ConvertFrom-Json` de
+PowerShell 5.1 las da por duplicadas y **lanza**… dentro de un `catch { }` que se lo tragaba.
+La lista se quedaba vacía y cada proceso salía «no está en PM2». Los otros dos síntomas eran
+del mismo pelo: `Get-Codigo` usaba `Invoke-WebRequest`, que sigue las redirecciones (http→https
+salía «200» donde hay un 301) y **lanza** en los 4xx (el SSE sin token devuelve 401 y se veía
+como «0», como si la URL estuviera rota). En los tres casos el servidor estaba bien —`curl` veía
+301, 401 y 200—; el que mentía era el verificador.
+
+Y en el camino cayó el cuelgue de verdad. El «message bus» de PM2 tarda un segundo en publicar
+sus `rpc.sock`/`pub.sock` **después** de que el servicio pasa a `Running`, y el `pm2 jlist` del
+instalador llegaba antes: no encontraba demonio y **se montaba uno propio** (del Administrador),
+que se quedaba con los «pipes» globales. El `jlist` esperó una respuesta que nunca llegó **para
+siempre**, y con él la instalación entera. Es la guerra de «pipes» que ya documentamos por la
+puerta de atrás: cualquier PM2 de otra cuenta (una consola `pm2 list` de prueba; un demonio
+zombie que `pm2 kill` dejó moribundo pero vivo) deja al servicio arrancando con
+`connect EPERM`. Ahora los guiones **retiran los demonios sueltos** —el PM2 del servicio corre
+en «no daemon mode» dentro del servicio, así que todo `Daemon.js` de la máquina es un intruso—,
+esperan al bus antes de tocar el CLI, y **todas** las llamadas a `pm2` llevan techo de tiempo.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `tools/pm2-resumen.mjs` | Nuevo (con su test): `pm2 jlist` → `[{"nombre","estado"}]`. Node se traga el JSON que PS 5.1 no puede parsear y a los guiones solo les llega lo que necesitan |
+| `instalar/40-verificar.ps1` | La lista de procesos pasa por `tools\pm2-resumen.mjs` y, si no se puede leer, se dice **por qué** (antes: diez «no está en PM2» falsos); `Get-Codigo` con `HttpWebRequest`, sin redirecciones y con los 4xx/5xx como números: vuelven a verse el 301 de http y el 401 del SSE |
+| `instalar/comun.ps1` | `Invocar-Pm2` (toda llamada a `pm2` con techo de tiempo; 124 = «no respondió»), `Clear-DemoniosSueltos` (retira `Daemon.js` ajenos por PID) y `Esperar-MessageBusPm2`; `Clear-Pm2Global` pasa por ellos |
+| `servicios/instalar-pm2.ps1` | Los «pipes» se dejan libres **antes** del `npm run setup` (un demonio de antes tumbaba el arranque del servicio con `EPERM`); tras el arranque se espera al bus y recién entonces se habla con `pm2 jlist`, con techo; si el CLI llegó a montar demonio, se retira |
+| `instalar/30-desplegar.ps1` | `pm2 delete all`/`start`/`save` por `Invocar-Pm2`: el instalador ya no se puede quedar colgado en el paso 7/10 |
+
+> **Sin migración.** Todo es instalador y verificación. En una máquina ya instalada basta con
+> volver a pasar `40-verificar.ps1` (y `servicios\instalar-pm2.ps1` si el servicio de PM2 está
+> caído o quedaron demonios sueltos).
+
 ## [Instalador] — Reinstalar PM2 sobre restos no creaba ningún servicio · 2026-10-15
 
 El segundo ensayo de instalación limpio volvió a morir con `Could not find "pm2.exe" service after 10 attempts`,
