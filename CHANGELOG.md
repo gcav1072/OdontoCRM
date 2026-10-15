@@ -4,6 +4,31 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — La instalación moría con «'tsc' no se reconoce»: NODE_ENV de más en la consola · 2026-10-15
+
+Desinstalación limpia y, al volver a instalar, el paso 2/10 moría tras el `npm ci`:
+«'tsc' no se reconoce como un comando interno o externo». El `node_modules` llegaba SIN las
+devDependencies —`typescript`, `vitest`, `eslint`— y solo con las de producción: la consola
+traía `NODE_ENV=production`, que npm interpreta como «sin dev»… y **borra** las que ya estén
+(probado: `npm ci` con esa variable quita 210 paquetes del árbol). La variable la dejaba el
+propio `odontocrm`: `Invocar-Node` la ponía para sus herramientas y en el `finally` solo
+limpiaba `ODONTOCRM_ENV_DIR`; ejecutado como `.ps1` **en la misma sesión** (sin pasar por el
+`.cmd`), `NODE_ENV=production` se quedaba en la consola y todo `npm ci` posterior de esa ventana
+quedaba cojo. Ahora `Invocar-Node` **restaura** las variables que encontró, y toda instalación
+de dependencias + compilación de los guiones corre con `Con-EntornoNpmLimpio` (entorno de npm
+limpio durante el build; la consola como estaba después). Con red de seguridad: si `npm ci`
+deja fuera `tsc`, el paso lo dice con su causa.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `instalar/comun.ps1` | `Con-EntornoNpmLimpio`: ejecuta un bloque SIN `NODE_ENV`/`NPM_CONFIG_OMIT`/`NPM_CONFIG_PRODUCTION` y restaura el entorno de la consola al salir |
+| `instalar/30-desplegar.ps1` | El paso 2/10 (`npm ci` + build) pasa por `Con-EntornoNpmLimpio`; y si `npm ci` deja `node_modules` sin `tsc`, se muere diciendo la causa en vez del «no se reconoce» |
+| `infra/windows/odontocrm.ps1` | `Invocar-Node` restaura `NODE_ENV`/`ODONTOCRM_ENV_DIR` en vez de dejarlos en la consola (la fuga); `compilar` y `recompilar` compilan con `Con-EntornoNpmLimpio` |
+
+> **Sin migración.** Es instalador y CLI. Quien tenga una instalación a medias por esto: repite
+> `30-desplegar.ps1` (idempotente); si `node_modules` quedó sin devDependencies, el propio paso
+> 2/10 las vuelve a poner.
+
 ## [Instalador] — El respaldo diario no arrancaba: el rol moría con la «ó» y las bases llegaban con comillas · 2026-10-15
 
 En una instalación limpia, el paso 10/10 terminaba con «PostgreSQL rechazó la creación del

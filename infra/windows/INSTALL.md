@@ -303,6 +303,7 @@ completo en una máquina nueva o tras un fallo, sigue
 | `password authentication failed` | Vuelve a aprovisionar (`20-aprovisionar.ps1`): converge la base a lo que dicen los archivos. |
 | El puerto 443 no responde desde otro aparato | La red de Windows debe estar en perfil **Privado**: las reglas se crean solo para ese perfil. El instalador lo pone solo y `40-verificar.ps1` lo señala como fallo; a mano: `Set-NetConnectionProfile -NetworkCategory Private` |
 | `psql: error: … no password supplied` | Falta `C:\ProgramData\OdontoCRM\env\.pgpass` o `backup.env`: ejecuta `crear-rol-respaldo.ps1`. |
+| `'tsc' no se reconoce como un comando interno o externo` al compilar | La consola traía `NODE_ENV=production` (o `NPM_CONFIG_OMIT=dev`) y `npm ci` dejó `node_modules` **sin devDependencies**. Los guiones compilan ya con el entorno limpio (`Con-EntornoNpmLimpio`); a mano: `Remove-Item Env:\NODE_ENV`, `npm ci` otra vez y repite `30-desplegar.ps1` |
 
 ## 11. Desinstalar
 
