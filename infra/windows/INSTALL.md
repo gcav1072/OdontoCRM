@@ -122,7 +122,7 @@ desde la pieza que falló (todas son idempotentes: correrlas cinco veces deja lo
 | `10-preparar.ps1` | Node, PostgreSQL (servicio, puerto, una contraseña del administrador **conocida y comprobada** y `pg_hba` en `scram-sha-256`), los binarios `mkcert.exe` y `caddy.exe`, el PATH, la política de ejecución y los directorios con sus permisos | `.\10-preparar.ps1` |
 | `20-aprovisionar.ps1` | **Genera los secretos una vez** en `C:\ProgramData\OdontoCRM\env`, crea los roles y las bases con *esas mismas* contraseñas y **comprueba cada una conectándose** | `.\20-aprovisionar.ps1` |
 | `30-desplegar.ps1` | Código sin secretos, compilación, **Chromium** para los PDF, claves JWT, migraciones, usuarios iniciales, el servicio de PM2 (más el **bot de administración**, si está configurado), el comando `odontocrm`, certificado TLS, Caddy, firewall, rol de respaldo y tareas programadas | `.\30-desplegar.ps1` |
-| `40-verificar.ps1` | El **efecto**: cada credencial conecta, los 11 procesos responden, HTTPS sirve la aplicación, la CA se descarga y el firewall está bien | `.\40-verificar.ps1` |
+| `40-verificar.ps1` | El **efecto**: cada credencial conecta, los 11 procesos responden, **el PDF de prueba sale con Chromium**, HTTPS sirve la aplicación, la CA se descarga y el firewall está bien | `.\40-verificar.ps1` |
 
 ### Una sola fuente de verdad para las credenciales (ADR 0043)
 
@@ -221,6 +221,10 @@ La guía completa, sistema por sistema, está en
 
 ## 8. El día a día: `odontocrm`
 
+> El comando vive en `C:\ProgramData\OdontoCRM\bin\cmd` y lo pone el instalador en el PATH de la
+> máquina. Si acabas de instalar y no se reconoce, **abre una consola nueva** (la anterior no ve el
+> PATH recién escrito) y comprueba el paso 9/9 de `.\40-verificar.ps1`.
+
 El comando del servidor es una sola puerta (en una consola de **Administrador**):
 
 ```powershell
@@ -284,6 +288,7 @@ completo en una máquina nueva o tras un fallo, sigue
 | `la contraseña de «postgres» no conecta con este PostgreSQL` | El motor venía de antes y la contraseña no es esa. Si no la tienes: `10-preparar.ps1 --recuperar-postgres` (la que escribas pasa a ser la nueva). |
 | `no encuentro PostgreSQL 18 y la instalación automática no lo dejó en su sitio` | Instálalo a mano desde postgresql.org (instalación **estándar**) y anota la contraseña de `postgres`: la pieza 2 la necesita. |
 | `no encuentro «node»` | Node no está en el PATH: ejecuta `10-preparar.ps1` (o instálalo desde nodejs.org, instalación **estándar**, no `nvm`). |
+| `odontocrm` no se reconoce al teclearlo | `C:\ProgramData\OdontoCRM\bin\cmd` no está en el **PATH de la máquina** (o tu consola es anterior al cambio). Míralo con `.\40-verificar.ps1`, que ahora lo comprueba en su paso 9/9. Solución: pieza 1 (`.\10-preparar.ps1`) y **abre una consola nueva** —la que tengas abierta de antes no ve el PATH recién escrito—. |
 | Al ejecutar un `.ps1` no arranca y salen símbolos raros | El archivo perdió el BOM: guárdalo como **UTF-8 con BOM**. |
 | `no se puede cargar el archivo …pm2.ps1` | Política de ejecución: `Set-ExecutionPolicy -Scope LocalMachine RemoteSigned`. |
 | PM2 no ve los procesos / `pm2 list` sale vacío | PM2 corre como `LocalService`: habla con él desde una consola de **Administrador**. Si además tienes un PM2 de desarrollo en la misma máquina, se pelean por los «pipes» globales de PM2: para el servidor, uno solo |
@@ -295,7 +300,7 @@ completo en una máquina nueva o tras un fallo, sigue
 | Los procesos están «online» pero **ningún puerto escucha** y los registros de la app están vacíos | PM2 arrancó en modo **cluster** (basta declarar `instances`, aunque sea `1`): en Windows no puede cargar apps ESM y el proceso queda vacío. El ecosistema de producción lleva `exec_mode: 'fork'` explícito; **no añadas `instances`** a un `ecosystem.cjs` |
 | `HTTP 502` desde fuera pero `https://127.0.0.1` va bien | El firewall o el gateway: `Get-NetFirewallRule -DisplayName 'OdontoCRM Web (HTTPS)'`, y `pm2 status`. |
 | La SPA, la API y la CA devuelven `0`, y el servicio `caddy` está en `Stopped` | Caddy corre como `LocalService` y tiene que poder **leer y ejecutar** `C:\ProgramData\OdontoCRM\bin\caddy.exe`. Suele pasar cuando el binario se movió desde `%TEMP%` (conserva sus ACL): repite la **pieza 1** (`instalar.ps1`), que revisa ese permiso. El motivo exacto está en `Get-EventLog System -Source "Service Control Manager" -Newest 5` (`%%5` = acceso denegado) |
-| Los PDF (récipe, factura, reportes) devuelven 503 | Falta Chromium: `.\40-verificar.ps1` lo señala; repite la pieza 3 (`30-desplegar.ps1`). |
+| Los PDF (récipe, factura, reportes) devuelven 503 | `.\40-verificar.ps1` lo señala («Los imprimibles») y dice cuál de las dos causas: **falta Chromium** → repite la pieza 3 (`30-desplegar.ps1`); o **«EPERM … mkdtemp …playwright-artifacts»** → los procesos heredaron el `%TEMP%` de la consola del administrador y LocalService no puede escribir ahí. La pieza 3 fija `TMP`/`TEMP`/`TMPDIR` en `data\tmp` (`ecosystem.produccion.config.cjs`) y rearranca los servicios; basta con repetirla |
 | `C:\OdontoCRM` tiene cosas que no puso el instalador | El instalador se niega a clonar donde hay algo ajeno y te dice **qué** encontró. Muévelo aparte (`Rename-Item C:\OdontoCRM C:\OdontoCRM.viejo`) y repite. Las carpetas `data`, `logs` y `backups` **no** cuentan: son suyas y se conservan |
 | `sin PG_ADMIN_URL no puedo crear el rol de respaldo` | La pieza 3 lo necesita para su paso 10/10: repite `instalar.ps1 --solo=desplegar` y escribe la contraseña de `postgres` cuando la pida, o ejecuta `infra\windows\backup\crear-rol-respaldo.ps1` (también la pide). |
 | La «contraseña temporal» del instalador no entra | El instalador genera una **nueva** en cada ejecución, pero el seed **omite los usuarios que ya existen**: solo es la de verdad si la cuenta se acaba de crear. En una reinstalación, regenera la clave con `seed.js --reset --usuarios=admin` y `SEED_PASSWORD_ADMIN` (RUNBOOK §5, «Usuarios») |

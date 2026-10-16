@@ -2,10 +2,13 @@
 # OdontoCRM · 4/4 · Verificar el servidor (Windows)
 #
 # Comprueba el EFECTO, no los archivos: que cada credencial CONECTE, que cada servicio
-# ESCUCHE y responda, que el proxy SIRVA la aplicación por HTTPS y que los aparatos de la
-# LAN puedan entrar. Un archivo escrito no es una prueba.
+# ESCUCHE y responda, que el proxy SIRVA la aplicación por HTTPS, que los aparatos de la
+# LAN puedan entrar y que el comando `odontocrm` se pueda teclear. Un archivo escrito no es
+# una prueba.
 #
-# Solo lee: no cambia nada. Se puede ejecutar tantas veces como haga falta.
+# Solo lee: no cambia nada. Se puede ejecutar tantas veces como haga falta. (La comprobación
+# de los imprimibles deja caer una tarea programada de un solo uso, que borra enseguida, para
+# probar la escritura como LocalService — la cuenta real del servicio de PM2 —.)
 #
 #   .\40-verificar.ps1            # todo
 #   .\40-verificar.ps1 --rapido   # sin las comprobaciones de red
@@ -66,8 +69,8 @@ function Get-Codigo { param([string]$Url)
   catch { return 0 }
 }
 
-# ── 1/7 · Credenciales y usuarios ───────────────────────────────────────────
-Escribir-Paso '1/7 · Credenciales y usuarios: cada credencial tiene que conectar'
+# ── 1/9 · Credenciales y usuarios ───────────────────────────────────────────
+Escribir-Paso '1/9 · Credenciales y usuarios: cada credencial tiene que conectar'
 if (-not (Test-Path (Join-Path $OdontoEnv 'odontocrm.env'))) {
   Fallo "no hay entorno en $OdontoEnv — falta ejecutar .\20-aprovisionar.ps1"
 }
@@ -107,8 +110,8 @@ else {
   }
 }
 
-# ── 2/7 · Los procesos ──────────────────────────────────────────────────────
-Escribir-Paso "2/7 · Los $($info.procesos.Count) procesos (PM2)"
+# ── 2/9 · Los procesos ──────────────────────────────────────────────────────
+Escribir-Paso "2/9 · Los $($info.procesos.Count) procesos (PM2)"
 if ($Rapido) { Escribir-Detalle 'omitido (--rapido)' }
 else {
   $crudo = $null
@@ -170,8 +173,31 @@ else {
   }
 }
 
-# ── 3/7 · La aplicación por HTTPS ───────────────────────────────────────────
-Escribir-Paso '3/7 · La aplicación por HTTPS'
+# ── 3/9 · Los imprimibles (Chromium) ────────────────────────────────────────
+# El PDF del récipe, la factura y los reportes se componen con Chromium (Playwright).
+# Que `chrome.exe` exista no prueba nada: lo que importa es que el SERVICIO pueda usarlo.
+# El 2026-10-15 los imprimibles volvían con «EPERM … mkdtemp '…\Temp\playwright-artifacts…'»:
+# los procesos de PM2 heredaban el `%TEMP%` de la consola del administrador que los lanzó y
+# LocalService (su cuenta) no puede escribir ahí. Por eso se comprueba el EFECTO: (a) que el
+# servicio escriba de verdad en la carpeta temporal y (b) que salga un PDF con el MISMO
+# entorno que tendrán los procesos (`ecosystem.produccion.config.cjs` fija TMP/TEMP/TMPDIR
+# en data\tmp).
+Escribir-Paso '3/9 · Los imprimibles (récipe, factura y reportes: Chromium)'
+if (-not (Test-Navegador)) {
+  Fallo "no hay Chromium en ${OdontoPlaywright}: los PDF devolverán 503"
+  Escribir-Detalle 'se baja con la pieza 3:  .\30-desplegar.ps1'
+}
+elseif (-not (Test-EscrituraServicio -Ruta $OdontoTmp)) {
+  Fallo "LocalService no puede escribir en ${OdontoTmp}: los PDF fallarán con «EPERM … mkdtemp»"
+  Escribir-Detalle 'se arregla con la pieza 1:  .\10-preparar.ps1  (crea la carpeta con su permiso)'
+}
+elseif (-not (Probar-Pdf -Titulo 'el PDF de prueba')) {
+  Fallo 'Chromium no pudo componer el PDF de prueba: los imprimibles fallarán'
+  Escribir-Detalle 'repite la pieza 3:  .\30-desplegar.ps1  (el error exacto queda arriba)'
+}
+
+# ── 4/9 · La aplicación por HTTPS ───────────────────────────────────────────
+Escribir-Paso '4/9 · La aplicación por HTTPS'
 if ($Rapido) { Escribir-Detalle 'omitido (--rapido)' }
 else {
   $servicio = Get-Service -Name 'caddy' -ErrorAction SilentlyContinue
@@ -200,8 +226,8 @@ else {
   else { Escribir-Aviso "el SSE devolvió $sse" }
 }
 
-# ── 4/7 · El certificado ────────────────────────────────────────────────────
-Escribir-Paso '4/7 · Certificado'
+# ── 5/9 · El certificado ────────────────────────────────────────────────────
+Escribir-Paso '5/9 · Certificado'
 $cert = Join-Path $OdontoTls 'odontocrm.crt'
 if (-not (Test-Path $cert)) {
   Fallo "no hay certificado en $cert — ejecuta .\30-desplegar.ps1"
@@ -224,8 +250,8 @@ else {
   }
 }
 
-# ── 5/7 · Firewall: abierto lo que debe, cerrado lo que no ──────────────────
-Escribir-Paso '5/7 · Firewall'
+# ── 6/9 · Firewall: abierto lo que debe, cerrado lo que no ──────────────────
+Escribir-Paso '6/9 · Firewall'
 if ($Rapido) { Escribir-Detalle 'omitido (--rapido)' }
 else {
   foreach ($regla in @('OdontoCRM Web (HTTP)', 'OdontoCRM Web (HTTPS)')) {
@@ -261,8 +287,8 @@ else {
   if ($publicados -eq 0) { Escribir-Ok 'la base de datos y los servicios internos NO están publicados' }
 }
 
-# ── 6/7 · Sin secretos en el código ─────────────────────────────────────────
-Escribir-Paso '6/7 · Secretos'
+# ── 7/9 · Sin secretos en el código ─────────────────────────────────────────
+Escribir-Paso '7/9 · Secretos'
 if (-not (Test-Path $OdontoCode)) { Escribir-Aviso "todavía no hay código desplegado en $OdontoCode" }
 else {
   $filtrados = Get-ChildItem -Path $OdontoCode -Recurse -Depth 3 -Filter '.env' -File -ErrorAction SilentlyContinue |
@@ -287,17 +313,18 @@ elseif (Test-Path (Join-Path $OdontoCode '.odontocrm-build-commit')) {
   Escribir-Ok 'el código compilado es el del disco'
 }
 
-# ── 7/7 · Cifrado del almacén y respaldos restaurables ───────────────────────
+# ── 8/9 · Cifrado del almacén y respaldos restaurables ───────────────────────
 # Dos comprobaciones que **no** cambian nada: informan de en qué estado está lo que protege
 # los datos. El cifrado del almacén se activa solo; migrar los archivos viejos lo decide el
 # operador (por eso aquí se informa y no se falla).
-Escribir-Paso '7/7 · Cifrado del almacén y respaldos restaurables'
+Escribir-Paso '8/9 · Cifrado del almacén y respaldos restaurables'
 
 # ¿Tienen los servicios que guardan archivos su clave de cifrado?
 $sinClave = @()
 $conAlmacen = @()
 # El campo es `nombre` (no `name`): con `Set-StrictMode` `$info.servicios.name` lanza
-# «no se encuentra la propiedad 'name'» y la verificación MORÍA en mitad del 7/7 (2026-10-14).
+# «no se encuentra la propiedad 'name'» y la verificación MORÍA en mitad del último paso
+# (2026-10-14).
 foreach ($servicio in @($info.servicios | ForEach-Object { $_.nombre })) {
   $archivo = Join-Path $OdontoEnv "$servicio.env"
   if (-not (Test-Path $archivo)) { continue }
@@ -370,6 +397,31 @@ if ($nodeVerificar) {
   }
 }
 else { Escribir-Aviso 'no encuentro node: no puedo probar el respaldo' }
+
+# ── 9/9 · El comando odontocrm ───────────────────────────────────────────────
+# El día a día del servidor se maneja con `odontocrm` (estado, respaldar, alertas…), y «la
+# instalación terminó sin errores» no basta: el lanzador tiene que estar EN EL PATH de la
+# máquina y su guion tiene que viajar con él. El 2026-10-16 una instalación limpia dejó
+# `C:\ProgramData\OdontoCRM\bin\cmd` fuera del PATH —10-preparar.ps1 la registraba antes de
+# crearla y `Add-RutaAlPath` la ignoraba en silencio— y teclear «odontocrm» no servía.
+Escribir-Paso '9/9 · El comando odontocrm'
+$lanzador = Join-Path $OdontoCmd 'odontocrm.cmd'
+$guionCli = Join-Path $OdontoCmd 'odontocrm.ps1'
+if (-not (Test-Path $lanzador) -or -not (Test-Path $guionCli)) {
+  Fallo "el comando odontocrm no está instalado en $OdontoCmd"
+  Escribir-Detalle 'lo instala la pieza 3:  .\30-desplegar.ps1'
+}
+elseif (-not (([Environment]::GetEnvironmentVariable('Path', 'Machine') -split ';') -contains $OdontoCmd)) {
+  Fallo "$OdontoCmd no está en el PATH de la máquina: «odontocrm» no se reconoce al teclearlo"
+  Escribir-Detalle 'se arregla con la pieza 1:  .\10-preparar.ps1   (luego abre una consola nueva)'
+}
+elseif (-not (Test-Comando odontocrm)) {
+  Escribir-Aviso 'el PATH está bien, pero esta consola es anterior al cambio: ábrela de nuevo'
+  Escribir-Detalle "el comando está instalado en $lanzador"
+}
+else {
+  Escribir-Ok "«odontocrm» se teclea y responde (desde $OdontoCmd)"
+}
 
 # ── Resumen ─────────────────────────────────────────────────────────────────
 Write-Host ''

@@ -220,7 +220,7 @@ odontocrm modo-test off
 | `502` desde la LAN pero `https://127.0.0.1` va | `pm2 status` y `Get-NetFirewallRule -DisplayName 'OdontoCRM Web (HTTPS)'` |
 | Un proceso en bucle por `EADDRINUSE` | Hay **otra pila** usando los puertos: `npm run stack:status`. Solo un dueño de los puertos (ADR 0037) |
 | `/ready` con `database` en error | `Get-Service postgresql-x64-18` |
-| Los PDF fallan | Falta Chromium: `.\40-verificar.ps1` lo señala; repite `30-desplegar.ps1` |
+| Los PDF fallan | `.\40-verificar.ps1` lo señala («Los imprimibles»): falta Chromium (repite `30-desplegar.ps1`) o «EPERM … mkdtemp» — el `%TEMP%` heredado de la consola del administrador, que LocalService no puede escribir; la pieza 3 fija los temporales en `data\tmp` y basta repetirla |
 | El respaldo dice «no existe en este servidor» | Falta `.pgpass`/`backup.env`: `crear-rol-respaldo.ps1` (pide la contraseña de `postgres`) |
 | La cola crece y no baja | `odontocrm estado`: ¿el outbox se atasca? ¿la cola tiene fallidos? |
 | Nadie entra desde fuera | La red de Windows debe estar en perfil **Privado** |

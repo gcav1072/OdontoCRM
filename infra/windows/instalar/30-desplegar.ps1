@@ -203,6 +203,18 @@ else {
 # Se baja aquí, idempotente: si ya está, ni se toca ni se gasta red.
 Escribir-Paso '3/10 · Chromium para los PDF'
 
+# La carpeta temporal del SERVICIO va con el navegador: Playwright hace `mkdtemp` ahí. El
+# `%TEMP%` de la consola del administrador NO le sirve a LocalService —la cuenta del servicio
+# de PM2— y los PDF fallaban con «EPERM … mkdtemp …playwright-artifacts…» (2026-10-15). Los
+# procesos la tienen fijada en `ecosystem.produccion.config.cjs` (TMP/TEMP/TMPDIR → data\tmp);
+# aquí se garantiza que la carpeta existe, que LocalService puede escribir de VERDAD en ella y
+# que Chromium compone un PDF con ese mismo entorno.
+Nuevo-Directorio -Ruta $OdontoTmp -Acceso 'Escritura'
+if (-not (Test-EscrituraServicio -Ruta $OdontoTmp)) {
+  Escribir-Aviso "LocalService no pudo escribir en ${OdontoTmp}: los PDF fallarán con «EPERM … mkdtemp»"
+  Escribir-Detalle 'revisa esa carpeta (icacls) y repite este paso'
+}
+
 if ($DryRun) {
   Escribir-Detalle "[dry-run] verificaría/bajaría el Chromium de Playwright en $OdontoPlaywright"
 }
@@ -238,6 +250,13 @@ else {
       Escribir-Detalle "  & `"$playwright`" install chromium"
     }
   }
+}
+
+# El EFECTO, no el archivo: que el PDF salga de verdad, con el MISMO entorno que tendrán los
+# servicios (temporales en $OdontoTmp, navegador en $OdontoPlaywright). Si esto falla, los
+# imprimibles —récipe, factura y reportes— fallarán igual en la consulta.
+if (-not $DryRun -and (Test-Navegador)) {
+  $null = Probar-Pdf -Titulo 'el PDF de prueba'
 }
 
 # ════════════════════════════════════════════════════════════════════════════

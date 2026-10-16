@@ -759,6 +759,103 @@ function Get-NavegadorExe {
   return $null
 }
 
+# ¿Puede el servicio (LocalService) escribir aquí de verdad? Se comprueba creando un archivo
+# con la cuenta del servicio, no mirando la ACL: una ACL puede decir «sí» y la carpeta estar
+# en un punto montado donde no se pueda. El testigo se crea con `schtasks` como LocalService,
+# que es EXACTAMENTE la cuenta con la que corre PM2. Sin consola de administrador no se puede
+# crear la tarea (y la verificación se puede correr sin elevación), y entonces se mira la ACL.
+function Test-EscrituraServicio {
+  param([string]$Ruta = $OdontoTmp)
+  if ($DryRun) { return $true }
+  if (-not (Test-Path $Ruta)) {
+    Escribir-Detalle "no existe la carpeta $Ruta"
+    return $false
+  }
+
+  if (Test-Administrador) {
+    $tarea = 'OdontoCRM-probar-escritura'
+    $marca = Join-Path $Ruta "prueba-escritura-$([guid]::NewGuid().ToString('N')).tmp"
+    # `cmd /c` porque la tarea solo sabe con un comando: el `type nul` deja el testigo si hay
+    # escritura, y si no lo hay la tarea falla o sale sin testigo — los dos casos = falso.
+    # `/create /f` sobrescribe cualquier tarea de un intento anterior que quedara colgada.
+    schtasks /create /tn $tarea /sc once /st 00:00 /ru 'NT AUTHORITY\LOCAL SERVICE' `
+      /tr "cmd /c type nul > `"$marca`"" /f *> $null
+    if ($LASTEXITCODE -ne 0) {
+      Escribir-Detalle 'no pude crear la tarea de prueba como LocalService (schtasks)'
+      return $false
+    }
+    try {
+      schtasks /run /tn $tarea *> $null
+      $limite = (Get-Date).AddSeconds(10)
+      while ((Get-Date) -lt $limite -and -not (Test-Path $marca)) { Start-Sleep -Milliseconds 250 }
+    }
+    finally { schtasks /delete /tn $tarea /f *> $null }
+    $puede = Test-Path $marca
+    if ($puede) { Remove-Item -Path $marca -Force -ErrorAction SilentlyContinue }
+    if (-not $puede) {
+      Escribir-Detalle "la cuenta LocalService no pudo crear un archivo en $Ruta"
+    }
+    return $puede
+  }
+
+  # Respaldo sin elevación: la ACL del SID del servicio (S-1-5-19) con permiso de escritura.
+  $escritura = [System.Security.AccessControl.FileSystemRights]::Write -bor
+    [System.Security.AccessControl.FileSystemRights]::Modify -bor
+    [System.Security.AccessControl.FileSystemRights]::FullControl
+  foreach ($regla in (Get-Acl -Path $Ruta).Access) {
+    if ($regla.AccessControlType -ne 'Allow') { continue }
+    $sid = $null
+    try { $sid = $regla.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { }
+    if ($sid -ne 'S-1-5-19') { continue }
+    if (($regla.FileSystemRights -band $escritura) -ne 0) { return $true }
+  }
+  Escribir-Detalle "el ACL de $Ruta no da permiso de escritura al servicio (S-1-5-19)"
+  return $false
+}
+
+# ── La prueba de los imprimibles (el PDF de verdad) ──────────────────────────
+# Que `chrome.exe` exista no prueba que el servicio pueda USARLO: los guiones ejecutan
+# `instalar\probar-pdf.mjs` con el MISMO entorno que tendrán los servicios de PM2
+# (`TMP`/`TEMP`/`TMPDIR` en $OdontoTmp y `PLAYWRIGHT_BROWSERS_PATH` en $OdontoPlaywright).
+# Así el «EPERM … mkdtemp» del 2026-10-15 sale en la instalación, no en el mostrador.
+function Probar-Pdf {
+  param([string]$Titulo = 'el PDF de prueba')
+  if ($DryRun) { return $true }
+  $prueba = Join-Path $PSScriptRoot 'probar-pdf.mjs'
+  if (-not (Test-Path $prueba)) { Escribir-Aviso "no encuentro probar-pdf.mjs: no pruebo $Titulo"; return $false }
+  # Precondición del test: la carpeta temporal del servicio. Sin ella Playwright falla con
+  # «ENOENT … mkdtemp» y el fallo parece del navegador, no de la instalación.
+  if (-not (Test-Path $OdontoTmp)) {
+    Nuevo-Directorio -Ruta $OdontoTmp -Acceso 'Escritura' | Out-Null
+  }
+  $anterior = @{}
+  foreach ($k in @('TMPDIR', 'TMP', 'TEMP', 'PLAYWRIGHT_BROWSERS_PATH')) {
+    $anterior[$k] = [Environment]::GetEnvironmentVariable($k)
+  }
+  try {
+    $env:TMPDIR = $OdontoTmp
+    $env:TMP = $OdontoTmp
+    $env:TEMP = $OdontoTmp
+    $env:PLAYWRIGHT_BROWSERS_PATH = $OdontoPlaywright
+    $salida = & node $prueba $OdontoCode 2>&1
+    $bien = ($LASTEXITCODE -eq 0)
+    if ($bien) {
+      Escribir-Ok "$Titulo se compone con Chromium ($($salida | Select-Object -Last 1))"
+    }
+    else {
+      Escribir-Aviso "no pude componer $Titulo"
+      foreach ($linea in @($salida)) { Escribir-Detalle "  $linea" }
+    }
+    return $bien
+  }
+  finally {
+    foreach ($k in @('TMPDIR', 'TMP', 'TEMP', 'PLAYWRIGHT_BROWSERS_PATH')) {
+      if ($null -eq $anterior[$k]) { Remove-Item -Path "Env:\$k" -ErrorAction SilentlyContinue }
+      else { Set-Item -Path "Env:\$k" -Value $anterior[$k] }
+    }
+  }
+}
+
 # El servicio del motor (EDB lo llama `postgresql-x64-18`). Se descubre, no se escribe.
 function Get-ServicioPostgres {
   return (Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue |

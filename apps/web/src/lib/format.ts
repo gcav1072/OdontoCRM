@@ -44,7 +44,13 @@ export const formatDate = (value: string | number | Date | null | undefined): st
   return fecha ? formateadorFecha.format(fecha) : t('comun.sinDato');
 };
 
-/** Hora en 12 h con `a. m.` / `p. m.` (por ejemplo `9:30 a. m.`). */
+/**
+ * Hora en 12 h con `a. m.` / `p. m.` (por ejemplo `9:30 a. m.`).
+ *
+ * Recibe una **fecha completa** (un instante). Para una hora suelta `HH:MM` —como la
+ * `startTime` de una cita— NO sirve: `new Date('09:30')` no es una fecha válida y esto
+ * devuelve «—». Para eso está `formatTime12h` de `@odontocrm/contracts`.
+ */
 export const formatTime = (value: string | number | Date | null | undefined): string => {
   const fecha = toDate(value);
   if (!fecha) return t('comun.sinDato');

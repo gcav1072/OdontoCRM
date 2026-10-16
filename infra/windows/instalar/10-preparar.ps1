@@ -341,7 +341,12 @@ Escribir-Paso '4/7 · PATH de la máquina'
 
 function Add-RutaAlPath {
   param([string]$Ruta)
-  if (-not (Test-Path $Ruta)) { return }
+  if (-not (Test-Path $Ruta)) {
+    # Que no se vuelva a tragar en silencio: si la ruta no existe no entra en el PATH y el que
+    # esperaba el comando se queda sin saber por qué.
+    if (-not $DryRun) { Escribir-Aviso "no la añado al PATH porque no existe: $Ruta" }
+    return
+  }
   $actual = [Environment]::GetEnvironmentVariable('Path', 'Machine')
   if ($null -eq $actual) { $actual = '' }
   if (($actual -split ';') -contains $Ruta) {
@@ -355,6 +360,11 @@ function Add-RutaAlPath {
 }
 
 if ($pgBin) { Add-RutaAlPath $pgBin }
+# El lanzador `odontocrm` lo copia 30-desplegar.ps1, pero el PATH tiene que apuntar a su
+# carpeta desde este paso: `Add-RutaAlPath` ignora las rutas que no existen y, en una
+# instalación limpia, `bin\cmd` la crea el paso 7/7 —DESPUÉS de este—. El comando se instalaba
+# sin error y aun así «odontocrm» no se reconocía al teclearlo (2026-10-16).
+Nuevo-Directorio -Ruta $OdontoCmd -Acceso 'Lectura'
 Add-RutaAlPath $OdontoCmd
 
 # ── 5. Política de ejecución de PowerShell ───────────────────────────────────

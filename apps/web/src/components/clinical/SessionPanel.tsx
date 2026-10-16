@@ -1,5 +1,6 @@
 import {
   clinicalSessionHasContent,
+  formatTime12h,
   sessionProcedureText,
   type AppointmentSummary,
   type ClinicalSessionDetail,
@@ -39,7 +40,7 @@ import {
   type SessionSaveState,
 } from '../../lib/clinical-session';
 import { clinicalApi, appointmentsApi } from '../../lib/endpoints';
-import { formatDate, formatTime } from '../../lib/format';
+import { formatDate } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { NoticeBanner } from '../NoticeBanner';
 import { AmendSessionDialog } from './AmendSessionDialog';
@@ -474,7 +475,7 @@ export const SessionPanel = ({
                   {citas.map((cita) => (
                     <option key={cita.id} value={cita.id}>
                       {t('clinica.sesion.abrir.citaOpcion', {
-                        hora: formatTime(cita.startTime),
+                        hora: formatTime12h(cita.startTime),
                         estado: cita.status,
                       })}
                     </option>
@@ -500,7 +501,7 @@ export const SessionPanel = ({
           <Alert variant="success" title={t('clinica.sesion.atender.titulo')}>
             <p>
               {t('clinica.sesion.atender.texto', {
-                hora: formatTime(citaParaAtender.cita.startTime),
+                hora: formatTime12h(citaParaAtender.cita.startTime),
               })}
             </p>
             <div className="mt-3">

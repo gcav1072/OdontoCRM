@@ -45,6 +45,19 @@ const codigo = process.env.ODONTOCRM_CODE_DIR ?? 'C:\\OdontoCRM';
 /** Configuración y secretos. */
 const etc = process.env.ODONTOCRM_ETC_DIR ?? 'C:\\ProgramData\\OdontoCRM';
 const envDir = path.join(etc, 'env');
+/**
+ * Datos escribibles por el servicio (almacén, navegador, temporales): `data`.
+ * La misma regla que `$OdontoDatos` de `instalar\comun.ps1` (y que `--data-dir` del
+ * aprovisionador), para que los tres apunten a la MISMA carpeta aunque se sobrescriba
+ * por entorno (`ODONTOCRM_DATA_DIR`).
+ */
+const datos = process.env.ODONTOCRM_DATA_DIR ?? path.join(codigo, 'data');
+/**
+ * La carpeta temporal del SERVICIO (`data\tmp`, con permiso de escritura para
+ * LocalService — la crea `10-preparar.ps1`). Es donde Playwright hace `mkdtemp`; ver la
+ * nota de `servicio()` más abajo.
+ */
+const tmp = path.join(datos, 'tmp');
 /** Logs en archivo (PM2 los rota con pm2-logrotate; los instala `servicios\instalar-pm2.ps1`). */
 const logs = path.join(codigo, 'logs');
 
@@ -66,7 +79,25 @@ const servicio = (nombre, entrada) => ({
     `--env-file-if-exists=${path.join(envDir, 'odontocrm.env')}`,
     `--env-file-if-exists=${path.join(envDir, `${nombre}.env`)}`,
   ],
-  env: { NODE_ENV: 'production' },
+  env: {
+    NODE_ENV: 'production',
+    /**
+     * **Los temporales del servicio, fijados a `data\tmp`.** Playwright crea
+     * `playwright-artifacts-…` con `mkdtemp` en el `os.tmpdir()` del proceso, y los
+     * procesos heredan el entorno de la consola que hizo `pm2 start` —en el `pm2 jlist`
+     * se ven a la vez `username` y `USERNAME`, de dos consolas distintas—: al arrancar
+     * desde una consola de Administrador, `%TEMP%` apuntaba a
+     * `C:\Users\Admin\AppData\Local\Temp`, donde `LocalService` (la cuenta del servicio
+     * de PM2) NO puede escribir. Resultado (2026-10-15): los imprimibles —récipe, factura
+     * y reportes— fallaban con «EPERM … mkdtemp …playwright-artifacts…». Al fijarlo AQUÍ
+     * manda sobre lo que traiga la consola, y `pm2 save` lo queda para los arranques con
+     * Windows. `data\tmp` la crea `10-preparar.ps1` con permiso de escritura para el
+     * servicio (la misma carpeta que usa el bot de administración para sus volcados).
+     */
+    TMPDIR: tmp,
+    TMP: tmp,
+    TEMP: tmp,
+  },
   /**
    * **`fork`, explícito, y NUNCA `instances`.** En PM2, poner `instances` (aunque sea `1`) cambia
    * el modo a **cluster**, y el contenedor de cluster de PM2 5.2.2 carga las apps con
@@ -127,8 +158,13 @@ const botAdmin = () => ({
   env: {
     NODE_ENV: 'production',
     ODONTOCRM_ENV_DIR: envDir,
-    ODONTOCRM_ADMIN_TMP_DIR: path.join(codigo, 'data', 'tmp'),
-    ODONTOCRM_BACKUP_MANUAL_DIR: path.join(codigo, 'data', 'respaldo-manual'),
+    ODONTOCRM_ADMIN_TMP_DIR: tmp,
+    ODONTOCRM_BACKUP_MANUAL_DIR: path.join(datos, 'respaldo-manual'),
+    // Mismo motivo que en `servicio()`: el bot también hace `mkdtemp` (pg_dump, Playwright
+    // de los informes) y corre como LocalService.
+    TMPDIR: tmp,
+    TMP: tmp,
+    TEMP: tmp,
   },
   exec_mode: 'fork',
   autorestart: true,
