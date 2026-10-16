@@ -17,8 +17,9 @@
 6. [La agenda: solicitudes, tickets y cupos](#6-la-agenda-solicitudes-tickets-y-cupos)
 7. [Las pantallas de la sala y del consultorio](#7-las-pantallas-de-la-sala-y-del-consultorio)
 8. [Avisos a los pacientes](#8-avisos-a-los-pacientes)
-9. [Reportes y auditoría](#9-reportes-y-auditoría)
-10. [Lo que no se hace, y a quién avisar](#10-lo-que-no-se-hace-y-a-quién-avisar)
+9. [La caja (cobrar y facturar)](#9-la-caja-cobrar-y-facturar)
+10. [Reportes y auditoría](#10-reportes-y-auditoría)
+11. [Lo que no se hace, y a quién avisar](#11-lo-que-no-se-hace-y-a-quién-avisar)
 
 ---
 
@@ -192,7 +193,7 @@ Las **notas internas** solo las ve quien puede escribir en la historia clínica
 Se arma el récipe dentro de la sesión (medicamento, presentación, dosis, frecuencia y
 duración, con las indicaciones generales) y se **emite**.
 
-- Al emitirlo queda **numerado** (`RX-000001`), con su **PDF A5** archivado y un
+- Al emitirlo queda **numerado** (`RX-000001`), con su **PDF** archivado y un
   **código de verificación** con QR: quien tenga el papel puede comprobar en la
   dirección pública que ese récipe consta, **a nombre de quién está** —con el
   **nombre del consultorio** y el del **odontólogo que lo emitió**— y sin ver datos
@@ -328,7 +329,47 @@ la sesión: no se crea nada solo.
 
 ---
 
-## 9. Reportes y auditoría
+## 9. La caja (cobrar y facturar)
+
+En `/caja` está el mostrador del dinero: arriba los **pendientes** —los cobros que dejó
+la consulta— y abajo el **historial** de facturas, recibos y notas. Nunca se borra un
+documento fiscal: lo que se emitió se **anula** con una nota de crédito.
+
+**Cobrar una consulta**, paso a paso:
+
+1. Al cerrar la sesión clínica, el sistema deja un **borrador** en la caja con los
+tratamientos realizados. Si falta algo, se añade a mano (un cepillo, un gel) o se corrige
+la cantidad; el precio sale del catálogo.
+2. Antes de emitir, confirme la **tasa del día** (los bolívares por dólar). La factura
+**congela** esa tasa y no cambia después aunque el dólar se mueva.
+3. **Emitir**: sale el número de la factura y el papel. Queda un PDF guardado, igual que el
+que se le entrega al paciente.
+4. **Cobrar**: se elige el medio de pago (efectivo, Pago Móvil, transferencia, tarjeta) y el
+monto. Aquí hay tres cosas importantes:
+   - **La fecha valor**: si el pago lo hizo el paciente antes (por ejemplo el domingo por
+     Pago Móvil), se pone **la fecha del comprobante**, no la de hoy. El sistema usa la tasa
+     de **ese** día, como corresponde.
+   - **Diferencial cambiario**: si paga en bolívares con una tasa distinta a la de la
+     factura, la diferencia aparece separada —lo **recibido**, lo que se **imputa** a la
+     factura y el **diferencial** (ganancia o pérdida)—. El recibo lo explica.
+   - **IGTF (Sujeto Pasivo Especial)**: si el consultorio es agente de percepción, el sistema
+añade el porcentaje configurado y usted indica **en qué moneda lo entregó el paciente**: en
+divisas (va a la caja de divisas) o en bolívares (va al banco). Si el redondeo del Pago Móvil
+deja unos céntimos de diferencia, el sistema los **absorbe** (hasta 5 céntimos de dólar) y el
+recibo queda saldado del todo.
+5. Si hay que rectificar, se **anula la factura** explicando el motivo: se emite una **nota de
+crédito**; usted indica si **devolvió el dinero** o si es solo una corrección administrativa.
+
+**Los libros y la configuración fiscal** (solo el administrador):
+
+- En `/configuracion` → **Régimen tributario** se marca si el consultorio es Sujeto Pasivo
+  Especial y el porcentaje del IGTF.
+- Los **libros del período** (ventas, IGTF y el Estado de Ganancias y Pérdidas cambiarias) se
+descargan en CSV desde la caja, para el contador.
+
+---
+
+## 10. Reportes y auditoría
 
 - **`/reportes`**: el día, el embudo de solicitudes y la tasa de inasistencia, la
   ocupación con las horas pico, la demografía, el perfil clínico, la salud bucal y los
@@ -341,7 +382,7 @@ la sesión: no se crea nada solo.
 
 ---
 
-## 10. Lo que no se hace, y a quién avisar
+## 11. Lo que no se hace, y a quién avisar
 
 **No se hace nunca:**
 

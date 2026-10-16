@@ -35,7 +35,7 @@ proyecto ya resuelve en otro sitio y conviene copiar · **R** = riesgo o decisi�
 | B9 | Anulación de pagos y recibos | No existe | Un pago **no se borra: se anula con motivo** (misma regla que el récipe emitido, ADR [0036](adr/0036-recipe-emitido-documento-archivado.md)) y el saldo se recalcula en la misma transacción (§4, §5.3) |
 | B10 | Auditoría | No se menciona | Cada acto de dinero publica `auditPayload` y aparece en `/auditoria`; hay que añadir las acciones a `AUDIT_ACTIONS` y sus etiquetas en `i18n.ts` (§3.5) |
 | B11 | Permisos | No se mencionan | Cinco permisos nuevos y su reparto por rol (§3.5) |
-| B12 | Datos del emisor | Tabla `clinic_fiscal_profiles` nueva | Duplica los datos del consultorio, que ya viven en [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) y leen los ocho servicios. Se reutilizan, pero **sacándolos del código**: pasan a un bloque `CLINIC_*` del entorno con genéricos `CAMBIAR_*` (§2.4); en la base solo queda lo fiscal mutable (§4, §6) |
+| B12 | Datos del emisor | Tabla `clinic_fiscal_profiles` nueva | Duplica los datos del consultorio, que ya viven en [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) y leen los nueve servicios. Se reutilizan, pero **sacándolos del código**: pasan a un bloque `CLINIC_*` del entorno con genéricos `CAMBIAR_*` (§2.4); en la base solo queda lo fiscal mutable (§4, §6) |
 | B13 | Alícuotas | `igtf_percentage` en una columna e IVA 16 % cableado en el enum | Tarifas **con vigencia** (`tax_rates`, `igtf_rules`) y **alícuota aplicada copiada en el documento**: cambiar el 16 % o el 3 % mañana no puede reescribir lo ya emitido. Fuera `reduced_8`: **no existe alícuota reducida vigente** (§3.3, §11) |
 | B14 | El evento no lleva lo que el consumidor necesita | `session.procedureCodes` a secas | El borrador necesita **código, pieza, caras y detalle** de cada procedimiento (ADR [0041](adr/0041-el-evento-lleva-lo-que-el-consumidor-necesita.md)): se completa el bloque `session` de `clinical.session.closed` de forma **aditiva** y con aviso en el `CHANGELOG` (§5.1) |
 | B15 | Factura ↔ sesión | `clinical_session_id` en `invoices` (1:1) | Un tratamiento que se cobra al final cubre **varias sesiones**. Tabla de enlace N:M desde el principio (con unicidad por sesión, que además es la segunda red de idempotencia); la v1 emite una factura por sesión y la unificación queda como camino abierto (§4, §11) |
@@ -434,8 +434,8 @@ del repositorio no pueden estar: van al **entorno**, como el resto de los datos 
    es público, ya lo consume la interfaz para el banner de modo test y no lleva datos de pacientes— y la
    web lo toma de ahí; mientras no llegue, muestra el estado de carga en vez de un membrete inventado.
 5. **Producción**: `CLINIC_*` va en el archivo **común** `/etc/odontocrm/odontocrm.env` (el mismo para
-   todos), porque lo necesitan los seis servicios que imprimen o firman: `clinical` (récipe A5),
-   `reporting` (PDF A4), `billing` (factura y recibo), `screens`, `scheduling` y `notifications`.
+   todos), porque lo necesitan los seis servicios que imprimen o firman: `clinical` (récipe),
+   `reporting` (reporte), `billing` (factura y recibo), `screens`, `scheduling` y `notifications`.
 6. **Genérico vs. operativo**: al entorno va lo que **describe** a la clínica (identidad y datos fiscales
    del emisor). Lo **operativo con historia** —el lote de formas libres, la tasa del día, los aranceles—
    vive en la base, porque se consume en orden, se audita y cambia con el tiempo. La configuración fiscal
@@ -474,7 +474,7 @@ que hoy enseña a editar el archivo de código · `tools/plantillas-fedora.mjs` 
 `tools/audit-conexiones.mjs`, que exigen que toda variable declarada esté en las plantillas y en el
 `.env.example`.
 
-> **Por qué se hace ahora y no después:** el récipe A5 y los reportes ya sufren este problema (hay que
+> **Por qué se hace ahora y no después:** el récipe y los reportes ya sufren este problema (hay que
 > editar código y recompilar para poner el RIF), y la factura lo hereda. Se arregla **una vez**, en un
 > commit propio, con su prueba de impresión; y a partir de ahí la instalación de una clínica nueva no
 > toca el repositorio.
@@ -1375,7 +1375,7 @@ servicio de facturación:
 1. `packages/contracts/src/clinic.ts`: tipo, genéricos `CAMBIAR_*` y los ayudantes con el perfil como
    parámetro (ya lo aceptan).
 2. `packages/kernel`: `clinicEnvSchema` + `resolveClinicProfile(env)` y su prueba.
-3. Los **seis** consumidores que imprimen o firman: `clinical` (récipe A5), `reporting` (PDF A4),
+3. Los **seis** consumidores que imprimen o firman: `clinical` (récipe), `reporting` (reporte),
    `billing` (factura y recibo), `screens`, `scheduling` y `notifications` (membrete de plantillas).
 4. `SystemMeta` (contratos) y `apps/gateway/src/meta.ts`: bloque `clinic` en el `GET /api/v1/meta` público
    (es lo que lee el navegador, que no puede leer `.env`).
@@ -1683,8 +1683,10 @@ portabilidad, registrados en `infra/fedora/INSTALL.md` §20.2, y el trabajo en c
 
 **Lo que sigue pendiente del lado de la clínica** (no bloquea programar, sí bloquea facturar de verdad):
 el **lote de formas libres** con su rango de control y una **forma de muestra** para calibrar la
-plantilla, y los **datos reales del consultorio** que sustituyen a los genéricos `CAMBIAR_*` (§10,
-residuales 1 y 2).
+plantilla. Los **datos reales del consultorio** ya **no** son un pendiente del código: desde los ADR
+[0056](adr/0056-la-identidad-del-consultorio-vive-en-la-base.md) y
+[0058](adr/0058-sin-datos-personales-en-el-codigo.md) viven en la base y se configuran en la aplicación
+(`/mi-perfil` y `/configuracion`), así que los genéricos `CAMBIAR_*` de este plan son solo del respaldo.
 
 ---
 
