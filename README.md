@@ -5,7 +5,7 @@ odontograma, récipes, reportes y auditoría — construido como **microservicio
 TypeScript** sobre **PostgreSQL**, pensado para correr en la red local de la clínica y,
 más adelante, fuera de ella por VPN.
 
-> **Estado: Fases 10 y 11 completadas, con las mejoras de resiliencia ya dentro — el sistema
+> **Estado: Fases 10, 11 y 12 completadas, con las mejoras de resiliencia ya dentro — el sistema
 > está listo para la clínica.** Las diez fases del plan están implementadas y validadas:
 > identidad y sesiones, pacientes, agenda, bot de Telegram, secretaría y pantallas kiosko,
 > historia clínica, odontograma FDI, sesiones y récipes con QR, reportes y auditoría, con el
@@ -17,6 +17,10 @@ más adelante, fuera de ella por VPN.
 > **prueba solo** cada semana y los expedientes van **cifrados en reposo**. El aviso de la cita,
 > además, ahora se **responde**: el paciente confirma por Telegram o WhatsApp y la «próxima
 > cita» del cierre de la sesión se puede crear de verdad en la agenda ([ADR 0052](docs/adr/0052-confirmacion-de-citas-por-el-paciente.md)).
+> La **Fase 12** completó la caja: el cobro se valora con la **Fecha Valor** del comprobante, se
+> descompone en lo recibido, lo imputado y el **diferencial cambiario**, el **IGTF** es configurable
+> con destino de caja y los libros rinden el diferencial y la percepción
+> ([ADR 0069](docs/adr/0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md)).
 >
 > **Por dónde empezar según quién seas:**
 >
@@ -29,7 +33,7 @@ más adelante, fuera de ella por VPN.
 > | **Usar el consultorio** (sin terminal) | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) |
 > | **Conectar tablets, móviles y TVs** | [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) |
 > | **Desarrollar** | este README y [`docs/COMANDOS.md`](docs/COMANDOS.md) |
-> | **Entender las decisiones** | [`docs/adr/`](docs/adr/README.md) (52 ADRs) y [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md) |
+> | **Entender las decisiones** | [`docs/adr/`](docs/adr/README.md) (69 ADRs) y [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md) |
 > | **Ver qué se probó y con qué evidencia** | [`infra/fedora/INSTALL.md` §20](infra/fedora/INSTALL.md) y [`docs/REVISION_SEGURIDAD_FASE_10.md`](docs/REVISION_SEGURIDAD_FASE_10.md) |
 > | **Avisar y confirmar citas** | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) §8 y [ADR 0052](docs/adr/0052-confirmacion-de-citas-por-el-paciente.md) |
 
@@ -123,9 +127,10 @@ Los secretos **nunca** se versionan ni se comparten por chat: ver
 
 ## Scripts
 
-La lista completa (con flags, requisitos, variables de entorno y problemas típicos)
-está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)
-- [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) — comandos del servidor en producción (`sudo odontocrm …`).**. Estos son los del día a día:
+La lista completa (con flags, requisitos, variables de entorno y problemas típicos) está en
+**[`docs/COMANDOS.md`](docs/COMANDOS.md)**. Estos son los del día a día:
+
+- [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) — comandos del servidor en producción (`sudo odontocrm …`).
 - [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) — instalar el certificado del servidor en tablets, móviles, PCs y TVs.
 - [`docs/RECUPERACION.md`](docs/RECUPERACION.md) — recuperar el servidor (servidor nuevo o fallo de disco): `odontocrm recuperar`.
 
@@ -135,9 +140,10 @@ está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)
 | `npm run stack:dev` / `stack:fijo` / `stack:down` | Cambiar de modo sin dejar dos pilas vivas, o parar todo |
 | `npm test` | Pruebas unitarias y de contrato (Vitest) |
 | `npm run test:integration` | Suites contra PostgreSQL real (outbox, colas, sesión, pacientes, agenda, pantallas, reportes) |
-| `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`, `prescription`, `reporting` |
+| `npm run smoke:<módulo>` | Recorrido de punta a punta por el gateway: `auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`, `prescription`, `reporting`, `billing` |
 | `npm run e2e:flujo` | **El día completo en un navegador de verdad**: `/flujo` con Chromium (Fase 8) |
 | `npm run e2e:reportes` | `/reportes` y `/auditoria` con Chromium: gráficas, seis pestañas, filtros y diff (Fase 9) |
+| `npm run e2e:config` | `/configuracion` con Chromium: marca, acento, fuentes subidas y que el PDF del servidor sale con la paleta y las tipografías del panel |
 | `npm run estado` | **Tablero de estado**: los 9 servicios (`/health` y `/ready`), las 9 bases, la cola, el outbox, los envíos y el disco |
 | `npm run estado -- --alertas` | Solo los problemas; sale con 1 si hay alguno (es lo que corre el temporizador del servidor). Con problemas **y** bot de administración configurado, avisa por Telegram (`--sin-aviso` para solo imprimir) |
 | `npm run seed:test` | **Mundo de prueba determinista**: 40 pacientes, 46 solicitudes, 42 citas, 22 historias, 27 sesiones, 22 récipes, 156 hallazgos y los 593 eventos que el sistema habría publicado |
@@ -146,6 +152,7 @@ está en **[`docs/COMANDOS.md`](docs/COMANDOS.md)
 | `npm run e2e:clinica` | **La aceptación completa**: los 11 pasos del día de la clínica encadenados, con `--sin-bot` si no hay token |
 | `npm run db:reset` | **Borra todo** y deja el sistema listo para usar (bases migradas + usuarios); solo en desarrollo |
 | `npm run fedora:check` | Comprueba que las plantillas del despliegue Fedora no se quedaron atrás respecto al código |
+| `npm run check:responsive` | Mide el desbordamiento y los solapes de la interfaz en 320/768/1024/1366/1920 con Chromium (necesita la pila en pie) |
 | `npm run reports:latencia` | Llena el read model con 10.000 citas y mide los seis reportes (criterio: < 2 s cada uno) |
 | `npm run db:reset -- --yes` | **Empezar de cero**: borra las 9 bases y `storage/`, y deja todo migrado y sembrado (solo consola; sin `--yes` no borra nada) |
 | `npm run env:check` | ¿A algún `.env` le falta una clave de su plantilla (`.env.example`)? |
@@ -222,7 +229,7 @@ logo de respaldo y marca de agua) y las vías de producción— está en
 | odontogram | 4006 | ✅ Fase 6, sesión B (odontograma FDI) |
 | screens | 4007 | ✅ Fase 5 (secretaría y pantallas con SSE) |
 | reporting | 4008 | ✅ Fase 9 (read model, KPIs y auditoría UI) |
-| billing | 4009 | 🚧 Fase 11 (la caja: borradores de factura, en curso — sin dinero todavía) |
+| billing | 4009 | ✅ Fase 11 (facturación y pagos) · Fase 12 (diferencial cambiario e IGTF configurable) |
 
 Además, la Fase 10 dejó el **modo test** (`TEST_MODE`, banner y envíos bloqueados), el **seed
 determinista** (`npm run seed:test`, `seed:reset`, `seed:verify`) y el **tablero de estado**
@@ -676,6 +683,53 @@ nuevo en negrita), el autor, la IP y la petición. `Descargar CSV` baja exactame
 - `npm run smoke:reporting` provoca el recorrido completo y comprueba las cifras (81 comprobaciones).
 - `npm run e2e:reportes` recorre las dos pantallas en Chromium (37 comprobaciones) y deja una captura.
 - `npm run reports:latencia` mide los seis reportes con 10.000 citas (**3–8 ms** en la última medición).
+
+---
+
+## Caja y facturación (Fases 11–12)
+
+**`/caja`** es el mostrador del dinero: los **pendientes** (los borradores que deja el cierre de cada
+sesión clínica), el **historial** de documentos con filtros y el detalle de cada factura, recibo y
+nota de crédito. El recorrido es **sesión cerrada → borrador → precio → emisión → cobro → libros**, y
+ningún documento fiscal se borra: se anula con **nota de crédito**.
+
+| Endpoint (por el gateway) | Qué hace | Permiso |
+| :--- | :--- | :--- |
+| `GET /api/v1/billing/drafts` | Pendientes de caja: los borradores sin emitir | `billing:read` |
+| `GET /api/v1/billing/drafts/:id` · `PUT …/items` | Leer y preciar el borrador (catálogo + **partida escrita a mano**, [ADR 0067](docs/adr/0067-partida-escrita-a-mano-en-la-factura.md)) | `billing:write` |
+| `POST /api/v1/billing/drafts/:id/issue` | **Emitir**: número de software o forma libre, tasa congelada y PDF archivado ([ADR 0047](docs/adr/0047-quien-asigna-el-numero-de-la-factura.md), [0048](docs/adr/0048-el-documento-de-cobro-se-archiva.md)) | `billing:write` |
+| `POST /api/v1/billing/drafts/:id/discard` | **Descartar** un borrador (no consumió número fiscal) | `billing:write` |
+| `POST /api/v1/billing/invoices/:id/payments` | **Cobrar** con la **Fecha Valor** y la descomposición del cobro | `billing:collect` |
+| `POST /api/v1/billing/payments/:id/void` | Anular un cobro con motivo (vuelve el saldo) | `billing:collect` |
+| `GET /api/v1/billing/invoices` · `/invoices/:id` | Historial y detalle: saldo a doble tasa, Σ diferencial e IGTF acumulado | `billing:read` |
+| `POST /api/v1/billing/invoices/:id/void` | **Anular la factura**: emite su **nota de crédito** (tipo `ADMINISTRATIVE` o `REFUND`) | `billing:void` |
+| `GET …/invoices/:id/pdf` · `…/payments/:id/receipt` · `…/credit-notes/:id/pdf` | Los PDF archivados (factura, recibo, nota de crédito) | `billing:read` |
+| `GET /api/v1/billing/rates/today` · `/rates` · `POST /rates` | La **tasa del día**: consultarla y fijarla ([ADR 0046](docs/adr/0046-tasa-bcv-historica-y-regla-de-imputacion.md)) | `billing:read` / `billing:rates` |
+| `GET /api/v1/billing/forms` · `POST /forms` · `POST /forms/:id/spoil` | El **lote de formas libres** (talonario fiscal): alta y anulación de una forma | `billing:read` / `billing:rates` |
+| `GET /api/v1/billing/catalog` | El arancel de servicios | `billing:read` |
+| `GET /api/v1/billing/settings` · `PATCH …` | Configuración fiscal (SPE y alícuota del IGTF); **editar**, solo `admin` | `billing:read` / `settings:manage` |
+| `GET /api/v1/billing/books/sales.csv` · `/igtf.csv` · `/exchange-diff.csv` · `/summary` | **Libros fiscales** del período: ventas, IGTF con arqueo y el **Estado de Ganancias y Pérdidas cambiarias** | `billing:read` |
+
+- **La tasa es histórica y se congela por documento** ([ADR 0046](docs/adr/0046-tasa-bcv-historica-y-regla-de-imputacion.md)):
+  emitir fija el valor del día y el detalle muestra la deuda «al emitir» frente a la «de hoy».
+- **El cobro en bolívares se descompone en tres montos** ([ADR 0069](docs/adr/0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md)):
+  lo **recibido**, lo **imputado** a la tasa de emisión y el **diferencial cambiario** (ganancia o
+  pérdida). La tasa del cobro es la de su **Fecha Valor** —la del comprobante bancario—, así que un
+  pago del domingo se valora con la del viernes; un residuo de redondeo de hasta ±US$ 0,05 se
+  **absorbe** (no quedan saldos zombi) y un sobrepago real se **rechaza**.
+- **El IGTF es configurable y con destino de caja**: la alícuota y la condición de Sujeto Pasivo
+  Especial se fijan en `/configuracion` ([ADR 0045](docs/adr/0045-regimen-tributario-iva-e-igtf.md)),
+  y el cajero declara en qué moneda lo entregó el paciente (Caja Divisas o Banco/Caja Bs.).
+- **Escuela A, sin Nota de Débito por diferencial** ([ADR 0069](docs/adr/0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md)):
+  el diferencial **no** se factura; se rinde con el **Estado de Ganancias y Pérdidas** y el **Reporte
+  de Percepción IGTF** con su arqueo. La nota de crédito fiscal, en cambio, siempre se emite a la
+  **tasa original de la factura**, y distingue la anulación administrativa (sin devolución: conserva
+  el diferencial realizado) del reembolso real (lo reversa).
+- **Los documentos salen en carta con el membrete de la clínica** y quedan **archivados con su
+  `sha256`** en el almacén cifrado ([ADR 0048](docs/adr/0048-el-documento-de-cobro-se-archiva.md)).
+- `npm run smoke:billing` recorre el mostrador entero (34 comprobaciones), incluido el caso **CP-01**
+  que acordó el contador: US$ 60 a 1.000,00 Bs./US$ → 50.000 Bs. → la tasa sube a 1.020 → +200,00 Bs.
+  de **diferencial cambiario**.
 
 ---
 
