@@ -44,11 +44,11 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
   - En `OdontogramPanel.tsx`, registrar hallazgos por cara y de pieza completa, además de una prótesis (`ProsthesisDialog.tsx`).
   - En `SessionPanel.tsx`, documentar la evolución de la sesión, emitir un récipe PDF (`PrescriptionDialog.tsx`) y cerrar la sesión (`CloseSessionDialog.tsx`) agendando el próximo control (`ScheduleNextAppointmentDialog.tsx`).
   - **Resultado esperado:** Historia firmada e inmutable; odontograma versionado; récipe PDF en dos mitades archivado con código QR verificable; sesión cerrada y cita pasada a estado **Atendida**.
-- [ ] **Paso 6 (`E2E-06` — Caja, Tasa BCV, Cobro Mixto con IGTF y Facturación):**
+- [ ] **Paso 6 (`E2E-06` — Caja, Tasa BCV, Cobro con Fecha Valor, Diferencial e IGTF y Facturación):**
   - Ir a `CajaPage.tsx`, verificar o fijar la tasa del día (`TasaDelDia.tsx`, ADR `0046`).
   - Abrir `CobroDialog.tsx` para el paciente atendido, agregar partidas del catálogo y $1$ partida manual a mano (ADR `0067`).
-  - Registrar un pago mixto (parte en Bolívares y parte en USD efectivo) y emitir la factura.
-  - **Resultado esperado:** Se calcula el IVA según el régimen tributario y el `$3\%$` de IGTF únicamente sobre la porción en divisas (ADR `0045`); se genera y archiva el PDF (`0048`) y se registra en el Libro de Ventas.
+  - Declarar la **Fecha Valor** del cobro (la del comprobante bancario) y registrar un pago mixto (parte en Bolívares y parte en USD efectivo); emitir la factura.
+  - **Resultado esperado:** El recibo desglosa lo recibido, lo imputado a la tasa de emisión y el **diferencial cambiario**, valora el cobro con la tasa de su **Fecha Valor** y calcula el **IGTF** según la alícuota configurada y la moneda de percepción declarada (ADR `0045`, `0069`); se genera y archiva el PDF (`0048`) y se registra en el Libro de Ventas.
 - [ ] **Paso 7 (`E2E-07` — Refresco de Reportes y Trazabilidad en Auditoría):**
   - Ir a `ReportesPage.tsx`, ejecutar el refresco del modelo de lectura (ADR `0040`) y revisar las pestañas de KPIs.
   - Ir a `AuditoriaPage.tsx` y filtrar los eventos del día.
@@ -127,6 +127,14 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
   - [ ] Modificar la configuración del membrete (visibilidad de elementos, alineación, marca de agua, márgenes) y seleccionar el formato de papel del récipe (`0007_papel_del_recipe.sql`).
   - [ ] Sin reiniciar ningún servicio, abrir la impresión de una Historia Clínica (`MedicalRecordPrintPage.tsx`), un Odontograma (`OdontogramPrintPage.tsx`) y generar un Récipe PDF.
 - **Resultado esperado:** Los cambios de membrete se aplican en caliente en todos los imprimibles y el récipe se ajusta a las dimensiones del papel de la clínica.
+
+#### `CFG-04` — Régimen tributario de la caja (Sujeto Pasivo Especial y alícuota del IGTF)
+- **Rutas / Componentes:** `TributarioSection.tsx`, `ConfiguracionPage.tsx`, `CajaPage.tsx` (ADR `0045`, `0069`).
+- **Pasos de prueba:**
+  - [ ] Entrar a `/configuracion` con el rol **Administrador** y, en **Régimen tributario**, marcar *Sujeto Pasivo Especial (Agente de Percepción IGTF)* y fijar una alícuota (ej. $3{,}00\%$); guardar.
+  - [ ] Abrir `CobroDialog.tsx` y comprobar que aparece el bloque del IGTF con la alícuota configurada y el selector de **moneda de percepción**.
+  - [ ] Iniciar sesión con **Secretaría** y escribir la URL `/configuracion` en la barra de direcciones.
+- **Resultado esperado:** `PATCH /api/v1/billing/settings` guarda la configuración fiscal y el cobro la refleja; editar la configuración exige `settings:manage` (solo `admin`), así que la secretaría recibe `ForbiddenPage.tsx` (HTTP $403$).
 
 ---
 
@@ -365,24 +373,26 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 
 ---
 
-### Módulo J: Caja, Facturación, Tasas BCV, IVA/IGTF y Libros Fiscales (`services/billing`, `CajaPage.tsx`)
+### Módulo J: Caja, Facturación, Tasas BCV, Diferencial Cambiario, IVA/IGTF y Libros Fiscales (`services/billing`, `CajaPage.tsx`)
 
-#### `CAJ-01` — Tasa BCV Histórica y Regla de Imputación
-- **Rutas / Componentes:** `TasaDelDia.tsx`, `rate-service.ts` (ADR `0046`, `0049`).
+#### `CAJ-01` — Tasa BCV Histórica, Fecha Valor y Regla de Imputación
+- **Rutas / Componentes:** `TasaDelDia.tsx`, `rate-service.ts`, `CobroDialog.tsx` (ADR `0046`, `0049`, `0069`).
 - **Pasos de prueba:**
   - [ ] Establecer una tasa BCV de prueba (ej. $\$1 = 40{,}00\text{ Bs.}$) en `TasaDelDia.tsx` y emitir un documento de cobro.
   - [ ] Cambiar posteriormente la tasa del día a $\$1 = 42{,}50\text{ Bs.}$ y consultar el detalle del primer documento emitido.
-- **Resultado esperado:** El primer documento conserva inmutable su tasa histórica de $40{,}00\text{ Bs.}$, mientras que los nuevos cobros aplican $42{,}50\text{ Bs.}$ (ADR `0046`).
+  - [ ] Cobrar una factura declarando una **Fecha Valor** distinta de hoy (p. ej. un Pago Móvil del domingo registrado el lunes).
+- **Resultado esperado:** El primer documento conserva inmutable su tasa histórica de $40{,}00\text{ Bs.}$ (ADR `0046`); el nuevo cobro se valora con la tasa **vigente para su Fecha Valor** —la del viernes, arrastrada por `rateForDate`— y no con la de hoy (ADR `0069`).
 
-#### `CAJ-02` — Cobro, Partida Escrita a Mano y Cálculo Tributario (IVA + IGTF `$3\%$`)
-- **Rutas / Componentes:** `CobroDialog.tsx`, `invoice-service.ts`, `payment-service.ts` (ADR `0044`, `0045`, `0067`).
+#### `CAJ-02` — Cobro, Partida Escrita a Mano y Cálculo Tributario (IVA + IGTF configurable)
+- **Rutas / Componentes:** `CobroDialog.tsx`, `invoice-service.ts`, `payment-service.ts`, `TributarioSection.tsx` (ADR `0044`, `0045`, `0067`, `0069`).
 - **Pasos de prueba:**
   - [ ] Abrir `CobroDialog.tsx`, seleccionar un paciente y agregar un ítem predeterminado por $\$100{,}00$.
   - [ ] Agregar una **partida escrita a mano** (concepto libre manual, ADR `0067`) por $\$50{,}00$ (Total base: $\$150{,}00$).
-  - [ ] Registrar el pago dividiéndolo en dos métodos: $\$50{,}00$ equivalentes en Bolívares (Pago Móvil / Transferencia) y $\$100{,}00$ en Divisas Efectivo (USD).
+  - [ ] Con la clínica marcada como **Sujeto Pasivo Especial** y una alícuota de $3{,}00\%$ en `/configuracion`, registrar el pago dividiéndolo en dos métodos: $\$50{,}00$ equivalentes en Bolívares (Pago Móvil / Transferencia) y $\$100{,}00$ en Divisas Efectivo (USD).
+  - [ ] Repetir el cobro con una alícuota distinta (ej. $2{,}00\%$) y comprobar que el sistema aplica el valor configurado.
 - **Resultado esperado:**
   - Se aplican las alícuotas de IVA configuradas según el régimen de servicios de salud (exento o gravado según corresponda en ADR `0045`).
-  - Se calcula exactamente el `$3\%$` de **IGTF** únicamente sobre los $\$100{,}00$ pagados en divisas ($\text{IGTF} = \$3{,}00$), sin recargar los $\$50{,}00$ pagados en Bolívares.
+  - El **IGTF** se calcula con la **alícuota configurada** (por defecto $3{,}00\%$), **no** con un valor fijo: al cambiarla en `/configuracion` el cobro siguiente la refleja (ADR `0069`). En un pago mixto, el tributo se percibe solo sobre la porción percibida (en divisas), sin recargar la parte pagada en Bolívares.
 
 #### `CAJ-03` — Numeración en Modo Software vs. Formas Libres y Archivo PDF
 - **Rutas / Componentes:** `DocumentoDetalle.tsx`, `issue-service.ts`, `fiscal-forms-service.ts`, `invoice-pdf.ts`, `receipt-pdf.ts` (ADR `0047`, `0048`, `0049`).
@@ -392,18 +402,66 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
   - [ ] Abrir `DocumentoDetalle.tsx` y descargar el PDF del documento.
 - **Resultado esperado:** Correlativos sin saltos ni duplicados (ADR `0047`); el PDF descargado coincide con el snapshot archivado en el almacén cifrado (ADR `0048`).
 
-#### `CAJ-04` — Descarte de Borradores, Anulación y Notas de Crédito
-- **Rutas / Componentes:** `AnularDialog.tsx`, `credit-note-service.ts`, `credit-note-pdf.ts` (`0002_descartar_borrador.sql`).
+#### `CAJ-04` — Descarte de Borradores, Anulación y Notas de Crédito (Administrativa vs. Reembolso)
+- **Rutas / Componentes:** `AnularDialog.tsx`, `credit-note-service.ts`, `credit-note-pdf.ts` (`0002_descartar_borrador.sql`) (ADR `0048`, `0069`).
 - **Pasos de prueba:**
   - [ ] Crear un borrador de cobro y descartarlo antes de emitir.
-  - [ ] Seleccionar una factura ya emitida y anularla / generar Nota de Crédito mediante `AnularDialog.tsx` ingresando el motivo fiscal.
-- **Resultado esperado:** El borrador descartado no consume correlativo fiscal; la factura emitida genera una Nota de Crédito con su propio correlativo y PDF archivado (`credit-note-pdf.ts`).
+  - [ ] Seleccionar una factura ya cobrada (con diferencial cambiario realizado) y anularla por **corrección administrativa** (`ADMINISTRATIVE`) mediante `AnularDialog.tsx`, ingresando el motivo fiscal.
+  - [ ] Repetir sobre otra factura cobrada anulando por **reembolso real** (`REFUND`).
+- **Resultado esperado:**
+  - El borrador descartado no consume correlativo fiscal.
+  - La factura emitida genera una Nota de Crédito con su propio correlativo y PDF archivado (`credit-note-pdf.ts`), **siempre a la tasa original de la factura**.
+  - La anulación `ADMINISTRATIVE` **conserva** el diferencial cambiario ya realizado; la `REFUND` lo **reversa** (ADR `0069`).
 
-#### `CAJ-05` — Cuadre del Libro Fiscal de Ventas
-- **Rutas / Componentes:** `book-service.ts`, `book-routes.ts`.
+#### `CAJ-05` — Cuadre de los Libros Fiscales (Ventas, Diferencial Cambiario e IGTF)
+- **Rutas / Componentes:** `book-service.ts`, `book-routes.ts`, `CajaPage.tsx` (ADR `0069`).
 - **Pasos de prueba:**
-  - [ ] Generar el Libro de Ventas del período actual tras haber emitido facturas, cobros con IGTF y una Nota de Crédito.
-- **Resultado esperado:** El libro lista cronológicamente cada factura y nota de crédito, cuadrando las sumatorias de base exenta, base imponible, IVA e IGTF en Bolívares.
+  - [ ] Generar el **Libro de Ventas** del período (`GET /api/v1/billing/books/sales.csv`) tras haber emitido facturas, cobros con IGTF y una Nota de Crédito.
+  - [ ] Descargar el **Estado de Ganancias y Pérdidas por Diferencial Cambiario** (`books/exchange-diff.csv`) y el **Reporte de Percepción IGTF** (`books/igtf.csv`), y consultar el resumen del período (`books/summary`).
+- **Resultado esperado:** El Libro de Ventas lista cronológicamente cada factura y nota de crédito cuadrando base exenta, base imponible e IVA; el libro cambiario cuadra $\text{neto} = \text{ganancias} - \text{pérdidas} + \text{reversiones}$; y el resumen del IGTF separa el arqueo de **Caja Divisas** del de **Banco/Caja Bs.**
+
+#### `CAJ-06` — Fecha Valor y Validación de Rango
+- **Rutas / Componentes:** `CobroDialog.tsx`, `payment-service.ts`, `rate-service.ts` (ADR `0046`, `0069`).
+- **Pasos de prueba:**
+  - [ ] Con una tasa publicada el viernes, cobrar el lunes una factura declarando la **Fecha Valor** del domingo.
+  - [ ] Intentar declarar una Fecha Valor **anterior a la emisión** de la factura y otra **posterior a hoy**.
+- **Resultado esperado:** El cobro del domingo se valora con la tasa del **viernes** (`rateForDate` arrastra; el BCV no publica fines de semana); una Fecha Valor fuera del rango $\text{emisión} \le \text{Fecha Valor} \le \text{hoy}$ se **rechaza** con un mensaje claro.
+
+#### `CAJ-07` — Descomposición Tripartita del Cobro y Recibo
+- **Rutas / Componentes:** `CobroDialog.tsx`, `DocumentoDetalle.tsx`, `receipt-pdf.ts` (ADR `0069`).
+- **Pasos de prueba:**
+  - [ ] Emitir una factura a la tasa de $1.000{,}00\text{ Bs./US\$}$ y cobrarla con una tasa vigente de $1.020{,}00\text{ Bs./US\$}$ (el caso **CP-01**: US$ 60 → 50.000 Bs. → 10.200 Bs.).
+  - [ ] Abrir el recibo emitido (PDF) y el detalle de la factura en `DocumentoDetalle.tsx`.
+- **Resultado esperado:** El recibo desglosa **Imputación a factura (tasa de emisión)**, **Ajuste por diferencial cambiario** y **Total recibido**, más el bloque fiscal del IGTF; el detalle muestra el diferencial acumulado ($+200{,}00\text{ Bs.}$) y la **suma de los históricos** cuadra con el total del documento.
+
+#### `CAJ-08` — Absorción de Redondeo (Pago Móvil enteros) y Rechazo de Sobrepago
+- **Rutas / Componentes:** `CobroDialog.tsx`, `payment-service.ts`, `bsPaymentBreakdown` (`packages/contracts`) (ADR `0069`).
+- **Pasos de prueba:**
+  - [ ] Cobrar una deuda de $\$10{,}00$ con un Pago Móvil en bolívares **enteros** cuya conversión deja un residuo de céntimos $\le 5$ céntimos de USD.
+  - [ ] Intentar un sobrepago real superior a $5$ céntimos de USD.
+- **Resultado esperado:** El residuo se **absorbe** en el diferencial y el cobro **salda el 100 %** de la deuda (badge «ajuste de redondeo absorbido» en `CobroDialog.tsx`), sin dejar saldos zombi de $\$0{,}01$; el sobrepago real se **rechaza**.
+
+#### `CAJ-09` — IGTF Configurable con Destino de Caja
+- **Rutas / Componentes:** `CobroDialog.tsx`, `TributarioSection.tsx`, `CajaPage.tsx` (ADR `0045`, `0069`).
+- **Pasos de prueba:**
+  - [ ] Con el consultorio marcado como **SPE**, cobrar una base en divisas declarando el IGTF en **USD** (Caja Divisas).
+  - [ ] Cobrar otra base declarando el IGTF en **VES** (Banco/Caja Bs.), indicando el **medio** y la **referencia** del Pago Móvil.
+  - [ ] Cobrar con **tarjeta en divisas** (el tributo lo debita el banco, Art. 4.5).
+- **Resultado esperado:** Con destino `USD` el IGTF entra junto a la base a Caja Divisas; con `VES` la base va a Caja Divisas y el IGTF convertido (a la tasa de la Fecha Valor) a Banco/Caja Bs.; con tarjeta en divisas la clínica **no** vuelve a percibir (ADR `0045` se conserva).
+
+#### `CAJ-10` — Anulación Administrativa vs. Reembolso sobre Factura con Diferencial
+- **Rutas / Componentes:** `AnularDialog.tsx`, `credit-note-service.ts` (ADR `0069`).
+- **Pasos de prueba:**
+  - [ ] Sobre una factura con **diferencial ya realizado**, elegir anulación `ADMINISTRATIVE` (refacturación, sin devolución).
+  - [ ] Sobre otra igual, elegir `REFUND` (reembolso real).
+- **Resultado esperado:** La `ADMINISTRATIVE` deja `reversed_exchange_diff = 0` (el diferencial se conserva); la `REFUND` reversa el diferencial acumulado de los cobros vigentes; en **ambos** casos la nota fiscal sale a la **tasa original** de la factura.
+
+#### `CAJ-11` — Libros del Período y Arqueo
+- **Rutas / Componentes:** `book-routes.ts`, `book-service.ts`, `CajaPage.tsx` (ADR `0069`).
+- **Pasos de prueba:**
+  - [ ] Generar un período con facturas, cobros con diferencial (ganancia y pérdida), IGTF en ambas monedas y una Nota de Crédito de cada tipo.
+  - [ ] Descargar los tres CSV y consultar `books/summary`.
+- **Resultado esperado:** El libro cambiario cuadra $\text{neto} = \text{ganancias} - \text{pérdidas} + \text{reversiones}$; el arqueo del IGTF separa Caja Divisas de Banco/Caja Bs.; los cobros anulados **no** cuentan como diferencial realizado.
 
 ---
 
@@ -442,7 +500,7 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 | `PRE` | Pre-Flight y Entorno | $5$ | | | | | |
 | `E2E` | Ciclo de Vida Completo | $7$ | | | | | |
 | `ID` | Identidad, Auth y RBAC | $5$ | | | | | |
-| `CFG` | Configuración y Membrete | $3$ | | | | | |
+| `CFG` | Configuración y Membrete | $4$ | | | | | |
 | `PAC` | Pacientes y Adjuntos Cifrados | $4$ | | | | | |
 | `AGE` | Agenda, Cupos y Tickets | $4$ | | | | | |
 | `SEC` | Secretaría y Flujo Diario | $2$ | | | | | |
@@ -450,5 +508,5 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 | `ODO` | Odontograma Anatómico | $4$ | | | | | |
 | `SCR` | Pantallas Kiosko y SSE | $3$ | | | | | |
 | `NOT` | Bot, Canales y Cancelaciones | $4$ | | | | | |
-| `CAJ` | Caja, BCV, IVA/IGTF y Libros | $5$ | | | | | |
+| `CAJ` | Caja, BCV, Diferencial, IVA/IGTF y Libros | $11$ | | | | | |
 | `REP/AUD/SYS` | Reportes, Auditoría y Backups | $3$ | | | | | |
