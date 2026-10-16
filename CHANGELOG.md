@@ -4,6 +4,29 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Docs] — La documentación alcanza las fases 11 y 12, y el plan de pruebas cubre el diferencial cambiario · 2026-10-16
+
+Barrido de la documentación para ponerla al día tras la **Fase 11** (facturación y pagos) y la
+**Fase 12** (diferencial cambiario por Fecha Valor e IGTF configurable, [ADR 0069](docs/adr/0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md)):
+varias partes seguían describiendo la caja como «en curso — sin dinero todavía», contaban **52 ADRs**
+y hablaban de **8 servicios**. Se corrigieron las afirmaciones de **estado actual** (lo histórico de
+cada fase se conserva tal como se escribió) y se añadió al README la sección que faltaba de la caja.
+El **plan de pruebas manuales E2E** —escrito antes de la Fase 12— estrena los casos del **diferencial
+cambiario**, el **IGTF configurable**, la **Fecha Valor**, la **absorción de redondeo** y los **libros
+contables**, y suma un caso del régimen tributario del panel.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `README.md` | Estado a **Fases 10, 11 y 12**; `(69 ADRs)`; `billing` pasa a ✅ con la Fase 12; **sección nueva «Caja y facturación (Fases 11–12)»** (endpoints, permisos, Escuela A); tabla de scripts con `billing`, `e2e:config` y `check:responsive`; arreglo del índice de scripts |
+| `docs/PLAN_MAESTRO_FASES.md` | Cabecera de estado con la Fase 12; §13 pasa a **0–12** con las subsecciones de las fases 11 y 12; §17 gana sus filas de evidencia y «Próximo paso» se reescribe como **cierre del plan** |
+| `docs/COMANDOS.md` · `docs/COMANDOS_PRODUCCION.md` · `docs/SEGURIDAD_SECRETOS.md` | «8/o/ocho servicios» → **9** (con `billing`); `db:generate` y las listas de `dev:*`/`start:*` incluyen `billing` y `reporting`; filas nuevas de `e2e:config`, `e2e:clinica` y `check:responsive`; `smoke:billing` refleja el **CP-01** y los libros |
+| `docs/OPERACION_CLINICA.md` | **Sección 9 «La caja (cobrar y facturar)»** para el personal: tasa del día, Fecha Valor, diferencial, IGTF con destino de caja y libros |
+| `docs/feat_billing.md` | Toques mínimos: «ocho servicios» → nueve; los **datos reales del consultorio** ya no son pendiente del código (ADR 0056/0058); papel del récipe/reporte sin «A5/A4» |
+| `docs/plan_de_pruebas_manuales_e2e_odontocrm.md` | `E2E-06` con Fecha Valor/diferencial/IGTF; `CAJ-01/02/04/05` al día; **nuevos `CAJ-06`…`CAJ-11`**; **`CFG-04`** (régimen tributario); sign-off `CFG` 3→4 y `CAJ` 5→11 |
+
+> **Sin migración.** Es documentación. Los cambios de papel de los imprimibles (carta en vez de A4/A5),
+> la caja y el diferencial vienen de sus propias fases y ADR; aquí solo se alineó el texto.
+
 ## [Instalador] — La instalación moría con «'tsc' no se reconoce»: NODE_ENV de más en la consola · 2026-10-15
 
 Desinstalación limpia y, al volver a instalar, el paso 2/10 moría tras el `npm ci`:
