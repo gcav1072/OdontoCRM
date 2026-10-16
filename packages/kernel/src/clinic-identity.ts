@@ -28,7 +28,9 @@ import { readImageDataUri } from './brand-assets.js';
  * **Coste.** Una lectura interna por documento sería cara para las pantallas, que refrescan
  * cada pocos segundos. Por eso hay **caché con TTL** y **deduplicación de llamada en
  * vuelo**: dos peticiones simultáneas comparten una sola lectura, y durante el TTL no se
- * vuelve a preguntar. La identidad cambia rarísimas veces; un minuto de desfase es inocuo.
+ * vuelve a preguntar. La instantánea es ligera —el logo son unos kB—, así que el TTL es de
+ * **un segundo** (`IDENTIDAD_TTL_MS`): el desfase entre «guardé el cambio» y «ya se ve»
+ * apenas se nota, que es lo que se pidió cuando la identidad pasó a vivir en la base.
  */
 
 export interface LetterheadLookupConfig {
@@ -38,7 +40,7 @@ export interface LetterheadLookupConfig {
   INTERNAL_SERVICE_SECRET?: string | undefined;
   /** Tiempo límite de la lectura interna (ms). */
   timeoutMs?: number;
-  /** Vida de la caché (ms). `0` la desactiva. */
+  /** Vida de la caché (ms). `0` la desactiva. Por defecto `IDENTIDAD_TTL_MS`. */
   cacheTtlMs?: number;
   /**
    * Aviso de que **no** se pudo leer la identidad y se está usando el respaldo del código
@@ -67,6 +69,21 @@ export const fallbackLetterhead = async (
 export type LetterheadLookup = (username?: string | null) => Promise<LetterheadSnapshot>;
 
 /**
+ * Cuánto puede quedar sin refrescar la identidad del consultorio (ms).
+ *
+ * Es a la vez la vida de la caché de `createLetterheadLookup` **y** la cadencia con la que
+ * los servicios llaman a `aplicarDatosDelConsultorio` para reescribir `config.CLINIC_*`.
+ * Entre los dos marcan el **techo de desfase** entre «guardé el cambio en Mi perfil» y «el
+ * servicio ya lo muestra»: por eso es un solo número compartido y no tres sueltos, que es
+ * como acabaron divergiendo los tiempos (la marca iba a 1 s y el bot seguía a 5 minutos).
+ *
+ * Un segundo es lo mismo que la marca (`createBrandLookup`, ADR 0064). Cuesta despreciable:
+ * la instantánea pesa unos kB, se pide por la red interna y las lecturas simultáneas
+ * comparten una sola llamada. Ponlo en `0` para no cachear nada (solo en pruebas).
+ */
+export const IDENTIDAD_TTL_MS = 1_000;
+
+/**
  * Construye la lectura de la instantánea con caché y respaldo.
  *
  * Devuelve siempre una instantánea: si identity falla o no hay secreto configurado,
@@ -74,7 +91,7 @@ export type LetterheadLookup = (username?: string | null) => Promise<LetterheadS
  */
 export const createLetterheadLookup = (config: LetterheadLookupConfig): LetterheadLookup => {
   const timeoutMs = config.timeoutMs ?? 5_000;
-  const cacheTtlMs = config.cacheTtlMs ?? 60_000;
+  const cacheTtlMs = config.cacheTtlMs ?? IDENTIDAD_TTL_MS;
   const secret = config.INTERNAL_SERVICE_SECRET;
   const onFallback = config.onFallback;
 

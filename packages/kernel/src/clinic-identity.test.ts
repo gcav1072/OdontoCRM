@@ -1,7 +1,11 @@
 import type { LetterheadSnapshot } from '@odontocrm/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { aplicarDatosDelConsultorio, createLetterheadLookup } from './clinic-identity.js';
+import {
+  aplicarDatosDelConsultorio,
+  createLetterheadLookup,
+  IDENTIDAD_TTL_MS,
+} from './clinic-identity.js';
 
 /**
  * `aplicarDatosDelConsultorio` es el **cable** entre el registro del consultorio
@@ -165,5 +169,46 @@ describe('createLetterheadLookup', () => {
 
     expect(fetchFalso).not.toHaveBeenCalled();
     expect(onFallback).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * El desfase entre «guardé el cambio en Mi perfil» y «el servicio ya lo muestra» es el
+   * `cacheTtlMs` **por defecto**. Estaba en un minuto mientras la marca iba a un segundo,
+   * y el bot, la agenda y el kiosco sumaban además un refresco de varios minutos: un
+   * cambio tardaba hasta diez minutos en llegar. Aquí se fija el techo para que no vuelva
+   * a descolgarse.
+   */
+  it('por defecto un cambio guardado se ve al caducar la caché (IDENTIDAD_TTL_MS), no un minuto después', async () => {
+    const fetchFalso = vi
+      .fn()
+      .mockResolvedValueOnce(respuesta(200, snapshot({ name: 'Antes' })))
+      .mockResolvedValue(respuesta(200, snapshot({ name: 'Después' })));
+    vi.stubGlobal('fetch', fetchFalso);
+
+    const lookup = createLetterheadLookup(cfg());
+    expect((await lookup()).clinic.name).toBe('Antes');
+
+    // Dentro del TTL se sirve de la caché: no se vuelve a preguntar.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect((await lookup()).clinic.name).toBe('Antes');
+    expect(fetchFalso).toHaveBeenCalledTimes(1);
+
+    // Al caducar ya se ve el cambio. Con el TTL de un minuto que había, aquí seguiría
+    // saliendo «Antes».
+    await new Promise((resolve) => setTimeout(resolve, IDENTIDAD_TTL_MS + 50));
+    expect((await lookup()).clinic.name).toBe('Después');
+    expect(fetchFalso).toHaveBeenCalledTimes(2);
+  });
+
+  it('dos lecturas simultáneas comparten una sola llamada a identity', async () => {
+    const fetchFalso = vi.fn().mockResolvedValue(respuesta(200, snapshot({ name: 'Única' })));
+    vi.stubGlobal('fetch', fetchFalso);
+
+    const lookup = createLetterheadLookup(cfg({ cacheTtlMs: 0 }));
+    const [una, otra] = await Promise.all([lookup(), lookup()]);
+
+    expect(una.clinic.name).toBe('Única');
+    expect(otra.clinic.name).toBe('Única');
+    expect(fetchFalso).toHaveBeenCalledTimes(1);
   });
 });

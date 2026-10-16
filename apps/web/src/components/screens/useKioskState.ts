@@ -255,16 +255,18 @@ export const useKioskState = <K extends KioskKind>(kind: K): UseKioskStateResult
   });
 
   /**
-   * Marca del consultorio (nombre y logo): cambia rarísimas veces, así que se pide con
-   * la sesión lista y se refresca despacio (`staleTime` alto y un intervalo largo). No
-   * hace falta nada más: el nombre y el logo cambian como mucho de vez en cuando.
+   * Marca del consultorio (nombre y logo). La TV es otro equipo: no recibe la
+   * invalidación de caché que el panel de «Mi perfil» dispara en la SPA, así que se
+   * refresca al ritmo de `SCREEN_REFRESH_MS` —igual que los ajustes del dispositivo—
+   * para que un nombre o un logo guardados se vean en la pantalla en segundos y no al
+   * recargarla a mano.
    */
   const { data: clinic } = useQuery({
     queryKey: screenKeys.clinica,
     queryFn: ({ signal }) => screensApi.clinic(signal),
     enabled: sesionLista > 0,
-    staleTime: 30 * 60_000,
-    refetchInterval: 10 * 60_000,
+    staleTime: SCREEN_REFRESH_MS,
+    refetchInterval: SCREEN_REFRESH_MS,
     refetchIntervalInBackground: true,
   });
 

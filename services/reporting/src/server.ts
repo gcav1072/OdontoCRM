@@ -58,9 +58,7 @@ export const createReportingServer = async (
         executablePath: config.PDF_CHROMIUM_PATH,
         timeoutMs: config.PDF_TIMEOUT_MS,
       }),
-    letterheadLookup:
-      options.services?.letterheadLookup ??
-      createLetterheadLookup({ ...config, cacheTtlMs: 5_000 }),
+    letterheadLookup: options.services?.letterheadLookup ?? createLetterheadLookup(config),
     brandLookup: options.services?.brandLookup ?? createBrandLookup(config),
     lastError: options.services?.lastError ?? null,
   };

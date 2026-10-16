@@ -7,7 +7,12 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
-import { aplicarDatosDelConsultorio, createLetterheadLookup, startServer } from '@odontocrm/kernel';
+import {
+  aplicarDatosDelConsultorio,
+  createLetterheadLookup,
+  IDENTIDAD_TTL_MS,
+  startServer,
+} from '@odontocrm/kernel';
 import type { DomainEvent } from '@odontocrm/events';
 
 import { loadScreensConfig } from './config.js';
@@ -24,13 +29,14 @@ const main = async (): Promise<void> => {
   const config = loadScreensConfig();
   const database = createScreensDatabase(config);
 
-  // El nombre del consultorio para el encabezado de las pantallas (ADR 0056).
-  // Se refresca cada 5 minutos; `CLINIC_*` del entorno manda si está puesto.
+  // Los datos del consultorio en `config` (ADR 0056). Se refresca a la cadencia de
+  // `IDENTIDAD_TTL_MS`; `CLINIC_*` del entorno manda si está puesto. El nombre que
+  // **ven** las pantallas viaja aparte, por `/api/v1/screens/clinic` (`clinicLookup`).
   const letterheadLookup = createLetterheadLookup(config);
   await aplicarDatosDelConsultorio(config, letterheadLookup);
   const refrescoIdentidad = setInterval(
     () => void aplicarDatosDelConsultorio(config, letterheadLookup),
-    5 * 60_000,
+    IDENTIDAD_TTL_MS,
   );
   refrescoIdentidad.unref();
   const broadcast = createScreenBroadcaster();

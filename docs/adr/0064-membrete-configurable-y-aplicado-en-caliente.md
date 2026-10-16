@@ -74,6 +74,14 @@ los datos— a **5 s** en clinical, reporting y billing (`createLetterheadLookup
 servicios (pantallas, agenda, bot) conservan el minuto: no componen papel. La SPA ya se actualiza al
 instante porque el panel invalida la consulta al guardar.
 
+> **Enmienda (2026-10-16).** Quedó corto: el bot, la agenda y el kiosco seguían hasta **5-10 minutos**
+> rancios después de guardar en «Mi perfil» (un minuto de caché más un refresco de config cada cinco,
+> y el kiosco con `staleTime` de media hora). Hoy ya no se distingue entre «los que componen papel» y
+> «los que no»: `createLetterheadLookup` cachea **1 s** en todos los servicios y el refresco de
+> `config.CLINIC_*` corre a la misma cadencia, con **un solo número** —`IDENTIDAD_TTL_MS` en
+> `packages/kernel`— que además evita que los tiempos vuelvan a divergir. El kiosco, que no recibe la
+> invalidación de la SPA, pregunta cada `SCREEN_REFRESH_MS` como ya hacía con sus ajustes.
+
 ## Consecuencias
 
 - **A favor:** el récipe sigue la marca como todos los demás; el membrete es configurable (logo,

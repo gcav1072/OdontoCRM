@@ -5,7 +5,12 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
-import { aplicarDatosDelConsultorio, createLetterheadLookup, startServer } from '@odontocrm/kernel';
+import {
+  aplicarDatosDelConsultorio,
+  createLetterheadLookup,
+  IDENTIDAD_TTL_MS,
+  startServer,
+} from '@odontocrm/kernel';
 
 import { loadSchedulingConfig } from './config.js';
 import { createSchedulingDatabase } from './db/client.js';
@@ -16,12 +21,14 @@ const main = async (): Promise<void> => {
   const database = createSchedulingDatabase(config);
 
   // Nombre y dirección del consultorio para los avisos: base de datos > `CLINIC`,
-  // con `CLINIC_*` del entorno por encima. Se refresca cada 5 minutos.
+  // con `CLINIC_*` del entorno por encima. Se refresca a la cadencia de
+  // `IDENTIDAD_TTL_MS`, para que un cambio guardado en «Mi perfil» llegue al aviso
+  // en un segundo.
   const letterheadLookup = createLetterheadLookup(config);
   await aplicarDatosDelConsultorio(config, letterheadLookup);
   const refrescoIdentidad = setInterval(
     () => void aplicarDatosDelConsultorio(config, letterheadLookup),
-    5 * 60_000,
+    IDENTIDAD_TTL_MS,
   );
   refrescoIdentidad.unref();
 

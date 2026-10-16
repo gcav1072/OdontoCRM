@@ -70,9 +70,7 @@ export const createBillingServer = async (
         timeoutMs: config.PDF_TIMEOUT_MS,
       }),
     kickOutbox: options.services?.kickOutbox,
-    letterheadLookup:
-      options.services?.letterheadLookup ??
-      createLetterheadLookup({ ...config, cacheTtlMs: 5_000 }),
+    letterheadLookup: options.services?.letterheadLookup ?? createLetterheadLookup(config),
     brandLookup: options.services?.brandLookup ?? createBrandLookup(config),
     lastError: options.services?.lastError ?? null,
   };

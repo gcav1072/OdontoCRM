@@ -11,7 +11,12 @@ import {
 } from '@odontocrm/db';
 import type { InboundMessage } from '@odontocrm/contracts';
 import { EVENT_TOPICS } from '@odontocrm/events';
-import { aplicarDatosDelConsultorio, createLetterheadLookup, startServer } from '@odontocrm/kernel';
+import {
+  aplicarDatosDelConsultorio,
+  createLetterheadLookup,
+  IDENTIDAD_TTL_MS,
+  startServer,
+} from '@odontocrm/kernel';
 
 import { createAdminAlerter } from './alertas.js';
 import { createChannelAdapters } from './canales/index.js';
@@ -36,13 +41,14 @@ const main = async (): Promise<void> => {
   const clients = createInternalClients(config);
 
   // El nombre, la dirección y el correo del consultorio: base de datos > `CLINIC`,
-  // con `CLINIC_*` del entorno por encima. Se refresca cada 5 minutos (sin mantener
-  // el proceso vivo), así un cambio de identidad llega al bot sin reiniciar.
+  // con `CLINIC_*` del entorno por encima. Se refresca a la cadencia de
+  // `IDENTIDAD_TTL_MS` (sin mantener el proceso vivo), así un cambio guardado en
+  // «Mi perfil» llega al bot en un segundo y sin reiniciar nada.
   const letterheadLookup = createLetterheadLookup(config);
   await aplicarDatosDelConsultorio(config, letterheadLookup);
   const refrescoIdentidad = setInterval(
     () => void aplicarDatosDelConsultorio(config, letterheadLookup),
-    5 * 60_000,
+    IDENTIDAD_TTL_MS,
   );
   refrescoIdentidad.unref();
 

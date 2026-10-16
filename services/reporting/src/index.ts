@@ -48,7 +48,6 @@ const main = async (): Promise<void> => {
     pdf,
     letterheadLookup: createLetterheadLookup({
       ...config,
-      cacheTtlMs: 5_000,
       onFallback: (motivo) => avisos.identidad(motivo),
     }),
     brandLookup: createBrandLookup({ ...config, onFallback: (motivo) => avisos.marca(motivo) }),
