@@ -1,5 +1,5 @@
 import { updateDentistProfileSchema, type DentistProfile } from '@odontocrm/contracts';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Field, Input, Spinner } from '@odontocrm/ui';
 import { useEffect, useState } from 'react';
 
@@ -8,6 +8,7 @@ import { useNotice } from '../../hooks/useNotice';
 import { apiErrorMessage } from '../../lib/api';
 import { identityApi } from '../../lib/endpoints';
 import { t } from '../../lib/i18n';
+import { CLINIC_IDENTITY_QUERY_KEY } from '../../providers/ClinicIdentityProvider';
 
 const VACIO: DentistProfile = {
   mpps: '',
@@ -44,6 +45,7 @@ export const EditUserProfileSection = ({
     queryFn: ({ signal }) => identityApi.dentistProfile(userId, signal),
     enabled: esOdontologo,
   });
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (consulta.data?.profile !== undefined && consulta.data.profile !== null) {
@@ -64,6 +66,9 @@ export const EditUserProfileSection = ({
     try {
       await identityApi.updateDentistProfile(userId, revision.data);
       await consulta.refetch();
+      // El perfil del odontólogo forma parte de la identidad del consultorio (la firma
+      // que sale en el membrete): hay que refrescarla, no solo el formulario.
+      await queryClient.invalidateQueries({ queryKey: CLINIC_IDENTITY_QUERY_KEY });
       setMotivo('');
       exito(t('usuarios.perfil.ok'));
     } catch (fallo) {

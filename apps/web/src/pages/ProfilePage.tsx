@@ -118,6 +118,10 @@ export const ProfilePage = () => {
     try {
       await identityApi.updateMyDentistProfile(revision.data);
       await perfilConsulta.refetch();
+      // Los datos profesionales están en la identidad del consultorio (firma, MPPS,
+      // especialidad): sin esta invalidación el membrete de los imprimibles seguía
+      // con la firma de antes hasta que la consulta caducaba.
+      await queryClient.invalidateQueries({ queryKey: CLINIC_IDENTITY_QUERY_KEY });
       setMotivoPerfil('');
       exito(t('perfil.mio.ok'));
     } catch (fallo) {
