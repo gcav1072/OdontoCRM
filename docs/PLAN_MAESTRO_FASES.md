@@ -4,8 +4,10 @@
 > **Docs fuente:** [`formato_historia.md`](formato_historia.md) · [`implementation_plan_odontogram_microservice.md`](implementation_plan_odontogram_microservice.md)
 > **Regla de oro:** una fase = una sesión agéntica = commits atómicos al cierre + tag. No se avanza de fase sin cumplir sus criterios de aceptación.
 >
-> **Estado (2026-10-07):** las fases 0–10 están cerradas y la **Fase 11** (facturación y pagos,
-> `services/billing`) también, con las mejoras del [`mejoras_resiliencia_postfase11.md`](mejoras_resiliencia_postfase11.md)
+> **Estado (2026-10-15):** las fases 0–10 están cerradas; la **Fase 11** (facturación y pagos,
+> `services/billing`) y la **Fase 12** (diferencial cambiario por **Fecha Valor** e IGTF
+> configurable, [ADR 0069](adr/0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md)) también,
+> con las mejoras del [`mejoras_resiliencia_postfase11.md`](mejoras_resiliencia_postfase11.md)
 > ya implementadas (observabilidad y cola de descarte, canal en vivo del personal, simulacro de
 > respaldo y cifrado en reposo) y la **confirmación de citas por el paciente**
 > ([ADR 0052](adr/0052-confirmacion-de-citas-por-el-paciente.md)). Este documento sigue siendo el
@@ -28,7 +30,7 @@
 10. [Frontend: shell, panel inferior y pantallas](#10-frontend-shell-panel-inferior-y-pantallas)
 11. [Seguridad y cumplimiento](#11-seguridad-y-cumplimiento)
 12. [Modo test y seed determinista](#12-modo-test-y-seed-determinista)
-13. [Fases de ejecución 0–10](#13-fases-de-ejecución-010)
+13. [Fases de ejecución 0–12](#13-fases-de-ejecución-012)
 14. [Convención de commits, ramas y tags](#14-convención-de-commits-ramas-y-tags)
 15. [Qué hay que instalar](#15-qué-hay-que-instalar)
 16. [Riesgos, supuestos y decisiones abiertas](#16-riesgos-supuestos-y-decisiones-abiertas)
@@ -110,7 +112,7 @@ Todas fueron confirmadas contigo en la sesión de planificación del 2026-10-02.
 ### 2.2 Los servicios
 
 > **Cómo leer esta tabla.** La primera columna numera los **procesos**, y ahí entra el gateway
-> aunque no sea un servicio de dominio ni tenga base propia. Con la Fase 11 son **9 servicios**
+> aunque no sea un servicio de dominio ni tenga base propia. Con las Fases 11 y 12 son **9 servicios**
 > (los que figuran como `services/*`) **más el gateway: 10 unidades** —y 9 bases de servicio más
 > `odonto_events`—. La fuente única de la lista es [`tools/lib/servicios.mjs`](../tools/lib/servicios.mjs),
 > que **descubre** los servicios del repositorio en vez de tenerlos copiados a mano.
@@ -122,11 +124,11 @@ Todas fueron confirmadas contigo en la sesión de planificación del 2026-10-02.
 | 3 | `services/patients` | Paciente único (cédula V/E/P/SC), datos de contacto, representante de menores, estado (`en_espera_cita`, `activo`, `inactivo`), búsqueda/duplicados, **almacenamiento de archivos** (abstracción S3-ready sobre disco). | `odonto_patients` | 4002 |
 | 4 | `services/scheduling` | Solicitudes (**ticket**), cola «en espera de cita», cupo diario editable, plantilla de franjas, asignación/reprogramación/cancelación, estados de la cita (incluida la **confirmación del paciente**, ADR 0052), inasistencias. | `odonto_scheduling` | 4003 |
 | 5 | `services/notifications` | Bot de Telegram (long polling), asistente validado, plantillas, cola de envíos con reintentos e idempotencia, vinculación chat↔paciente por deep link, **generación de `.ics`**. | `odonto_notifications` | 4004 |
-| 6 | `services/clinical` | Historia clínica estructurada (según `formato_historia.md`), sesiones clínicas, diagnósticos, **récipes**, adjuntos imagenológicos, **PDF A5** y QR de verificación. | `odonto_clinical` | 4005 |
+| 6 | `services/clinical` | Historia clínica estructurada (según `formato_historia.md`), sesiones clínicas, diagnósticos, **récipes**, adjuntos imagenológicos, **PDF del récipe** y QR de verificación. | `odonto_clinical` | 4005 |
 | 7 | `services/odontogram` | Odontograma FDI de 2 dígitos, captura por excepción, histórico de hallazgos, eventos. Implementa `implementation_plan_odontogram_microservice.md`. | `odonto_odontogram` | 4006 |
 | 8 | `services/screens` | Estado de las pantallas de sala y consultorio, turnos, llamados (1.º/2.º), **SSE** para actualización en vivo (kiosko y **canal del personal**), registro de dispositivos kiosko. | `odonto_screens` | 4007 |
 | 9 | `services/reporting` | Read model por eventos, vistas materializadas, KPIs, filtros (fecha, rango de edad, sexo, estado), exportación CSV/PDF. | `odonto_reporting` | 4008 |
-| 10 | `services/billing` | **Facturación y pagos** (Fase 11): catálogo de aranceles, tasa BCV histórica, borradores que nacen de la sesión clínica, emisión con formas libres, cobros, notas de crédito y libros. | `odonto_billing` | 4009 |
+| 10 | `services/billing` | **Facturación y pagos** (Fases 11–12): catálogo de aranceles, tasa BCV histórica, borradores que nacen de la sesión clínica, emisión con formas libres, cobros con **Fecha Valor** y **diferencial cambiario**, IGTF configurable con destino de caja, notas de crédito y **libros fiscales** (ventas, IGTF con arqueo y ganancias/pérdidas cambiarias). | `odonto_billing` | 4009 |
 
 > **Costo asumido:** 10 procesos + **10 bases** (las 9 de servicio más la cola de eventos) + outbox es más operación que un monolito modular. Se mitiga con un único comando de arranque (`npm run dev`), migraciones y seeds automatizados, health checks y el `ecosystem.config.cjs` de PM2. Si en la práctica resulta pesado, el camino de repliegue es fusionar `odontogram` + `clinical` y `screens` + `reporting` sin tocar contratos públicos.
 >
@@ -477,7 +479,7 @@ END:VEVENT / END:VCALENDAR
 
 ---
 
-## 13. Fases de ejecución 0–10
+## 13. Fases de ejecución 0–12
 
 Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar 2), termina con **commits atómicos + tag** y no arranca hasta cumplir su *Definition of Done*.
 
@@ -497,6 +499,8 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | 8 | Página unificada del flujo completo | 1 | 5, 7 |
 | 9 | Reportes, KPIs y auditoría UI | 1 ⚠️ | 4, 7 |
 | 10 | Modo test, endurecimiento y despliegue Fedora | ✅ completada (2026-10-04) | todas |
+| 11 | Facturación y pagos (la caja) | ✅ completada (2026-10-06) | 7, 9 |
+| 12 | Diferencial cambiario por Fecha Valor e IGTF configurable (ADR 0069) | ✅ completada (2026-10-14) | 11 |
 
 ---
 
@@ -655,6 +659,47 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 
 ---
 
+### Fase 11 — Facturación y pagos (la caja) ✅ completada (2026-10-06) · sin tag propio
+
+> El plan detallado de esta fase es [`feat_billing.md`](feat_billing.md); sus ADRs son la
+> [0044](adr/0044-modulo-de-facturacion-desacoplado.md)–[0049](adr/0049-facturar-en-modo-software-y-una-sola-tasa.md).
+
+**Objetivo:** cerrar el ciclo del dinero con un servicio desacoplado, sin mezclarlo con la clínica.
+
+**Entregables:** `services/billing` (puerto 4009, base `odonto_billing`) con catálogo de aranceles,
+**tasa BCV histórica** congelada por documento, **borradores** que nacen del cierre de la sesión
+clínica, emisión en modo `software` (correlativo + control de la forma libre), **cobros** con la regla
+de imputación, **notas de crédito** (anular no es borrar) y el **libro de ventas**; la caja `CajaPage`
+con pendientes, historial y detalle; los PDF archivados con su `sha256` en el almacén cifrado; y el
+**panel de configuración** con la sección fiscal ([ADR 0060](adr/0060-configuracion-de-la-aplicacion.md)).
+
+**Criterios de aceptación:** `npm run smoke:billing` en verde por el gateway real; correlativos sin
+saltos ni duplicados; el PDF del papel coincide con el archivado; la secretaría atiende toda la caja e
+imprime, y solo el `admin` fija la tasa y la configuración fiscal.
+
+### Fase 12 — Diferencial cambiario por Fecha Valor e IGTF configurable ✅ completada (2026-10-14)
+
+> Decisión en el [ADR 0069](adr/0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md) (Escuela A,
+> elegida con el contador): el diferencial **no** se factura con Nota de Débito; se rinde en un reporte
+> contable.
+
+**Objetivo:** que el cobro en bolívares explique por qué los Bs. que entraron no son los impresos, sin
+dejar saldos zombi.
+
+**Entregables:** **Fecha Valor** en cada cobro (la del comprobante bancario, valorada con `rateForDate`,
+que arrastra la del viernes en fin de semana); **descomposición tripartita** del cobro en Bs. —recibido,
+imputado a la tasa de emisión y **diferencial cambiario** (`exchange_diff_ves_centimos`)—; **absorción**
+de residuos de redondeo de hasta ±US$ 0,05 (y rechazo del sobrepago real); **IGTF configurable**
+(`igtf_rate_bp`, default 300) con **destino de caja** declarado (Caja Divisas o Banco/Caja Bs.);
+**notas de crédito** `ADMINISTRATIVE` vs `REFUND`; y los **libros** del período: ventas, IGTF con arqueo
+y **Estado de Ganancias y Pérdidas por Diferencial Cambiario**.
+
+**Criterios de aceptación:** el caso **CP-01** del contador (US$ 60 a 1.000 → 50.000 Bs. → tasa 1.020
+→ **+200,00 Bs.** de diferencial) reproducido por `npm run smoke:billing`; Σ histórico de los cobros
+cuadra con el total del documento; migración `0005` con backfill de los cobros previos.
+
+---
+
 ## 14. Convención de commits, ramas y tags
 
 - **Rama por fase**: `fase/N-slug` desde `main`. Al cerrar: merge `--no-ff` a `main` + tag `fase-N` + entrada en `CHANGELOG.md`. Así cada fase es revertible en bloque sin perder el detalle.
@@ -675,7 +720,7 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | Git | ✅ instalado (2.55) | |
 | **PostgreSQL 18** | ✅ instalado y corriendo (`postgresql-x64-18`, puerto 5432) | Binarios en `C:\Program Files\PostgreSQL\18\bin`. Falta solo definir el **password del superusuario** en el `.env` local para que el bootstrap cree las 8 bases y sus roles. |
 | PM2 | ✅ instalado global (`npm i -g pm2`) | Mantiene los 9 servicios vivos y los reinicia si se caen |
-| Playwright + Chromium | ✅ instalado (Fase 7B) | Chromium compone el **PDF A5 del récipe**: `npx playwright install chromium` |
+| Playwright + Chromium | ✅ instalado (Fase 7B) | Chromium compone el **PDF del récipe** y del reporte: `npx playwright install chromium` |
 | Tailscale | ⏳ opcional, **Fase 10** | Para el acceso remoto sin exponer nada a internet |
 
 **Fedora (producción — se documenta y prueba en la Fase 10):** `nodejs`, `postgresql18-server`, `postgresql18-contrib`, `firewalld`, PM2 global (o unidades `systemd`), dependencias de Chromium para Playwright (`npx playwright install-deps chromium`), usuario de sistema `odontocrm`, `pg_dump` para respaldos y Tailscale. Se instala la **misma versión mayor de PostgreSQL que en desarrollo (18)** para que las migraciones sean idénticas.
@@ -753,6 +798,8 @@ Cada fase es **una sesión agéntica** (las marcadas con ⚠️ pueden necesitar
 | 8 | ✅ **completada** (2026-10-04) · tag `fase-8` | 9 commits · `npm run verify` en verde con **432 pruebas** (+**99** de integración: **531 en total**, 48 suites) · **`/flujo`**, la jornada en una pantalla: **cola del día** a la izquierda (selector de fecha, buscador, contadores y estado por fila), **paciente en curso** en el centro con el mismo expediente de `/consultorio` (`PatientWorkspace`: historia, sesión —con adjuntos y récipe— y odontograma) y las **cinco acciones de secretaría** en la barra superior (llegada, llamar, pasar a consulta, atendido e inasistencia) más el **llamado fuera de orden** y el historial de la cita; los llamados salen al lobby por el mismo evento de siempre · **atajos** `F2` buscar paciente, `F4` llamar y `F8` cerrar la sesión clínica —también como botones, porque en la tableta no hay teclado— y **modo tableta** comprobado a 820 px · **`npm run e2e:flujo`**: el día completo en Chromium sobre la pila real con **24 comprobaciones** en verde (la doctora registra al paciente, le da cita, registra la llegada, llama con `F4`, lo pasa a consulta, escribe y cierra la sesión con `F8` y marca la cita atendida, **sin salir de `/flujo`**, con la URL vigilada en cada paso) y **15 pruebas nuevas** de las piezas puras (cita en curso, cola y atajos) · **el rol `odontologo` gana `scheduling:write`** y la máquina de estados le abre la inasistencia ([ADR 0038](adr/0038-permisos-del-odontologo-en-el-flujo.md)); notificar, sobrecupo, cancelar y reprogramar siguen fuera de su alcance, con una prueba de integración que lo fija · humos de agenda (41), clínica (30) y pantallas (26) repetidos en verde · hallazgos: **la sesión nacía sin la cita que la respalda** y **dos pestañas a la vez revocan la sesión** (ver los hallazgos de la Fase 8) |
 | 9 | ✅ **completada** (2026-10-04) · tag `fase-9` | **Reportes, KPIs y auditoría**: `services/reporting` (nuevo, puerto 4008, base `odonto_reporting`) con **read model por eventos** (8 tablas `dim_*`/`fact_*`, idempotente por `eventId`, estado de cita «solo hacia adelante») y **5 vistas materializadas** refrescadas al cerrar cada lote y por un **job nocturno** ([ADR 0040](adr/0040-refresco-del-read-model-de-reportes.md)); los **seis reportes** del ADR 0019 (embudo e inasistencia, ocupación con horas pico, demografía, perfil clínico, salud bucal por pieza y recetas por medicamento) con filtros combinables de fecha/edad/sexo/estado y **exportación CSV** (BOM, `;`, coma decimal) y **PDF A4 con Chromium**; **`/reportes`** con Recharts, seis pestañas, descargas e impresión y **`/auditoria`** con búsqueda por fecha —día completo en Venezuela—, usuario, acción, entidad y campo, **diff antes/después**, motivo y exportación CSV; permiso **`reports:clinical`** ([ADR 0039](adr/0039-reportes-clinicos-con-permiso-propio.md)) y los bloques `patient`/`profile`/`session` en los eventos ([ADR 0041](adr/0041-el-evento-lleva-lo-que-el-consumidor-necesita.md)) · **`npm run verify`** con **580 pruebas** · **`npm run test:integration`** con **695 pruebas** en verde (68 suites, tras darle a la suite de reportes **base temporal propia** y limitar el runner a 4 workers) · **`npm run smoke:reporting`** con **81 comprobaciones** y **`npm run e2e:reportes`** con **37** en Chromium · **`npm run reports:latencia`**: **3–8 ms por reporte con 10.000 citas** (el criterio pedía < 2 s) · migraciones desde cero verificadas en los 8 servicios (reporting: 12 tablas, 3 migraciones) · hallazgos: **el perfil clínico se perdía si el alta llegaba después de la historia** (dos outbox sin orden), **una migración a mano podía quedar invisible** para el migrador y **un `snapshot.json` con BOM** rompía `db:generate` |
 | 10 | ✅ **completada** (2026-10-04) · tag `fase-10` | **Modo test, observabilidad y despliegue Fedora validado en el banco de pruebas.** **Modo test** ([ADR 0020](adr/0020-modo-test.md), [ADR 0042](adr/0042-el-seed-escribe-filas-y-eventos.md)): reglas en un solo sitio (`resolveTestMode`), bloqueado con `NODE_ENV=production`, publicado en `GET /api/v1/meta` y con **banner rojo en toda la interfaz**; en modo test el bot queda **simulado** aunque tenga token. **Seed determinista** del mundo de prueba (40 pacientes, 46 solicitudes, 42 citas, 22 historias, 27 sesiones, 22 récipes, 156 hallazgos y **los 593 eventos** que el sistema habría publicado) con `seed:test`, `seed:reset` y `seed:verify` por huellas; el read model de reportes **se reconstruye desde cero** (la deuda de la Fase 9, cerrada). **Observabilidad**: `npm run estado` (9 servicios con `/health` y `/ready`, 9 bases, cola, outbox, envíos, reportes y disco), `--alertas` para el temporizador cada 5 minutos, `/ready` del gateway que pregunta a sus servicios, rotación de logs con `logrotate`. **Despliegue Fedora probado**: 9 servicios con `systemd` (unidad activa **y** sirviendo su puerto), usuario de sistema y secretos en `/etc/odontocrm` (ningún `.env` en el código), TLS interno con `mkcert` y nginx, `firewalld` publicando **solo 443**, SELinux en `Enforcing` sin denegaciones, **respaldo diario a las 03:30** y **restauración probada fila a fila** (4953 → 4953 en las 8 bases), y **prueba de reinicio** con los 9 volviendo solos. **Operación**: `sudo odontocrm …` como una sola puerta (estado, alertas, respaldar, restaurar, verificar, servicios, logs, actualizar, parar, arrancar, reiniciar, compilar, recompilar, certificado, selinux, con-entorno, modo-test), [`RUNBOOK.md`](../infra/fedora/RUNBOOK.md), [`COMANDOS_PRODUCCION.md`](COMANDOS_PRODUCCION.md) y [`CERTIFICADO_EN_LOS_EQUIPOS.md`](CERTIFICADO_EN_LOS_EQUIPOS.md). **Revisión de seguridad final**: [`REVISION_SEGURIDAD_FASE_10.md`](REVISION_SEGURIDAD_FASE_10.md) (secretos, dependencias, sesiones, autorización, superficie expuesta y datos clínicos, con lo que queda abierto y por qué) · **Aceptación**: `npm run e2e:clinica` **11 de 11 pasos** (con el bot real: enlace y QR), `npm run verify` en verde y el **registro de verificación** en [`INSTALL.md` §20](../infra/fedora/INSTALL.md). **28 hallazgos** corregidos y documentados, entre ellos: el `pg_hba.conf` de Fedora con `ident` en TCP, `TELEGRAM_MODE=polling` (que no existe), la falta de `EVENTS_DATABASE_URL` en el despliegue, `STORAGE_ROOT` en lugar de `STORAGE_DIR`, el 503 de la exportación de reportes, el rol de respaldo `NOINHERIT`, el restablecimiento mudo esperando una contraseña, el tablero que inventaba alertas sin `sudo`, la impresión en modo oscuro y las referencias a fases en la interfaz · 42 ADRs |
+| 11 | ✅ **completada** (2026-10-06) · sin tag propio | **La caja (`services/billing`, puerto 4009, base `odonto_billing`)**: catálogo de aranceles, **tasa BCV histórica** congelada por documento ([ADR 0046](adr/0046-tasa-bcv-historica-y-regla-de-imputacion.md)), borradores nacidos del cierre de la sesión clínica, emisión en modo `software` con correlativo y control de la forma ([ADR 0047](adr/0047-quien-asigna-el-numero-de-la-factura.md)), **cobros** con la regla de imputación, **notas de crédito** (anular no es borrar) y **libro de ventas**; la caja `CajaPage` (pendientes, historial y detalle) y el **panel de configuración** con la sección fiscal ([ADR 0060](adr/0060-configuracion-de-la-aplicacion.md)); los PDF archivados con su `sha256` en el almacén cifrado ([ADR 0048](adr/0048-el-documento-de-cobro-se-archiva.md)). `npm run smoke:billing` recorre el mostrador por el gateway real. ADRs [0044](adr/0044-modulo-de-facturacion-desacoplado.md)–[0049](adr/0049-facturar-en-modo-software-y-una-sola-tasa.md) |
+| 12 | ✅ **completada** (2026-10-14) | **Diferencial cambiario por Fecha Valor e IGTF configurable ([ADR 0069](adr/0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md))**: el cobro declara su **Fecha Valor** (la del comprobante bancario, valorada con `rateForDate`, que arrastra la del viernes en fin de semana) y se descompone en **recibido**, **imputado a la tasa de emisión** y **diferencial cambiario** (`exchange_diff_ves_centimos`); **absorción** de residuos de redondeo de hasta ±US$ 0,05 y rechazo del sobrepago real; **IGTF configurable** con **destino de caja** (Caja Divisas o Banco/Caja Bs.); notas de crédito `ADMINISTRATIVE` vs `REFUND`; y los **libros** del período (ventas, IGTF con arqueo y **Estado de Ganancias y Pérdidas** cambiarias). Migración `0005` con backfill a diferencial cero. `npm run smoke:billing` reproduce el caso **CP-01** (US$ 60 a 1.000 → 50.000 Bs. → tasa 1.020 → **+200,00 Bs.**) |
 
 ### Lo que quedó funcionando
 
@@ -1238,35 +1285,29 @@ pm2 start infra/windows/ecosystem.config.cjs   # o infra/windows/start-services.
 
 ### Próximo paso
 
-**Fase 10 — Modo test, endurecimiento y despliegue Fedora**, con la Fase 9 cerrada (tag `fase-9`).
+**El plan por fases queda cerrado: las fases 0–12 están completadas.** La Fase 10 con tag `fase-10`
+y las fases 7, 8 y 9 con los suyos; las **fases 11 y 12** entraron después del plan aprobado y se
+cuentan en [`feat_billing.md`](feat_billing.md) y en el
+[ADR 0069](adr/0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md). El sistema está listo
+para la clínica; lo que venga de aquí se registra en el [`CHANGELOG.md`](../CHANGELOG.md) y en nuevas
+ADR.
 
-Lo que la Fase 10 recibe ya resuelto: el **read model de reportes** con su refresco por lote y
-nocturno, la **suite de integración reproducible** (base temporal para reportes y runner con 4
-workers), el **grupo de atajos con nombre accesible** en `/flujo` y el permiso `reports:clinical`
-en el contrato.
+Lo que **sigue abierto** de la deuda técnica registrada:
 
-Lo que la Fase 10 tiene que recoger de esta fase (está en los hallazgos y en el `CHANGELOG`):
-
-- **El seed determinista completo** (§12): hoy `seed:demo` y `seed:agenda` insertan por SQL y **no
-  emiten eventos** —a propósito, para no llenar la auditoría de ruido de demostración—, así que el
-  read model de reportes nace vacío y se llena con lo que se hace en la aplicación. El seed de la
-  Fase 10 (historias, sesiones cerradas, odontogramas y récipes incluidos) es el sitio natural para
-  decidir cómo se puebla el read model y probar que **se reconstruye desde cero** (ADR 0019).
 - **El cupo efectivo de la agenda** (el que sale de las plantillas de franjas o del valor por
   defecto) no viaja en ningún evento: el tablero usa como suelo las citas asignadas. Publicarlo en
   los eventos de cita, o como `scheduling.capacity.resolved`, quita esa nota al pie.
 - **La familia de refrescos de dos pestañas** (hallazgo de la Fase 8, sin tocar): sigue pendiente de
-  decisión para el endurecimiento.
+  decisión.
 
-Antes de arrancarla, tres cosas que quedan en manos del odontólogo (las mismas de la Fase 7 más una
-nueva):
+Y tres cosas que quedan **en manos del odontólogo** antes de ponerlo a trabajar de verdad:
 
-- **Los datos reales del membrete** (logo, RIF, teléfonos, MPPS y especialidad): se editan en
-  [`packages/contracts/src/clinic.ts`](../packages/contracts/src/clinic.ts) y el editor del récipe
-  avisa mientras falten, así que hoy el récipe sale **sin** esos datos, no con datos inventados.
-  El logo se deja en [`assets/clinic/`](../assets/clinic/README.md).
-- **La revisión a ojo del récipe impreso** (A5), de la página pública de verificación y ahora
-  también del **PDF A4 de los reportes**.
+- **Los datos reales del membrete** (nombre, RIF, teléfonos, logo, MPPS y especialidad): se editan
+  **en la aplicación** —`/mi-perfil` y `/configuracion`—, no en el código
+  ([ADR 0056](adr/0056-la-identidad-del-consultorio-vive-en-la-base.md)); el editor del récipe avisa
+  mientras falten, así que hoy el récipe sale **sin** esos datos, no con datos inventados.
+- **La revisión a ojo del récipe impreso** (carta), de la página pública de verificación y también
+  del **PDF del reporte**.
 - **La vuelta por `/flujo` con el día real**: es la pantalla que va a usar todo el tiempo, así que
   conviene probarla con la agenda de una jornada de verdad (y decidir si el atajo `F8` —que cierra la
   sesión clínica, no la del sistema— es el que quiere).
