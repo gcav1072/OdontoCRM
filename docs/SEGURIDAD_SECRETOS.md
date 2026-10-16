@@ -52,7 +52,7 @@ Este documento responde a la pregunta «¿cómo te paso el token del bot con la 
 | Secreto | Dónde vive (desarrollo) | Dónde vive (Fedora) | Quién lo genera |
 | :--- | :--- | :--- | :--- |
 | `PG_ADMIN_URL` (superusuario) | `.env` raíz (ignorado) | se usa una vez y se guarda en el gestor de contraseñas del administrador | tú, al instalar PostgreSQL |
-| Credenciales de los 8 servicios | `services/<svc>/.env` | `/etc/odontocrm/<svc>.env` | `npm run db:bootstrap` (aleatorias) |
+| Credenciales de los 9 servicios | `services/<svc>/.env` | `/etc/odontocrm/<svc>.env` | `npm run db:bootstrap` (aleatorias) |
 | `TELEGRAM_BOT_TOKEN` | `services/notifications/.env` | `/etc/odontocrm/notifications.env` | tú, vía BotFather |
 | Clave privada JWT (EdDSA) | `services/identity/.keys/jwt-private.pem` (ignorado) | `/etc/odontocrm/keys/jwt-private.pem` (`0600`) | `npm run keys:generate` (Fase 1) |
 | `INTERNAL_SERVICE_SECRET` | `.env` por servicio | `/etc/odontocrm/internal-secret.env` | bootstrap |

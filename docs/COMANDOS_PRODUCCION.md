@@ -75,7 +75,7 @@ Con `systemctl` directamente (lo mismo, sin el atajo):
 ```bash
 sudo systemctl status odontocrm@clinical --no-pager
 sudo systemctl restart odontocrm@clinical      # reiniciar uno
-sudo systemctl restart 'odontocrm@*'           # reiniciar los 8 servicios de datos
+sudo systemctl restart 'odontocrm@*'           # reiniciar los 9 servicios de datos
 sudo systemctl restart odontocrm-gateway nginx # la puerta y el proxy
 sudo journalctl -u odontocrm@clinical -f       # registros en vivo (Ctrl-C para salir)
 sudo journalctl -u 'odontocrm@*' --since today --no-pager | tail -40
@@ -111,15 +111,15 @@ sudo odontocrm arrancar
 
 | Paso | Comando | Qué pasa por dentro |
 | :--- | :--- | :--- |
-| Parar | `odontocrm parar` | `systemctl stop` del gateway y de los 8 servicios. **nginx y PostgreSQL se quedan** (el proxy dará 502 mientras tanto, que es lo correcto: algo tiene que contestar). Para pararlo **todo**: `sudo odontocrm parar --todo` |
+| Parar | `odontocrm parar` | `systemctl stop` del gateway y de los 9 servicios. **nginx y PostgreSQL se quedan** (el proxy dará 502 mientras tanto, que es lo correcto: algo tiene que contestar). Para pararlo **todo**: `sudo odontocrm parar --todo` |
 | Compilar | `odontocrm compilar` | `npm ci` + `npm run build` dentro de `/opt/odontocrm`. Los servicios **siguen con el código viejo en memoria** hasta que se reinicien: por eso este paso va entre parar y arrancar |
-| Arrancar | `odontocrm arrancar` | `systemctl start` de PostgreSQL y nginx si hicieran falta, luego los 8 servicios, y el gateway al final. Termina comprobando los 9 con `verificar` |
+| Arrancar | `odontocrm arrancar` | `systemctl start` de PostgreSQL y nginx si hicieran falta, luego los 9 servicios, y el gateway al final. Termina comprobando los 9 con `verificar` |
 
 **Atajos que existen para no repetir:**
 
 ```bash
 # Sirve con el sistema corriendo O parado (también tras `parar --todo`): levanta
-# PostgreSQL y nginx si faltan, reinicia los 8 servicios, el gateway al final y verifica.
+# PostgreSQL y nginx si faltan, reinicia los 9 servicios, el gateway al final y verifica.
 sudo odontocrm reiniciar     # aplicar cambios de configuración
 sudo odontocrm recompilar    # compilar + reiniciar (código ya en /opt, sin migraciones)
 sudo odontocrm actualizar    # traer del repositorio + compilar + migrar + reiniciar
@@ -140,12 +140,12 @@ sudo odontocrm actualizar    # traer del repositorio + compilar + migrar + reini
 sudo systemctl stop odontocrm-gateway
 sudo systemctl stop 'odontocrm@identity' 'odontocrm@patients' 'odontocrm@scheduling' \
   'odontocrm@notifications' 'odontocrm@clinical' 'odontocrm@odontogram' \
-  'odontocrm@screens' 'odontocrm@reporting'
+  'odontocrm@screens' 'odontocrm@reporting' 'odontocrm@billing'
 
 # Arrancar
 sudo systemctl start 'odontocrm@identity' 'odontocrm@patients' 'odontocrm@scheduling' \
   'odontocrm@notifications' 'odontocrm@clinical' 'odontocrm@odontogram' \
-  'odontocrm@screens' 'odontocrm@reporting'
+  'odontocrm@screens' 'odontocrm@reporting' 'odontocrm@billing'
 sudo systemctl start odontocrm-gateway
 ```
 
@@ -178,7 +178,7 @@ sudo odontocrm actualizar
 ```
 
 Hace los seis pasos en orden y termina verificando: trae el código nuevo, compila,
-aplica las migraciones de los 8 servicios, reinicia y comprueba los 9.
+aplica las migraciones de los 9 servicios, reinicia y comprueba los 9.
 
 **Si el código ya está en `/opt/odontocrm`** (por ejemplo lo copiaste o lo editaste ahí)
 y solo hace falta que los servicios lo usen, esto compila y reinicia **sin tocar el

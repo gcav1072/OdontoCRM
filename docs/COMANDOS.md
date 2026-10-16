@@ -117,7 +117,7 @@ powershell -ExecutionPolicy Bypass -File infra/windows/start-services.ps1
 | `npm run db:bootstrap` | Crea las 9 bases, un rol por servicio con privilegios solo sobre la suya, las extensiones (`pgcrypto`, `pg_trgm`), la cola compartida `odonto_events` y escribe las credenciales en cada `services/<svc>/.env` | `-- --rotate` (contraseñas nuevas), `-- --only <servicio>` |
 | `npm run db:migrate` | Aplica las migraciones de todos los servicios implementados | `-- --only <servicio>` |
 | `npm run db:verify-migrations` | Desde cero: crea una base temporal por servicio, migra con el migrador real, comprueba tablas/índices y la borra | `-- --only <servicio>` |
-| `npm run db:generate:<servicio>` | Genera una migración a partir del esquema Drizzle del servicio | `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram`, `reporting` |
+| `npm run db:generate:<servicio>` | Genera una migración a partir del esquema Drizzle del servicio | `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram`, `reporting`, `billing` |
 | `npm run db:reset` | **Borra absolutamente todo** y deja el sistema **listo para usar**: las 9 bases `odonto_*` (con `with (force)`) y el contenido de `storage/`; después compila, hace `db:bootstrap`, `db:migrate` y **siembra los usuarios**. Solo consola y **exige `--yes`** | `-- --yes` (hace falta) · `-- --solo-bases` (conserva los archivos) · `-- --remoto` (permite una base que no es de esta máquina) |
 | `npm run env:check` | Compara cada `services/<svc>/.env` con su **plantilla** (`.env.example`) y dice qué claves faltan y qué se pierde con cada una. Nunca imprime valores | `-- --todo` (informa también de los `.env` ausentes) |
 | `npm run keys:generate` | Par de claves EdDSA del JWT en `services/identity/.keys/` (ignorado por Git) | `-- --force` regenera (invalida todas las sesiones) |
@@ -220,7 +220,7 @@ generados sí pueden quedar con el tamaño de antes y el contenido a ceros** (le
 ```powershell
 npm run stack:down
 npm run db:bootstrap     # reescribe los .env (y rota la contraseña del rol si no pudo leerla)
-npm run db:migrate       # comprueba que los 8 servicios conectan (es idempotente)
+npm run db:migrate       # comprueba que los 9 servicios conectan (es idempotente)
 npm run stack:fijo
 ```
 
@@ -379,12 +379,13 @@ un puerto lo ocupa un programa ajeno, avisa y lo deja en paz.
 
 | Comando | Arranca |
 | :--- | :--- |
-| `npm run dev` | Todo: `tsc -b --watch` + gateway + identity + patients + scheduling + notifications + screens + clinical + odontogram + web |
+| `npm run dev` | Todo: `tsc -b --watch` + gateway + identity + patients + scheduling + notifications + screens + clinical + odontogram + reporting + billing + web |
 | `npm run dev:web` | **Solo la interfaz** (Vite en `http://127.0.0.1:5173`) |
-| `npm run dev:<servicio>` | Un solo servicio en vigilancia: `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram`, `gateway`, `web`, `build` |
+| `npm run dev:<servicio>` | Un solo servicio en vigilancia: `identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram`, `reporting`, `billing`, `gateway`, `web`, `build` |
 | `npm run dev:check` | Comprueba que los puertos del desarrollo estén libres y dice quién los ocupa (se ejecuta **solo** antes de `npm run dev`) |
 | `npm run dev:stop` | Para procesos sueltos de un `npm run dev` anterior (los de PM2 no se tocan: los para `npm run stack:down`) |
 | `npm run check:web` | Abre la interfaz con un navegador sin interfaz y verifica que **monta** y que la consola está limpia |
+| `npm run check:responsive` | Mide desbordamiento horizontal y solapes texto/control en 320/768/1024/1366/1920 (necesita la pila en pie y **cambia la contraseña del `admin`**) |
 
 `npm run dev` requiere haber migrado y sembrado antes; los servicios leen
 `.env` (raíz) + `services/<svc>/.env`.
@@ -399,8 +400,8 @@ un puerto lo ocupa un programa ajeno, avisa y lo deja en paz.
 
 | Comando | Arranca |
 | :--- | :--- |
-| `npm run stack:fijo` | **La pila completa** con PM2 (los 8 servicios + la interfaz), compilando antes |
-| `npm run start:<servicio>` | Un servicio desde `dist/` (`identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram`, `gateway`) |
+| `npm run stack:fijo` | **La pila completa** con PM2 (los 9 servicios + la interfaz), compilando antes |
+| `npm run start:<servicio>` | Un servicio desde `dist/` (`identity`, `patients`, `scheduling`, `notifications`, `screens`, `clinical`, `odontogram`, `reporting`, `billing`, `gateway`) |
 | `npm run build:node` | **Hay que compilar antes**: `start:*` ejecuta `dist/`, no el código fuente |
 | `npm run preview -w @odontocrm/web` | Interfaz compilada en `http://127.0.0.1:4173` |
 | `pm2 logs odontocrm-clinical` | Registros de un servicio (también en `logs/<servicio>.out.log`) |
@@ -426,7 +427,7 @@ Todos los servicios escuchan en `127.0.0.1`: se entra **solo** por el gateway.
 
 | Qué | Cuándo | Comando |
 | :--- | :--- | :--- |
-| Chromium de Playwright | Para el **PDF A5 del récipe** (Fase 7B) y para las capturas de revisión | `npx playwright install chromium` |
+| Chromium de Playwright | Para el **PDF del récipe** (Fase 7B) y para las capturas de revisión | `npx playwright install chromium` |
 
 Los adjuntos de la sesión y los PDF de los récipes y las facturas se guardan en disco:
 `STORAGE_DIR` es una **raíz compartida** (`./storage/patients` de serie;
@@ -510,11 +511,13 @@ base de datos). Necesitan los servicios arrancados y datos sembrados.
 | `npm run smoke:screens` | Pantalla kiosko, llamado en el lobby por SSE (mide la latencia), consultorio y baja de la pantalla | 26 |
 | `npm run smoke:odontogram` | Boca por teclado, superación de caras por la pieza completa, borrado y auditoría | 29 |
 | `npm run smoke:clinical` | Sesión clínica: abrir, autoguardar, cerrar (y no cerrar en blanco), enmendar, hallazgo del odontograma ligado a la sesión y «atendido» con y sin sesión (estrena paciente y busca hora libre en cada corrida) | 30 |
-| `npm run smoke:prescription` | Fase 7B: adjunto de la sesión (subida, listado, descarga y pieza), catálogo, borrador del récipe, **emisión con número y PDF A5**, no emitir dos veces, reimpresión auditada, anulación con motivo, **verificación pública sin token**, y que la secretaría imprime pero no receta | 32 |
+| `npm run smoke:prescription` | Fase 7B: adjunto de la sesión (subida, listado, descarga y pieza), catálogo, borrador del récipe, **emisión con número y PDF del récipe**, no emitir dos veces, reimpresión auditada, anulación con motivo, **verificación pública sin token**, y que la secretaría imprime pero no receta | 32 |
 | `npm run smoke:reporting` | Fase 9: **el recorrido que alimenta los reportes** —alta, teléfono editado con motivo, cita, aviso, historia firmada con diabetes y alergia, sesión cerrada, récipe emitido y tres hallazgos del odontograma— y después el tablero, los **seis reportes** con sus cifras, la **exportación CSV y PDF**, los permisos de la secretaría (operativos 200 / clínicos 403) y la **auditoría del teléfono** con su valor anterior, el nuevo y el motivo | 81 |
-| `npm run smoke:billing` | Fase 11, sesión B: el recorrido de la caja —sesión clínica cerrada → el **borrador** que deja el consumidor → preciar sus líneas (el catálogo entra en 0) → **lote de formas** y **tasa del día** → **emitir** (los dos números, la tasa congelada y el PDF archivado con su `sha256`) → **cobrar** en bolívares y en divisas → saldo, estado, `/auditoria` y el PDF en el almacén— (da de alta el lote solo si no queda ninguno, como el mostrador; estrena paciente) | 30 |
+| `npm run smoke:billing` | Fase 11, sesión B: el recorrido de la caja —sesión clínica cerrada → el **borrador** que deja el consumidor → preciar sus líneas (el catálogo entra en 0) → **lote de formas** y **tasa del día** → **emitir** (los dos números, la tasa congelada y el PDF archivado con su `sha256`) → **cobrar** en bolívares y en divisas → saldo, estado, `/auditoria` y el PDF en el almacén— (da de alta el lote solo si no queda ninguno, como el mostrador; estrena paciente). Desde la Fase 12 reproduce el caso **CP-01** del contador (US$ 60 a 1.000 → 50.000 Bs. → tasa 1.020 → **+200,00 Bs. de diferencial**) y cuadra los libros (resumen cambiario y arqueo del IGTF) | 34 |
 | `npm run e2e:flujo` | Fase 8: **el día completo en Chromium** sobre `/flujo`. La odontóloga entra con su usuario `odontologo`, registra al paciente, le da cita, registra la llegada, llama con `F4`, lo pasa a consulta, escribe y cierra la sesión con `F8` y marca la cita atendida **sin salir de `/flujo`**; después comprueba `/secretaria` y `/consultorio` y que la consola y la red queden limpias | 27 |
 | `npm run e2e:reportes` | Fase 9: `/reportes` y `/auditoria` en **Chromium**. Entra por el menú lateral, comprueba las tarjetas del tablero, las **gráficas de Recharts**, la tabla y las descargas, recorre **las seis pestañas**, cambia el rango de fechas, y en `/auditoria` filtra por la acción del cambio de teléfono y verifica el **diff antes/después** con el motivo; deja una captura en `tmp/e2e-reportes.png` | 37 |
+| `npm run e2e:config` | Fase 11: el **panel de configuración** (ADR 0060) en Chromium. El acento y la marca que guarda el admin llegan al CSS de la interfaz; una **fuente `.woff2`** se sube con peso y estilo y aparece en la marca (y luego se quita); un texto del kiosko se sirve; se crea un **sillón**; un token de Telegram vuelve **enmascarado**; y —lo que de verdad importa— **el PDF del servidor** sale con la paleta y las tipografías del panel, no solo la pantalla | 31 |
+| `npm run e2e:clinica` | Fase 10: **la aceptación completa**. Encadena, por el camino real (gateway y navegador), los **11 pasos** del día de la clínica —solicitud por bot → programación → aviso con `.ics` → secretaría → consultorio → historia/sesión/récipe → reportes → auditoría— y da un solo veredicto; `-- --rapido` (sin navegador), `-- --solo <paso>`, `-- --sin-bot`, `-- --seguir` | 11 pasos |
 | `npm run reports:latencia` | Fase 9: llena el read model con **10.000 citas y 3.000 pacientes sintéticos** (marcados, y los borra al terminar) y cronometra los seis reportes por el gateway. Falla si alguno pasa de 2 s (`REPORTS_LIMIT_MS`); `-- --keep` deja los datos para mirar la pantalla y `-- --clean` los borra | 6 |
 
 > `smoke:prescription` necesita Chromium (lo usa el propio servicio para componer el PDF):
