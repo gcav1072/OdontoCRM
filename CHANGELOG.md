@@ -4,6 +4,45 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Respaldo] — «Completado sin errores» sin volcar nada, y el simulacro se salta sin PG_ADMIN_URL · 2026-10-17
+
+Revisando los registros de la instalación de Windows aparecieron dos cosas que no se podían
+dejar así. La primera: una ejecución de `odontocrm respaldar` con **PostgreSQL caído** acabó
+en «respaldo completado sin errores» **sin volcar NINGUNA base**. `Test-BaseExiste` confundía
+«no pude consultar el catálogo» con «la base no existe»: las diez se «saltaron» con aviso,
+nadie contó nada y el resultado fue un directorio con las copias de OTRA ejecución. De
+paso, esa misma ejecución **borró el `storage.zip` bueno del intento anterior** antes de
+intentar comprimir un almacén vacío: `Compress-Archive` no deja el archivo y no lanza, y el
+guion daba la copia por hecha por el simple hecho de no haber fallado.
+
+Ahora la consulta del catálogo devuelve tres estados (existe / no existe / **no se pudo
+consultar**) y lo tercero es fallo del volcado; comprimir se comprueba **por efecto** (el
+zip tiene que existir) y un origen sin archivos «avisa y sigue», como ya hacía el guion de
+Fedora, que recibió el mismo arreglo de su lado (`base_existe` con código 2 y la guardia de
+cero volcados). Y hay guardia final: **ni un volcado = el respaldo no sirve** (exit 2),
+cortando antes de la retención para que una ejecución inútil no pode los respaldos buenos.
+
+La segunda: el **simulacro semanal de restauración** (`verify-backup`) exige `PG_ADMIN_URL`
+para crear sus bases temporales, y esa credencial por política no vive en el disco
+([SEGURIDAD_SECRETOS.md](docs/SEGURIDAD_SECRETOS.md)): la tarea de los domingos fallaba
+siempre y `40-verificar` contaba «el último respaldo NO se pudo restaurar» —sin haber
+probado nada— en cada `odontocrm arrancar`. Decisión: **sin `PG_ADMIN_URL` el simulacro se
+salta con aviso («restauración NO COMPROBADA») y sale en verde**, con las sumas y el almacén
+sí comprobados, y la verificación del instalador lo cuenta como aviso y no como fallo. Quien
+quiera el simulacro completo pasa `PG_ADMIN_URL` por entorno en una sesión suelta.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `infra/windows/backup/odontocrm-backup.ps1` | `Test-BaseExiste` distingue «no se pudo consultar» (fallo) de «no existe» (se salta); `Comprimir-Carpeta` comprueba por efecto que el zip quedó escrito y avisa-sigue con origen vacío; guardia de **cero volcados** → exit 2 antes de la retención |
+| `infra/fedora/backup/odontocrm-backup.sh` | El espejo: `base_existe` devuelve 2 si la consulta falla, cuenta los volcados y aplica la misma guardia (paridad) |
+| `tools/verify-backup.mjs` | Sin `PG_ADMIN_URL`: aviso «restauración NO COMPROBADA» y exit 0 (antes: error y exit 1); el aviso del almacén menciona también el almacén vacío |
+| `infra/windows/instalar/40-verificar.ps1` | El paso 8/9 omite el simulacro con aviso si no hay `PG_ADMIN_URL` (en entorno o en los `.env`): deja de contar un problema fantasma en cada arrancar |
+
+> **Sin migración.** Son los guiones de respaldo y su verificación. Verificado en la
+> instalación de Windows: con el motor parado el respaldo ahora **falla con exit 2** y no
+> toca la retención; en normal vuelca las diez bases, avisa del almacén vacío y sale en 0;
+> y `verify-backup` deja las sumas comprobadas y el salto explicado.
+
 ## [Instalador] — El comando `odontocrm` no mostraba la salida y `parar` decía «0 servicios» · 2026-10-17
 
 Revisión del comando `odontocrm` sobre una instalación de Windows de verdad, con la pila en
