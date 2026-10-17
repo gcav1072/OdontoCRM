@@ -12,48 +12,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
-const SECRET_PATTERNS = [
-  {
-    name: 'posible token de bot de Telegram',
-    regex: /\b\d{8,10}:[A-Za-z0-9_-]{35}\b/,
-  },
-  {
-    name: 'clave privada PEM',
-    regex: /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-  },
-  {
-    name: 'cadena de conexión con contraseña real',
-    regex:
-      /postgres(?:ql)?:\/\/[^\s:'"@/]+:(?!CAMBIAR|TU_PASSWORD|TU_CLAVE|password|clave|CLAVE|usuario|EJEMPLO|ejemplo|\$\{|<)[^\s@'"]{6,}@/i,
-  },
-  {
-    name: 'clave de acceso de AWS',
-    regex: /\bAKIA[0-9A-Z]{16}\b/,
-  },
-  {
-    // Solo valores «pelados» que ocupan la línea completa: así no confunde
-    // código como `password = decodeURIComponent(...)` con un secreto real.
-    name: 'asignación de secreto en texto plano',
-    regex:
-      /^\s*(?:SECRET|TOKEN|PASSWORD|API_KEY|PRIVATE_KEY|BOT_TOKEN)\s*=\s*['"]?[A-Za-z0-9+/_-]{16,}['"]?\s*$/im,
-  },
-  {
-    name: 'token de GitHub',
-    regex: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/,
-  },
-];
-
-const ALLOWED_EXAMPLE = /\.env\.example$/;
-
-const isForbiddenPath = (path) => {
-  if (ALLOWED_EXAMPLE.test(path)) return false;
-  return (
-    /(^|\/)\.env(\.|$)/.test(path) ||
-    /\.(pem|key|p12|pfx)$/.test(path) ||
-    /(^|\/)secrets\//.test(path) ||
-    /(^|\/)\.keys\//.test(path)
-  );
-};
+import { hallazgosDeLinea, isForbiddenPath } from './lib/secretos.mjs';
 
 const git = (args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 
@@ -131,10 +90,8 @@ for (const path of files) {
 
   const lines = content.split(/\r?\n/);
   lines.forEach((line, index) => {
-    for (const pattern of SECRET_PATTERNS) {
-      if (pattern.regex.test(line)) {
-        findings.push({ path, line: index + 1, pattern: pattern.name });
-      }
+    for (const pattern of hallazgosDeLinea(line)) {
+      findings.push({ path, line: index + 1, pattern });
     }
   });
 }
