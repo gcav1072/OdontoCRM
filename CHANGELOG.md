@@ -4,6 +4,36 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Secretos] — El escáner marcaba la plantilla del instalador como secreto · 2026-10-16
+
+`npm run check-secrets -- --all` salía con **1 hallazgo** en un árbol limpio, y era falso:
+`infra/windows/instalar/comun.ps1` compone la URL del administrador de PostgreSQL con una
+plantilla (`postgres://${Usuario}:$([Uri]::EscapeDataString($clave))@…`), y el patrón de
+«cadena de conexión con contraseña real» toleraba ya los marcadores de ejemplo
+(`TU_PASSWORD`, `CAMBIAR`…) y la interpolación con llaves (`${…}`), pero **no** la
+subexpresión de PowerShell (`$(…)`): leía el código como si fuera una contraseña. Con el
+escáner en modo *staging* no salía —ese archivo no se toca a diario—, pero la auditoría
+completa que documenta la política de secretos quedaba en rojo, que es justo lo que no puede
+pasar: una puerta de calidad que grita en falso se acaba ignorando.
+
+Ahora se tolera cualquier **interpolación de variable** detrás de los dos puntos (`${…}`,
+`$(…)`, `$VAR`), que es código y no un valor, y el escáner sigue igual de estricto con lo
+demás. Los patrones se sacan a `tools/lib/secretos.mjs` con su prueba, para poder fijarlos
+**en los dos sentidos** —lo que debe detectar y lo que debe tolerar— sin git ni pila: era la
+única pieza del repositorio con reglas delicadas y sin prueba, y el error de hoy es
+exactamente el que la prueba habría cazado.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `tools/lib/secretos.mjs` | Nuevo: los patrones, la lista de rutas prohibidas y `hallazgosDeLinea(linea)`, con el porqué de cada tolerancia |
+| `tools/check-secrets.mjs` | Importa los patrones (deja de tenerlos copiados) y usa `hallazgosDeLinea`; el recorrido del árbol no cambia |
+| `tools/lib/secretos.test.mjs` | Nuevo (13 pruebas): tolera la plantilla de PowerShell, `${…}`/`$VAR`, los marcadores de ejemplo y la conexión por socket; y **detecta** una contraseña de verdad, un token de Telegram, una clave PEM, una de AWS, un token de GitHub y una asignación en texto plano. Los secretos de mentira se arman por trozos, como en `settings.integration.test.ts`, para que el escáner no marque su propia prueba |
+| `docs/SEGURIDAD_SECRETOS.md` | §3 describe las dos caras de la prueba y la tolerancia de interpolaciones |
+
+> **Sin migración.** Es la herramienta de consola y su prueba. Tras actualizar,
+> `npm run check-secrets -- --all` sale limpio (1035 archivos); si alguien tenía el hallazgo
+> anotado como conocido, ya no está.
+
 ## [Docs] — La documentación alcanza las fases 11 y 12, y el plan de pruebas cubre el diferencial cambiario · 2026-10-16
 
 Barrido de la documentación para ponerla al día tras la **Fase 11** (facturación y pagos) y la

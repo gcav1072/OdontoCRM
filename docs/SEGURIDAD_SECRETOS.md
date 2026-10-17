@@ -84,7 +84,7 @@ instante, aunque el token siga vigente.
 ## 3. Reglas técnicas
 
 - El `.gitignore` raíz excluye `.env`, `.env.*`, `!.env.example`, `*.pem`, `*.key`, `.keys/`, y cualquier variante local.
-- `tools/check-secrets.mjs` se ejecuta antes de cada commit (`npm run check-secrets`): busca patrones de token de Telegram (`\d{8,10}:[A-Za-z0-9_-]{35}`), cadenas de conexión con contraseña, claves PEM y archivos `.env` que se hayan colado en el *staging*.
+- `tools/check-secrets.mjs` se ejecuta antes de cada commit (`npm run check-secrets`) y audita todo el repositorio con `npm run check-secrets -- --all`: busca patrones de token de Telegram (`\d{8,10}:[A-Za-z0-9_-]{35}`), cadenas de conexión con contraseña, claves PEM y archivos `.env` que se hayan colado en el *staging*. Los patrones viven en `tools/lib/secretos.mjs` con su prueba (`secretos.test.mjs`), que fija **las dos caras**: lo que debe detectar y lo que debe tolerar —los marcadores de ejemplo (`TU_PASSWORD`, `CAMBIAR`…) y las **interpolaciones de variable** (`${…}`, `$(…)`, `$VAR`), que son código y no una contraseña—. Al añadir un patrón o relajarlo, se prueba en los dos sentidos: una regla que no salta deja pasar un secreto y una que salta de más rompe `npm run verify` en un árbol limpio.
 - Los servicios leen la configuración con **Zod** (`packages/kernel/config.ts`): si falta una variable obligatoria, el servicio **no arranca** y dice cuál falta; si una variable trae un valor por defecto inseguro en producción, también falla.
 - Los logs usan una lista de campos censurados (`password`, `token`, `authorization`, `cookie`, `secret`, `pgAdminUrl`) — `packages/kernel/logger.ts`.
 - Los mensajes de error **nunca** incluyen la cadena de conexión ni el contenido del `.env`.
