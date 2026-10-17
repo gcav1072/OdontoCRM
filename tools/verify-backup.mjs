@@ -355,7 +355,8 @@ export const revisarAlmacen = (dir) => {
   if (storage === undefined) {
     return {
       estado: 'ausente',
-      detalle: 'no hay storage_*.tar.gz ni storage.zip (¿respaldo sin --include-storage?)',
+      detalle:
+        'no hay storage_*.tar.gz ni storage.zip (¿respaldo sin --include-storage, o almacén vacío?)',
     };
   }
 
@@ -634,11 +635,22 @@ export const main = async () => {
   else aviso(`almacén: ${almacen.detalle}`);
 
   if (urlAdmin === '') {
-    console.error(
-      '\n✖ falta PG_ADMIN_URL (en el .env de la raíz o en el entorno): sin administrador de\n' +
-        '  PostgreSQL no se pueden crear las bases temporales del simulacro.',
+    // Sin administrador de PostgreSQL el simulacro NO puede correr, y eso no es un fallo del
+    // respaldo: es una comprobación que no se hizo (decisión del 2026-10-17). Antes se
+    // devolvía 1 y cada domingo el temporizador «verificar respaldo» acababa en rojo —y la
+    // verificación del instalador contaba «el respaldo NO se pudo restaurar»— sin haber
+    // restaurado nada: un aviso garantizado se acaba ignorando. Se sale en verde dejando
+    // claro que la restauración queda SIN PROBAR; las sumas y el almacén sí se comprobaron.
+    // `PG_ADMIN_URL` por política no vive en el disco (docs/SEGURIDAD_SECRETOS.md): quien
+    // quiera el simulacro completo lo pasa por entorno en una sesión suelta.
+    aviso(
+      'restauración NO COMPROBADA (falta PG_ADMIN_URL en el .env de la raíz o en el entorno):\n' +
+        '  sin administrador de PostgreSQL no se crean las bases temporales del simulacro.\n' +
+        '  El respaldo puede estar bien o no: no está probado. Para probarlo de verdad:\n' +
+        '  PG_ADMIN_URL="postgres://…" node tools/verify-backup.mjs   (la contraseña va al\n' +
+        '  gestor de contraseñas, no al disco: docs/SEGURIDAD_SECRETOS.md)',
     );
-    return 1;
+    return 0;
   }
 
   log(`\nrestaurando ${String(bases.length)} base(s) en bases temporales (se borran al terminar)…`);

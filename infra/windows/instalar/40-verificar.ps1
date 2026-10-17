@@ -384,18 +384,33 @@ if ($nodeVerificar) {
   }
   else {
     $ultimo = $respaldos[0]
-    $salida = & $nodeVerificar (Join-Path $OdontoRepo 'tools\verify-backup.mjs') `
-      --from $ultimo.FullName --db odonto_patients --sin-aviso 2>&1
-    if ($LASTEXITCODE -eq 0) {
-      Escribir-Ok "el último respaldo ($($ultimo.Name)) se restaura y los datos están"
+    # Sin administrador de PostgreSQL el simulacro no puede crear las bases temporales: se
+    # OMITE con aviso (decisión del 2026-10-17). No es un fallo del respaldo, es una
+    # comprobación que no se hizo, y el «NO se pudo restaurar» de antes decía mal y sumaba un
+    # problema fantasma en cada arrancar. `PG_ADMIN_URL` por política no vive en el disco
+    # (docs/SEGURIDAD_SECRETOS.md): se mira en el entorno y en los .env, como verify-backup.
+    $adminUrl = $env:PG_ADMIN_URL
+    if (-not $adminUrl) { $adminUrl = Get-ValorEnv -Archivo (Join-Path $OdontoEnv 'odontocrm.env') -Clave 'PG_ADMIN_URL' }
+    if (-not $adminUrl) { $adminUrl = Get-ValorEnv -Archivo (Join-Path $OdontoRepo '.env') -Clave 'PG_ADMIN_URL' }
+    if (-not $adminUrl) {
+      Escribir-Aviso "el último respaldo ($($ultimo.Name)) no se pudo COMPROBAR: falta PG_ADMIN_URL"
+      Escribir-Detalle 'no es un fallo del respaldo: el simulacro se omite sin administrador de PostgreSQL'
+      Escribir-Detalle 'para probarlo:  $env:PG_ADMIN_URL = "postgres://…" ; node tools\verify-backup.mjs'
     }
     else {
-      Fallo "el último respaldo ($($ultimo.Name)) NO se pudo restaurar"
-      # Las comillas van con `'{0}' -f`: `\"` NO escapa en PowerShell (el escape es la
-      # comilla invertida) y la cadena se cortaba en la barra, sin la ruta (2026-10-17).
-      Escribir-Detalle ('míralo:  node tools\verify-backup.mjs --from "{0}"' -f $ultimo.FullName)
+      $salida = & $nodeVerificar (Join-Path $OdontoRepo 'tools\verify-backup.mjs') `
+        --from $ultimo.FullName --db odonto_patients --sin-aviso 2>&1
+      if ($LASTEXITCODE -eq 0) {
+        Escribir-Ok "el último respaldo ($($ultimo.Name)) se restaura y los datos están"
+      }
+      else {
+        Fallo "el último respaldo ($($ultimo.Name)) NO se pudo restaurar"
+        # Las comillas van con `'{0}' -f`: `\"` NO escapa en PowerShell (el escape es la
+        # comilla invertida) y la cadena se cortaba en la barra, sin la ruta (2026-10-17).
+        Escribir-Detalle ('míralo:  node tools\verify-backup.mjs --from "{0}"' -f $ultimo.FullName)
+      }
+      $salida | Select-Object -Last 3 | ForEach-Object { Escribir-Detalle "  $_" }
     }
-    $salida | Select-Object -Last 3 | ForEach-Object { Escribir-Detalle "  $_" }
   }
 }
 else { Escribir-Aviso 'no encuentro node: no puedo probar el respaldo' }
