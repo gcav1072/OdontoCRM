@@ -163,15 +163,19 @@ function Entorno-Pg {
 }
 
 # ¿Existe la base? (una consulta al catálogo, sin conectar a ella)
+# Devuelve $true/$false, o **$null cuando NO SE PUDO CONSULTAR** (PostgreSQL caído, credencial
+# que no conecta, psql ausente). No es lo mismo que «no existe»: con PostgreSQL caído las diez
+# bases se «saltaban» y el respaldo terminaba «sin errores» SIN VOLCAR NADA (2026-10-17).
 function Test-BaseExiste {
   param([string]$Base)
   $psql = Get-PgTool 'psql'
-  if (-not $psql) { return $false }
+  if (-not $psql) { return $null }
   $entorno = Entorno-Pg
   $anterior = @{}
   foreach ($k in $entorno.Keys) { $anterior[$k] = [Environment]::GetEnvironmentVariable($k); Set-Item -Path "Env:\$k" -Value $entorno[$k] }
   try {
     $salida = & $psql --no-password -d postgres -tAc "select 1 from pg_database where datname = '$Base'" 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
     return ($salida -eq '1')
   }
   finally {
@@ -276,7 +280,13 @@ foreach ($base in $DbList) {
     Escribir-Detalle "[dry-run] pg_dump -Fc $base → $destino"
     continue
   }
-  if (-not (Test-BaseExiste $base)) { Aviso "${base}: no existe en este servidor, se salta"; continue }
+  $existe = Test-BaseExiste $base
+  if ($null -eq $existe) {
+    Fallo "${base}: no pude consultar el catálogo (¿PostgreSQL caído o credencial que no conecta?): NO se volcó"
+    $fallosDump++
+    continue
+  }
+  if (-not $existe) { Aviso "${base}: no existe en este servidor, se salta"; continue }
   $entorno = Entorno-Pg
   $anterior = @{}
   foreach ($k in $entorno.Keys) { $anterior[$k] = [Environment]::GetEnvironmentVariable($k); Set-Item -Path "Env:\$k" -Value $entorno[$k] }
@@ -310,8 +320,21 @@ function Comprimir-Carpeta {
   param([string]$Origen, [string]$DestinoZip, [string]$Etiqueta)
   if ($DryRun) { Escribir-Detalle "[dry-run] comprimir $Origen → $DestinoZip"; return 0 }
   try {
+    # ¿Hay algo que comprimir? Con un origen sin archivos `Compress-Archive` puede no dejar
+    # el zip y NO lanzar —y aquí se borraba antes el del día anterior—: el resultado se
+    # comprueba por EFECTO, que es lo único que decide (2026-10-17). Origen vacío = avisa y
+    # sigue, igual que el guion de Fedora: un almacén sin adjuntos no puede tumbar la copia.
+    $tieneArchivos = @(Get-ChildItem -Path $Origen -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0
+    if (-not $tieneArchivos) {
+      Aviso "${Etiqueta}: no hay archivos en ${Origen}: no se comprime nada (avisa y sigue)"
+      return 0
+    }
     if (Test-Path $DestinoZip) { Remove-Item $DestinoZip -Force }
     Compress-Archive -Path (Join-Path $Origen '*') -DestinationPath $DestinoZip -Force
+    if (-not (Test-Path $DestinoZip)) {
+      Fallo "${Etiqueta}: Compress-Archive no dejó ${DestinoZip}: el respaldo se queda sin esta copia"
+      return 1
+    }
     Ok "${Etiqueta}: copiado a $DestinoZip"
     return 0
   }
@@ -378,6 +401,14 @@ if (-not $DryRun) {
     else { Ok 'las sumas SHA-256 coinciden' }
   }
   finally { Pop-Location }
+}
+
+# Nada volcado = el respaldo NO sirve: no puede terminar «sin errores» (2026-10-17: con
+# PostgreSQL caído las diez bases se «saltaron» y la copia se dio por buena sin volcar nada).
+# Se corta ANTES de la retención: una ejecución inútil no debe podar los respaldos buenos.
+if (-not $DryRun -and $DbList.Count -gt 0 -and $archivos.Count -eq 0) {
+  Fallo "ninguna de las $($DbList.Count) base(s) se volcó: este respaldo NO sirve"
+  exit 2
 }
 
 # ── Retención ────────────────────────────────────────────────────────────────
