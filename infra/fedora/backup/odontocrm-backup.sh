@@ -229,13 +229,16 @@ pg_bin() { # resuelve el ejecutable de PostgreSQL 18
 }
 
 # ¿Existe la base? (una consulta al catálogo, sin conectar a ella)
+# Devuelve 0 si existe, 1 si no, y **2 cuando NO SE PUDO CONSULTAR** (PostgreSQL caído,
+# credencial que no conecta): con el motor caído todas las bases se «omitían» y el respaldo
+# terminaba en verde sin volcar nada (2026-10-17, paridad con el guion de Windows).
 base_existe() {
   local db="$1"
   local -a pgenv=(PGHOST="$PG_HOST" PGPORT="$PG_PORT" PGUSER="$PG_USER" PGCONNECT_TIMEOUT=15)
   [[ -n "${PGPASSFILE:-}" ]] && pgenv+=(PGPASSFILE="$PGPASSFILE")
   local salida
   salida="$(env "${pgenv[@]}" "$(pg_bin psql)" --no-password -d postgres -tAc \
-    "select 1 from pg_database where datname = '${db}'" 2>/dev/null)" || return 1
+    "select 1 from pg_database where datname = '${db}'" 2>/dev/null)" || return 2
   [[ "$salida" == "1" ]]
 }
 
@@ -345,16 +348,26 @@ dump_databases() {
   local checksum_list=()
   local failed_dump=0 failed_verify=0 total_bytes=0
 
-  local db file start end bytes
+  local db file start end bytes existe dumped
+  dumped=0
   for db in "${dbs[@]}"; do
     file="$RUN_DIR/${db}_${STAMP}.dump"
 
     # Una base de la lista puede no existir todavía: `odonto_events` (la cola de pg-boss)
     # solo aparece cuando el primer servicio con outbox arranca. Eso NO es un fallo del
-    # respaldo: se omite diciéndolo, en vez de hacer fracasar la noche entera.
-    if (( ! DRY_RUN )) && ! base_existe "$db"; then
-      warn "$db no existe en este servidor: se omite (¿aún no se creó la cola?)"
-      continue
+    # respaldo: se omite diciéndolo, en vez de hacer fracasar la noche entera. Pero «no se
+    # pudo consultar» (motor caído, credencial) SÍ es fallo: no se puede volcar nada.
+    if (( ! DRY_RUN )); then
+      existe=0
+      base_existe "$db" || existe=$?
+      if (( existe == 2 )); then
+        err "$db: no se pudo consultar el catálogo (¿PostgreSQL caído o credencial?): NO se volcó"
+        failed_dump=$((failed_dump + 1))
+        continue
+      elif (( existe == 1 )); then
+        warn "$db no existe en este servidor: se omite (¿aún no se creó la cola?)"
+        continue
+      fi
     fi
 
     log "respaldando $db → $file"
@@ -388,6 +401,7 @@ dump_databases() {
     end="$(date +%s)"
     bytes="$(stat -c '%s' "$file")"
     total_bytes=$((total_bytes + bytes))
+    dumped=$((dumped + 1))
     ok "  $db: $(numfmt --to=iec --suffix=B "$bytes" 2>/dev/null || echo "$bytes B") en $((end - start)) s"
 
     if verify_dump "$file" "$db"; then
@@ -405,6 +419,14 @@ dump_databases() {
       err "no se pudieron calcular las sumas SHA-256"
       if (( failed_verify == 0 )); then failed_verify=1; fi
     fi
+  fi
+
+  # Nada volcado = el respaldo NO sirve: no puede salir bien sin ni un volcado (2026-10-17,
+  # paridad con el guion de Windows). Se corta antes de seguir: una ejecución inútil no debe
+  # podar los respaldos buenos de la retención.
+  if (( ! DRY_RUN )) && (( ${#dbs[@]} > 0 )) && (( dumped == 0 )); then
+    err "ninguna de las ${#dbs[@]} base(s) se volcó: este respaldo NO sirve"
+    return 2
   fi
 
   LAST_TOTAL_BYTES="$total_bytes"
