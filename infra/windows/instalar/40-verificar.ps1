@@ -391,7 +391,9 @@ if ($nodeVerificar) {
     }
     else {
       Fallo "el último respaldo ($($ultimo.Name)) NO se pudo restaurar"
-      Escribir-Detalle "míralo:  node tools\verify-backup.mjs --from \"$($ultimo.FullName)\""
+      # Las comillas van con `'{0}' -f`: `\"` NO escapa en PowerShell (el escape es la
+      # comilla invertida) y la cadena se cortaba en la barra, sin la ruta (2026-10-17).
+      Escribir-Detalle ('míralo:  node tools\verify-backup.mjs --from "{0}"' -f $ultimo.FullName)
     }
     $salida | Select-Object -Last 3 | ForEach-Object { Escribir-Detalle "  $_" }
   }
