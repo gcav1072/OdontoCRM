@@ -4,6 +4,39 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Instalador] — El comando `odontocrm` no mostraba la salida y `parar` decía «0 servicios» · 2026-10-17
+
+Revisión del comando `odontocrm` sobre una instalación de Windows de verdad, con la pila en
+marcha. Cuatro defectos, tres de ellos en el camino de todos los días. `odontocrm estado` y
+`odontocrm alertas` **no mostraban nada**: envolvían la llamada en `exit (Invocar-Node …)`,
+y PowerShell captura el flujo de éxito de la función —el tablero entero— dentro de la
+expresión de `exit` y lo descarta al convertirlo a entero, quedándose además con el código
+**0 siempre**. Lo peor no era la vista: `alertas` promete «sale con 1 si hay alguno» y no lo
+cumplía **nunca**, con la pila caída o sin ella. `parar` decía «**0** servicio(s)
+detenido(s)» con todo parado (el recuento miraba una salida redirigida a `$null`, que
+siempre es falsa) y **no comprobaba** que los servicios se hubieran parado de verdad: una
+orden de `pm2` rechazada habría pasado igual por «detenido». Y cada ejecución imprimía el
+aviso **DEP0190** de Node («los argumentos no se escapan, solo se concatenan») porque
+`estado.mjs` lanzaba los comandos con `shell: true` y lista de argumentos.
+
+El recuento de `parar` va ahora por el código de salida de `pm2`, y después se verifica **por
+efecto** —la regla de la casa— que ningún puerto del sistema siga escuchando, nombrando los
+que queden. Verificado en la instalación: PM2 queda con los diez procesos en `stopped`, ningún
+puerto escucha, `alertas` con la pila parada lista los diez servicios y sale con **1**, y
+`arrancar`/`reiniciar` recuperan todo.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `infra/windows/odontocrm.ps1` | `Invocar-Node` devuelve el código por `$script:CodigoDeSalida` y `estado`/`alertas` se invocan a nivel de instrucción: la salida fluye a la consola y el código 0/1 se respeta; `parar` cuenta por el código de `pm2` y verifica que ningún puerto quede escuchando |
+| `tools/estado.mjs` | `intentarComando` lanza `pm2` como línea completa (es un `.cmd` y necesita shell) y el resto sin shell: se va el aviso DEP0190 de cada ejecución |
+| `infra/windows/instalar/40-verificar.ps1` | La pista «míralo…» del paso 8/9 vuelve a traer la ruta del respaldo (las comillas `\"` cortaban la cadena: en PowerShell el escape es la comilla invertida) |
+
+> **Sin migración.** Es el comando de consola y sus guiones. **Queda por decidir**: el
+> simulacro semanal de restauración (`verify-backup`) exige `PG_ADMIN_URL`, que por política
+> ([SEGURIDAD_SECRETOS.md](docs/SEGURIDAD_SECRETOS.md)) no vive en el disco —va al gestor de
+> contraseñas—, así que la tarea de los domingos no puede crear las bases temporales y falla,
+> y `40-verificar` cuenta un problema falso en cada `odontocrm arrancar`.
+
 ## [Secretos] — El escáner marcaba la plantilla del instalador como secreto · 2026-10-16
 
 `npm run check-secrets -- --all` salía con **1 hallazgo** en un árbol limpio, y era falso:
