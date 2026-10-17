@@ -27,7 +27,7 @@
  * vigilar un `systemd` timer (`infra/fedora/systemd/odontocrm-alertas.*`) sin que
  * nadie lea una tabla.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { accessSync, constants, existsSync } from 'node:fs';
 import { statfs } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -442,11 +442,14 @@ const revisarCartasMuertas = async (entornoLegible) => {
 /** Ejecuta y devuelve la salida, o `null` si el comando no existe o sale con error. */
 const intentarComando = (comando, args) => {
   try {
-    return execFileSync(comando, args, {
-      encoding: 'utf8',
-      // En Windows `pm2` es un `pm2.cmd`: sin shell, Node no lo resuelve (EINVAL/ENOENT).
-      shell: process.platform === 'win32',
-    });
+    // En Windows `pm2` es un `pm2.cmd`: sin shell, Node no lo resuelve (EINVAL/ENOENT).
+    // PERO `shell: true` con una LISTA de argumentos dispara el aviso DEP0190 («los
+    // argumentos no se escapan, solo se concatenan») en cada ejecución: los `.cmd` se
+    // mandan como línea completa y el resto (`netstat`, … son `.exe`) van sin shell.
+    if (process.platform === 'win32' && comando === 'pm2') {
+      return execSync([comando, ...args].join(' '), { encoding: 'utf8', windowsHide: true });
+    }
+    return execFileSync(comando, args, { encoding: 'utf8' });
   } catch {
     return null;
   }
