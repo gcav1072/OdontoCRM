@@ -683,9 +683,38 @@ switch ($Orden) {
     # quedan colgadas contra servicios que ya no están.
     & (Get-Pm2) stop odontocrm-gateway *> $null
     Escribir-Ok 'gateway detenido (la puerta)'
+    # El recuento va por el CÓDIGO de salida de `pm2`, no por su salida: con `*> $null` un
+    # `if (& pm2 …)` siempre era falso y se decía «0 servicio(s) detenido(s)» con la pila
+    # entera parada (2026-10-17).
     $parados = 0
-    foreach ($s in $info.servicios) { if (& (Get-Pm2) stop "odontocrm-$($s.nombre)" *> $null) { $parados++ } }
-    Escribir-Ok "$parados servicio(s) detenido(s)"
+    foreach ($s in $info.servicios) {
+      & (Get-Pm2) stop "odontocrm-$($s.nombre)" *> $null
+      if ($LASTEXITCODE -eq 0) { $parados++ }
+    }
+    Escribir-Ok "parada pedida a $parados servicio(s)"
+
+    # La comprobación que importa es por EFECTO: ningún puerto del sistema debe seguir
+    # escuchando. `pm2 stop` puede no aceptar la orden o el proceso volver a levantarse, y
+    # un «detenido» que sigue sirviendo es peor que un aviso. Se da un margen y se miran
+    # los puertos, no el estado que diga PM2.
+    $enMarcha = @()
+    foreach ($intento in 1..10) {
+      $enMarcha = @()
+      foreach ($p in $info.procesos) {
+        if (Get-NetTCPConnection -State Listen -LocalPort $p.puerto -ErrorAction SilentlyContinue) {
+          $enMarcha += "$($p.nombre) ($($p.puerto))"
+        }
+      }
+      if ($enMarcha.Count -eq 0) { break }
+      Start-Sleep -Milliseconds 700
+    }
+    if ($enMarcha.Count -eq 0) {
+      Escribir-Ok 'verificado: ningún proceso del sistema sigue escuchando'
+    }
+    else {
+      Escribir-Aviso ('siguen escuchando: ' + ($enMarcha -join ', '))
+      Escribir-Aviso 'revísalo con «odontocrm servicios»: PM2 puede haberlos vuelto a levantar'
+    }
 
     # Las alertas se SILENCIAN con el apagado intencional (decisión del 2026-10-14): un
     # `parar` a propósito no sonaba como avería, y la tarea «OdontoCRM · alertas» (cada
