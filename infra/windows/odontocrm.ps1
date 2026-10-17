@@ -111,6 +111,14 @@ function Ayuda {
 }
 
 # Ejecuta una herramienta de `tools/` con el entorno de producción y desde el código.
+#
+# OJO con cómo se devuelve el código de salida: por la variable `$script:CodigoDeSalida`,
+# NUNCA por `return` envuelto en `exit (Invocar-Node …)`. Ese patrón captura TODO el flujo
+# de éxito de la función —el tablero entero de `estado`— dentro de la expresión de `exit`,
+# que lo descarta al convertirlo a entero: la salida desaparecía completa y además SIEMPRE
+# se salía con 0 (2026-10-17). Si la llamada va a nivel de instrucción, la salida de node
+# fluye sola a la consola (o a donde redirija quien llame al comando).
+$script:CodigoDeSalida = 1
 function Invocar-Node {
   param([string[]]$Argumentos)
   Push-Location $OdontoCode
@@ -120,7 +128,7 @@ function Invocar-Node {
     $env:ODONTOCRM_ENV_DIR = $OdontoEnv
     $env:NODE_ENV = 'production'
     & node @Argumentos
-    return $LASTEXITCODE
+    $script:CodigoDeSalida = $LASTEXITCODE
   }
   finally {
     # Se RESTAURAN y no se borran (2026-10-15): invocado en la misma sesión —un `.ps1` a
@@ -229,12 +237,19 @@ switch ($Orden) {
 
   { $_ -in @('estado', 'status') } {
     Afirmar-Administrador
-    exit (Invocar-Node @((Join-Path $OdontoCode 'tools\estado.mjs')) + $Resto)
+    # A nivel de instrucción (NO `exit (…)`): la salida de node va directa a la consola y
+    # el código de sale por la variable. Con `exit (Invocar-Node …)` el tablero entero se
+    # tragaba y el comando salía siempre con 0.
+    Invocar-Node (@((Join-Path $OdontoCode 'tools\estado.mjs')) + $Resto)
+    exit $script:CodigoDeSalida
   }
 
   'alertas' {
     Afirmar-Administrador
-    exit (Invocar-Node @((Join-Path $OdontoCode 'tools\estado.mjs'), '--alertas') + $Resto)
+    # El código de salida es el contrato: 0 = sin problemas, 1 = hay alertas (el
+    # temporizador y los guiones lo comprueban). Igual que arriba, sin `exit (…)`.
+    Invocar-Node (@((Join-Path $OdontoCode 'tools\estado.mjs'), '--alertas') + $Resto)
+    exit $script:CodigoDeSalida
   }
 
   { $_ -in @('respaldar', 'respaldo') } {
