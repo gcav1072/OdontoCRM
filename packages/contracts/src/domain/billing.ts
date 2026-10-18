@@ -320,7 +320,11 @@ export const updateBillingSettingsSchema = z
   .object({
     isSpecialTaxpayer: z.boolean().optional(),
     speNotifiedAt: z.iso.date().nullable().optional(),
-    speReference: optionalText(60),
+    /**
+     * `optionalText` normaliza el vacío a `null`, pero su salida **no** es opcional: en un PATCH eso
+     * hacía que un cliente que no manda el oficio lo borrara. Aquí «ausente» significa «no lo toques».
+     */
+    speReference: optionalText(60).optional(),
     igtfRateBp: z.number().int().min(0).max(10000).optional(),
   })
   .strict();
@@ -1043,7 +1047,10 @@ export const collectPaymentSchema = z
      * día de Caracas al registrar; con ella se elige la tasa que se congela en el cobro. Un pago móvil
      * del **domingo** registrado el lunes se valora con la tasa del viernes. `AAAA-MM-DD`.
      */
-    effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha va en AAAA-MM-DD').optional(),
+    effectiveDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha va en AAAA-MM-DD')
+      .optional(),
     /** En qué moneda entregó el paciente el IGTF que percibe la clínica (ADR 0069). */
     igtfCollectedCurrency: z.enum(IGTF_COLLECTED_CURRENCIES).optional(),
     /** Medio con el que el paciente cubrió el IGTF en Bs. (Pago Móvil, punto…). */
