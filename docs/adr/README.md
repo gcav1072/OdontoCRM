@@ -35,7 +35,7 @@ de las pantallas kiosko, la partida escrita a mano en la caja y lo que hace `res
 | [0006](0006-un-odontologo-un-sillon.md) | Un odontólogo y un sillón, con el modelo preparado para más | **superada por [0059](0059-el-sillon-es-el-recurso-de-la-agenda.md)** |
 | [0007](0007-identificacion-de-pacientes.md) | Identificación V, E, P y menores con marcador `SC-` | aceptada |
 | [0008](0008-bot-unico-long-polling.md) | Un solo bot de Telegram con long polling, deep link y plan B manual | aceptada |
-| [0009](0009-cupo-y-franjas.md) | Cupo diario editable, plantillas de franjas y hora manual | aceptada |
+| [0009](0009-cupo-y-franjas.md) | Cupo diario editable, plantillas de franjas y hora manual | **superada por [0070](0070-el-cupo-se-mide-en-franjas.md)** |
 | [0010](0010-notificacion-en-lote.md) | Notificación en lote con vista previa y reenvío individual | aceptada |
 | [0011](0011-ticket-consecutivo.md) | Ticket con secuencia global y prefijo alfabético al desbordar | aceptada |
 | [0012](0012-maquina-de-estados.md) | Máquina de estados de cita, historia clínica y sesión | aceptada |
@@ -96,3 +96,4 @@ de las pantallas kiosko, la partida escrita a mano en la caja y lo que hace `res
 | [0067](0067-partida-escrita-a-mano-en-la-factura.md) | La caja puede facturar una partida **escrita a mano** (código centinela `manual`, sin arancel) con su **IVA**, precio y unidades; la categoría del arancel no se puede cambiar | aceptada |
 | [0068](0068-restaurar-repone-el-almacen.md) | `restaurar --all` y `recuperar` **repueblan el almacén**, **reconcilian `STORAGE_ENCRYPTION_KEY`** y comprueban que se descifra; el despliegue siembra **solo `admin`** y hay `purgar-prueba` | aceptada |
 | [0069](0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md) | Diferencial cambiario por **Fecha Valor** (Escuela A: recibo + reporte contable, sin Nota de Débito), absorción de redondeo ±0,05 USD, IGTF configurable con destino de caja y Notas de Crédito ADMINISTRATIVE vs REFUND | aceptada (fase 12) |
+| [0070](0070-el-cupo-se-mide-en-franjas.md) | El **cupo del día se mide en franjas ocupadas**: sale del horario de atención, una cita larga gasta varias franjas, sin turnos el día está cerrado y se elimina el cupo explícito por fecha | aceptada |
