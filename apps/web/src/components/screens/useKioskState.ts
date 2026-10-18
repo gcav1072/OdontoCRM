@@ -31,9 +31,10 @@ import { SCREEN_REFRESH_MS, screenKeys } from '../../lib/screens';
  * 1. toma el token de la URL (solo la primera vez) o del almacenamiento local;
  * 2. lo canjea por un JWT con `createKioskSession`;
  * 3. abre el flujo SSE con `abrirFlujoKiosko` y lo cierra al desmontar;
- * 4. refresca por HTTP cada `SCREEN_REFRESH_MS` **como respaldo**: si el SSE se
- *    cayó en silencio, el estado se corrige con la consulta siguiente. Se aplica
- *    el más reciente de los dos, comparando su `updatedAt`.
+ * 4. refresca por HTTP cada `SCREEN_REFRESH_MS` **como respaldo** —también con la
+ *    pestaña en segundo plano—: si el SSE se cayó en silencio, el estado se corrige
+ *    con la consulta siguiente. Se aplica el más reciente de los dos, comparando su
+ *    `updatedAt`.
  */
 
 /** Estado que entrega cada tipo de pantalla. */
@@ -86,6 +87,7 @@ const opcionesRespaldo = <K extends KioskKind>(
   queryFn: (contexto: { signal: AbortSignal }) => Promise<KioskStateMap[K]>;
   enabled: boolean;
   refetchInterval: number;
+  refetchIntervalInBackground: boolean;
 } => ({
   queryKey: screenKeys[kind],
   queryFn: ({ signal }) =>
@@ -94,6 +96,12 @@ const opcionesRespaldo = <K extends KioskKind>(
     >,
   enabled: activa,
   refetchInterval: SCREEN_REFRESH_MS,
+  /**
+   * El respaldo tiene que latir **también con la pestaña oculta**: la TV del sillón vive
+   * detrás de la consola del doctor y React Query pausa el intervalo cuando el documento
+   * no está visible. Sin esto, el estado solo se corregía al volver a la pestaña o con F5.
+   */
+  refetchIntervalInBackground: true,
 });
 
 export const useKioskState = <K extends KioskKind>(kind: K): UseKioskStateResult<K> => {
