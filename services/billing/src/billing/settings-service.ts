@@ -1,9 +1,6 @@
-import {
-  type BillingSettings,
-  type UpdateBillingSettingsInput,
-} from '@odontocrm/contracts';
+import { type BillingSettings, type UpdateBillingSettingsInput } from '@odontocrm/contracts';
 import { EVENT_TOPICS } from '@odontocrm/events';
-import { NotFoundError } from '@odontocrm/kernel';
+import { NotFoundError, stableUuid } from '@odontocrm/kernel';
 import { eq } from 'drizzle-orm';
 
 import type { BillingDb } from '../db/client.js';
@@ -20,6 +17,17 @@ import { auditPayload, publish } from '../shared/events.js';
  * interruptor la fecha y el oficio de la calificación. La alícuota del IGTF (`igtfRateBp`) se **copia**
  * en cada cobro: cambiarla aquí no reescribe lo ya percibido.
  */
+
+/**
+ * Identificador del agregado en el sobre del evento y en la auditoría.
+ *
+ * La fila se identifica con un entero (`id = 1`), pero el contrato exige un UUID en
+ * `aggregateId`/`entityId`; sin esta derivación, `toOutboxInsert` lanzaba un `ZodError`
+ * **dentro de la transacción** y el `PATCH` de `/configuracion` respondía 500 sin guardar
+ * nada. El grano del evento es **la configuración**, no la fila, así que la clave es
+ * estable y no depende de un contador.
+ */
+const ID_CONFIGURACION = stableUuid('billing_settings:1');
 
 interface FilaAjustes {
   isSpecialTaxpayer: boolean;
@@ -88,11 +96,11 @@ export const updateBillingSettings = async (
 
     await publish(tx, {
       topic: EVENT_TOPICS.settingsChanged,
-      aggregateId: fila.id.toString(),
+      aggregateId: ID_CONFIGURACION,
       actor,
       payload: {
         ...auditPayload({
-          entityId: fila.id.toString(),
+          entityId: ID_CONFIGURACION,
           action: 'billing_settings_changed',
           entityType: 'billing_settings',
           summary: `Configuración fiscal de la caja actualizada: SPE ${fila.isSpecialTaxpayer ? 'sí' : 'no'}, IGTF ${String(fila.igtfRateBp)} pb`,
