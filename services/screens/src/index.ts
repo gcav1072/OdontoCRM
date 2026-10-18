@@ -20,6 +20,7 @@ import { handleDomainEvents } from './consumer.js';
 import { createScreensDatabase } from './db/client.js';
 import { createPatientLookup, createAlertLookup, createChairCatalog } from './internal-client.js';
 import { createScreenBroadcaster } from './sala/broadcast.js';
+import { refreshConsultorioIfNeeded } from './sala/clinical-refresh.js';
 import { staffSignals } from './sala/staff-signal.js';
 import { consultationState, lobbyState } from './sala/estado-service.js';
 import { createScreensServer } from './server.js';
@@ -81,6 +82,23 @@ const main = async (): Promise<void> => {
     }
   };
 
+  /**
+   * La historia clínica no mueve la sala, pero **sí** cambia lo que pinta el consultorio:
+   * los datos críticos del paciente sentado (ADR 0035). La pantalla los pide en vivo al
+   * armar su estado, así que basta con volver a repartirlo cuando el paciente que cambió
+   * es el que se está viendo. Sin esto, la alergia recién firmada no aparecía hasta el
+   * respaldo periódico —y en una pestaña en segundo plano, ni eso—: había que pulsar F5.
+   */
+  const refrescarSiEsElPacienteEnPantalla = async (
+    events: readonly DomainEvent[],
+  ): Promise<void> => {
+    await refreshConsultorioIfNeeded(
+      { db: database.db, alertLookup, chairCatalog },
+      events,
+      (estado) => broadcast.publicar('consultorio', estado),
+    );
+  };
+
   // Cola de eventos: la sala se alimenta de lo que pasa en la agenda.
   const boss = createBoss({
     connectionString: config.EVENTS_DATABASE_URL ?? config.DATABASE_URL,
@@ -98,6 +116,8 @@ const main = async (): Promise<void> => {
           { db: database.db, config, patientLookup, onCambio: refrescar },
           events,
         );
+        // La agenda reparte lobby y consultorio; la clínica solo el consultorio.
+        await refrescarSiEsElPacienteEnPantalla(events);
         const aplicados = resultados.filter((resultado) => resultado.estado === 'aplicado').length;
         if (aplicados > 0) {
           app.log.info(

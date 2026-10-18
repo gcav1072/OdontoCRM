@@ -8,7 +8,12 @@ import { handleDomainEvent, handleDomainEvents } from './consumer.js';
 import { createScreensDatabase, type ScreensDatabaseHandle } from './db/client.js';
 import { callEvents, roomState, screenDevices } from './db/schema.js';
 import { createScreenBroadcaster } from './sala/broadcast.js';
-import { consultationState, lobbyState } from './sala/estado-service.js';
+import { affectsConsultorio, refreshConsultorioIfNeeded } from './sala/clinical-refresh.js';
+import {
+  consultationState,
+  hasPatientOnConsultorioScreen,
+  lobbyState,
+} from './sala/estado-service.js';
 
 /**
  * La pantalla del consultorio es una sola TV **compartida**: su estado es la lista de
@@ -442,6 +447,128 @@ describeWithDatabase('sala y pantallas (PostgreSQL real)', () => {
     const estado = await consultationState(handle.db);
     expect(tileDe(estado, appointmentId)?.appointmentId).not.toBe(appointmentId);
 
+    await handle.db.delete(roomState).where(eq(roomState.appointmentId, appointmentId));
+  }, 40_000);
+
+  it('la historia del paciente en el sillón refresca el consultorio sin F5', async () => {
+    const appointmentId = globalThis.crypto.randomUUID();
+    const patientId = globalThis.crypto.randomUUID();
+    const otroPaciente = globalThis.crypto.randomUUID();
+    const paciente = `Historia ${MARK}`;
+
+    // El paciente está **dentro** del consultorio: es lo que pinta la TV del sillón.
+    await aplicar(
+      appointmentEvent({
+        topic: EVENT_TOPICS.appointmentCheckedIn,
+        appointmentId,
+        patientId,
+        patientName: paciente,
+      }),
+    );
+    await aplicar(
+      appointmentEvent({
+        topic: EVENT_TOPICS.appointmentInConsultation,
+        appointmentId,
+        patientId,
+        patientName: paciente,
+      }),
+    );
+
+    /** Un evento clínico como los publica `clinical` (el perfil trae el paciente). */
+    const eventoClinico = (topic: string, patientIdDelEvento: string | null): DomainEvent =>
+      createDomainEvent({
+        topic: topic as (typeof EVENT_TOPICS)[keyof typeof EVENT_TOPICS],
+        aggregateId: globalThis.crypto.randomUUID(),
+        producer: 'clinical',
+        payload: {
+          profile: {
+            patientId: patientIdDelEvento,
+            recordStatus: 'firmada',
+            alertCodes: ['alergia_penicilina'],
+          },
+        },
+      });
+
+    // La sala sabe quién está en pantalla…
+    expect(await hasPatientOnConsultorioScreen(handle.db, [patientId])).toBe(true);
+    expect(await hasPatientOnConsultorioScreen(handle.db, [otroPaciente])).toBe(false);
+
+    // …y solo la historia de ese paciente obliga a repartir estado.
+    expect(
+      await affectsConsultorio(handle.db, [eventoClinico(EVENT_TOPICS.recordSigned, patientId)]),
+    ).toBe(true);
+    // La adenda también puede añadir una alergia: cuenta igual.
+    expect(
+      await affectsConsultorio(handle.db, [eventoClinico(EVENT_TOPICS.recordAmended, patientId)]),
+    ).toBe(true);
+    expect(
+      await affectsConsultorio(handle.db, [eventoClinico(EVENT_TOPICS.recordSigned, otroPaciente)]),
+    ).toBe(false);
+    // Un evento que no es clínico no cuenta, aunque el paciente esté en pantalla.
+    expect(
+      await affectsConsultorio(handle.db, [
+        appointmentEvent({
+          topic: EVENT_TOPICS.appointmentCalled,
+          appointmentId,
+          patientId,
+          patientName: paciente,
+        }),
+      ]),
+    ).toBe(false);
+    // Y una historia sin perfil (no debería pasar) tampoco.
+    expect(
+      await affectsConsultorio(handle.db, [eventoClinico(EVENT_TOPICS.recordUpdated, null)]),
+    ).toBe(false);
+
+    /**
+     * El refresco arma el estado **completo** con las alertas leídas en vivo: la alergia
+     * que se acaba de escribir llega a la pantalla sin esperar al respaldo.
+     */
+    const publicados: Awaited<ReturnType<typeof consultationState>>[] = [];
+    const publicado = await refreshConsultorioIfNeeded(
+      {
+        db: handle.db,
+        alertLookup: async (id) =>
+          id === patientId
+            ? [
+                {
+                  tipo: 'alergia',
+                  etiqueta: 'Alergia a la penicilina',
+                  severidad: 'alto',
+                  detalle: null,
+                },
+              ]
+            : null,
+      },
+      [eventoClinico(EVENT_TOPICS.recordSigned, patientId)],
+      (estado) => publicados.push(estado),
+    );
+
+    expect(publicado).toBe(true);
+    expect(publicados).toHaveLength(1);
+    const tile = tileDe(publicados[0] ?? (await consultationState(handle.db)), appointmentId);
+    expect(tile?.patientId).toBe(patientId);
+    expect(tile?.criticalFlags).toHaveLength(1);
+    expect(tile?.criticalFlags[0]?.etiqueta).toBe('Alergia a la penicilina');
+
+    // Con el paciente fuera de la sala no se publica nada, aunque firme la historia.
+    await aplicar(
+      appointmentEvent({
+        topic: EVENT_TOPICS.appointmentAttended,
+        appointmentId,
+        patientId,
+        patientName: paciente,
+      }),
+    );
+    const despues = await refreshConsultorioIfNeeded(
+      { db: handle.db },
+      [eventoClinico(EVENT_TOPICS.recordAmended, patientId)],
+      (estado) => publicados.push(estado),
+    );
+    expect(despues).toBe(false);
+    expect(publicados).toHaveLength(1);
+
+    await handle.db.delete(callEvents).where(eq(callEvents.appointmentId, appointmentId));
     await handle.db.delete(roomState).where(eq(roomState.appointmentId, appointmentId));
   }, 40_000);
 

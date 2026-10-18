@@ -14,6 +14,36 @@ export const SCREEN_TOPICS: readonly string[] = [
   EVENT_TOPICS.appointmentRescheduled,
 ];
 
+/**
+ * Eventos de la historia clínica que cambian lo que pinta el consultorio.
+ *
+ * La sala no se mueve con ellos —nadie entra ni sale—, pero los **datos críticos** sí:
+ * la alergia que el odontólogo acaba de escribir tiene que aparecer en la pantalla del
+ * sillón mientras el paciente está sentado, sin esperar al respaldo periódico ni a un
+ * F5. El estado se lee entero y las alertas se piden en vivo (`alertLookup`), así que
+ * basta con volver a publicarlo cuando el paciente está dentro.
+ */
+export const CLINICAL_TOPICS: readonly string[] = [
+  EVENT_TOPICS.recordCreated,
+  EVENT_TOPICS.recordUpdated,
+  EVENT_TOPICS.recordSigned,
+  EVENT_TOPICS.recordAmended,
+];
+
+/**
+ * El paciente de un evento clínico: `payload.profile.patientId`.
+ *
+ * `profileOf` (record-service) publica el perfil clínico en **todos** los eventos de la
+ * historia (alta, guardado de sección, consentimiento, firma y adenda), de modo que no
+ * hace falta consultar la base para saber a quién afecta.
+ */
+export const clinicalPatientId = (event: DomainEvent): string | null => {
+  const perfil = event.payload['profile'];
+  if (typeof perfil !== 'object' || perfil === null) return null;
+  const patientId = (perfil as { patientId?: unknown }).patientId;
+  return typeof patientId === 'string' ? patientId : null;
+};
+
 export interface ConsumeResult {
   estado: 'aplicado' | 'duplicado' | 'ignorado';
 }

@@ -481,6 +481,33 @@ export const waitingCount = async (db: ScreensDb): Promise<number> => {
 };
 
 /**
+ * ¿Alguno de estos pacientes es lo que pinta ahora la pantalla del consultorio?
+ *
+ * Son los dos estados que dibuja la TV del sillón (`llamado` y `en_consulta`) y solo
+ * mientras la fila no haya salido de la sala. Lo usa el consumidor de eventos clínicos
+ * para no repartir estado por una historia que no se está viendo.
+ */
+export const hasPatientOnConsultorioScreen = async (
+  db: ScreensDb,
+  patientIds: readonly string[],
+): Promise<boolean> => {
+  if (patientIds.length === 0) return false;
+
+  const rows = await db
+    .select({ id: roomState.appointmentId })
+    .from(roomState)
+    .where(
+      and(
+        inArray(roomState.patientId, [...patientIds]),
+        inArray(roomState.estado, ['llamado', 'en_consulta']),
+        isNull(roomState.leftAt),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+};
+
+/**
  * Estado del displaylobby: los llamados **vigentes** (el paciente sigue llamado y
  * el llamado no ha caducado) y cuánta gente espera sentada.
  */
