@@ -321,8 +321,8 @@ Reglas que aplica el servidor (no solo la interfaz):
 | `GET /api/v1/requests` | Cola de solicitudes con filtros (estado, canal, búsqueda por ticket/nombre/documento) y orden por ticket o antigüedad | `scheduling:read` |
 | `POST /api/v1/requests` | Nueva solicitud: el **ticket** lo entrega la secuencia (`#000123`, luego `A-000001`) | `scheduling:write` |
 | `POST /api/v1/requests/:id/cancel` | Cancela una solicitud que aún espera | `scheduling:write` |
-| `GET /api/v1/agenda/days/:date` | Jornada del día: cupo con su procedencia, franjas (con pausas), citas, cola y contadores | `scheduling:read` |
-| `PUT /api/v1/agenda/capacity` | Cupo del día, editable a cualquier hora; **bajarlo por debajo de lo asignado avisa y no borra citas** | `scheduling:write` |
+| `GET /api/v1/agenda/days/:date` | Jornada del día: cupo (franjas del horario), franjas por consultorio, citas, cola y contadores | `scheduling:read` |
+| `PUT /api/v1/agenda/schedule` | **Horario de atención** de uno o varios días: turnos y duración de la franja. El cupo sale de aquí; `shifts: []` cierra el día | `scheduling:write` |
 | `GET/POST/PATCH/DELETE /api/v1/agenda/templates` | Plantillas de franjas por día de la semana (jornada y pausas) | `scheduling:read` / `scheduling:write` |
 | `POST /api/v1/agenda/notify/preview` | **Vista previa exacta** del lote: los mensajes que se enviarán y por qué no los demás | `scheduling:read` |
 | `POST /api/v1/agenda/notify` | Notifica el lote: **asegura** el aviso (no repite el que ya salió y recupera el que quedó pendiente o fallido); con `force` reenvía también a los ya notificados | `scheduling:notify` |

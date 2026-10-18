@@ -143,53 +143,56 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `PAC-01` — Registro de pacientes y reglas de identificación (Adultos, Menores y Extranjeros)
 - **Rutas / Componentes:** `PatientRegistryPage.tsx`, `PatientForm.tsx`, `PatientFields.tsx` (ADR `0007`).
 - **Pasos de prueba:**
-  - [ ] Registrar un paciente **Adulto** con cédula venezolana (`V-...`) válida.
-  - [ ] Intentar registrar un segundo paciente adulto con la **misma cédula**.
-  - [ ] Registrar un paciente **Menor de edad sin cédula** asociándolo a los datos de su representante.
-  - [ ] Registrar un paciente con documento **Extranjero / Pasaporte** (`E-...` / `P-...`).
-  - [ ] Probar el envío del formulario con campos obligatorios vacíos o teléfonos con formato inválido.
+  - [x] Registrar un paciente **Adulto** con cédula venezolana (`V-...`) válida.
+  - [x] Intentar registrar un segundo paciente adulto con la **misma cédula**.
+  - [x] Registrar un paciente **Menor de edad sin cédula** asociándolo a los datos de su representante.
+  - [x] Registrar un paciente con documento **Extranjero / Pasaporte** (`E-...` / `P-...`).
+  - [x] Probar el envío del formulario con campos obligatorios vacíos o teléfonos con formato inválido.
 - **Resultado esperado:** Validaciones Zod en español (`zod-es.ts`); rechazo de cédula duplicada en titulares; creación correcta de menores sin cédula propia usando secuencia/vínculo de representante.
 
 #### `PAC-02` — Búsqueda con *debounce*, edición y diálogo de diferencias (`Diff`)
 - **Rutas / Componentes:** `PatientsPage.tsx`, `PatientSearchList.tsx`, `PatientDiffDialog.tsx`.
 - **Pasos de prueba:**
-  - [ ] En `/pacientes`, buscar por fragmento de nombre, apellido, teléfono y número de documento.
-  - [ ] Entrar al detalle del paciente (`PatientDetailPage.tsx`), modificar teléfono y dirección, y confirmar en `PatientDiffDialog.tsx`.
+  - [x] En `/pacientes`, buscar por fragmento de nombre, apellido, teléfono y número de documento.
+  - [x] Entrar al detalle del paciente (`PatientDetailPage.tsx`), modificar teléfono y dirección, y confirmar en `PatientDiffDialog.tsx`.
 - **Resultado esperado:** Búsqueda fluida sin sobrecargar la red (`useDebouncedValue.ts`); el diálogo `PatientDiffDialog` muestra claramente el valor anterior frente al valor nuevo antes de guardar.
 
 #### `PAC-03` — Adjuntos de pacientes y cifrado en reposo (`Blob Store`)
 - **Rutas / Componentes:** `PatientAttachments.tsx`, `packages/storage/src/blob-store.ts`, `crypto.ts`.
 - **Pasos de prueba:**
-  - [ ] Subir una imagen (`.jpg`/`.png`) y un documento `.pdf` en la sección de adjuntos del paciente.
-  - [ ] Previsualizar o descargar ambos archivos desde la interfaz web.
-  - [ ] Inspeccionar el archivo físico guardado en el directorio de almacenamiento en disco (o ejecutar `node tools/verificar-almacen.mjs`).
-- **Resultado esperado:** El usuario autorizado descarga el archivo original desencriptado al vuelo, mientras que en el disco duro el blob está cifrado criptográficamente y no es legible directamente.
+  - [x] Subir una imagen (`.jpg`/`.png`) y un documento `.pdf` en la sección de adjuntos del paciente.
+  - [x] Previsualizar o descargar ambos archivos desde la interfaz web. Ojo: Se puede eliminar/descarga rel archivo, pero verlo directamente en la web no.
+  - [x] Inspeccionar el archivo físico guardado en el directorio de almacenamiento en disco (o ejecutar `node tools/verificar-almacen.mjs`).
+- **Resultado esperado:** El usuario autorizado descarga el archivo original desencriptado al vuelo, mientras que en el disco duro el blob está cifrado criptográficamente y no es legible directamente. (Faltaría probar lo del blob cuando se corrja la visualización)
 
 #### `PAC-04` — Cambio de estado y borrado lógico (*Soft Delete*)
 - **Rutas / Componentes:** `PatientStatusDialog.tsx`, `PatientDeleteDialog.tsx` (ADR `0027`).
 - **Pasos de prueba:**
-  - [ ] Cambiar el estado de un paciente a inactivo desde `PatientStatusDialog.tsx`.
-  - [ ] Ejecutar el borrado de un paciente con historial desde `PatientDeleteDialog.tsx`.
+  - [x] Cambiar el estado de un paciente a inactivo desde `PatientStatusDialog.tsx`.
+  - [x] Ejecutar el borrado de un paciente con historial desde `PatientDeleteDialog.tsx`.
 - **Resultado esperado:** El paciente se marca con borrado lógico en base de datos; desaparece de los listados activos para agendar nuevas citas, pero sus citas históricas, sesiones clínicas y facturas previas no se rompen ni pierden referencia.
 
 ---
 
 ### Módulo D: Agenda, Cupos, Solicitudes y Tickets (`services/scheduling`)
 
-#### `AGE-01` — Configuración de cupos, franjas únicas y formato de $12\text{ h}$
-- **Rutas / Componentes:** `SchedulingPage.tsx`, `DayToolbar.tsx`, `CapacityDialog.tsx`, `TemplatesDialog.tsx`, `DayCapacityCard.tsx` (ADR `0009`, `0025`).
+#### `AGE-01` — Horario de atención, franjas y cupo en franjas, en formato de $12\text{ h}$
+- **Rutas / Componentes:** `SchedulingPage.tsx`, `DayToolbar.tsx`, `ScheduleConfigDialog.tsx`, `Hora12hField.tsx`, `DayCapacityCard.tsx` (ADR `0070`, `0025`).
 - **Pasos de prueba:**
-  - [ ] Abrir `CapacityDialog.tsx` para una fecha futura y definir el cupo máximo y las franjas horarias por sillón.
-  - [ ] Guardar una plantilla en `TemplatesDialog.tsx` y aplicarla a otro día de la semana.
-  - [ ] Intentar crear dos franjas idénticas/solapadas para el mismo sillón.
-- **Resultado esperado:** El índice único (`0001_indice_de_franja_unica.sql`) impide duplicar la misma franja en un sillón; todas las horas en `SlotGrid.tsx` y tablas se expresan en formato de $12\text{ horas}$ (`AM`/`PM`).
+  - [ ] Abrir `/programacion` y pulsar **Configurar la jornada** en la tarjeta del cupo (o **Horario y franjas** en la barra).
+  - [ ] Comprobar que el día propuesto es el que se está viendo, que los turnos se leen en 12 h (`8:00 a. m. – 12:00 p. m.` y `2:00 p. m. – 5:00 p. m.`) y que la franja es de 30 minutos.
+  - [ ] Añadir un turno, quitar otro, cambiar la franja a 60 minutos y aplicar el horario a **Lunes a viernes**.
+  - [ ] Intentar guardar dos turnos solapados y un turno más corto que la franja.
+  - [ ] Quitar todos los turnos de un día (por ejemplo un domingo) y guardar.
+  - [ ] Asignar una cita manual de dos horas sobre franjas de 30 minutos en un día de consulta.
+- **Resultado esperado:** Los turnos solapados y el turno más corto que la franja **no** dejan guardar (error en línea); el horario guardado recalcula el cupo de la jornada sin mover las citas; el día sin turnos queda **cerrado** (cupo 0, aviso «Día cerrado») y asignar ahí exige sobrecupo de admin con motivo; la cita de dos horas ocupa **cuatro** franjas y el contador sube 4; todas las horas visibles y editables están en formato de 12 horas.
 
 #### `AGE-02` — Cola de solicitudes, asignación de cita y ticket consecutivo
 - **Rutas / Componentes:** `RequestQueuePanel.tsx`, `NewRequestDialog.tsx`, `AssignAppointmentDialog.tsx`, `SlotPickerFields.tsx` (ADR `0011`).
 - **Pasos de prueba:**
-  - [ ] Crear $3$ solicitudes de cita en `NewRequestDialog.tsx`.
-  - [ ] Asignar las $3$ solicitudes al mismo día y sillón mediante `AssignAppointmentDialog.tsx`.
-  - [ ] Intentar asignar una cuarta cita en una franja cuyo cupo ya llegó a $0$.
+  - [x] Crear $3$ solicitudes de cita en `NewRequestDialog.tsx`.
+  - [x] Asignar las $3$ solicitudes al mismo día y sillón mediante `AssignAppointmentDialog.tsx`.
+  - [x] Intentar asignar una cuarta cita en una franja cuyo cupo ya llegó a $0$.
 - **Resultado esperado:** Las $3$ citas reciben tickets consecutivos ordenados ($1, 2, 3$); el sistema bloquea la sobreasignación cuando el cupo de la franja se agota.
 
 #### `AGE-03` — Máquina de estados, reprogramación y devolución del ticket al cancelar
@@ -281,17 +284,17 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `ODO-01` — Posición Anatómica, Nomenclatura FDI y Dentición Mixta
 - **Rutas / Componentes:** `OdontogramPanel.tsx`, `OdontogramChart.tsx`, `GeometricTooth.tsx` (ADR `0033`, `0051`).
 - **Pasos de prueba:**
-  - [ ] Inspeccionar los cuadrantes permanentes ($1, 2, 3, 4$) y temporales ($5, 6, 7, 8$) en `OdontogramChart.tsx`.
-  - [ ] Activar la vista de dentición mixta para un paciente pediátrico/adolescente.
+  - [x] Inspeccionar los cuadrantes permanentes ($1, 2, 3, 4$) y temporales ($5, 6, 7, 8$) en `OdontogramChart.tsx`.
+  - [x] Activar la vista de dentición mixta para un paciente pediátrico/adolescente.
 - **Resultado esperado:** Disposición en posición anatómica estándar (ADR `0033`), geometría de $5$ caras por pieza y soporte simultáneo de piezas permanentes y deciduas (ADR `0051`).
 
 #### `ODO-02` — Precedencia de Pieza Completa sobre Caras y Convivencia de Tratamientos
 - **Rutas / Componentes:** `ToothFindingSheet.tsx`, `QuickEntryBar.tsx`, `chart-service.ts` (ADR `0031`, `0032`, `docs/ODONTOGRAMA_REGLAS.md`).
 - **Pasos de prueba:**
-  - [ ] En la pieza $26$, registrar **Caries** en la cara Oclusal (`O`) y **Obturación/Restauración** en la cara Mesial (`M`).
-  - [ ] Sobre la misma pieza $26$, registrar un tratamiento de pieza completa compatible (ej. **Endodoncia**).
-  - [ ] Posteriormente, sobre la pieza $26$, registrar **Exodoncia / Diente Ausente**.
-  - [ ] Probar también la entrada rápida por teclado/barra en `QuickEntryBar.tsx`.
+  - [x] En la pieza $26$, registrar **Caries** en la cara Oclusal (`O`) y **Obturación/Restauración** en la cara Mesial (`M`).
+  - [x] Sobre la misma pieza $26$, registrar un tratamiento de pieza completa compatible (ej. **Endodoncia**).
+  - [x] Posteriormente, sobre la pieza $26$, registrar **Exodoncia / Diente Ausente**.
+  - [x] Probar también la entrada rápida por teclado/barra en `QuickEntryBar.tsx`.
 - **Resultado esperado:**
   - Al agregar Endodoncia, se conservan los hallazgos de las caras `O` y `M` según la matriz de convivencia (ADR `0032`).
   - Al marcar Diente Ausente / Exodoncia total, la condición de pieza completa prevalece sobre las caras (ADR `0031`).
@@ -299,14 +302,14 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `ODO-03` — Registro de Prótesis Removibles y Fijas
 - **Rutas / Componentes:** `ProsthesisDialog.tsx`, `ProsthesisOverlay.tsx` (ADR `0062`).
 - **Pasos de prueba:**
-  - [ ] Abrir `ProsthesisDialog.tsx` y registrar una prótesis parcial removible o puente seleccionando las piezas involucradas y su estado (en buen estado / defectuosa / planificada).
+  - [x] Abrir `ProsthesisDialog.tsx` y registrar una prótesis parcial removible o puente seleccionando las piezas involucradas y su estado (en buen estado / defectuosa / planificada).
 - **Resultado esperado:** `ProsthesisOverlay.tsx` renderiza gráficamente el aparato protésico sobre el arco correspondiente sin solapar erróneamente otros indicadores.
 
 #### `ODO-04` — Historial de Snapshots e Impresión del Odontograma
 - **Rutas / Componentes:** `OdontogramHistory.tsx`, `OdontogramHistoryPage.tsx`, `OdontogramStaticChart.tsx`, `OdontogramPrintPage.tsx`, `OdontogramDocument.tsx`.
 - **Pasos de prueba:**
-  - [ ] Realizar modificaciones en el odontograma en dos momentos distintos, abrir `OdontogramHistoryPage.tsx` y seleccionar cada versión histórica.
-  - [ ] Abrir `OdontogramPrintPage.tsx` y generar la vista de impresión.
+  - [x] Realizar modificaciones en el odontograma en dos momentos distintos, abrir `OdontogramHistoryPage.tsx` y seleccionar cada versión histórica.
+  - [x] Abrir `OdontogramPrintPage.tsx` y generar la vista de impresión.
 - **Resultado esperado:** Cada versión histórica se visualiza de forma fiel en modo lectura (`OdontogramStaticChart.tsx`) y la hoja de impresión incluye leyenda, resumen de hallazgos y membrete.
 
 ---
@@ -470,25 +473,25 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `REP-01` — Vistas Materializadas, Filtros, Permisos y Exportación CSV/PDF
 - **Rutas / Componentes:** `ReportesPage.tsx`, `ReportTabs.tsx`, `ReportFilters.tsx`, `ReportKpis.tsx`, `ReportChart.tsx`, `ReportTable.tsx`, `ReportExportBar.tsx` (ADR `0019`, `0039`, `0040`).
 - **Pasos de prueba:**
-  - [ ] En `/reportes`, presionar el botón de refrescar datos (`refresh.ts`) y recorrer las $8$ áreas de reporte: Embudo (*Funnel*), Capacidad, Ocupación por Sillón, Productividad por Odontólogo, Demografía, Perfil Clínico, Salud Bucal (incluyendo piezas extraídas `0006_extraida_salud_bucal.sql`) y Récipes.
-  - [ ] Cambiar el rango de fechas y el filtro de sillón en `ReportFilters.tsx`.
-  - [ ] Exportar un reporte en formato **CSV** y en formato **PDF** desde `ReportExportBar.tsx`.
+  - [x] En `/reportes`, presionar el botón de refrescar datos (`refresh.ts`) y recorrer las $8$ áreas de reporte: Embudo (*Funnel*), Capacidad, Ocupación por Sillón, Productividad por Odontólogo, Demografía, Perfil Clínico, Salud Bucal (incluyendo piezas extraídas `0006_extraida_salud_bucal.sql`) y Récipes.
+  - [x] Cambiar el rango de fechas y el filtro de sillón en `ReportFilters.tsx`.
+  - [x] Exportar un reporte en formato **CSV** y en formato **PDF** desde `ReportExportBar.tsx`.
 - **Resultado esperado:** Las vistas materializadas se refrescan sin bloquear lecturas; las etiquetas multisillón (`0005_multisillon_etiquetas.sql`) aparecen bien identificadas; el CSV escapa caracteres especiales correctamente (`csv.ts`) y el PDF se genera con el membrete institucional (`report-html.ts`).
 
 #### `AUD-01` — Consulta de Eventos de Auditoría, Diffs y Exportación
 - **Rutas / Componentes:** `AuditoriaPage.tsx`, `AuditFilters.tsx`, `AuditTable.tsx`, `AuditDiffDialog.tsx`, `AuditExportButton.tsx`.
 - **Pasos de prueba:**
-  - [ ] Filtrar por módulo/servicio, usuario actor y rango de fechas en `AuditFilters.tsx`.
-  - [ ] Hacer clic en un evento de modificación y revisar la comparativa de datos en `AuditDiffDialog.tsx`.
-  - [ ] Exportar el registro de auditoría usando `AuditExportButton.tsx`.
+  - [x] Filtrar por módulo/servicio, usuario actor y rango de fechas en `AuditFilters.tsx`.
+  - [x] Hacer clic en un evento de modificación y revisar la comparativa de datos en `AuditDiffDialog.tsx`.
+  - [x] Exportar el registro de auditoría usando `AuditExportButton.tsx`.
 - **Resultado esperado:** Todos los eventos de dominio consumidos por `identity` muestran un resumen legible en español (`0003_resumen_de_auditoria.sql`) y no contienen duplicados gracias a la tabla de idempotencia (`0002_eventos_procesados.sql`).
 
 #### `SYS-01` — Salud del Sistema, Colas Outbox / Dead-Letter y Respaldo/Restauración Completa
 - **Rutas / Componentes:** `SystemHealthPanel.tsx`, `dead-letter-watcher.ts`, `tools/respaldo-manual.mjs`, `tools/verify-backup.mjs`, `odontocrm-restore.sh` / `.ps1` (ADR `0003`, `0068`).
 - **Pasos de prueba:**
-  - [ ] Revisar en `SystemHealthPanel.tsx` el estado de todos los servicios, latencias de bases de datos y contadores de colas `outbox` y `dead-letter`.
-  - [ ] Ejecutar un respaldo completo con `node tools/respaldo-manual.mjs` y validarlo con `node tools/verify-backup.mjs`.
-  - [ ] Ejecutar el flujo de restauración y comprobar los archivos adjuntos de pacientes y PDFs de récipes/facturas (ADR `0068`).
+  - [x] Revisar en `SystemHealthPanel.tsx` el estado de todos los servicios, latencias de bases de datos y contadores de colas `outbox` y `dead-letter`.
+  - [x] Ejecutar un respaldo completo con `node tools/respaldo-manual.mjs` y validarlo con `node tools/verify-backup.mjs`.
+  - [x] Ejecutar el flujo de restauración y comprobar los archivos adjuntos de pacientes y PDFs de récipes/facturas (ADR `0068`).
 - **Resultado esperado:** $0$ trabajos colgados en `dead-letter`; el archivo de respaldo supera la verificación de integridad y la restauración repone tanto las $9$ bases de datos PostgreSQL como el almacén de blobs cifrados (`0068-restaurar-repone-el-almacen.md`).
 
 ---

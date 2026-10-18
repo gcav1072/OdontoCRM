@@ -4,6 +4,44 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Agenda] — el cupo se mide en franjas ocupadas · 2026-10-18
+
+El botón **«Editar el cupo»** pedía un número que no tenía relación con la rejilla: se podía
+escribir 20 sobre una jornada de 14 franjas, y una consulta de dos horas sobre franjas de 30
+minutos descontaba **una** franja aunque cruzara cuatro. La agenda prometía huecos que no
+existían. Además, con el sillón como recurso (ADR 0059) guardar ese cupo fallaba: el diálogo no
+enviaba `chairId`.
+
+Ahora el botón se llama **Configurar la jornada** y edita el **horario de atención**: los turnos
+de cada día de la semana y la duración de la franja, todo en 12 h con `a. m.`/`p. m.`. El cupo
+deja de escribirse: **son las franjas del horario**, y una cita gasta tantas franjas como cruza
+(la de dos horas sobre franjas de 30 minutos gasta 4). Un día sin turnos queda **cerrado** (cupo
+0) y asignar ahí exige sobrecupo de admin con motivo. La tarde de fábrica pasa a las 14:00–17:00
+(L-V, franjas de 30 min: 14 franjas al día), y el diálogo ofrece el horario de fábrica con un
+clic si un día se quedó sin turnos.
+
+Se **elimina `day_capacities`** y `PUT /api/v1/agenda/capacity`: el cupo explícito no se puede
+conservar con sentido cuando el cupo son las franjas. Entra `PUT /api/v1/agenda/schedule`
+(`scheduling:write`), que reconcilia los turnos por hora de inicio —conserva pausas e `id`,
+inserta los nuevos y desactiva los que sobran— sin borrar ninguna cita. Reporting conserva su
+cupo histórico en `dim_day_capacity`; el cupo nuevo no viaja en eventos.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `packages/contracts/src/domain/scheduling.ts` | `usedCapacity` (una cita larga gasta varias franjas), `weekScheduleInputSchema`, `shiftsToTemplates`, `WEEKDAY_SHORT_NAMES`; fuera `setCapacitySchema`, `DEFAULT_DAY_CAPACITY` y el cupo explícito de `DayCapacity`; tarde de fábrica 14:00–17:00 |
+| `services/scheduling/src/agenda/capacity-service.ts` | El cupo sale de `expandTemplateSlots` y lo ocupado de `usedCapacity`; `assertCapacityAvailable` recibe la cita propuesta; nuevo `replaceWeekSchedule` transaccional y auditado |
+| `services/scheduling/src/agenda/day-view-service.ts` | Cupo agregado por franjas; origen `plantilla` \| `sin_turnos` |
+| `services/scheduling/src/appointments/appointment-service.ts` | El sobrecupo se decide con el tamaño real de la cita; al reprogramar no se cuenta dos veces la original |
+| `services/scheduling/src/routes/agenda-routes.ts` | `PUT /api/v1/agenda/schedule`; se retira `PUT /api/v1/agenda/capacity` |
+| `services/scheduling/src/db/schema.ts` · `migrations/0007_sin_cupo_explicito.sql` | Se elimina `day_capacities`; la migración `0000` siembra la tarde a las 14:00 |
+| `apps/web/src/components/scheduling/ScheduleConfigDialog.tsx` | Nuevo: día (con atajos L–V y todos), turnos, duración de la franja, resumen de franjas y avisos |
+| `apps/web/src/components/scheduling/Hora12hField.tsx` | Nuevo: hora, minutos y `a. m.`/`p. m.` en tres selectores (24 h solo en los datos) |
+| `apps/web/src/lib/schedule-config.ts` | Turnos del día, validación, franjas resultantes y conversión 12 h ↔ 24 h (con pruebas) |
+| `apps/web/src/lib/scheduling.ts` | El parcheo del día ocupa **todas** las franjas que cruza una cita y recalcula el cupo por sillón (con pruebas) |
+| `apps/web/src/components/scheduling/DayCapacityCard.tsx` | «Configurar la jornada»; contador y textos en franjas; aviso de día cerrado |
+| `apps/web/src/components/scheduling/{CapacityDialog,TemplatesDialog}.tsx` | Se eliminan (los sustituye el configurador de horario) |
+| `tools/{smoke-agenda,smoke-clinical-session,smoke-reporting,e2e-flujo}.mjs` · `tools/{seed-test,seed-verify}.mjs` | Sin cupo explícito; los humos envían `chairId`, leen las franjas por consultorio y prueban el sobrecupo en un domingo cerrado |
+
 ## [Corrida QA · 2.ª pasada] — el historial vacío, la cita que respalda la sesión y el monto de la otra moneda · 2026-10-18
 
 Re-probando `CFG-04` (ya pasa: el interruptor del IGTF guarda y el cobro lo refleja) aparecieron tres
