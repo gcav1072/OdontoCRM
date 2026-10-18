@@ -2582,6 +2582,7 @@ const DICCIONARIO = {
     'Al cerrar la sesión, esa cita se puede pasar a «atendida» sin pedir motivo.',
   'clinica.sesion.abrir.sinCita': 'Sin cita (el paciente vino sin cita)',
   'clinica.sesion.abrir.citaOpcion': 'Cita de las {hora} · {estado}',
+  'clinica.sesion.abrir.citaOpcionFecha': '{fecha} · {hora} · {estado}',
   'clinica.sesion.abrir.accion': 'Abrir sesión',
 
   'clinica.sesion.vitales': 'Signos vitales',

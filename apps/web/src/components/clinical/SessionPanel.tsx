@@ -41,13 +41,15 @@ import {
 } from '../../lib/clinical-session';
 import { clinicalApi, appointmentsApi } from '../../lib/endpoints';
 import { formatDate } from '../../lib/format';
-import { t } from '../../lib/i18n';
+import { APPOINTMENT_STATUS_LABELS, t } from '../../lib/i18n';
+import { formatDateOnly, shiftDate, todayInClinic } from '../../lib/scheduling';
 import { NoticeBanner } from '../NoticeBanner';
 import { AmendSessionDialog } from './AmendSessionDialog';
 import { CloseSessionDialog } from './CloseSessionDialog';
 import { ScheduleNextAppointmentDialog } from './ScheduleNextAppointmentDialog';
 import { PrescriptionCard } from './PrescriptionCard';
 import { PrescriptionDialog } from './PrescriptionDialog';
+import { citasQueRespaldan, citaPorDefecto } from './session-appointments';
 import { SessionAttachments } from './SessionAttachments';
 import { SessionForm } from './SessionForm';
 import { SessionReadDialog } from './SessionDetailView';
@@ -93,18 +95,8 @@ export interface SessionPanelProps {
   onCloseBlocked?: () => void;
 }
 
-/** Fecha de hoy en la zona del consultorio (la que usa la agenda). */
-const today = (): string => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
-
-/**
- * Cita que respalda la sesión que se va a abrir: la que está en el consultorio y, si
- * todavía no pasó, la llamada o la que espera en la sala. Un paciente puede sentarse
- * en el sillón antes de que nadie marque «pasar a consulta».
- */
-const citaQueRespalda = (citas: readonly AppointmentSummary[]): AppointmentSummary | undefined =>
-  citas.find((cita) => cita.status === 'en_consulta') ??
-  citas.find((cita) => cita.status === 'llamado') ??
-  citas.find((cita) => cita.status === 'en_sala_espera');
+/** Fecha de hoy (`AAAA-MM-DD`) en la zona del consultorio (la que usa la agenda). */
+const hoyEnClinica = (): string => todayInClinic();
 
 /** Fila de una sesión cerrada: número, fecha, resumen y acciones. */
 const ClosedSessionCard = ({
@@ -230,16 +222,23 @@ export const SessionPanel = ({
   }, [sesionQuery.data]);
 
   /**
-   * Citas de hoy del paciente: es lo que enlaza la sesión con el «atendido».
+   * Citas que pueden respaldar la sesión: las pendientes de **hoy y de los próximos dos
+   * meses**. Antes se pedía solo el día de hoy y el desplegable salía vacío cuando la
+   * cita estaba programada para otro día —el paciente que viene antes de su cita, o la
+   * sesión que se abre desde la ficha del paciente—, aunque la cita existiera.
    *
    * La clave lleva la cita en curso (`appointmentId`) porque la lista puede ser de
    * antes de que el paciente pasara a consulta: al cambiar la cita que el flujo tiene
    * delante, la lista se vuelve a pedir y el respaldo de la sesión queda al día.
    */
+  const hoy = hoyEnClinica();
   const citasQuery = useQuery({
-    queryKey: ['clinica', 'citas-hoy', patientId, appointmentId],
+    queryKey: ['clinica', 'citas-que-respaldan', patientId, appointmentId, hoy],
     queryFn: ({ signal }) =>
-      appointmentsApi.list({ date: today(), patientId, page: 1, pageSize: 20 }, signal),
+      appointmentsApi.list(
+        { from: hoy, to: shiftDate(hoy, 60), patientId, page: 1, pageSize: 50 },
+        signal,
+      ),
     enabled: canWrite && openSession === null,
   });
 
@@ -248,16 +247,21 @@ export const SessionPanel = ({
     [citasQuery.data],
   );
 
+  /** Lo que muestra el desplegable: primero quien está en el sillón, luego por fecha y hora. */
+  const citasDisponibles = useMemo(() => citasQueRespaldan(citas, hoy), [citas, hoy]);
+
   /**
    * La sesión se abre **respaldada por la cita que está delante**: la que trae el
-   * flujo si la hay y, si no, la que la agenda tiene en el consultorio. Sin ese
+   * flujo si la hay y, si no, la que la agenda tenga en el consultorio. Sin ese
    * respaldo, marcar «atendido» pediría un motivo y la visita quedaría sin enlace.
+   *
+   * Con varias candidatas no se adivina: se deja «sin cita» y elige la persona.
    */
   useEffect(() => {
     if (citaElegida !== '') return;
-    const respaldo = appointmentId ?? citaQueRespalda(citas)?.id ?? null;
+    const respaldo = appointmentId ?? citaPorDefecto(citas, hoy)?.id ?? null;
     if (respaldo !== null) setCitaElegida(respaldo);
-  }, [appointmentId, citas, citaElegida]);
+  }, [appointmentId, citas, citaElegida, hoy]);
 
   const abrir = useMutation({
     mutationFn: async () => {
@@ -267,7 +271,7 @@ export const SessionPanel = ({
       let respaldo = citaElegida;
       if (respaldo === '') {
         const frescas = await citasQuery.refetch();
-        const enAgenda = citaQueRespalda(frescas.data?.items ?? []);
+        const enAgenda = citaPorDefecto(frescas.data?.items ?? [], hoy);
         respaldo = appointmentId ?? enAgenda?.id ?? '';
       }
       return clinicalApi.openSession(patientId, {
@@ -391,7 +395,9 @@ export const SessionPanel = ({
     mutationFn: (input: { appointmentId: string; sessionId: string }) =>
       appointmentsApi.attend(input.appointmentId, { clinicalSessionId: input.sessionId }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['clinica', 'citas-hoy', patientId] });
+      void queryClient.invalidateQueries({
+        queryKey: ['clinica', 'citas-que-respaldan', patientId],
+      });
       exito(t('clinica.sesion.exito.atendida'));
     },
     onError: (fallo) => error(apiErrorMessage(fallo)),
@@ -472,12 +478,18 @@ export const SessionPanel = ({
                   onChange={(event) => setCitaElegida(event.target.value)}
                 >
                   <option value="">{t('clinica.sesion.abrir.sinCita')}</option>
-                  {citas.map((cita) => (
+                  {citasDisponibles.map((cita) => (
                     <option key={cita.id} value={cita.id}>
-                      {t('clinica.sesion.abrir.citaOpcion', {
-                        hora: formatTime12h(cita.startTime),
-                        estado: cita.status,
-                      })}
+                      {cita.date === hoy
+                        ? t('clinica.sesion.abrir.citaOpcion', {
+                            hora: formatTime12h(cita.startTime),
+                            estado: APPOINTMENT_STATUS_LABELS[cita.status],
+                          })
+                        : t('clinica.sesion.abrir.citaOpcionFecha', {
+                            fecha: formatDateOnly(cita.date),
+                            hora: formatTime12h(cita.startTime),
+                            estado: APPOINTMENT_STATUS_LABELS[cita.status],
+                          })}
                     </option>
                   ))}
                 </Select>
