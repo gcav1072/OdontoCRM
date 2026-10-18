@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { apiErrorMessage } from '../../lib/api';
 import {
   formatBs,
+  formatUsd,
   igtfPrevisto,
   imputacionPrevista,
   parseUsdToCents,
@@ -62,6 +63,14 @@ export const CobroDialog = ({
 }: CobroDialogProps) => {
   const [method, setMethod] = useState<string>('pago_movil');
   const [tenderedText, setTenderedText] = useState('');
+  /**
+   * ¿El cajero escribió el monto? Mientras no lo toque, el campo **propone** el saldo
+   * entero en la moneda del medio y se recalcula si cambia el medio, la tasa de la
+   * Fecha Valor o el saldo. Antes solo se rellenaba si estaba vacío: al pasar de un
+   * medio en divisas a uno en bolívares se quedaba el importe de la otra moneda y el
+   * cobro salía con un diferencial de céntimos que era puro ruido.
+   */
+  const [montoTocado, setMontoTocado] = useState(false);
   const [reference, setReference] = useState('');
   const [confirmRate, setConfirmRate] = useState(false);
   /** Fecha Valor (ADR 0069): la del comprobante bancario; por defecto, hoy. */
@@ -114,11 +123,16 @@ export const CobroDialog = ({
     igtfRateBp: ajustes.data?.igtfRateBp ?? 300,
   });
 
-  // El saldo entero a la tasa de la fecha valor: lo que se autocompleta en el mostrador.
+  // El saldo entero en la moneda del medio: lo que se propone en el mostrador.
   useEffect(() => {
-    if (tenderedText !== '' || moneda !== 'VES' || tasaCobro === null || tasaCobro <= 0) return;
+    if (montoTocado) return;
+    if (moneda === 'USD') {
+      setTenderedText(formatUsd(factura.balanceCentsUsd));
+      return;
+    }
+    if (tasaCobro === null || tasaCobro <= 0) return;
     setTenderedText(formatBs(vesCentimosFromUsd(factura.balanceCentsUsd, tasaCobro)));
-  }, [tenderedText, moneda, tasaCobro, factura.balanceCentsUsd]);
+  }, [montoTocado, moneda, tasaCobro, factura.balanceCentsUsd]);
 
   const faltaDestinoIgtf = igtf.aplica && igtfCollectedCurrency === '';
   const requiereConfirmar = tasaValor.data?.needsConfirmation ?? needsConfirmation;
@@ -143,8 +157,7 @@ export const CobroDialog = ({
         ...(igtf.aplica && igtfCollectedCurrency !== ''
           ? {
               igtfCollectedCurrency,
-              igtfPaymentMethod:
-                igtfPaymentMethod.trim() === '' ? null : igtfPaymentMethod.trim(),
+              igtfPaymentMethod: igtfPaymentMethod.trim() === '' ? null : igtfPaymentMethod.trim(),
               igtfPaymentReference:
                 igtfPaymentReference.trim() === '' ? null : igtfPaymentReference.trim(),
             }
@@ -196,7 +209,17 @@ export const CobroDialog = ({
         )}
 
         <Field label={t('caja.cobro.medio')}>
-          <Select value={method} onChange={(evento) => setMethod(evento.target.value)}>
+          <Select
+            value={method}
+            onChange={(evento) => {
+              // Si cambia la **moneda** del medio, el importe tecleado ya no significa lo
+              // mismo (bolívares no son dólares): se vuelve a proponer el saldo.
+              const siguiente = evento.target.value;
+              const nuevaMoneda = findPaymentMethod(siguiente)?.currency ?? 'VES';
+              if (nuevaMoneda !== moneda) setMontoTocado(false);
+              setMethod(siguiente);
+            }}
+          >
             {PAYMENT_METHODS.map((medio) => (
               <option key={medio.code} value={medio.code}>
                 {medio.label} ({medio.currency})
@@ -224,7 +247,10 @@ export const CobroDialog = ({
             autoComplete="off"
             value={tenderedText}
             placeholder="0,00"
-            onChange={(evento) => setTenderedText(evento.target.value)}
+            onChange={(evento) => {
+              setMontoTocado(true);
+              setTenderedText(evento.target.value);
+            }}
           />
         </Field>
 
@@ -261,22 +287,24 @@ export const CobroDialog = ({
               </dd>
             </>
           )}
-          {moneda === 'VES' && previsto.exchangeDiffVesCentimos !== null && (
-            <>
-              <dt className="text-ink-muted">
-                {t('caja.cobro.diferencial')} ({tasaEnTexto(tasaCobro)})
-              </dt>
-              <dd className="text-right tabular-nums text-ink">
-                {previsto.exchangeDiffVesCentimos > 0 ? '+' : ''} Bs.{' '}
-                {formatBs(previsto.exchangeDiffVesCentimos)}
-                <span className="ml-2 text-xs text-ink-muted">
-                  {previsto.exchangeDiffVesCentimos >= 0
-                    ? t('caja.cobro.ganancia')
-                    : t('caja.cobro.perdida')}
-                </span>
-              </dd>
-            </>
-          )}
+          {moneda === 'VES' &&
+            previsto.exchangeDiffVesCentimos !== null &&
+            previsto.exchangeDiffVesCentimos !== 0 && (
+              <>
+                <dt className="text-ink-muted">
+                  {t('caja.cobro.diferencial')} ({tasaEnTexto(tasaCobro)})
+                </dt>
+                <dd className="text-right tabular-nums text-ink">
+                  {previsto.exchangeDiffVesCentimos > 0 ? '+' : ''} Bs.{' '}
+                  {formatBs(previsto.exchangeDiffVesCentimos)}
+                  <span className="ml-2 text-xs text-ink-muted">
+                    {previsto.exchangeDiffVesCentimos >= 0
+                      ? t('caja.cobro.ganancia')
+                      : t('caja.cobro.perdida')}
+                  </span>
+                </dd>
+              </>
+            )}
         </dl>
 
         {previsto.absorbeRedondeo && (

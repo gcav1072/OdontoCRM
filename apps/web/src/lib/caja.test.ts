@@ -64,6 +64,15 @@ describe('el dinero en la caja', () => {
     expect(parseUsdToCents('1,2345,67')).toBeNull();
   });
 
+  it('lo que la pantalla autocompleta se vuelve a leer igual (ida y vuelta)', () => {
+    // La causa de los «diferenciales fantasma»: el monto propuesto no se podía releer y
+    // había que teclearlo a mano. Si el formateo y el parser no cuadran, vuelve el ruido.
+    for (const cents of [0, 1, 5, 51, 1234, 303_8810, 461_6807, 100_000_000, 12_345_678_901]) {
+      expect(parseUsdToCents(formatBs(cents))).toBe(cents);
+      expect(parseUsdToCents(formatUsd(cents))).toBe(cents);
+    }
+  });
+
   it('una partida sin precio llega con el campo vacío y marcada', () => {
     const linea = toEditableLine({
       id: '11111111-1111-4111-8111-111111111111',
