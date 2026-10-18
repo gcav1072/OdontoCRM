@@ -532,6 +532,13 @@ export const createAmendment = async (
     });
   }
 
+  /**
+   * El perfil se publica **también con la adenda**: una corrección puede añadir una
+   * alergia que la pantalla del sillón tiene que mostrar, y su estado se arma con lo que
+   * diga el evento (`profile.patientId`).
+   */
+  const sections = await loadSections(db, recordId);
+
   await db.transaction(async (tx) => {
     await tx.insert(medicalRecordAmendments).values({
       recordId,
@@ -546,17 +553,20 @@ export const createAmendment = async (
       topic: EVENT_TOPICS.recordAmended,
       aggregateId: recordId,
       actor,
-      payload: auditPayload({
-        entityId: recordId,
-        action: 'medical_record_amended',
-        summary: `Adenda a la historia clínica${
-          input.sectionKey === null ? '' : ` (sección «${input.sectionKey}»)`
-        }`,
-        changedFields: input.sectionKey === null ? [] : [input.sectionKey],
-        after: { content: input.content },
-        reason: input.reason,
-        actor,
-      }),
+      payload: {
+        ...auditPayload({
+          entityId: recordId,
+          action: 'medical_record_amended',
+          summary: `Adenda a la historia clínica${
+            input.sectionKey === null ? '' : ` (sección «${input.sectionKey}»)`
+          }`,
+          changedFields: input.sectionKey === null ? [] : [input.sectionKey],
+          after: { content: input.content },
+          reason: input.reason,
+          actor,
+        }),
+        profile: profileOf(record, sections),
+      },
     });
   });
 
