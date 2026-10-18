@@ -77,11 +77,12 @@ if ($Comprobar) {
   }
 
   Revisar 'Windows con PowerShell 5.1 o superior' { $PSVersionTable.PSVersion.Major -ge 5 } 'actualiza Windows'
-  Revisar 'Node.js 22.9 o superior' { (Get-NodeMayor) -ge 22 } 'lo instala la pieza 1'
+  Revisar 'winget («Instalador de aplicaciones»)' { Test-Comando winget } 'único requisito previo SI falta algo: Microsoft Store → «Instalador de aplicaciones»'
+  Revisar 'Node.js 22.9 o superior' { (Get-NodeMayor) -ge 22 } 'lo instala la pieza 1 con winget'
   Revisar 'npm disponible' { Test-Comando npm } 'viene con Node'
-  Revisar 'Git disponible' { Test-Comando git } 'lo instala la pieza 1'
-  Revisar 'PostgreSQL instalado' { $null -ne (Get-PgBin) } 'lo instala la pieza 1'
-  Revisar 'el servicio de PostgreSQL existe' { $null -ne (Get-ServicioPostgres) } 'lo instala la pieza 1'
+  Revisar 'Git disponible' { Test-Comando git } 'lo instala la pieza 1 con winget'
+  Revisar 'PostgreSQL instalado' { $null -ne (Get-PgBin) } 'lo instala la pieza 1 con winget (o a mano: postgresql.org)'
+  Revisar 'el servicio de PostgreSQL existe' { $null -ne (Get-ServicioPostgres) } 'lo instala la pieza 1 con winget (o a mano: postgresql.org)'
   Revisar 'hay conexión a internet' {
     try {
       $r = Invoke-WebRequest -Uri 'https://registry.npmjs.org' -UseBasicParsing -Method Head -TimeoutSec 8
@@ -119,17 +120,34 @@ if ($DryRun) { Escribir-Aviso '--dry-run: no se cambia nada' }
 Escribir-Paso '1/7 · Node.js, npm y Git'
 
 $hayWinget = Test-Comando winget
-if ($hayWinget) { Escribir-Ok 'winget disponible (sirve para instalar lo que falte)' }
-else { Escribir-Aviso 'no hay `winget`: si falta algo habrá que instalarlo a mano (Microsoft Store → «Instalador de aplicaciones»)' }
+if ($hayWinget) {
+  Escribir-Ok 'winget disponible (instala lo que falte: Node, Git, PostgreSQL)'
+}
+else {
+  Escribir-Aviso 'no hay `winget`: esta pieza no puede instalar por sí sola lo que falte'
+  Escribir-Detalle 'winget es el ÚNICO requisito previo de Windows 10/11: Microsoft Store →'
+  Escribir-Detalle '«Instalador de aplicaciones» (o https://learn.microsoft.com/windows/package-manager/winget/).'
+  Escribir-Detalle 'También sirve preinstalar a mano lo que falte y volver a pasar por aquí:'
+  Escribir-Detalle '  Node.js 22.9+  https://nodejs.org'
+  Escribir-Detalle '  Git            https://git-scm.com/download/win'
+  Escribir-Detalle '  PostgreSQL 18  https://www.postgresql.org/download/windows/'
+}
 
 function Instalar-ConWinget {
   param([string]$Id, [string]$Que)
   if (-not $hayWinget) { return $false }
-  Invocar "winget install $Id" {
-    & winget install --id $Id --silent --accept-package-agreements --accept-source-agreements 2>&1 |
-      Out-Null
+  if ($DryRun) {
+    Escribir-Detalle "[dry-run] winget install --id $Id   ($Que)"
+    return $true
   }
-  if ($DryRun) { return $true }
+  & winget install --id $Id --silent --accept-package-agreements --accept-source-agreements 2>&1 |
+    Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    Escribir-Aviso "winget no pudo instalar $Que (código $LASTEXITCODE): míralo con «winget install --id $Id»"
+    return $false
+  }
+  # winget escribe el PATH de la MÁQUINA y esta consola no lo ve sin recargarlo (comun.ps1).
+  Actualizar-PathDeSesion
   return $true
 }
 
@@ -138,9 +156,9 @@ if ((Get-NodeMayor) -ge 22) {
 }
 else {
   Escribir-Aviso 'Node.js 22.9+ no está (o es más viejo)'
-  $instalado = Instalar-ConWinget -Id 'OpenJS.NodeJS' -Que 'Node.js'
-  if ((-not $DryRun) -and (Get-NodeMayor) -lt 22 -and -not $instalado) {
-    Morir 'instala Node.js 22.9 o superior desde https://nodejs.org y vuelve a ejecutar esto.'
+  $null = Instalar-ConWinget -Id 'OpenJS.NodeJS' -Que 'Node.js'
+  if ((-not $DryRun) -and (Get-NodeMayor) -lt 22) {
+    Morir 'no quedó Node.js 22.9+ tras instalarlo. Instálalo a mano desde https://nodejs.org y vuelve a ejecutar esto.'
   }
 }
 
@@ -148,18 +166,114 @@ if (Test-Comando npm) { Escribir-Ok "npm ya presente: $(& npm --version)" }
 elseif (-not $DryRun) { Morir 'no encuentro `npm` (viene con Node.js): reinstala Node.js.' }
 
 if (Test-Comando git) { Escribir-Ok "Git ya presente: $((& git --version) -replace 'git version ', '')" }
-else { Instalar-ConWinget -Id 'Git.Git' -Que 'Git' | Out-Null }
+else {
+  $null = Instalar-ConWinget -Id 'Git.Git' -Que 'Git'
+  if ((-not $DryRun) -and -not (Test-Comando git)) {
+    Morir 'no quedó Git tras instalarlo. Instálalo a mano desde https://git-scm.com/download/win y vuelve a ejecutar esto.'
+  }
+}
 
 # ── 2. PostgreSQL: motor, servicio y puerto ──────────────────────────────────
 Escribir-Paso '2/7 · PostgreSQL'
 
-# ¿Lo instala ESTA corrida? Importa para la contraseña: si el motor lo acaba de poner winget,
-# nadie ha elegido la clave del superusuario y hay que fijarla aquí (más abajo).
+$PgUsuario = if ($AdminUsuario) { $AdminUsuario } else { 'postgres' }
+$PgEquipo = if ($AdminHost) { $AdminHost } else { '127.0.0.1' }
+$PgPuerto = if ($AdminPuerto) { [int]$AdminPuerto } else { 5432 }
+$PgClave = if ($AdminUrl) { Get-ClaveDeAdminUrl -Url $AdminUrl } else { '' }
+
+# ¿Lo instala ESTA corrida? Si el motor va a nacer AHORA, la contraseña que se dé ES la suya
+# desde el minuto cero: se la pasa al instalador y no hay que cambiarla después. Por eso se
+# pide ANTES de instalar (Enter = al azar, mostrada UNA vez), no después.
 $recienInstalado = $false
-if ($null -eq (Get-PgBin)) {
-  Escribir-Aviso 'PostgreSQL no está instalado'
-  Instalar-ConWinget -Id 'PostgreSQL.PostgreSQL.18' -Que 'PostgreSQL 18' | Out-Null
-  $recienInstalado = $true
+$faltaMotor = $null -eq (Get-PgBin)
+if ($faltaMotor -and -not $PgClave -and -not $DryRun) {
+  $PgClave = Get-ClaveDeAdminUrl -Url (Resolver-AdminUrlPostgres -Usuario $PgUsuario -Equipo $PgEquipo `
+      -Puerto $PgPuerto -Pregunta 'El motor se instala ahora: la contraseña que des nace con él.' `
+      -AleatoriaSiVacia -SinPreguntar:$SinPreguntas)
+}
+
+function Descargar-InstaladorEDB {
+  # Reserva para cuando winget no puede descargar (EDB ha llegado a devolver 403 a su
+  # cliente): se baja el instalador con PowerShell y se le pasa el MISMO optionfile.
+  param([string]$Argumentos)
+  $url = $null
+  if ($hayWinget) {
+    # La URL vive en el manifiesto de winget: no se escribe a mano (cada versión cambia).
+    $show = & winget show --id 'PostgreSQL.PostgreSQL.18' --exact --accept-source-agreements 2>&1 |
+      ForEach-Object { "$_" }
+    foreach ($linea in $show) {
+      if ($linea -match 'https?://\S*postgresql-[\d.]+-\d+-windows-x64\.exe') { $url = $Matches[0]; break }
+    }
+  }
+  if (-not $url) {
+    Escribir-Error 'no encuentro la URL del instalador de PostgreSQL 18 (sin winget no puedo deducirla)'
+    return $false
+  }
+  $temporal = Join-Path $env:TEMP ("odontocrm-pg-" + [Guid]::NewGuid().ToString('N') + ".exe")
+  try {
+    Escribir-Detalle 'descargando el instalador de EDB…'
+    $cabeceras = @{ 'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) OdontoCRM/1.0' }
+    Invoke-WebRequest -Uri $url -OutFile $temporal -UseBasicParsing -TimeoutSec 600 -Headers $cabeceras
+    $proceso = Start-Process -FilePath $temporal -ArgumentList $Argumentos -Wait -PassThru
+    if ($proceso.ExitCode -ne 0) {
+      Escribir-Error "el instalador de PostgreSQL terminó con código $($proceso.ExitCode)"
+      return $false
+    }
+    return $true
+  }
+  finally {
+    if (Test-Path $temporal) { Remove-Item -LiteralPath $temporal -Force -ErrorAction SilentlyContinue }
+  }
+}
+
+function Instalar-PostgresWinget {
+  # El instalador de EDB (InstallBuilder) exige `--superpassword` en modo `unattended` —lo
+  # pasa siempre también la imagen oficial de GitHub Actions (actions/runner-images →
+  # Install-PostgreSQL.ps1)— y los switches del manifiesto de winget van sin él. La
+  # contraseña VA POR FICHERO (`--optionfile`, líneas `clave=valor`): la regla del repo es
+  # que los secretos nunca viajen en la línea de órdenes, donde los vería cualquiera con
+  # acceso a la lista de procesos. El fichero se borra al terminar (el `finally`).
+  param([Parameter(Mandatory = $true)][string]$Clave)
+  if (-not $hayWinget) { return $false }
+  $optFile = Join-Path $env:TEMP ("odontocrm-pg-" + [Guid]::NewGuid().ToString('N') + ".txt")
+  $opciones = @(
+    'mode=unattended'
+    'unattendedmodeui=none'
+    "superaccount=$PgUsuario"
+    "superpassword=$Clave"
+    'serverport=5432'
+  )
+  try {
+    [IO.File]::WriteAllLines($optFile, $opciones, (New-Object System.Text.UTF8Encoding($false)))
+    $argumentos = "--optionfile `"$optFile`""
+
+    & winget install --id 'PostgreSQL.PostgreSQL.18' --override $argumentos `
+      --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0 -or $null -eq (Get-PgBin)) {
+      Escribir-Aviso "winget no pudo instalar PostgreSQL 18 (código $LASTEXITCODE): lo descargo directamente de EDB"
+      if (-not (Descargar-InstaladorEDB -Argumentos $argumentos)) { return $false }
+    }
+    Actualizar-PathDeSesion
+    return ($null -ne (Get-PgBin))
+  }
+  finally {
+    if (Test-Path $optFile) { Remove-Item -LiteralPath $optFile -Force -ErrorAction SilentlyContinue }
+  }
+}
+
+if ($faltaMotor) {
+  Escribir-Aviso 'PostgreSQL no está instalado: lo instalo ahora (EDB 18)'
+  if ($DryRun) {
+    Escribir-Detalle '[dry-run] winget install --id PostgreSQL.PostgreSQL.18 --override «--optionfile …» (con la contraseña dada)'
+    $recienInstalado = $true
+  }
+  elseif (-not $PgClave) {
+    Morir 'no tengo contraseña para el administrador del motor: repite escribiéndola o pásala con --admin-url.'
+  }
+  elseif (Instalar-PostgresWinget -Clave $PgClave) {
+    $recienInstalado = $true
+    Escribir-Ok 'PostgreSQL 18 instalado: el motor nace con la contraseña que elegiste'
+  }
 }
 
 $pgBin = Get-PgBin
@@ -204,26 +318,26 @@ else {
 
 # ── La contraseña del administrador de PostgreSQL ────────────────────────
 # En Windows el motor NO tiene socket «peer», así que la contraseña del superusuario es
-# obligatoria para crear las bases; y el instalador de EDB **no la elige** (winget lo lanza con
-# `--mode unattended --unattendedmodeui none`, sin `--superpassword`). De ahí que una PC sin
-# PostgreSQL —el caso más común en una instalación en limpio— acabara en la pieza 2 con
-# «password authentication failed» sin forma de salir desde el propio instalador.
+# obligatoria para crear las bases; y el instalador de EDB **no la deja elegida**: se la
+# pasa esta pieza al crearlo (por `--optionfile`, arriba). De ahí que una PC sin PostgreSQL
+# acabara en la pieza 2 con «password authentication failed» sin forma de salir desde el
+# propio instalador.
 #
 # Las tres situaciones tienen que terminar igual: una credencial que CONECTA.
 #   1. PostgreSQL ya estaba y la contraseña se sabe    → se comprueba por efecto.
-#   2. Lo acaba de instalar esta pieza                 → no había credencial que perder: se fija
-#                                                        la del operador por la «ventana de
-#                                                        confianza» y se comprueba.
-#   3. PostgreSQL ya estaba y la contraseña se perdió  → solo con `--recuperar-postgres`: reiniciar
+#   2. Lo acaba de instalar esta pieza                 → la que elegiste (o la generada que se
+#                                                        imprimió UNA vez) nace con el motor:
+#                                                        se comprueba y ya está.
+#   3. PostgreSQL ya estaba y la contraseña se perdió  → solo con `--recuperar-postgres`: fijar
 #                                                        una credencial que quizá use otra
 #                                                        aplicación no puede ser silencioso.
-$PgUsuario = if ($AdminUsuario) { $AdminUsuario } else { 'postgres' }
-$PgEquipo = if ($AdminHost) { $AdminHost } else { '127.0.0.1' }
-$PgPuerto = if ($AdminPuerto) { [int]$AdminPuerto } else { 5432 }
-$PgClave = if ($AdminUrl) { Get-ClaveDeAdminUrl -Url $AdminUrl } else { '' }
+# La «ventana de confianza» (comun.ps1) queda como red de seguridad y para el caso 3.
+#
+# ($PgUsuario/$PgEquipo/$PgPuerto/$PgClave se resolvieron arriba: la contraseña hace falta
+# ANTES de instalar, para que el motor nazca con ella.)
 
 if ($DryRun) {
-  if ($recienInstalado) { Escribir-Detalle "[dry-run] fijaría la contraseña de «$PgUsuario» (el instalador no la elige)" }
+  if ($recienInstalado) { Escribir-Detalle "[dry-run] la contraseña de «$PgUsuario» nace con el motor (va al instalador por optionfile)" }
   elseif ($PgClave) { Escribir-Detalle "[dry-run] comprobaría que «$PgUsuario» conecta" }
   else { Escribir-Detalle "[dry-run] pediría la contraseña de «$PgUsuario»" }
 }
@@ -468,13 +582,6 @@ else {
   foreach ($b in $Binarios) {
     Descargar-Binario -Nombre $b.Nombre -Url $b.Url -Sha256 $b.Sha256 -Extension $b.Extension -DeZip:$b.DeZip
   }
-}
-
-if ($SinBinarios) {
-  Escribir-Aviso '--sin-binarios: no descargo mkcert ni caddy'
-}
-else {
-  foreach ($b in $Binarios) { Descargar-Binario -Nombre $b.Nombre -Url $b.Url -Sha256 $b.Sha256 }
 }
 
 # ── 7. Directorios y permisos ────────────────────────────────────────────────

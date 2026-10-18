@@ -157,8 +157,11 @@ if (-not $DryRun -and -not $SinPreguntas -and $hayTerminal -and $Solo -notin @('
     if ($RecuperarPostgres) {
       $Pregunta = 'PostgreSQL ya está instalado y no se conoce su contraseña: la que escribas pasa a ser la NUEVA.'
     }
+    # Si el motor se va a instalar AHORA (y no estamos recuperando una contraseña perdida),
+    # Enter genera una al azar que se imprime UNA vez: esa contraseña nace con el motor.
+    $AleatoriaSiVacia = ($null -eq (Get-PgBin)) -and -not $RecuperarPostgres
     $AdminUrl = Resolver-AdminUrlPostgres -Usuario $UsuarioAdmin -Equipo $EquipoAdmin `
-      -Puerto $PuertoAdmin -Pregunta $Pregunta
+      -Puerto $PuertoAdmin -Pregunta $Pregunta -AleatoriaSiVacia:$AleatoriaSiVacia
     if (-not $AdminUrl) {
       Escribir-Aviso 'sin contraseña de PostgreSQL: la instalación se detendrá antes de crear las bases'
     }

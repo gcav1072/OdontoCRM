@@ -116,6 +116,18 @@ function Escribir-Corte {
 }
 
 # ── Comprobaciones ───────────────────────────────────────────────────────────
+# El PATH de la SESIÓN se queda viejo con facilidad: `winget` escribe el PATH de la
+# MÁQUINA, que solo ven los procesos nuevos. Sin esto, una instalación en limpio
+# instalaba Node con la pieza 1 y moría enseguida con «no encuentro npm» —y las piezas
+# 2 a 4, lanzadas desde el orquestador, tampoco veían `node`—. Se recarga aquí, al
+# cargar la biblioteca (cada pieza es un proceso nuevo), y tras cada winget.
+function Actualizar-PathDeSesion {
+  $maquina = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+  $usuario = [Environment]::GetEnvironmentVariable('Path', 'User')
+  $env:Path = (@($maquina, $usuario) | Where-Object { $_ }) -join ';'
+}
+Actualizar-PathDeSesion
+
 function Test-Administrador {
   $identidad = [Security.Principal.WindowsIdentity]::GetCurrent()
   # SYSTEM (S-1-5-18) es asimilable a Administrador: es la cuenta con la que Windows ejecuta
@@ -316,6 +328,22 @@ function ConvertTo-TextoClaro {
   finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
 }
 
+# Contraseña aleatoria para una credencial que está NACIENDO —el motor se instala ahora y
+# esta contraseña nace con él—. Se imprime UNA sola vez, como la del admin: no se guarda en
+# ningún sitio, y quien la pierda fija otra con `10-preparar.ps1 --recuperar-postgres`.
+function Nueva-ClavePostgres {
+  $alfabeto = [char[]]((48..57) + (65..90) + (97..122))
+  $bytes = New-Object byte[] 24
+  $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+  $clave = -join ($bytes | ForEach-Object { $alfabeto[$_ % $alfabeto.Length] })
+  Write-Host ''
+  Escribir-Aviso 'contraseña generada al azar: se muestra UNA sola vez y NO se guarda en ningún sitio'
+  Write-Host "      $clave" -ForegroundColor Yellow
+  Escribir-Detalle 'anótala ahora. Para fijar otra más adelante: .\10-preparar.ps1 --recuperar-postgres'
+  return $clave
+}
+
 # Devuelve la URL del administrador de PostgreSQL. Si ya viniera por bandera (`--admin-url`) o
 # por entorno (`PG_ADMIN_URL`), devuelve ESA tal cual (no se pregunta dos veces). Si no, y hay
 # consola, compone `postgres://USUARIO:CLAVE@EQUIPO:PUERTO/BASE` con la contraseña tecleada
@@ -323,6 +351,10 @@ function ConvertTo-TextoClaro {
 # la deja en `PG_ADMIN_URL` (para las piezas y herramientas siguientes) y **no la imprime**.
 # Con `-SinPreguntar` (--dry-run, --sin-preguntas) o sin consola devuelve `$null`, y quien
 # llama decide: el aprovisionador lo explica y se detiene.
+# Con `-AleatoriaSiVacia` (SOLO cuando el motor se va a instalar ahora: la contraseña nace
+# con él) un Enter —o no haber consola— genera una al azar que se imprime una vez, en vez de
+# cancelar. Nunca con `--recuperar-postgres`: ahí el Enter = cancelar protege de fijar una
+# contraseña nueva sin querer sobre un motor que quizá usa otra aplicación.
 function Resolver-AdminUrlPostgres {
   param(
     [string]$Url = '',
@@ -331,22 +363,30 @@ function Resolver-AdminUrlPostgres {
     [int]$Puerto = 5432,
     [string]$Base = 'postgres',
     [string]$Pregunta = '',
-    [switch]$SinPreguntar
+    [switch]$SinPreguntar,
+    [switch]$AleatoriaSiVacia
   )
   if ($Url) { return $Url }
   if ($env:PG_ADMIN_URL) { return $env:PG_ADMIN_URL }
-  if ($SinPreguntar -or -not [Environment]::UserInteractive) { return $null }
 
-  if ($Pregunta) { Escribir-Detalle $Pregunta }
-  Write-Host ''
-  Escribir-Detalle 'Se escribe oculta: no queda en el historial ni en la lista de procesos.'
   $clave = $null
-  try {
-    $segura = Read-Host "      Contraseña de «$Usuario» (Enter para cancelar)" -AsSecureString
-    $clave = ConvertTo-TextoClaro $segura
+  if (-not ($SinPreguntar -or -not [Environment]::UserInteractive)) {
+    if ($Pregunta) { Escribir-Detalle $Pregunta }
+    Write-Host ''
+    Escribir-Detalle 'Se escribe oculta: no queda en el historial ni en la lista de procesos.'
+    if ($AleatoriaSiVacia) { Escribir-Detalle 'Enter la genera al azar y se muestra UNA sola vez.' }
+    try {
+      $etiqueta = if ($AleatoriaSiVacia) { '(Enter = generarla al azar)' } else { '(Enter para cancelar)' }
+      $segura = Read-Host "      Contraseña de «$Usuario» $etiqueta" -AsSecureString
+      $clave = ConvertTo-TextoClaro $segura
+    }
+    catch { $clave = '' }
   }
-  catch { return $null }
-  if ([string]::IsNullOrEmpty($clave)) { return $null }
+
+  if ([string]::IsNullOrEmpty($clave)) {
+    if (-not $AleatoriaSiVacia) { return $null }
+    $clave = Nueva-ClavePostgres
+  }
 
   $url = "postgres://${Usuario}:$([Uri]::EscapeDataString($clave))@${Equipo}:$Puerto/$Base"
   $env:PG_ADMIN_URL = $url
@@ -409,10 +449,10 @@ function Probar-ClavePostgres {
 # Es el equivalente en Windows del socket «peer» de Linux. En Fedora, root entra como
 # `postgres` sin contraseña (`runuser -u postgres psql`), así que un motor recién instalado
 # NUNCA deja fuera al instalador. En Windows no hay nada parecido: el motor exige contraseña
-# y el instalador de EDB **no la elige** (winget lo lanza con `--mode unattended
-# --unattendedmodeui none`, sin `--superpassword`), así que la instalación en limpio moría en
-# la pieza 2 con «password authentication failed» —o con un rol `postgres` sin contraseña
-# utilizable— y no había forma de salir desde el propio instalador.
+# y el instalador de EDB **no la deja elegida**. La pieza 1 se la pasa al crearlo (por
+# `--optionfile`: la que dé el operador o una generada que se imprime UNA vez), así que lo
+# normal es que no haga falta tocar nada más; esta ventana queda como RED DE SEGURIDAD y
+# para `--recuperar-postgres` (la contraseña se perdió y hay que fijar otra).
 #
 # El arreglo es el que usa cualquier DBA cuando se queda fuera: durante unos segundos se
 # permite entrar SIN contraseña por la interfaz local (solo `127.0.0.1`/`::1`), se fija la
