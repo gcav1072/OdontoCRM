@@ -83,7 +83,6 @@ const main = async (): Promise<void> => {
     {
       port: config.SCHEDULING_PORT,
       host: config.SCHEDULING_HOST,
-      cupoPorDefecto: config.DEFAULT_DAY_CAPACITY,
       toleranciaMinutos: config.NO_SHOW_GRACE_MINUTES,
     },
     'Servicio scheduling escuchando',

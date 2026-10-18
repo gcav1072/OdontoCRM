@@ -10,7 +10,6 @@ import {
   jsonb,
   pgSequence,
   pgTable,
-  primaryKey,
   text,
   time,
   timestamp,
@@ -212,27 +211,12 @@ export const appointments = pgTable(
 );
 
 /**
- * Cupo del **consultorio** en un día. Es **editable en cualquier momento**, incluso
- * después de asignar: bajarlo por debajo de lo asignado avisa pero no borra ninguna
- * cita. La clave es `(date, chair_id)`: cada sillón lleva su propio cupo.
+ * Plantilla de franjas por día de la semana (una jornada; puede haber varias).
+ *
+ * **Es el cupo**: el número de franjas que produce la plantilla de un día es el cupo
+ * de ese día, y una cita larga gasta tantas franjas como cruza. Un día sin plantillas
+ * activas está cerrado (cupo 0).
  */
-export const dayCapacities = pgTable(
-  'day_capacities',
-  {
-    date: date('date', { mode: 'string' }).notNull(),
-    chairId: uuid('chair_id')
-      .notNull()
-      .references(() => chairs.id, { onDelete: 'restrict' }),
-    capacity: integer('capacity').notNull(),
-    notes: text('notes'),
-    updatedBy: uuid('updated_by'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [primaryKey({ columns: [table.date, table.chairId] })],
-);
-
-/** Plantilla de franjas por día de la semana (una jornada; puede haber varias). */
 export const slotTemplates = pgTable(
   'slot_templates',
   {
@@ -283,6 +267,5 @@ export const statusHistory = pgTable(
 export type AppointmentRequestRow = typeof appointmentRequests.$inferSelect;
 export type ChairRow = typeof chairs.$inferSelect;
 export type AppointmentRow = typeof appointments.$inferSelect;
-export type DayCapacityRow = typeof dayCapacities.$inferSelect;
 export type SlotTemplateRow = typeof slotTemplates.$inferSelect;
 export type StatusHistoryRow = typeof statusHistory.$inferSelect;

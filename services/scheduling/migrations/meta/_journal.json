@@ -50,6 +50,13 @@
       "when": 1791595689052,
       "tag": "0006_remarkable_colonel_america",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792357188794,
+      "tag": "0007_sin_cupo_explicito",
+      "breakpoints": true
     }
   ]
 }

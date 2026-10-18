@@ -539,12 +539,12 @@ export const assignAppointment = async (
     db,
     input.date,
     input.chairId,
+    { startTime, endTime },
     {
       authorizeOverbook: input.authorizeOverbook,
       overbookReason: input.overbookReason,
       canOverbook: hasPermission(actor.roles, 'scheduling:overbook'),
     },
-    config,
   );
 
   const created = await db
@@ -1289,12 +1289,13 @@ export const rescheduleAppointment = async (
     db,
     input.date,
     chairId,
+    { startTime, endTime },
     {
       authorizeOverbook: input.authorizeOverbook,
       overbookReason: input.overbookReason,
       canOverbook: hasPermission(actor.roles, 'scheduling:overbook'),
+      ignoreAppointmentId: id,
     },
-    config,
   );
 
   const request = current.requestId === null ? null : await findRequest(db, current.requestId);

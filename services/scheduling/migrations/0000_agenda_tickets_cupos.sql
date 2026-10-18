@@ -118,12 +118,12 @@ CREATE INDEX "idx_outbox_aggregate" ON "outbox_events" USING btree ("aggregate_i
 --> statement-breakpoint
 INSERT INTO "slot_templates" ("weekday", "start_time", "end_time", "slot_minutes", "breaks", "is_active") VALUES
   (1, '08:00', '12:00', 30, '[]'::jsonb, true),
-  (1, '13:00', '17:00', 30, '[]'::jsonb, true),
+  (1, '14:00', '17:00', 30, '[]'::jsonb, true),
   (2, '08:00', '12:00', 30, '[]'::jsonb, true),
-  (2, '13:00', '17:00', 30, '[]'::jsonb, true),
+  (2, '14:00', '17:00', 30, '[]'::jsonb, true),
   (3, '08:00', '12:00', 30, '[]'::jsonb, true),
-  (3, '13:00', '17:00', 30, '[]'::jsonb, true),
+  (3, '14:00', '17:00', 30, '[]'::jsonb, true),
   (4, '08:00', '12:00', 30, '[]'::jsonb, true),
-  (4, '13:00', '17:00', 30, '[]'::jsonb, true),
+  (4, '14:00', '17:00', 30, '[]'::jsonb, true),
   (5, '08:00', '12:00', 30, '[]'::jsonb, true),
-  (5, '13:00', '17:00', 30, '[]'::jsonb, true);
+  (5, '14:00', '17:00', 30, '[]'::jsonb, true);

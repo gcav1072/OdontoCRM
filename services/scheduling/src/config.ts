@@ -1,9 +1,5 @@
 import { baseEnvSchema, loadConfig } from '@odontocrm/kernel';
-import {
-  DEFAULT_DAY_CAPACITY,
-  DEFAULT_NO_SHOW_GRACE_MINUTES,
-  DEFAULT_SLOT_MINUTES,
-} from '@odontocrm/contracts';
+import { DEFAULT_NO_SHOW_GRACE_MINUTES, DEFAULT_SLOT_MINUTES } from '@odontocrm/contracts';
 import { z } from 'zod';
 
 export const schedulingEnvSchema = baseEnvSchema.extend({
@@ -15,8 +11,6 @@ export const schedulingEnvSchema = baseEnvSchema.extend({
   EVENTS_DATABASE_URL: z.string().min(1).optional(),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
 
-  /** Cupo cuando el día no tiene cupo explícito ni plantilla. */
-  DEFAULT_DAY_CAPACITY: z.coerce.number().int().min(0).max(200).default(DEFAULT_DAY_CAPACITY),
   /** Duración por defecto de una cita cuando no hay franja que la defina. */
   DEFAULT_APPOINTMENT_MINUTES: z.coerce
     .number()

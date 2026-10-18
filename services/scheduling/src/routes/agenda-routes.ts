@@ -4,10 +4,10 @@ import {
   dateSchema,
   notifyBatchInputSchema,
   notifyPreviewSchema,
-  setCapacitySchema,
   slotTemplateInputSchema,
   timeRangeSchema,
   timeSchema,
+  weekScheduleInputSchema,
 } from '@odontocrm/contracts';
 import { parseOrThrow, parseQuery, requirePermission } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
@@ -18,7 +18,7 @@ import {
   deleteTemplate,
   listCapacities,
   listTemplates,
-  setCapacity,
+  replaceWeekSchedule,
   updateTemplate,
 } from '../agenda/capacity-service.js';
 import { createChair, listChairs, updateChair } from '../agenda/chair-service.js';
@@ -63,7 +63,7 @@ export const registerAgendaRoutes = (app: FastifyInstance, services: SchedulingS
     const { date } = parseOrThrow(dateParamsSchema, request.params);
     return reply
       .status(200)
-      .send(await getDayView(db, date, config, { dentistCatalog: services.dentistCatalog }));
+      .send(await getDayView(db, date, { dentistCatalog: services.dentistCatalog }));
   });
 
   /* ── Consultorios (sillones) ─────────────────────────────────────────────── */
@@ -87,15 +87,19 @@ export const registerAgendaRoutes = (app: FastifyInstance, services: SchedulingS
 
   app.get('/api/v1/agenda/capacity', { preHandler: read }, async (request, reply) => {
     const { from, to } = parseQuery(capacityQuerySchema, request.query);
-    const items = await listCapacities(db, from, to, config);
+    const items = await listCapacities(db, from, to);
     return reply.status(200).send({ items, total: items.length });
   });
 
-  /** Cambiar el cupo: se puede en cualquier momento, incluso con citas asignadas. */
-  app.put('/api/v1/agenda/capacity', { preHandler: write }, async (request, reply) => {
+  /**
+   * Horario de atención de uno o varios días: los turnos y la duración de la franja.
+   * El **cupo sale de aquí**: no se guarda aparte. Un `shifts` vacío cierra el día.
+   */
+  app.put('/api/v1/agenda/schedule', { preHandler: write }, async (request, reply) => {
     const actor = actorFrom(request);
-    const input = parseOrThrow(setCapacitySchema, request.body);
-    return reply.status(200).send(await setCapacity(db, input, actor, config));
+    const input = parseOrThrow(weekScheduleInputSchema, request.body);
+    const items = await replaceWeekSchedule(db, input, actor);
+    return reply.status(200).send({ items, total: items.length });
   });
 
   app.get('/api/v1/agenda/templates', { preHandler: read }, async (_request, reply) => {

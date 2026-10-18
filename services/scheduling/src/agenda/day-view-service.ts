@@ -14,7 +14,6 @@ import {
 } from '@odontocrm/contracts';
 import { asc, eq } from 'drizzle-orm';
 
-import type { SchedulingConfig } from '../config.js';
 import type { SchedulingDb } from '../db/client.js';
 import { appointmentRequests, type AppointmentRow, type SlotTemplateRow } from '../db/schema.js';
 import { OCCUPYING_STATUSES, toHm, toRequestSummary } from '../mappers.js';
@@ -137,31 +136,25 @@ const buildSlots = (
   return slots;
 };
 
-/** Cupo **agregado** del día: suma de la capacidad y de lo asignado en cada consultorio. */
+/** Cupo **agregado** del día: suma de las franjas y de lo ocupado en cada consultorio. */
 const aggregateCapacity = (date: string, views: readonly ChairDayView[]): DayCapacity => {
   const capacity = views.reduce((total, view) => total + view.capacity.capacity, 0);
   const assigned = views.reduce((total, view) => total + view.capacity.assigned, 0);
-  const conFranjas = views.some(
-    (view) => view.capacity.source === 'plantilla' || view.capacity.source === 'explicito',
-  );
+  const conTurnos = views.some((view) => view.capacity.source === 'plantilla');
 
   return {
     date,
     chairId: null,
     chairLabel: null,
     capacity,
-    source: conFranjas ? 'plantilla' : 'defecto',
-    explicitCapacity: null,
-    notes: null,
+    source: conTurnos ? 'plantilla' : 'sin_turnos',
     assigned,
     available: Math.max(0, capacity - assigned),
     isFull: assigned >= capacity,
     warning:
       assigned > capacity
-        ? `El cupo del día (${String(capacity)}) queda por debajo de las ${String(assigned)} citas asignadas: no se ha borrado ninguna.`
+        ? `Se ocuparon ${String(assigned)} franjas y el día tiene ${String(capacity)}: hay citas por encima del cupo; no se ha borrado ninguna.`
         : null,
-    updatedBy: null,
-    updatedAt: null,
   };
 };
 
@@ -174,7 +167,6 @@ const aggregateCapacity = (date: string, views: readonly ChairDayView[]): DayCap
 export const getDayView = async (
   db: SchedulingDb,
   date: string,
-  config: SchedulingConfig,
   deps: DayViewDeps = {},
 ): Promise<DayView> => {
   const weekday = weekdayOf(date);
@@ -192,7 +184,7 @@ export const getDayView = async (
 
   const chairs: ChairDayView[] = [];
   for (const chair of activeChairs) {
-    chairs.push(await chairDayView(db, date, weekday, config, chair, labels));
+    chairs.push(await chairDayView(db, date, weekday, chair, labels));
   }
 
   const allRows = await appointmentsOn(db, date);
@@ -216,12 +208,11 @@ const chairDayView = async (
   db: SchedulingDb,
   date: string,
   weekday: number,
-  config: SchedulingConfig,
   chair: Chair,
   labels: SummaryLabels,
 ): Promise<ChairDayView> => {
   const [info, templates, rows, counts, ownSchedule] = await Promise.all([
-    capacityFor(db, date, config, chair.id),
+    capacityFor(db, date, chair.id),
     activeTemplatesFor(db, weekday, chair.id),
     appointmentsOn(db, date, chair.id),
     countByStatus(db, date, chair.id),
