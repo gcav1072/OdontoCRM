@@ -1428,38 +1428,26 @@ const DICCIONARIO = {
   'programacion.fecha.error': 'No se pudo cargar la jornada.',
   'programacion.fecha.noLaborable': 'Día no laborable',
   'programacion.fecha.noLaborableTexto':
-    'No hay plantillas de franjas para {dia}: la jornada se puede programar igual con hora manual.',
+    'No hay turnos de atención para {dia}: la jornada se puede programar igual con hora manual.',
   'programacion.fecha.enEspera': '{total} en espera',
 
-  // Cupo del día
+  // Cupo del día (sale de las franjas del horario; no se escribe a mano)
   'programacion.cupo.titulo': 'Cupo del día',
   'programacion.cupo.contador': '{asignados}/{cupo}',
-  'programacion.cupo.contadorEtiqueta': 'Citas asignadas sobre el cupo del día',
+  'programacion.cupo.contadorEtiqueta': 'Franjas ocupadas sobre las franjas del día',
   'programacion.cupo.procedencia': 'Procedencia: {fuente}',
-  'programacion.cupo.fuente.explicito': 'cupo explícito',
-  'programacion.cupo.fuente.plantilla': 'calculado de las plantillas de franjas',
-  'programacion.cupo.fuente.defecto': 'cupo por defecto del consultorio',
-  'programacion.cupo.disponibles': '{disponibles} cupo(s) disponible(s)',
+  'programacion.cupo.fuente.plantilla': 'calculado de los turnos de atención',
+  'programacion.cupo.fuente.sin_turnos': 'día sin turnos (cerrado)',
+  'programacion.cupo.disponibles': '{disponibles} franja(s) disponible(s)',
   'programacion.cupo.completo': 'El día está completo',
   'programacion.cupo.completoTexto':
-    'Se asignaron las {cupo} citas del cupo. Solo un administrador puede autorizar una cita por encima del cupo (sobrecupo) y queda en la auditoría.',
-  'programacion.cupo.editar': 'Editar el cupo',
-  'programacion.cupo.dialogoTitulo': 'Cupo del {fecha}',
-  'programacion.cupo.dialogoTexto':
-    'El cupo se puede cambiar en cualquier momento, incluso después de asignar. Bajarlo por debajo de lo asignado avisa pero no borra ninguna cita.',
-  'programacion.cupo.numero': 'Cupo de citas del día',
-  'programacion.cupo.numeroAyuda': 'Entre 0 y {max} citas.',
-  'programacion.cupo.notas': 'Notas del cupo',
-  'programacion.cupo.motivo': 'Motivo del cambio',
-  'programacion.cupo.ok': 'Cupo actualizado.',
+    'Se ocuparon las {cupo} franjas del día. Una cita larga gasta varias franjas; solo un administrador puede autorizar una cita por encima del cupo (sobrecupo) y queda en la auditoría.',
   'programacion.cupo.aviso': 'Aviso del cupo',
-  'programacion.cupo.avisoPrevio':
-    'Con {cupo} de cupo quedarían {asignados} citas asignadas: el servidor avisará y no borrará ninguna.',
-  'programacion.cupo.explicito': 'Cupo explícito: {cupo}',
-  'programacion.cupo.sinExplicito':
-    'Sin cupo explícito: se deduce de las plantillas o del valor por defecto.',
+  'programacion.cupo.cerrado': 'Día cerrado',
+  'programacion.cupo.cerradoTexto':
+    'Este día no tiene turnos de atención, así que su cupo es 0. Configura el horario para abrirlo; mientras tanto, asignar una cita exige autorizar el sobrecupo.',
   'programacion.ocupacion': 'Ocupación del día',
-  'programacion.ocupacion.barra': 'Ocupación del día: {asignados} de {cupo} citas asignadas.',
+  'programacion.ocupacion.barra': 'Ocupación del día: {asignados} de {cupo} franjas ocupadas.',
   'programacion.contador.programadas': 'Programadas',
   'programacion.contador.notificadas': 'Notificadas',
   'programacion.contador.confirmadas': 'Confirmadas',
@@ -1580,7 +1568,7 @@ const DICCIONARIO = {
   // Sobrecupo (solo admin)
   'programacion.sobrecupo.titulo': 'El día está completo: hace falta autorizar el sobrecupo',
   'programacion.sobrecupo.texto':
-    'El {fecha} tiene {asignados} citas asignadas sobre un cupo de {cupo}. Para asignar una más hay que autorizar el sobrecupo y explicar el motivo: queda en la auditoría.',
+    'El {fecha} tiene {asignados} franjas ocupadas sobre {cupo}. La cita que quieres asignar gasta más de una si dura varias franjas, así que para meterla hay que autorizar el sobrecupo y explicar el motivo: queda en la auditoría.',
   'programacion.sobrecupo.motivo': 'Motivo del sobrecupo',
   'programacion.sobrecupo.motivoAyuda': 'Mínimo 3 caracteres; explica por qué se autoriza.',
   'programacion.sobrecupo.autorizar': 'Autorizar el sobrecupo y asignar',
@@ -1741,21 +1729,48 @@ const DICCIONARIO = {
   'programacion.cancelaciones.anterior': 'Anterior',
   'programacion.cancelaciones.siguiente': 'Siguiente',
 
-  // Plantillas de franjas
-  'programacion.plantillas.abrir': 'Plantillas de franjas',
-  'programacion.plantillas.titulo': 'Plantillas de franjas de la semana',
-  'programacion.plantillas.texto':
-    'El servicio arma las franjas del día con estas plantillas cuando no hay cupo explícito. Las pausas se descartan de la rejilla.',
-  'programacion.plantillas.cargando': 'Cargando las plantillas…',
-  'programacion.plantillas.error': 'No se pudieron cargar las plantillas.',
-  'programacion.plantillas.vacio': 'No hay plantillas configuradas.',
-  'programacion.plantillas.horario': '{inicio} a {fin}',
-  'programacion.plantillas.franjas': '{total} franja(s) de {minutos} min',
-  'programacion.plantillas.pausas': 'Pausas: {pausas}',
-  'programacion.plantillas.sinPausas': 'Sin pausas',
-  'programacion.plantillas.inactiva': 'Inactiva',
-  'programacion.plantillas.nota':
-    'Esta vista es informativa: la plantilla se administra desde el servicio de agenda y alimenta el cupo y las franjas de cada día.',
+  // Horario y franjas (el cupo sale de aquí)
+  'programacion.jornada.configurar': 'Configurar la jornada',
+  'programacion.jornada.abrir': 'Horario y franjas',
+  'programacion.jornada.titulo': 'Horario y franjas',
+  'programacion.jornada.texto':
+    'Turnos de atención y duración de la franja. El cupo de cada día son las franjas que salgan de aquí, así que no se escribe a mano.',
+  'programacion.jornada.dia': 'Día de la semana',
+  'programacion.jornada.duracion': 'Duración de cada franja',
+  'programacion.jornada.duracionAyuda': 'Cada turno se parte en franjas de {minutos} minutos.',
+  'programacion.jornada.minutosValor': '{minutos} minutos',
+  'programacion.jornada.aplicarA': 'Aplicar a',
+  'programacion.jornada.aplicar.dia': 'Solo el {dia}',
+  'programacion.jornada.aplicar.semana': 'Lunes a viernes',
+  'programacion.jornada.aplicar.todos': 'Todos los días',
+  'programacion.jornada.turnos': 'Turnos de atención',
+  'programacion.jornada.turnosAyuda': 'Por ejemplo, 8:00 a 12:00 y 2:00 a 5:00 p. m.',
+  'programacion.jornada.inicio': 'Entrada',
+  'programacion.jornada.fin': 'Salida',
+  'programacion.jornada.hora': 'Hora',
+  'programacion.jornada.minutos': 'Minutos',
+  'programacion.jornada.meridiano': 'a. m. o p. m.',
+  'programacion.jornada.anadir': 'Añadir turno',
+  'programacion.jornada.quitar': 'Quitar el turno {numero}',
+  'programacion.jornada.quitarCorto': 'Quitar',
+  'programacion.jornada.fabrica': 'Usar el horario de fábrica',
+  'programacion.jornada.resumen':
+    'Con este horario el día tiene {total} franja(s) de {minutos} min por consultorio.',
+  'programacion.jornada.cerrado': 'Este día no tiene turnos: quedará cerrado y su cupo será 0.',
+  'programacion.jornada.avisoCitas':
+    'Las citas ya asignadas no se mueven: si quitas un turno, sus horas dejan de ser franjas y se siguen viendo como hora manual.',
+  'programacion.jornada.avisoSillon':
+    'Algún consultorio tiene un horario propio para este día y prevalece sobre este horario común.',
+  'programacion.jornada.avisoSemana':
+    'Se aplicará a todos los días elegidos, también a los que ya tienen citas asignadas.',
+  'programacion.jornada.cargando': 'Cargando el horario…',
+  'programacion.jornada.errorCarga': 'No se pudo cargar el horario.',
+  'programacion.jornada.ok': 'Horario guardado.',
+  'programacion.jornada.error.vacio': 'Completa la entrada y la salida.',
+  'programacion.jornada.error.invertido': 'La salida tiene que ser posterior a la entrada.',
+  'programacion.jornada.error.corta':
+    'El turno dura {minutos} min y la franja {franja} min: alarga el turno o acorta la franja.',
+  'programacion.jornada.error.solape': 'Este turno se solapa con otro.',
 
   // --- Notificaciones y bot (Fase 4) ---------------------------------------
   'notificaciones.titulo': 'Notificaciones',
@@ -3326,9 +3341,8 @@ export const CHANNEL_LABELS: Readonly<Record<Channel, string>> = {
 };
 
 export const CAPACITY_SOURCE_LABELS: Readonly<Record<CapacitySource, string>> = {
-  explicito: t('programacion.cupo.fuente.explicito'),
   plantilla: t('programacion.cupo.fuente.plantilla'),
-  defecto: t('programacion.cupo.fuente.defecto'),
+  sin_turnos: t('programacion.cupo.fuente.sin_turnos'),
 };
 
 export const SLOT_STATE_LABELS: Readonly<Record<SlotState, string>> = {

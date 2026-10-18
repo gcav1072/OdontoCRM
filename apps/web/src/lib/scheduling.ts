@@ -2,6 +2,7 @@ import {
   NO_SHOW_GRACE_MINUTES,
   allowedTransitions,
   formatTime12h,
+  usedCapacity,
   type AppointmentStatus,
   type AppointmentSummary,
   type DaySlot,
@@ -336,27 +337,17 @@ export const applyDayChanges = (
 ): DayView => {
   let appointments = [...day.appointments];
   let counts = { ...day.counts };
-  let assigned = day.capacity.assigned;
-  /** id → cita final, o `null` cuando la cita ya no pertenece a este día. */
-  const finales = new Map<string, AppointmentSummary | null>();
 
   for (const { appointment, previous } of changes) {
     const previa = previous ?? appointments.find((cita) => cita.id === appointment.id) ?? null;
 
-    if (previa) {
-      counts = ajustarContadores(counts, previa.status, -1);
-      if (previa.date === day.date && occupiesCapacity(previa.status)) assigned -= 1;
-    }
+    if (previa) counts = ajustarContadores(counts, previa.status, -1);
 
     appointments = appointments.filter((cita) => cita.id !== appointment.id);
 
     if (appointment.date === day.date) {
       appointments = [...appointments, appointment];
       counts = ajustarContadores(counts, appointment.status, 1);
-      if (occupiesCapacity(appointment.status)) assigned += 1;
-      finales.set(appointment.id, appointment);
-    } else {
-      finales.set(appointment.id, null);
     }
   }
 
@@ -364,45 +355,70 @@ export const applyDayChanges = (
     (left, right) => porHora(left, right) || left.createdAt.localeCompare(right.createdAt),
   );
 
-  // Las franjas se reconstruyen **por consultorio**: se libera la cita que cambió y
-  // se ocupa su hora en el sillón que le toca (cada cita trae su `chairId`).
+  /**
+   * Las franjas se reconstruyen **por consultorio** a partir de las citas finales:
+   * se liberan las que cambiaron y se ocupan **todas** las franjas que cruza cada
+   * cita (una consulta de dos horas ocupa cuatro franjas de 30 minutos). Una cita
+   * fuera de la rejilla se pinta como hora manual.
+   */
   const chairs = day.chairs.map((vista) => {
-    let slots = vista.slots.map((slot) =>
-      slot.appointment !== null && finales.has(slot.appointment.id)
-        ? { ...slot, state: 'libre' as const, appointment: null }
-        : slot,
+    const citas = appointments.filter(
+      (cita) => cita.chairId === vista.chair.id && occupiesCapacity(cita.status),
+    );
+    const cruza = (
+      cita: { startTime: string; endTime: string },
+      franja: { startTime: string; endTime: string },
+    ) => cita.startTime < franja.endTime && franja.startTime < cita.endTime;
+
+    const franjas = vista.slots
+      .filter((slot) => slot.kind === 'franja')
+      .map((slot) => {
+        if (slot.state === 'fuera_de_jornada') return slot;
+        const cita = citas.find((candidata) => cruza(candidata, slot)) ?? null;
+        return {
+          ...slot,
+          state: cita === null ? ('libre' as const) : ('ocupada' as const),
+          appointment: cita,
+        };
+      });
+
+    const manuales = citas
+      .filter((cita) => !franjas.some((slot) => cruza(cita, slot)))
+      .map((cita) => ({
+        startTime: cita.startTime,
+        endTime: cita.endTime,
+        kind: 'manual' as const,
+        state: 'ocupada' as const,
+        chairId: vista.chair.id,
+        chairLabel: vista.chair.label,
+        appointment: cita,
+      }));
+
+    const slots = [...franjas, ...manuales].sort(porHora);
+    const capacidad = franjas.filter((slot) => slot.state !== 'fuera_de_jornada').length;
+    const ocupadas = usedCapacity(
+      franjas
+        .filter((slot) => slot.state !== 'fuera_de_jornada')
+        .map((slot) => ({ startTime: slot.startTime, endTime: slot.endTime })),
+      citas.map((cita) => ({ startTime: cita.startTime, endTime: cita.endTime })),
     );
 
-    for (const cita of finales.values()) {
-      if (cita === null || cita.status === 'cancelada' || cita.status === 'reprogramada') continue;
-      if (cita.chairId !== vista.chair.id) continue;
-
-      const indice = slots.findIndex((slot) => slot.startTime === cita.startTime);
-      const actual = slots[indice];
-      if (actual !== undefined) {
-        slots[indice] = { ...actual, state: 'ocupada', appointment: cita };
-      } else {
-        // Hora manual fuera de la rejilla: se añade su propia franja.
-        slots = [
-          ...slots,
-          {
-            startTime: cita.startTime,
-            endTime: cita.endTime,
-            kind: 'manual' as const,
-            state: 'ocupada' as const,
-            chairId: vista.chair.id,
-            chairLabel: vista.chair.label,
-            appointment: cita,
-          },
-        ].sort(porHora);
-      }
-    }
-
-    return { ...vista, slots };
+    return {
+      ...vista,
+      slots,
+      capacity: {
+        ...vista.capacity,
+        capacity: capacidad,
+        assigned: ocupadas,
+        available: Math.max(0, capacidad - ocupadas),
+        isFull: ocupadas >= capacidad,
+        source: capacidad > 0 ? ('plantilla' as const) : ('sin_turnos' as const),
+      },
+    };
   });
 
-  const asignados = Math.max(0, assigned);
-  const disponibles = day.capacity.capacity - asignados;
+  const capacidadDia = chairs.reduce((total, vista) => total + vista.capacity.capacity, 0);
+  const asignados = chairs.reduce((total, vista) => total + vista.capacity.assigned, 0);
 
   return {
     ...day,
@@ -411,9 +427,13 @@ export const applyDayChanges = (
     counts,
     capacity: {
       ...day.capacity,
+      capacity: capacidadDia,
       assigned: asignados,
-      available: disponibles,
-      isFull: disponibles <= 0,
+      available: Math.max(0, capacidadDia - asignados),
+      isFull: asignados >= capacidadDia,
+      source: capacidadDia > 0 ? 'plantilla' : 'sin_turnos',
+      // El aviso del servidor solo tiene sentido mientras el día siga por encima del cupo.
+      warning: asignados > capacidadDia ? day.capacity.warning : null,
     },
     waiting:
       options.removeWaitingRequestId === undefined || options.removeWaitingRequestId === null

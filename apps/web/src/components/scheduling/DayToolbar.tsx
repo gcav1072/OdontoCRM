@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  Settings2,
 } from 'lucide-react';
 
 import { formatDateOnly } from '../../lib/scheduling';
@@ -22,13 +23,13 @@ export interface DayToolbarProps {
   onDateChange: (date: string) => void;
   onReload: () => void;
   onNotify: () => void;
-  onTemplates: () => void;
+  onSchedule: () => void;
 }
 
 /**
  * Cabecera de la jornada: navegación por días (anterior, hoy, siguiente y campo
- * de fecha) y las acciones del día (recargar, plantillas de franjas y el aviso
- * en lote al paciente).
+ * de fecha) y las acciones del día (recargar, horario y franjas y el aviso en lote
+ * al paciente).
  */
 export const DayToolbar = ({
   date,
@@ -40,7 +41,7 @@ export const DayToolbar = ({
   onDateChange,
   onReload,
   onNotify,
-  onTemplates,
+  onSchedule,
 }: DayToolbarProps) => (
   <Card>
     <CardHeader className="gap-4 @6xl:flex-row @6xl:items-end @6xl:justify-between">
@@ -108,10 +109,10 @@ export const DayToolbar = ({
 
         <Button
           variant="secondary"
-          onClick={onTemplates}
-          leadingIcon={<CalendarDays className="size-4" aria-hidden="true" />}
+          onClick={onSchedule}
+          leadingIcon={<Settings2 className="size-4" aria-hidden="true" />}
         >
-          {t('programacion.plantillas.abrir')}
+          {t('programacion.jornada.abrir')}
         </Button>
 
         {canNotify && (

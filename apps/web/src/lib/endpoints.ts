@@ -41,7 +41,6 @@ import {
   type CreateRequestInput,
   type CreateUserInput,
   type ReplaceDraftItemsInput,
-  type DayCapacity,
   type DayView,
   type DeletePatientInput,
   type DentistProfile,
@@ -96,7 +95,6 @@ import {
   type ScreenDeviceList,
   type ScreenDeviceUpdate,
   type SessionInfo,
-  type SetCapacityInput,
   type Sex,
   type SlotTemplate,
   type SlotTemplateInput,
@@ -106,6 +104,7 @@ import {
   type UpdateDentistProfileInput,
   type UpdateUserInput,
   type UserSummary,
+  type WeekScheduleInput,
   type BillingInvoiceIssued,
   type BillingInvoiceDetail,
   type BillingInvoiceList,
@@ -704,11 +703,6 @@ export interface SlotTemplateList {
   items: SlotTemplate[];
 }
 
-/** Lista de cupos por rango de fechas: `{ items }`, sin paginar. */
-export interface DayCapacityList {
-  items: DayCapacity[];
-}
-
 /** Historial de estados de una cita o solicitud. */
 export interface StatusHistoryList {
   items: StatusHistoryEntry[];
@@ -737,22 +731,22 @@ export const requestsApi = {
 };
 
 /**
- * Jornada: cupo del día, franjas, plantillas y aviso en lote. `PUT /capacity`
- * responde 200 con `warning` cuando el cupo queda por debajo de lo asignado (no
- * borra nada), así que la respuesta se muestra tal cual.
+ * Jornada: franjas, plantillas de horario y aviso en lote. El **cupo sale del
+ * horario** (franjas de sus turnos), así que no hay forma de fijarlo a mano.
  */
 export const agendaApi = {
   day: (date: string, signal?: AbortSignal): Promise<DayView> =>
     api.get<DayView>(`/agenda/days/${date}`, { signal }),
 
-  capacities: (from: string, to: string, signal?: AbortSignal): Promise<DayCapacityList> =>
-    api.get<DayCapacityList>('/agenda/capacity', { query: { from, to }, signal }),
-
-  setCapacity: (input: SetCapacityInput): Promise<DayCapacity> =>
-    api.request<DayCapacity>('PUT', '/agenda/capacity', { body: input }),
-
   templates: (signal?: AbortSignal): Promise<SlotTemplateList> =>
     api.get<SlotTemplateList>('/agenda/templates', { signal }),
+
+  /**
+   * Horario de atención de uno o varios días: turnos y duración de la franja. Es
+   * lo que configura «Editar la jornada» y lo que fija el cupo de cada día.
+   */
+  setWeekSchedule: (input: WeekScheduleInput): Promise<SlotTemplateList> =>
+    api.request<SlotTemplateList>('PUT', '/agenda/schedule', { body: input }),
 
   createTemplate: (input: SlotTemplateInput): Promise<SlotTemplate> =>
     api.post<SlotTemplate>('/agenda/templates', input),

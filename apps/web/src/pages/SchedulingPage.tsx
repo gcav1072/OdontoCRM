@@ -1,5 +1,6 @@
 import {
   formatTime12h,
+  weekdayOf,
   type AppointmentSummary,
   type DayView,
   type NotifyBatchResult,
@@ -16,7 +17,6 @@ import { PanelTabs, panelPanelId, panelTabId } from '../components/PanelTabs';
 import { AppointmentActionDialog } from '../components/scheduling/AppointmentActionDialog';
 import { AppointmentHistoryDialog } from '../components/scheduling/AppointmentHistoryDialog';
 import { AssignAppointmentDialog } from '../components/scheduling/AssignAppointmentDialog';
-import { CapacityDialog } from '../components/scheduling/CapacityDialog';
 import { DayAppointmentsTable } from '../components/scheduling/DayAppointmentsTable';
 import { DayCapacityCard } from '../components/scheduling/DayCapacityCard';
 import { DayToolbar } from '../components/scheduling/DayToolbar';
@@ -26,8 +26,8 @@ import { PatientCancellationsCard } from '../components/scheduling/PatientCancel
 import { RequestCancelDialog } from '../components/scheduling/RequestCancelDialog';
 import { RequestQueuePanel } from '../components/scheduling/RequestQueuePanel';
 import { RescheduleAppointmentDialog } from '../components/scheduling/RescheduleAppointmentDialog';
+import { ScheduleConfigDialog } from '../components/scheduling/ScheduleConfigDialog';
 import { SlotGrid } from '../components/scheduling/SlotGrid';
-import { TemplatesDialog } from '../components/scheduling/TemplatesDialog';
 import { useDayView } from '../hooks/useDayView';
 import { useNotice } from '../hooks/useNotice';
 import { apiErrorMessage } from '../lib/api';
@@ -74,8 +74,7 @@ export const SchedulingPage = () => {
   } | null>(null);
   const [cancelandoSolicitud, setCancelandoSolicitud] = useState<RequestSummary | null>(null);
   const [nuevaSolicitud, setNuevaSolicitud] = useState(false);
-  const [editandoCupo, setEditandoCupo] = useState(false);
-  const [viendoPlantillas, setViendoPlantillas] = useState(false);
+  const [configurandoHorario, setConfigurandoHorario] = useState(false);
   const [historial, setHistorial] = useState<AppointmentSummary | null>(null);
   const [reprogramando, setReprogramando] = useState<AppointmentSummary | null>(null);
   const [accion, setAccion] = useState<ActionTarget | null>(null);
@@ -120,14 +119,6 @@ export const SchedulingPage = () => {
 
   const citaEnJornada = (id: string): AppointmentSummary | null =>
     dia?.appointments.find((cita) => cita.id === id) ?? null;
-
-  const parchearCupo = (date: string, capacity: DayView['capacity']) => {
-    const clave = schedulingKeys.day(date);
-    if (cliente.getQueryData(clave) === undefined) return;
-    cliente.setQueryData<DayView>(clave, (actual) =>
-      actual === undefined ? actual : { ...actual, capacity },
-    );
-  };
 
   /* ── Acciones de la jornada ────────────────────────────────────────────── */
 
@@ -244,7 +235,7 @@ export const SchedulingPage = () => {
               void diaQuery.refetch();
             }}
             onNotify={() => setNotificando({})}
-            onTemplates={() => setViendoPlantillas(true)}
+            onSchedule={() => setConfigurandoHorario(true)}
           />
 
           {diaQuery.isError && (
@@ -296,7 +287,7 @@ export const SchedulingPage = () => {
                   <DayCapacityCard
                     day={dia}
                     canWrite={puedeEscribir}
-                    onEdit={() => setEditandoCupo(true)}
+                    onEdit={() => setConfigurandoHorario(true)}
                   />
 
                   <SlotGrid
@@ -411,21 +402,16 @@ export const SchedulingPage = () => {
         />
       )}
 
-      {editandoCupo && dia !== undefined && (
-        <CapacityDialog
-          capacity={dia.capacity}
-          onClose={() => setEditandoCupo(false)}
-          onSaved={(actualizado) => {
-            parchearCupo(actualizado.date, actualizado);
-            invalidarDerivados();
-            // Con `warning` el diálogo se queda abierto mostrándolo y la tarjeta
-            // del cupo lo repite: no hace falta otro aviso en la página.
-            if (actualizado.warning === null) exito(t('programacion.cupo.ok'));
+      {configurandoHorario && (
+        <ScheduleConfigDialog
+          weekday={dia?.weekday ?? weekdayOf(fecha)}
+          onClose={() => setConfigurandoHorario(false)}
+          onSaved={() => {
+            setConfigurandoHorario(false);
+            exito(t('programacion.jornada.ok'));
           }}
         />
       )}
-
-      {viendoPlantillas && <TemplatesDialog onClose={() => setViendoPlantillas(false)} />}
 
       {historial !== null && (
         <AppointmentHistoryDialog appointment={historial} onClose={() => setHistorial(null)} />
