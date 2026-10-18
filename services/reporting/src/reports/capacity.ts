@@ -26,10 +26,12 @@ import {
  * Reporte de **ocupación de la agenda** (plan §13, Fase 9): cupo usado y disponible
  * por día, más las horas pico.
  *
- * El cupo es el **explícito** (`dim_day_capacity`): el que la secretaría fija a mano.
- * Cuando nadie lo ha fijado queda `null` y el día se cuenta sin cupo —la agenda lo
- * deduce de sus plantillas de franjas, pero ese dato no viaja en ningún evento y el
- * read model no lo inventa—. Los días así se avisan en las notas.
+ * El cupo es el **explícito histórico** (`dim_day_capacity`). Desde el
+ * [ADR 0070](../../../../docs/adr/0070-el-cupo-se-mide-en-franjas.md) la agenda ya no
+ * publica cupos explícitos —el cupo son las franjas de su horario—, así que los días
+ * nuevos llegan con el cupo en `null` y el read model no lo inventa: se cuentan con
+ * sus citas asignadas como suelo y se avisan en las notas. El cupo real de la agenda
+ * vive en `scheduling` y **no viaja en ningún evento**.
  *
  * «Asignadas» son las citas que **ocupan** el día (el mismo criterio que la agenda:
  * las canceladas y las reprogramadas liberan su hueco), y la ocupación es asignadas

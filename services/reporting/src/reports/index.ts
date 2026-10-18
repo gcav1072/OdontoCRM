@@ -141,10 +141,10 @@ export const buildReportSummary = async (
   const attended = dia?.attended ?? 0;
   const noShow = dia?.noShow ?? 0;
   const cancelled = dia?.cancelled ?? 0;
-  // El cupo del día: el explícito o, si nadie lo fijó a mano, las citas asignadas.
-  // El cupo efectivo de la agenda (plantilla de franjas o cupo por defecto) no viaja
-  // en ningún evento, así que sin este suelo el tablero diría «cupo 0, libres 0» en
-  // un día con pacientes citados.
+  // El cupo del día: el explícito histórico o, si no hay, las citas asignadas.
+  // Desde el ADR 0070 la agenda ya no publica cupos explícitos (el cupo son las
+  // franjas del horario) y ese dato no viaja en ningún evento, así que sin este
+  // suelo el tablero diría «cupo 0, libres 0» en un día con pacientes citados.
   const capacity = dia?.capacity ?? assigned;
 
   return {
