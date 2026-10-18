@@ -53,48 +53,120 @@ DRY_RUN="${DRY_RUN:-0}"
 
 echo
 echo "== 1/6 · Paquetes base y herramientas del sistema =========================="
+# Los paquetes de PostgreSQL NO van aquí: dependen del sabor (Fedora o PGDG) que haya
+# —o que se instale— en esta máquina (paso 2).
 sudo dnf install -y \
   git tar gzip xz zstd rsync curl ca-certificates logrotate chrony firewalld \
   policycoreutils-python-utils setools-console setroubleshoot-server audit \
-  postgresql-contrib nginx mkcert nss-tools bind-utils
+  nginx mkcert nss-tools bind-utils
 
 echo
-echo "== 2/6 · PostgreSQL 18: clúster y arranque ================================="
-if sudo test -s /var/lib/pgsql/data/PG_VERSION; then
-  echo "el clúster ya estaba inicializado"
+echo "== 2/6 · PostgreSQL 18: paquetes, clúster y arranque ======================="
+# El motor tiene DOS sabores —el mismo criterio que `infra/fedora/install.sh`— y cambian
+# los paquetes, el nombre de la unidad, los binarios y dónde viven los datos:
+#   · Fedora → `postgresql-server`/`postgresql-contrib`, `postgresql.service`,
+#     /usr/bin/*, /var/lib/pgsql/data, `postgresql-setup --initdb`
+#   · PGDG   → `postgresqlN-server`/`postgresqlN-contrib`, `postgresql-N.service`,
+#     /usr/pgsql-N/bin/*, /var/lib/pgsql/N/data, `postgresql-N-setup --initdb`
+# Si ya hay uno instalado se ADOPTA (nunca se monta un segundo motor por debajo); si no
+# hay ninguno, se instala el de Fedora.
+#
+# OJO (fallo real, prueba en limpio de 2026-10): `postgresql-contrib` NO arrastra el
+# servidor, solo el cliente (`postgresql`). En una máquina sin PostgreSQL, el paso 1
+# instalaba cliente y contrib pero NO `postgresql.service`, «el clúster ya estaba
+# inicializado» (quedaba /var/lib/pgsql/data de una instalación anterior) y el paso 3
+# moría con errores de conexión al socket que apuntaban a otra cosa. El servidor hay que
+# pedirlo EXPRESAMENTE y comprobar que la unidad existe antes de seguir.
+PG_SABOR=fedora
+PG_MAYOR=18
+for candidato in /usr/pgsql-*/bin/pg_dump; do
+  if [[ -x "$candidato" ]]; then
+    PG_SABOR=pgdg
+    PG_MAYOR="${candidato#/usr/pgsql-}"
+    PG_MAYOR="${PG_MAYOR%%/*}"
+    break
+  fi
+done
+if [[ "$PG_SABOR" == pgdg ]]; then
+  PG_UNIDAD="postgresql-${PG_MAYOR}"
+  PG_DATOS="/var/lib/pgsql/${PG_MAYOR}/data"
+  PG_BIN="/usr/pgsql-${PG_MAYOR}/bin"
+  PG_SETUP="${PG_BIN}/postgresql-${PG_MAYOR}-setup"
+  sudo dnf install -y "postgresql${PG_MAYOR}-server" "postgresql${PG_MAYOR}-contrib" ||
+    { echo "ERROR: no pude instalar postgresql${PG_MAYOR}-server (¿está el repositorio de PGDG?)" >&2; exit 1; }
 else
-  sudo postgresql-setup --initdb
+  PG_UNIDAD="postgresql"
+  PG_DATOS="/var/lib/pgsql/data"
+  PG_BIN="/usr/bin"
+  PG_SETUP="postgresql-setup"
+  sudo dnf install -y postgresql-server postgresql-contrib ||
+    { echo "ERROR: no pude instalar postgresql-server (mira el error de dnf de arriba)" >&2; exit 1; }
 fi
-sudo systemctl enable --now postgresql
-sudo systemctl status postgresql --no-pager | head -6
+PG_PSQL="${PG_BIN}/psql"
+PG_CREATEUSER="${PG_BIN}/createuser"
+PG_ISREADY="${PG_BIN}/pg_isready"
+echo "  sabor $PG_SABOR · unidad ${PG_UNIDAD}.service · datos en $PG_DATOS"
+
+if sudo test -s "$PG_DATOS/PG_VERSION"; then
+  echo "  el clúster ya estaba inicializado"
+else
+  sudo "$PG_SETUP" --initdb ||
+    { echo "ERROR: no pude inicializar el clúster ($PG_SETUP --initdb): mira el error de arriba" >&2; exit 1; }
+fi
+if ! sudo systemctl enable --now "$PG_UNIDAD"; then
+  echo "ERROR: no pude arrancar ${PG_UNIDAD}.service. Mira por qué:" >&2
+  echo "      sudo journalctl -u $PG_UNIDAD -n 20 --no-pager" >&2
+  exit 1
+fi
+# Espera ACTIVA: el motor tarda unos segundos en abrir el socket. Sin esto, el paso 3
+# muere con «No existe el fichero o el directorio» del socket y parece otra cosa.
+# Se comprueba por el socket como usuario `postgres` (peer): `pg_isready` por TCP diría
+# «rejecting» mientras el `pg_hba` siga en `ident` (aún no está en scram) y mentiría.
+# Se prueban los dos sockets posibles: Fedora y PGDG no compilan el mismo socket por omisión.
+pg_listo() {
+  sudo -u postgres "$PG_ISREADY" -q -h /var/run/postgresql 2>/dev/null ||
+    sudo -u postgres "$PG_ISREADY" -q 2>/dev/null
+}
+listo=""
+for _ in $(seq 1 30); do
+  if pg_listo; then listo=1; break; fi
+  sleep 1
+done
+if [[ -z "$listo" ]]; then
+  echo "ERROR: $PG_UNIDAD está «activo» pero PostgreSQL no responde tras 30 s. Mira:" >&2
+  echo "      sudo journalctl -u $PG_UNIDAD -n 20 --no-pager" >&2
+  exit 1
+fi
+echo "  PostgreSQL responde por el socket"
+sudo systemctl status "$PG_UNIDAD" --no-pager | head -6 || true
 
 echo
 echo "== 3/6 · Rol superusuario para tu usuario (peer por socket) ================"
 # OJO: dentro de un script con sudo, $USER es root. El rol hay que crearlo para el
 # usuario de verdad, que es el que abre la sesión (SUDO_USER).
 USUARIO_REAL="${SUDO_USER:-$USER}"
-if sudo -u postgres psql -tAc "select 1 from pg_roles where rolname = '$USUARIO_REAL'" | grep -q 1; then
+if sudo -u postgres "$PG_PSQL" -tAc "select 1 from pg_roles where rolname = '$USUARIO_REAL'" | grep -q 1; then
   echo "el rol $USUARIO_REAL ya existía"
-elif sudo -u postgres createuser --superuser "$USUARIO_REAL"; then
+elif sudo -u postgres "$PG_CREATEUSER" --superuser "$USUARIO_REAL"; then
   echo "rol $USUARIO_REAL creado (superusuario por socket)"
 else
   echo "ERROR: no pude crear el rol $USUARIO_REAL. Comprueba que PostgreSQL está arrancado" >&2
-  echo "       y que puedes entrar como el usuario postgres (sudo -u postgres psql)." >&2
+  echo "       y que puedes entrar como el usuario postgres (sudo -u postgres $PG_PSQL)." >&2
   exit 1
 fi
 # Y también para root: en el despliegue el bootstrap y las migraciones se ejecutan con
 # `sudo` (el código de /opt pertenece a root), y con autenticación `peer` el usuario del
 # sistema tiene que tener su propio rol. Sin esto, `sudo npm run db:bootstrap` falla en
 # una máquina recién preparada con «Peer authentication failed for user "root"».
-sudo -u postgres psql -tAc "select 1 from pg_roles where rolname = 'root'" | grep -q 1 ||
-  sudo -u postgres createuser --superuser root ||
+sudo -u postgres "$PG_PSQL" -tAc "select 1 from pg_roles where rolname = 'root'" | grep -q 1 ||
+  sudo -u postgres "$PG_CREATEUSER" --superuser root ||
   { echo "ERROR: no pude crear el rol root (lo necesita el bootstrap cuando se ejecuta con sudo)" >&2; exit 1; }
 echo "  roles superusuario por socket: $USUARIO_REAL y root (peer)"
 # La comprobación va COMO ESE USUARIO, no como root: la autenticación `peer` compara el
 # usuario del sistema que conecta con el rol pedido, así que desde root falla con
 # «Peer authentication failed» aunque el rol exista. (Se veía ese error en cada corrida
 # y no significaba que el rol faltara.)
-sudo -u "$USUARIO_REAL" psql -h /var/run/postgresql -d postgres -tAc 'select version();' |
+sudo -u "$USUARIO_REAL" "$PG_PSQL" -h /var/run/postgresql -d postgres -tAc 'select version();' |
   head -1 | sed 's/^/  /' ||
   echo "  (aviso) no pude comprobar la conexión como $USUARIO_REAL; el rol está creado igual"
 
@@ -106,9 +178,9 @@ echo "== 3-bis/6 · pg_hba.conf: TCP con contraseña (scram-sha-256) ===========
 # 127.0.0.1 con su contraseña— fallan con «Peer authentication failed» y systemd los
 # reintenta en bucle. Se cambia SOLO eso: el socket local conserva `peer`, que es lo que
 # permite administrar sin contraseñas guardadas.
-PG_HBA="$(sudo -u postgres psql -tAc 'show hba_file' 2>/dev/null || echo /var/lib/pgsql/data/pg_hba.conf)"
+PG_HBA="$(sudo -u postgres "$PG_PSQL" -tAc 'show hba_file' 2>/dev/null || echo "$PG_DATOS/pg_hba.conf")"
 if [[ -f "$PG_HBA" ]]; then
-  metodos="$(sudo -u postgres psql -tAc \
+  metodos="$(sudo -u postgres "$PG_PSQL" -tAc \
     "select coalesce(string_agg(distinct auth_method, ','), '?') from pg_hba_file_rules where type = 'host'" 2>/dev/null || echo '?')"
   if (( DRY_RUN )); then
     echo "  [dry-run] $PG_HBA: sed host 127.0.0.1/32 y ::1/128 → scram-sha-256  (hoy: $metodos)"
@@ -118,8 +190,8 @@ if [[ -f "$PG_HBA" ]]; then
     # separador de `s///` — `sed` lo interpreta como fin de la orden y falla con «opción
     # desconocida para `s'». Se usa `#`, que no aparece en el patrón.
     sed -i -E 's#^(host[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+(127\.0\.0\.1/32|::1/128)[[:space:]]+)(ident|trust)#\1scram-sha-256#' "$PG_HBA"
-    systemctl reload postgresql
-    nuevos="$(sudo -u postgres psql -tAc \
+    systemctl reload "$PG_UNIDAD"
+    nuevos="$(sudo -u postgres "$PG_PSQL" -tAc \
       "select coalesce(string_agg(distinct auth_method, ','), '?') from pg_hba_file_rules where type = 'host' and address in ('127.0.0.1/32', '::1/128')" 2>/dev/null)"
     if [[ "$nuevos" == *scram-sha-256* ]]; then
       echo "  TCP con contraseña: $metodos → $nuevos (copia previa: ${PG_HBA}.antes-de-odontocrm)"
@@ -128,7 +200,7 @@ if [[ -f "$PG_HBA" ]]; then
       echo "    entrar (arrancan en bucle con «Peer authentication failed»). Hazlo a mano:" >&2
       echo "      sudo cp -a $PG_HBA $PG_HBA.antes-de-odontocrm" >&2
       echo "      sudo sed -i -E 's#^(host[[:space:]]+.*(127\.0\.0\.1/32|::1/128)[[:space:]]+)ident#\1scram-sha-256#' $PG_HBA" >&2
-      echo "      sudo systemctl reload postgresql && sudo bash $0   # y repite" >&2
+      echo "      sudo systemctl reload $PG_UNIDAD && sudo bash $0   # y repite" >&2
       echo "    (Detalle en INSTALL.md §6.3.)" >&2
       exit 1
     fi
@@ -238,4 +310,4 @@ echo "nginx:     $(nginx -v 2>&1)"
 echo "mkcert:    $(mkcert -version 2>&1)"
 echo "selinux:   $(getenforce 2>&1)"
 echo "firewalld: $(systemctl is-active firewalld 2>&1)"
-echo "postgres:  $(systemctl is-active postgresql 2>&1)"
+echo "postgres:  $(systemctl is-active "$PG_UNIDAD" 2>&1)"

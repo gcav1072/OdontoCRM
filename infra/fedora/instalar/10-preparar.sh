@@ -112,14 +112,24 @@ crear_dir "$ETC_DIR/keys" 0750 "root:$SERVICE_GROUP"
 # ── 4. Comprobar que PostgreSQL responde ────────────────────────────────────
 # Sin esto, la pieza 2 falla con un error de conexión que parece otra cosa.
 paso 'Comprobar PostgreSQL'
+# La unidad depende del sabor del motor (Fedora `postgresql.service` · PGDG
+# `postgresql-N.service`): el mismo criterio que instalar-base-fedora.sh e install.sh.
+PG_UNIDAD=postgresql
+for candidato in /usr/pgsql-*/bin/pg_dump; do
+  if [[ -x "$candidato" ]]; then
+    n="${candidato#/usr/pgsql-}"; n="${n%%/*}"
+    PG_UNIDAD="postgresql-${n}"
+    break
+  fi
+done
 if (( DRY_RUN )); then
-  detalle '[dry-run] systemctl is-active postgresql'
-elif systemctl is-active --quiet postgresql; then
-  ok 'PostgreSQL está arrancado'
-elif systemctl enable --now postgresql >/dev/null 2>&1; then
-  ok 'PostgreSQL arrancado y habilitado al inicio'
+  detalle "[dry-run] systemctl is-active $PG_UNIDAD"
+elif systemctl is-active --quiet "$PG_UNIDAD"; then
+  ok "PostgreSQL está arrancado ($PG_UNIDAD)"
+elif systemctl enable --now "$PG_UNIDAD" >/dev/null 2>&1; then
+  ok "PostgreSQL arrancado y habilitado al inicio ($PG_UNIDAD)"
 else
-  morir 'PostgreSQL no arranca: mira «systemctl status postgresql» y «journalctl -u postgresql»'
+  morir "PostgreSQL no arranca: mira «systemctl status $PG_UNIDAD» y «journalctl -u $PG_UNIDAD»"
 fi
 
 if command -v psql >/dev/null 2>&1; then
