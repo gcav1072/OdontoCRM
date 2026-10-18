@@ -4,6 +4,56 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Corrida QA] — el consultorio se entera de la historia, el IGTF se guarda y el monto autocompletado se puede leer · 2026-10-18
+
+Primera pasada completa de los bloques `PRE`, `E2E`, `ID` y `CFG` del
+[plan de pruebas manuales](docs/plan_de_pruebas_manuales_e2e_odontocrm.md) sobre una instalación
+Fedora. Salieron tres cosas, y las tres tenían causa concreta.
+
+La primera se vio en `E2E-04`: con la pantalla del consultorio abierta en otra pestaña, se llenó la
+historia clínica con una alergia crítica y se firmó, y la pantalla siguió diciendo que no había datos
+críticos hasta pulsar F5. Son dos capas: `services/screens` solo recalculaba la sala con eventos de
+**agenda** —los `clinical.record.*` se ignoraban, así que no había trama SSE— y, además, el respaldo
+por HTTP de 20 s no llevaba `refetchIntervalInBackground`, y React Query lo pausa en pestañas
+ocultas, que es como vive una TV de consultorio. Ahora un lote clínico del paciente que está **en
+pantalla** reparte el estado completo del consultorio (las alertas se leen en vivo, así que la alergia
+recién escrita viaja en esa misma trama) y el respaldo late aunque la pestaña esté de fondo. La
+adenda publica el perfil clínico para que también cuente.
+
+La segunda fue `CFG-04`: activar *Sujeto Pasivo Especial* en `/configuracion` devolvía 500 y no
+guardaba nada. El log de billing lo dijo sin rodeos —`ZodError: Invalid UUID` en `aggregateId`,
+lanzado por `toOutboxInsert` dentro de la transacción—: `billing_settings` es una fila única con `id`
+entero y el sobre del evento (y la auditoría) exigen UUID, así que la transacción revertía el cambio
+entero y, de paso, el cambio fiscal nunca habría llegado a `/auditoria`. El identificador ahora sale
+de `stableUuid`, el UUID v5 determinista que ya usaba la agenda para el cupo del día; se movió a
+`packages/kernel` para que haya una sola implementación. El `PATCH` del oficio también se arregló:
+`optionalText` transformaba el vacío a `null` pero su salida no era opcional, así que un cliente que
+no mandaba el oficio lo borraba.
+
+La tercera, `E2E-06`, parecía coma flotante y no lo era: los cobros en bolívares a la misma tasa
+dejaban un diferencial de céntimos porque el monto se había tecleado a mano, y se tecleaba a mano
+porque `parseUsdToCents` **rechazaba** el texto que la propia pantalla autocompleta (`formatBs`
+escribe en `es-VE`: «6.000,00»). El diferencial de céntimos era la absorción de redondeo que ya
+contempla el ADR 0069. El parser acepta ahora el separador de miles en las dos convenciones y sigue
+rechazando lo que no es un importe.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `packages/kernel/src/stable-uuid.ts` | Nuevo: `stableUuid(key)` (UUID v5 determinista) con su prueba; única implementación para los agregados sin id propio |
+| `services/scheduling/src/shared/ids.ts` | Reexporta `stableUuid` del kernel; `dayCapacityId` no cambia |
+| `services/billing/src/billing/settings-service.ts` | El evento y la auditoría de la configuración usan un UUID estable (`billing_settings:1`) en vez del `id` entero |
+| `packages/contracts/src/domain/billing.ts` | `updateBillingSettingsSchema.speReference` opcional de verdad: ausente ya no borra el oficio |
+| `services/billing/src/settings.integration.test.ts` | Nuevo: el `PATCH` persiste, publica un sobre y una auditoría válidos y es parcial |
+| `services/screens/src/sala/clinical-refresh.ts` | Nuevo: republica el consultorio cuando la historia del paciente en pantalla cambia |
+| `services/screens/src/consumer.ts` | Temas clínicos del consultorio y el paciente del evento (`payload.profile.patientId`) |
+| `services/screens/src/sala/estado-service.ts` | `hasPatientOnConsultorioScreen`: quién está llamado o en consulta, sin haber salido |
+| `services/screens/src/index.ts` | Engancha el refresco clínico al lote de eventos |
+| `services/clinical/src/clinical/record-service.ts` | La adenda publica el perfil clínico (sus alertas cuentan para la pantalla) |
+| `services/screens/src/screens.integration.test.ts` | La historia del paciente en el sillón republica; la de otro paciente o la de quien ya salió, no |
+| `apps/web/src/components/screens/useKioskState.ts` | `refetchIntervalInBackground`: el respaldo no se pausa con la pestaña oculta |
+| `apps/web/src/lib/caja.ts` | `parseUsdToCents` acepta el separador de miles (`1.234,56`, `1,234.56`, `6.000`) |
+| `docs/plan_de_pruebas_manuales_e2e_odontocrm.md` | Registro de la corrida: resultados por bloque, los tres hallazgos y cómo re-probarlos |
+
 ## [Respaldo] — «Completado sin errores» sin volcar nada, y el simulacro se salta sin PG_ADMIN_URL · 2026-10-17
 
 Revisando los registros de la instalación de Windows aparecieron dos cosas que no se podían

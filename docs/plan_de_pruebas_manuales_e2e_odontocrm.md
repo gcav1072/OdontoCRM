@@ -9,11 +9,11 @@
 
 Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los siguientes puntos en la terminal del entorno:
 
-- [ ] **PRE-01 — Estado de los servicios:** Ejecutar `node tools/estado.mjs` (o verificar en `SystemHealthPanel`) y comprobar que el `gateway` y los $9$ microservicios (`identity`, `patients`, `scheduling`, `clinical`, `odontogram`, `notifications`, `screens`, `billing`, `reporting`) respondan en estado saludable (`OK`).
-- [ ] **PRE-02 — Migraciones al día:** Ejecutar `node tools/verify-migrations.mjs` para confirmar que todas las bases de datos PostgreSQL por servicio tienen los esquemas de Drizzle sincronizados.
-- [ ] **PRE-03 — Verificación de entorno y secretos:** Ejecutar `node tools/env-check.mjs` y `node tools/audit-conexiones.mjs` sin errores.
-- [ ] **PRE-04 — Semilla de datos (Opcional para entorno limpio):** Si se prueba sobre una base limpia, ejecutar `node tools/db-reset.mjs` y `node tools/seed-test.mjs` seguidos de `node tools/seed-verify.mjs` (ADR `0042`).
-- [ ] **PRE-05 — Identificación de Modo Test:** Verificar en la interfaz si aparece el banner superior de **Modo Test** (`TestModeBanner.tsx`, ADR `0020`), el cual intercepta los envíos reales de Telegram/WhatsApp hacia el adaptador simulado (`canales/simulado.ts`).
+- [x] **PRE-01 — Estado de los servicios:** Ejecutar `node tools/estado.mjs` (o verificar en `SystemHealthPanel`) y comprobar que el `gateway` y los $9$ microservicios (`identity`, `patients`, `scheduling`, `clinical`, `odontogram`, `notifications`, `screens`, `billing`, `reporting`) respondan en estado saludable (`OK`).
+- [x] **PRE-02 — Migraciones al día:** Ejecutar `node tools/verify-migrations.mjs` para confirmar que todas las bases de datos PostgreSQL por servicio tienen los esquemas de Drizzle sincronizados.
+- [x] **PRE-03 — Verificación de entorno y secretos:** Ejecutar `node tools/env-check.mjs` y `node tools/audit-conexiones.mjs` sin errores.
+- [x] **PRE-04 — Semilla de datos (Opcional para entorno limpio):** Si se prueba sobre una base limpia, ejecutar `node tools/db-reset.mjs` y `node tools/seed-test.mjs` seguidos de `node tools/seed-verify.mjs` (ADR `0042`).
+- [x] **PRE-05 — Identificación de Modo Test:** Verificar en la interfaz si aparece el banner superior de **Modo Test** (`TestModeBanner.tsx`, ADR `0020`), el cual intercepta los envíos reales de Telegram/WhatsApp hacia el adaptador simulado (`canales/simulado.ts`).
 
 ---
 
@@ -23,33 +23,33 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 
 ### Caso `E2E-01` al `E2E-07`: De la Solicitud de Cita al Cierre Contable y Auditoría
 
-- [ ] **Paso 1 (`E2E-01` — Captación y Solicitud):**
+- [x] **Paso 1 (`E2E-01` — Captación y Solicitud):**
   - Registrar un paciente nuevo en `/pacientes/nuevo` (`PatientRegistryPage.tsx`).
   - Crear una solicitud de cita para ese paciente desde `NewRequestDialog.tsx` (o mediante el bot conversacional en `services/notifications`).
   - **Resultado esperado:** El paciente existe en `services/patients` y su solicitud aparece como pendiente en `RequestQueuePanel.tsx` (`services/scheduling`).
-- [ ] **Paso 2 (`E2E-02` — Asignación de Sillón, Ticket y Notificación `.ics`):**
+- [x] **Paso 2 (`E2E-02` — Asignación de Sillón, Ticket y Notificación `.ics`):**
   - Desde `SchedulingPage.tsx`, tomar la solicitud de la cola y abrir `AssignAppointmentDialog.tsx`.
   - Seleccionar un sillón activo y una franja horaria disponible en `SlotGrid.tsx`.
   - **Resultado esperado:** Se crea la cita con un **ticket consecutivo** del día (ADR `0011`), se descuenta $1$ cupo en `DayCapacityCard.tsx` y se encola una notificación de cita agendada con archivo de calendario `.ics` adjunto (`messaging.ics.test.ts`).
-- [ ] **Paso 3 (`E2E-03` — Confirmación de Asistencia por el Paciente):**
+- [x] **Paso 3 (`E2E-03` — Confirmación de Asistencia por el Paciente):**
   - Desde el canal del bot (o simulador en Modo Test), enviar la respuesta de confirmación de cita del paciente (ADR `0052`).
   - **Resultado esperado:** El estado de la cita cambia automáticamente a **Confirmada** en `DayAppointmentsTable.tsx` y `SecretariaAppointmentsTable.tsx` vía sincronización en tiempo real (`RealtimeSyncProvider.tsx`).
-- [ ] **Paso 4 (`E2E-04` — Recepción, Llamado y Pantallas Kiosko SSE):**
+- [x] **Paso 4 (`E2E-04` — Recepción, Llamado y Pantallas Kiosko SSE):**
   - Abrir en dos pestañas adicionales las pantallas Kiosko: `/pantalla/sala` (`ScreenLobbyPage.tsx`) y `/pantalla/consultorio` (`ScreenConsultorioPage.tsx`).
   - En `SecretariaPage.tsx`, marcar la llegada del paciente y luego accionar **Llamar a consultorio**.
   - **Resultado esperado:** La pantalla de Sala anuncia el ticket/nombre mediante síntesis de voz (`kiosk-speech.ts`) vía SSE (ADR `0030`), y la pantalla de Consultorio muestra al paciente junto con sus alertas médicas críticas (`CriticalFlagsCard.tsx`, ADR `0035`).
-- [ ] **Paso 5 (`E2E-05` — Atención Clínica, Odontograma, Récipe y Cierre de Sesión):**
+- [x] **Paso 5 (`E2E-05` — Atención Clínica, Odontograma, Récipe y Cierre de Sesión):**
   - Con sesión de Odontólogo en `ConsultorioPage.tsx` / `PatientDetailPage.tsx`, abrir el `PatientWorkspace.tsx`.
   - Llenar la historia clínica (`MedicalRecordForm.tsx`) incluyendo una alerta crítica (ej. alergia a AINEs), registrar el consentimiento (`ConsentDialog.tsx`) y firmar la historia (`SignRecordDialog.tsx`, ADR `0016`).
   - En `OdontogramPanel.tsx`, registrar hallazgos por cara y de pieza completa, además de una prótesis (`ProsthesisDialog.tsx`).
   - En `SessionPanel.tsx`, documentar la evolución de la sesión, emitir un récipe PDF (`PrescriptionDialog.tsx`) y cerrar la sesión (`CloseSessionDialog.tsx`) agendando el próximo control (`ScheduleNextAppointmentDialog.tsx`).
   - **Resultado esperado:** Historia firmada e inmutable; odontograma versionado; récipe PDF en dos mitades archivado con código QR verificable; sesión cerrada y cita pasada a estado **Atendida**.
-- [ ] **Paso 6 (`E2E-06` — Caja, Tasa BCV, Cobro con Fecha Valor, Diferencial e IGTF y Facturación):**
+- [x] **Paso 6 (`E2E-06` — Caja, Tasa BCV, Cobro con Fecha Valor, Diferencial e IGTF y Facturación):**
   - Ir a `CajaPage.tsx`, verificar o fijar la tasa del día (`TasaDelDia.tsx`, ADR `0046`).
   - Abrir `CobroDialog.tsx` para el paciente atendido, agregar partidas del catálogo y $1$ partida manual a mano (ADR `0067`).
   - Declarar la **Fecha Valor** del cobro (la del comprobante bancario) y registrar un pago mixto (parte en Bolívares y parte en USD efectivo); emitir la factura.
   - **Resultado esperado:** El recibo desglosa lo recibido, lo imputado a la tasa de emisión y el **diferencial cambiario**, valora el cobro con la tasa de su **Fecha Valor** y calcula el **IGTF** según la alícuota configurada y la moneda de percepción declarada (ADR `0045`, `0069`); se genera y archiva el PDF (`0048`) y se registra en el Libro de Ventas.
-- [ ] **Paso 7 (`E2E-07` — Refresco de Reportes y Trazabilidad en Auditoría):**
+- [x] **Paso 7 (`E2E-07` — Refresco de Reportes y Trazabilidad en Auditoría):**
   - Ir a `ReportesPage.tsx`, ejecutar el refresco del modelo de lectura (ADR `0040`) y revisar las pestañas de KPIs.
   - Ir a `AuditoriaPage.tsx` y filtrar los eventos del día.
   - **Resultado esperado:** Los reportes reflejan la nueva cita atendida, los hallazgos de salud bucal y el récipe emitido; la tabla de auditoría muestra todos los eventos con sus resúmenes y diferencias (`AuditDiffDialog.tsx`).
@@ -65,42 +65,42 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `ID-01` — Inicio de sesión válido, inválido y bloqueo de usuario inactivo
 - **Rutas / Componentes:** `LoginPage.tsx`, `PasswordInput.tsx`, `auth-routes.ts` (ADR `0005`, `0023`).
 - **Pasos de prueba:**
-  - [ ] Intentar iniciar sesión con un correo inexistente y luego con una contraseña errónea.
-  - [ ] Desactivar un usuario de prueba desde una cuenta administradora (`UserStatusDialog.tsx`) e intentar iniciar sesión con dicho usuario.
-  - [ ] Iniciar sesión con credenciales válidas de un usuario activo.
+  - [x] Intentar iniciar sesión con un correo inexistente y luego con una contraseña errónea.
+  - [x] Desactivar un usuario de prueba desde una cuenta administradora (`UserStatusDialog.tsx`) e intentar iniciar sesión con dicho usuario.
+  - [x] Iniciar sesión con credenciales válidas de un usuario activo.
 - **Resultado esperado:** Mensajes de error claros en español sin filtrar detalles internos del servidor; bloqueo total de acceso a usuarios inactivos; inicio de sesión exitoso y persistencia de sesión segura para el usuario activo.
 
 #### `ID-02` — Compuerta obligatoria de cambio de contraseña (`MustChangePasswordGate`)
 - **Rutas / Componentes:** `CreateUserDialog.tsx`, `ResetPasswordDialog.tsx`, `TemporaryPasswordDialog.tsx`, `MustChangePasswordGate.tsx`, `ChangePasswordPage.tsx`.
 - **Pasos de prueba:**
-  - [ ] Como Administrador en `UsersPage.tsx`, crear un usuario nuevo o restablecer la contraseña de uno existente y copiar la clave temporal mostrada en `TemporaryPasswordDialog.tsx`.
-  - [ ] Iniciar sesión con ese usuario usando la clave temporal.
-  - [ ] Intentar navegar forzosamente escribiendo en la barra de direcciones `/pacientes`, `/agenda` o `/caja`.
-  - [ ] Completar el cambio de contraseña en `ChangePasswordPage.tsx`.
+  - [x] Como Administrador en `UsersPage.tsx`, crear un usuario nuevo o restablecer la contraseña de uno existente y copiar la clave temporal mostrada en `TemporaryPasswordDialog.tsx`.
+  - [x] Iniciar sesión con ese usuario usando la clave temporal.
+  - [x] Intentar navegar forzosamente escribiendo en la barra de direcciones `/pacientes`, `/agenda` o `/caja`.
+  - [x] Completar el cambio de contraseña en `ChangePasswordPage.tsx`.
 - **Resultado esperado:** Mientras la marca de cambio obligatorio esté activa, `MustChangePasswordGate` intercepta cualquier ruta y redirige a `/cambiar-contrasena`. Una vez cambiada, libera el acceso normal.
 
 #### `ID-03` — Compuerta de perfil profesional incompleto (`NeedsProfileGate`)
 - **Rutas / Componentes:** `NeedsProfileGate.tsx`, `CompleteProfilePage.tsx`, `EditUserProfileSection.tsx` (ADR `0061`).
 - **Pasos de prueba:**
-  - [ ] Crear un usuario con rol de **Odontólogo** sin completar sus datos de perfil profesional (especialidad, número de colegio/registro sanitario).
-  - [ ] Iniciar sesión con dicho odontólogo y cambiar su contraseña temporal.
-  - [ ] Intentar acceder al consultorio sin llenar el perfil.
-  - [ ] Completar los datos requeridos en `CompleteProfilePage.tsx`.
+  - [x] Crear un usuario con rol de **Odontólogo** sin completar sus datos de perfil profesional (especialidad, número de colegio/registro sanitario).
+  - [x] Iniciar sesión con dicho odontólogo y cambiar su contraseña temporal.
+  - [x] Intentar acceder al consultorio sin llenar el perfil.
+  - [x] Completar los datos requeridos en `CompleteProfilePage.tsx`.
 - **Resultado esperado:** El sistema exige completar el perfil profesional antes de operar, garantizando que el membrete de récipes e historias siempre cuente con los datos del especialista.
 
 #### `ID-04` — Control de acceso por rol y permisos granulares (RBAC)
 - **Rutas / Componentes:** `RequirePermission.tsx`, `Sidebar.tsx`, `MobileNav.tsx`, `ForbiddenPage.tsx`, `admin-guard.ts` (ADR `0005`, `0038`, `0039`).
 - **Pasos de prueba:**
-  - [ ] Iniciar sesión con rol **Secretaría** y verificar qué elementos aparecen en el menú lateral (`Sidebar.tsx`).
-  - [ ] Escribir manualmente en el navegador la ruta `/usuarios`, `/auditoria` y `/configuracion`.
-  - [ ] Intentar consultar la pestaña de reportes clínicos sin el permiso específico (ADR `0039`).
+  - [x] Iniciar sesión con rol **Secretaría** y verificar qué elementos aparecen en el menú lateral (`Sidebar.tsx`).
+  - [x] Escribir manualmente en el navegador la ruta `/usuarios`, `/auditoria` y `/configuracion`.
+  - [x] Intentar consultar la pestaña de reportes clínicos sin el permiso específico (ADR `0039`).
 - **Resultado esperado:** El menú oculta los módulos no autorizados; el acceso directo por URL muestra `ForbiddenPage.tsx` (HTTP $403$ en el Gateway).
 
 #### `ID-05` — Regla "Un odontólogo, un sillón"
 - **Rutas / Componentes:** `CreateUserDialog.tsx`, `EditUserDialog.tsx`, `chair-service.ts` (ADR `0006`, `0059`).
 - **Pasos de prueba:**
-  - [ ] Verificar la asignación de sillón al crear o editar un usuario con rol Odontólogo.
-  - [ ] Comprobar cómo se refleja ese sillón como recurso en `SchedulingPage.tsx` y `FlujoPage.tsx`.
+  - [x] Verificar la asignación de sillón al crear o editar un usuario con rol Odontólogo.
+  - [x] Comprobar cómo se refleja ese sillón como recurso en `SchedulingPage.tsx` y `FlujoPage.tsx`.
 - **Resultado esperado:** Cada odontólogo opera sobre su sillón asignado y el sillón actúa como el recurso primario de la agenda.
 
 ---
@@ -110,22 +110,22 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `CFG-01` — Identidad del consultorio en base de datos
 - **Rutas / Componentes:** `MarcaSection.tsx`, `ClinicIdentityProvider.tsx` (ADR `0056`, `0058`).
 - **Pasos de prueba:**
-  - [ ] Ir a `/configuracion` (`ConfiguracionPage.tsx`) y modificar el nombre comercial del consultorio, razón social, RIF, dirección, teléfono y logo.
-  - [ ] Guardar los cambios y recargar la aplicación.
+  - [x] Ir a `/configuracion` (`ConfiguracionPage.tsx`) y modificar el nombre comercial del consultorio, razón social, RIF, dirección, teléfono y logo.
+  - [x] Guardar los cambios y recargar la aplicación.
 - **Resultado esperado:** La nueva identidad persiste en la base de datos (`services/identity`), se actualiza en `AppHeader.tsx`, `MarcaTile.tsx` y en el encabezado de todos los documentos imprimibles sin tocar el código fuente.
 
 #### `CFG-02` — Selector de acento, tema visual y tipografías por rol
 - **Rutas / Componentes:** `AcentoSection.tsx`, `AccentPicker.tsx`, `ThemeSelector.tsx`, `RolTipografico.tsx` (ADR `0055`, `0063`).
 - **Pasos de prueba:**
-  - [ ] Cambiar el color de acento en `AccentPicker.tsx` y alternar entre modo claro y oscuro en `ThemeSelector.tsx`.
-  - [ ] En `RolTipografico.tsx`, cambiar la fuente de títulos/marca (ej. *Poppins*, *Montserrat*, *Dancing Script*, *Lobster*, *Pacifico*) y la fuente de cuerpo (ej. *Inter*).
+  - [x] Cambiar el color de acento en `AccentPicker.tsx` y alternar entre modo claro y oscuro en `ThemeSelector.tsx`.
+  - [x] En `RolTipografico.tsx`, cambiar la fuente de títulos/marca (ej. *Poppins*, *Montserrat*, *Dancing Script*, *Lobster*, *Pacifico*) y la fuente de cuerpo (ej. *Inter*).
 - **Resultado esperado:** Los tokens CSS (`tokens.css`) se actualizan al instante en toda la interfaz y los documentos imprimibles combinan únicamente las $2$ tipografías configuradas (ADR `0055`).
 
 #### `CFG-03` — Membrete configurable en caliente y tamaño de papel del récipe
 - **Rutas / Componentes:** `MembreteSection.tsx`, `MembreteDocumento.tsx`, `MargenDeImpresion.tsx`, `MarcaDeAgua.tsx` (ADR `0054`, `0064`, `0065`).
 - **Pasos de prueba:**
-  - [ ] Modificar la configuración del membrete (visibilidad de elementos, alineación, marca de agua, márgenes) y seleccionar el formato de papel del récipe (`0007_papel_del_recipe.sql`).
-  - [ ] Sin reiniciar ningún servicio, abrir la impresión de una Historia Clínica (`MedicalRecordPrintPage.tsx`), un Odontograma (`OdontogramPrintPage.tsx`) y generar un Récipe PDF.
+  - [x] Modificar la configuración del membrete (visibilidad de elementos, alineación, marca de agua, márgenes) y seleccionar el formato de papel del récipe (`0007_papel_del_recipe.sql`).
+  - [x] Sin reiniciar ningún servicio, abrir la impresión de una Historia Clínica (`MedicalRecordPrintPage.tsx`), un Odontograma (`OdontogramPrintPage.tsx`) y generar un Récipe PDF.
 - **Resultado esperado:** Los cambios de membrete se aplican en caliente en todos los imprimibles y el récipe se ajusta a las dimensiones del papel de la clínica.
 
 #### `CFG-04` — Régimen tributario de la caja (Sujeto Pasivo Especial y alícuota del IGTF)
@@ -497,10 +497,10 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 
 | ID Bloque | Módulo / Alcance | Total Casos | Aprobados (`PASS`) | Fallidos (`FAIL`) | Bloqueados (`BLOCKED`) | Responsable QA | Fecha |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- | :--- |
-| `PRE` | Pre-Flight y Entorno | $5$ | | | | | |
-| `E2E` | Ciclo de Vida Completo | $7$ | | | | | |
-| `ID` | Identidad, Auth y RBAC | $5$ | | | | | |
-| `CFG` | Configuración y Membrete | $4$ | | | | | |
+| `PRE` | Pre-Flight y Entorno | $5$ | $5$ | $0$ | $0$ | | 2026-10-18 |
+| `E2E` | Ciclo de Vida Completo | $7$ | $6$ | $1$ | $0$ | | 2026-10-18 |
+| `ID` | Identidad, Auth y RBAC | $5$ | $5$ | $0$ | $0$ | | 2026-10-18 |
+| `CFG` | Configuración y Membrete | $4$ | $3$ | $1$ | $0$ | | 2026-10-18 |
 | `PAC` | Pacientes y Adjuntos Cifrados | $4$ | | | | | |
 | `AGE` | Agenda, Cupos y Tickets | $4$ | | | | | |
 | `SEC` | Secretaría y Flujo Diario | $2$ | | | | | |
@@ -510,3 +510,91 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 | `NOT` | Bot, Canales y Cancelaciones | $4$ | | | | | |
 | `CAJ` | Caja, BCV, Diferencial, IVA/IGTF y Libros | $11$ | | | | | |
 | `REP/AUD/SYS` | Reportes, Auditoría y Backups | $3$ | | | | | |
+
+---
+
+## 5. Registro de la corrida (2026-10-18)
+
+Primera pasada completa de los bloques `PRE`, `E2E`, `ID` y `CFG` sobre una instalación Fedora de
+pruebas (los $9$ microservicios más el gateway en pie). Los tres fallos de abajo **ya están
+corregidos** en el árbol; quedan por re-ejecutar los tres casos para firmar el bloque.
+
+| Bloque | Casos | Resultado | Observación |
+| :--- | :---: | :--- | :--- |
+| `PRE` | $5$ | $5$ PASS | Servicios, migraciones, entorno, semilla y banner de Modo Test correctos. |
+| `E2E` | $7$ | $6$ PASS · $1$ FAIL | `E2E-04`: la pantalla del consultorio no se enteró del alta y firma de la historia. |
+| `ID` | $5$ | $5$ PASS | El usuario desactivado en `ID-01` se volvió a activar al terminar la prueba. |
+| `CFG` | $4$ | $3$ PASS · $1$ FAIL | `CFG-04`: el interruptor del IGTF devolvía **500** y no guardaba. |
+
+### 5.1 `E2E-04` — la pantalla del consultorio no se refrescaba al firmar la historia
+
+- **Síntoma.** Con la pantalla del consultorio abierta en otra pestaña, se registró la historia
+  clínica con una alergia crítica y se firmó; la pantalla siguió mostrando «sin datos críticos»
+  hasta pulsar **F5**. Las dos precisiones que cerraron el diagnóstico: la pestaña estaba **en
+  segundo plano** y el paciente estaba **en consulta** (no solo llamado) en ese sillón.
+- **Causa.** Dos capas, las dos necesarias:
+  1. `services/screens` solo recalculaba y repartía estado cuando aplicaba un evento de **agenda**.
+     Los eventos `clinical.record.*` se ignoraban, así que no salía ninguna trama SSE.
+  2. El respaldo por HTTP (`useKioskState`, cada `SCREEN_REFRESH_MS` = 20 s) no llevaba
+     `refetchIntervalInBackground`: React Query **pausa** el intervalo cuando el documento no está
+     visible, que es justo como vive una pantalla de consultorio.
+- **Arreglo.**
+  - `services/screens/src/sala/clinical-refresh.ts` (nuevo) decide si el lote toca a un paciente que
+    está **en pantalla** (`llamado` o `en_consulta`, sin `left_at`); si sí, republica el estado
+    **completo** del consultorio. Las alertas se leen en vivo (`alertLookup`), así que la alergia
+    recién escrita viaja en la misma trama.
+  - Temas que cuentan: `clinical.record.created`, `.updated`, `.signed` y `.amended`; el paciente
+    sale de `payload.profile.patientId` (la adenda ahora también publica el perfil).
+  - `useKioskState` pide `refetchIntervalInBackground: true`: el respaldo de 20 s late también con la
+    pestaña oculta.
+- **Cómo re-probar.** Paciente **en consulta** en el sillón → abrir `/pantalla/consultorio` en otra
+  pestaña y **dejarla en segundo plano** → escribir la anamnesis con una alergia y firmar → volver a
+  la pestaña: la bandera crítica tiene que estar ya (objetivo: menos de $2$ s desde la firma, sin F5).
+
+### 5.2 `CFG-04` — «Error interno de servidor» al activar el IGTF
+
+- **Síntoma.** Marcar *Sujeto Pasivo Especial* en `/configuracion` → **Régimen tributario** devolvía
+  un $500$ y no guardaba nada. El `401` que aparecía después en la consola era una re-consulta con el
+  token de acceso ya caducado, no la causa.
+- **Causa.** El log de billing lo dejó escrito: `ZodError: Invalid UUID` en
+  `path: ["aggregateId"]`, lanzado por `toOutboxInsert` **dentro de la transacción** del `PATCH`.
+  `billing_settings` es una fila única con `id` **entero** (`1`), y el sobre del evento y la carga de
+  auditoría exigen un UUID; al fallar la publicación, la transacción revertía el cambio entero. El
+  mismo defecto habría impedido registrar el cambio en `/auditoria` (`entityId` también es UUID).
+- **Arreglo.** `stableUuid(key)` —UUID v5 determinista, que ya usaba la agenda para el cupo del
+  día— se movió a `packages/kernel` y billing deriva de ahí el identificador de la configuración
+  (`billing_settings:1`), tanto en `aggregateId` como en `entityId`. Es el grano correcto: el evento
+  es de **la configuración**, no de la fila.
+- **De paso.** `updateBillingSettingsSchema.speReference` pasa a `.optional()`: `optionalText`
+  transforma el vacío a `null` pero su salida no era opcional, así que un `PATCH` que no mandara el
+  oficio lo **borraba** (el PATCH promete ser parcial).
+- **Cómo re-probar.** Con sesión nueva de `admin`: activar el interruptor, poner fecha y oficio,
+  guardar → debe responder $200$ y verse en `/configuracion` al recargar; y en `/auditoria` tiene que
+  aparecer `billing_settings_changed` con su antes y después. Con **Secretaría**, `PATCH` sigue
+  dando $403$.
+
+### 5.3 `E2E-06` — «pérdidas o ganancias por diferencial» mínimas con la misma tasa
+
+- **Síntoma.** Cobros en bolívares a la **misma** tasa de la factura registraban un diferencial
+  cambiario de céntimos.
+- **Causa.** No era coma flotante: toda la aritmética es entera (`BigInt` y `divideHalfUp`). El
+  diferencial de céntimos es la **absorción de redondeo** que ya prevé el ADR `0069` —se redondeó al
+  bolívar entero al teclear el monto—, y el motivo de que se tecleara a mano es real: el campo se
+  autocompleta con `formatBs`/`formatUsd` en `es-VE` («6.000,00») y `parseUsdToCents` **rechazaba**
+  el separador de miles, así que el valor autocompletado quedaba inválido.
+- **Arreglo.** `parseUsdToCents` acepta el separador de miles en las dos convenciones
+  (`1.234,56` y `1,234.56`), valida el agrupado y sigue rechazando lo que no es un importe
+  (`12,345`, `1.23.4`). El monto que la pantalla propone vuelve a ser el exacto.
+- **Cómo re-probar.** Cobrar el saldo de una factura en bolívares con la tasa de emisión vigente,
+  **sin tocar** el monto autocompletado → `Diferencial` debe salir en `Bs. 0,00` y **sin** el badge
+  «ajuste de redondeo absorbido». Si se teclea un monto redondeado al bolívar, el diferencial sigue
+  apareciendo: es el comportamiento del ADR `0069`, no un fallo.
+
+### 5.4 Nota de verificación automática
+
+Los tres arreglos llevan prueba: `packages/kernel/src/stable-uuid.test.ts`,
+`services/billing/src/settings.integration.test.ts` (el `PATCH` publica un sobre y una auditoría
+válidos), `services/screens/src/screens.integration.test.ts` (la historia del paciente en el sillón
+republica el consultorio; la de otro paciente, no) y los casos nuevos de
+`apps/web/src/lib/caja.test.ts`. La suite unitaria completa (`npm test`) pasa; las suites de
+integración se ejecutan con `npm run test:integration`.
