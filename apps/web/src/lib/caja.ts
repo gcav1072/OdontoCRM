@@ -35,13 +35,66 @@ export const formatUsd = (cents: number): string =>
   (cents / 100).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /**
- * Lo que se teclea a céntimos: «12,34» → 1234, «12» → 1200, «12.5» → 1250.
- * Devuelve `null` si no es un importe: la pantalla avisa en vez de mandar un cero silencioso.
+ * Lo que se teclea a céntimos: «12,34» → 1234, «12» → 1200, «12.5» → 1250,
+ * «1.234,56» → 123456, «1,234.56» → 123456, «6.000» → 600000.
+ *
+ * Acepta el **separador de miles** porque es como se escribe lo que la propia pantalla
+ * autocompleta (`formatBs`/`formatUsd` usan `es-VE`: «6.000,00»). Antes ese texto se
+ * rechazaba y el campo quedaba inválido: había que volver a teclear el monto a mano —y
+ * al redondearlo al bolívar entero aparecía un diferencial cambiario de céntimos que en
+ * realidad era solo ruido de redondeo (ADR 0069)—.
+ *
+ * La regla: exactamente **dos decimales** como mucho, y los grupos de tres dígitos son
+ * miles. Un punto con tres dígitos detrás es un grupo de miles («6.000»), porque un
+ * importe de tres decimales no existe; una coma con tres dígitos («12,345») se rechaza
+ * —la coma es el decimal de `es-VE`—. Lo que no encaja no se adivina: devuelve `null`.
  */
 export const parseUsdToCents = (texto: string): number | null => {
-  const limpio = texto.trim().replace(',', '.');
-  if (!/^\d{1,9}(\.\d{1,2})?$/.test(limpio)) return null;
-  const [enteros = '0', decimales = ''] = limpio.split('.');
+  const limpio = texto.trim().replace(/\s/g, '');
+  if (limpio === '') return null;
+
+  const ultimaComa = limpio.lastIndexOf(',');
+  const ultimoPunto = limpio.lastIndexOf('.');
+  let normalizado = limpio;
+
+  if (ultimaComa !== -1 && ultimoPunto !== -1) {
+    // Los dos separadores: el último es el decimal y el otro agrupa los miles.
+    const decimal = ultimaComa > ultimoPunto ? ',' : '.';
+    const miles = decimal === ',' ? '.' : ',';
+    const [enteros = '', decimales = ''] = limpio.split(decimal);
+    const grupoMiles = miles === '.' ? /^\d{1,3}(?:\.\d{3})*$/ : /^\d{1,3}(?:,\d{3})*$/;
+    if (!grupoMiles.test(enteros)) return null;
+    if (!/^\d{1,2}$/.test(decimales)) return null;
+    normalizado = `${enteros.split(miles).join('')}.${decimales}`;
+  } else if (ultimaComa !== -1) {
+    // Solo comas: es el decimal de `es-VE`, así que no puede haber grupos de miles.
+    const partes = limpio.split(',');
+    if (partes.length !== 2 || !/^\d{1,2}$/.test(partes[1] ?? '')) return null;
+    normalizado = `${partes[0] ?? ''}.${partes[1] ?? ''}`;
+  } else if (ultimoPunto !== -1) {
+    const partes = limpio.split('.');
+    if (partes.length > 2) {
+      // Varios puntos solo pueden ser grupos de miles («1.234.567»).
+      const [, ...grupos] = partes;
+      if (!grupos.every((grupo) => /^\d{3}$/.test(grupo))) return null;
+      if (!/^\d{1,3}$/.test(partes[0] ?? '')) return null;
+      normalizado = partes.join('');
+    } else {
+      const [enteros = '', resto = ''] = partes;
+      // Tres dígitos detrás de un punto son miles: el dinero tiene dos decimales como mucho.
+      if (resto.length === 3) {
+        if (!/^\d{1,3}$/.test(enteros)) return null;
+        normalizado = `${enteros}${resto}`;
+      } else if (/^\d{1,2}$/.test(resto)) {
+        normalizado = `${enteros}.${resto}`;
+      } else {
+        return null;
+      }
+    }
+  }
+
+  if (!/^\d{1,9}(?:\.\d{1,2})?$/.test(normalizado)) return null;
+  const [enteros = '0', decimales = ''] = normalizado.split('.');
   return Number(enteros) * 100 + Number(decimales.padEnd(2, '0'));
 };
 

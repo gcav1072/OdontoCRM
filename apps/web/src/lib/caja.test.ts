@@ -50,6 +50,20 @@ describe('el dinero en la caja', () => {
     expect(parseUsdToCents('-5')).toBeNull();
   });
 
+  it('acepta el separador de miles que escribe la propia pantalla', () => {
+    // `formatBs`/`formatUsd` escriben en es-VE: esto es lo que se autocompleta al cobrar.
+    expect(parseUsdToCents('1.234,56')).toBe(123_456);
+    expect(parseUsdToCents('6.000,00')).toBe(600_000);
+    expect(parseUsdToCents('1.234.567,89')).toBe(123_456_789);
+    expect(parseUsdToCents('1,234.56')).toBe(123_456);
+    // Un punto con tres dígitos detrás es un grupo de miles (no hay importes de 3 decimales).
+    expect(parseUsdToCents('6.000')).toBe(600_000);
+    // El agrupado se valida: ni grupos de dos cifras ni un primer grupo largo.
+    expect(parseUsdToCents('1.23.4')).toBeNull();
+    expect(parseUsdToCents('1234.567')).toBeNull();
+    expect(parseUsdToCents('1,2345,67')).toBeNull();
+  });
+
   it('una partida sin precio llega con el campo vacío y marcada', () => {
     const linea = toEditableLine({
       id: '11111111-1111-4111-8111-111111111111',
