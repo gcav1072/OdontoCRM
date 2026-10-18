@@ -38,7 +38,7 @@ import {
   rescheduleAppointment,
   transitionAppointment,
 } from './appointments/appointment-service.js';
-import { capacityFor, setCapacity, listTemplates } from './agenda/capacity-service.js';
+import { capacityFor, listTemplates, replaceWeekSchedule } from './agenda/capacity-service.js';
 import { getDayView } from './agenda/day-view-service.js';
 import { notifyBatch, notifyPreview } from './agenda/notify-service.js';
 import {
@@ -85,10 +85,24 @@ const workingDayFrom = (offsetDays: number): string => {
   throw new Error('no encontré día de consulta');
 };
 
+/** El domingo más cercano a partir de `offsetDays`: no tiene turnos, así que está cerrado. */
+const sundayFrom = (offsetDays: number): string => {
+  const start = new Date(Date.now() + offsetDays * 86_400_000);
+  for (let extra = 0; extra < 7; extra += 1) {
+    const date = new Date(start.getTime() + extra * 86_400_000).toISOString().slice(0, 10);
+    if (weekdayOf(date) === 0) return date;
+  }
+  throw new Error('no encontré domingo');
+};
+
 const day = workingDayFrom(40);
 const otherDay = workingDayFrom(47);
 /** Día propio para las novedades (ADR 0057): no comparte franjas con las demás pruebas. */
 const activityDay = workingDayFrom(54);
+/** Domingo **cerrado** (sin turnos) para probar el sobrecupo. */
+const closedSunday = sundayFrom(61);
+/** Domingo **vacío** para probar el editor de horarios sin tocar un día de consulta. */
+const scheduleSunday = sundayFrom(68);
 
 const admin: ActorContext = {
   actorId: null,
@@ -191,14 +205,10 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     if (chairRow === undefined) throw new Error('No hay consultorios: aplica las migraciones');
     chairId = chairRow.id;
 
-    /**
-     * Las pruebas corren contra la base **de desarrollo**, así que pueden quedar
-     * cupos explícitos de otras corridas (o de un `smoke:agenda`, que deja el día a
-     * cero). Se limpian las fechas de esta suite para que un residuo no cambie el
-     * cupo por debajo de los pies.
-     */
+    // El horario es global (plantilla común): si una corrida anterior murió a medias
+    // con el editor abierto, se deja el domingo de la prueba sin turnos.
     await schedulingHandle.db.execute(
-      sql`delete from day_capacities where date in (${day}, ${otherDay}, ${activityDay})`,
+      sql`update slot_templates set is_active = false where weekday = 0 and chair_id is null`,
     );
     // El mismo trabajador que corre en identity: convierte los eventos en auditoría.
     await registerDomainEventHandler(
@@ -217,9 +227,9 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
   afterAll(async () => {
     if (!ready) return;
 
-    // Lo último que hace la suite es volver a subir el cupo, y eso deja su evento en el outbox. Sin
-    // este vaciado, **cada corrida** dejaba un evento sin publicar y el auditor de conexiones
-    // denunciaba un «outbox atascado en scheduling» que no era del sistema, sino de la prueba.
+    // Lo último que hacen las pruebas es volver a leer el cupo, y publicar un horario deja
+    // eventos en el outbox. Sin este vaciado, **cada corrida** dejaba eventos sin publicar y el
+    // auditor de conexiones denunciaba un «outbox atascado en scheduling» que no era del sistema.
     await flush().catch(() => undefined);
 
     await identityHandle.db
@@ -236,8 +246,9 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     await schedulingHandle.db
       .delete(appointmentRequests)
       .where(like(appointmentRequests.notes, `%${MARK}%`));
+    // El domingo de la prueba vuelve a quedar cerrado aunque una prueba falle a medias.
     await schedulingHandle.db.execute(
-      sql`delete from day_capacities where date in (${day}, ${otherDay}, ${activityDay})`,
+      sql`update slot_templates set is_active = false where weekday = 0 and chair_id is null`,
     );
     await boss.deleteQueue(colaDePrueba).catch(() => undefined);
     await stopBoss(boss).catch(() => undefined);
@@ -288,54 +299,39 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     expect([...dates].sort()).toEqual(dates);
   }, 30_000);
 
-  it('el cupo bloquea la asignación y solo el admin autoriza el sobrecupo', async () => {
-    const capacity = await setCapacity(
-      schedulingHandle.db,
-      { date: day, chairId, capacity: 2, notes: `${MARK} cupo de prueba` },
-      admin,
-      config,
-    );
-    expect(capacity.capacity).toBe(2);
-    expect(capacity.source).toBe('explicito');
+  it('un día sin turnos está cerrado y solo el admin autoriza el sobrecupo', async () => {
+    const cerrado = await capacityFor(schedulingHandle.db, closedSunday, chairId);
+    expect(cerrado.capacity).toBe(0);
+    expect(cerrado.source).toBe('sin_turnos');
+    expect(cerrado.isFull).toBe(true);
 
-    const requests = await Promise.all([
-      createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin),
-      createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin),
-      createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin),
-    ]);
-    const [first, second, third] = requests;
-    if (first === undefined || second === undefined || third === undefined) {
-      throw new Error('faltan solicitudes');
-    }
+    const first = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
 
-    await assignAppointment(schedulingHandle.db, anAssignment(first.id), secretary, { config });
-    await assignAppointment(
-      schedulingHandle.db,
-      anAssignment(second.id, { startTime: '08:30' }),
-      secretary,
-      { config },
-    );
+    const enDomingo = (requestId: string) =>
+      anAssignment(requestId, {
+        date: closedSunday,
+        startTime: '09:00',
+        slotKind: 'manual',
+        durationMinutes: 30,
+      });
 
-    // Tercera: el día está completo.
+    // Sin turnos no hay cupo: asignar exige autorizar el sobrecupo.
     await expect(
-      assignAppointment(
-        schedulingHandle.db,
-        anAssignment(third.id, { startTime: '09:00' }),
-        secretary,
-        { config },
-      ),
+      assignAppointment(schedulingHandle.db, enDomingo(first.id), secretary, { config }),
     ).rejects.toMatchObject({
       status: 409,
-      extensions: { requiresOverbook: true, capacity: 2, assigned: 2 },
+      extensions: { requiresOverbook: true, capacity: 0, assigned: 1 },
     });
 
-    // El sobrecupo sin motivo no pasa la validación del contrato, y con motivo
-    // exige el permiso `scheduling:overbook` (que la secretaria no tiene).
+    // Con autorización pero sin el permiso `scheduling:overbook`, tampoco.
     await expect(
       assignAppointment(
         schedulingHandle.db,
-        anAssignment(third.id, {
+        anAssignment(first.id, {
+          date: closedSunday,
           startTime: '09:00',
+          slotKind: 'manual',
+          durationMinutes: 30,
           authorizeOverbook: true,
           overbookReason: 'paciente con dolor agudo',
         }),
@@ -347,8 +343,11 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     // El admin sí puede, y queda con su motivo.
     const overbooked = await assignAppointment(
       schedulingHandle.db,
-      anAssignment(third.id, {
+      anAssignment(first.id, {
+        date: closedSunday,
         startTime: '09:00',
+        slotKind: 'manual',
+        durationMinutes: 30,
         authorizeOverbook: true,
         overbookReason: 'paciente con dolor agudo',
       }),
@@ -358,21 +357,50 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     expect(overbooked.status).toBe('programada');
     expect(overbooked.startTime).toBe('09:00');
 
-    // Bajar el cupo por debajo de lo asignado: avisa y no borra ninguna cita.
-    const lowered = await setCapacity(
+    // El día cerrado ahora tiene una cita: la jornada lo avisa sin borrarla.
+    const despues = await capacityFor(schedulingHandle.db, closedSunday, chairId);
+    expect(despues.assigned).toBe(1);
+    expect(despues.warning).toContain('no se ha borrado ninguna');
+
+    const view = await getDayView(schedulingHandle.db, closedSunday);
+    expect(view.isWorkingDay).toBe(false);
+    expect(view.chairs.flatMap((chair) => chair.slots)).toHaveLength(1);
+    expect(
+      (await listAppointments(schedulingHandle.db, { date: closedSunday, page: 1, pageSize: 10 }))
+        .total,
+    ).toBe(1);
+  }, 60_000);
+
+  it('una cita larga gasta tantas franjas como cruza en el cupo', async () => {
+    const antes = await capacityFor(schedulingHandle.db, day, chairId);
+    expect(antes.source).toBe('plantilla');
+    // Lunes a viernes 8:00–12:00 y 14:00–17:00 con franjas de 30 minutos: 14.
+    expect(antes.capacity).toBe(14);
+
+    const request = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
+    // Dos horas a las 15:00: cruza las cuatro franjas de 15:00 a 17:00.
+    await assignAppointment(
       schedulingHandle.db,
-      { date: day, chairId, capacity: 1, notes: `${MARK} cupo bajado` },
+      anAssignment(request.id, {
+        startTime: '15:00',
+        slotKind: 'manual',
+        durationMinutes: 120,
+      }),
       admin,
-      config,
+      { config },
     );
-    expect(lowered.warning).toContain('no se ha borrado ninguna');
-    expect(lowered.assigned).toBe(3);
-    const stillThere = await listAppointments(schedulingHandle.db, {
-      date: day,
-      page: 1,
-      pageSize: 50,
-    });
-    expect(stillThere.total).toBe(3);
+
+    const despues = await capacityFor(schedulingHandle.db, day, chairId);
+    expect(despues.assigned).toBe(antes.assigned + 4);
+    expect(despues.available).toBe(Math.max(0, despues.capacity - despues.assigned));
+
+    // La rejilla marca ocupadas las cuatro franjas, no solo la de inicio.
+    const view = await getDayView(schedulingHandle.db, day);
+    const delSillon = view.chairs.find((chair) => chair.chair.id === chairId);
+    const ocupadas = (delSillon?.slots ?? []).filter(
+      (slot) => slot.state === 'ocupada' && slot.startTime >= '15:00' && slot.startTime < '17:00',
+    );
+    expect(ocupadas.map((slot) => slot.startTime)).toEqual(['15:00', '15:30', '16:00', '16:30']);
   }, 60_000);
 
   it('una franja no se puede ocupar dos veces, ni siquiera en paralelo', async () => {
@@ -406,13 +434,6 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
   }, 60_000);
 
   it('reprogramar conserva el ticket y enlaza la cita nueva', async () => {
-    // El cupo de este día lo fija esta prueba: así no depende del orden de otras.
-    await setCapacity(
-      schedulingHandle.db,
-      { date: day, chairId, capacity: 16, notes: `${MARK} cupo para reprogramar` },
-      admin,
-      config,
-    );
     const request = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
     const original = await assignAppointment(
       schedulingHandle.db,
@@ -717,24 +738,20 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
   }, 60_000);
 
   it('la vista del día arma franjas, citas, cola y contadores', async () => {
-    await setCapacity(
-      schedulingHandle.db,
-      { date: day, chairId, capacity: 16, notes: `${MARK} cupo de la vista` },
-      admin,
-      config,
-    );
-    const view = await getDayView(schedulingHandle.db, day, config);
+    const view = await getDayView(schedulingHandle.db, day);
 
     expect(view.date).toBe(day);
     expect(view.isWorkingDay).toBe(true);
     expect(view.weekdayName).not.toBe('');
-    // La jornada por defecto son 8 franjas por turno (8:00–12:00 y 13:00–17:00).
+    // La jornada por defecto son 8 franjas por la mañana y 6 por la tarde
+    // (8:00–12:00 y 14:00–17:00, cada 30 minutos).
     expect(
       view.chairs
         .flatMap((chair) => chair.slots)
         .filter((slot) => slot.state !== 'fuera_de_jornada'),
-    ).toHaveLength(16);
-    expect(view.capacity.capacity).toBe(16);
+    ).toHaveLength(14);
+    expect(view.capacity.capacity).toBe(14);
+    expect(view.capacity.source).toBe('plantilla');
     expect(view.waiting.length).toBeGreaterThan(0);
     expect(
       view.counts.programadas + view.counts.notificadas + view.counts.canceladas,
@@ -754,7 +771,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
       admin,
       { config },
     );
-    const withManual = await getDayView(schedulingHandle.db, day, config);
+    const withManual = await getDayView(schedulingHandle.db, day);
     const manual = withManual.chairs
       .flatMap((chair) => chair.slots)
       .find((slot) => slot.kind === 'manual');
@@ -1049,11 +1066,15 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     expect([...instantes].sort((a, b) => b - a)).toEqual(instantes);
   }, 60_000);
 
-  it('las plantillas por defecto son la jornada del consultorio', async () => {
-    const templates = await listTemplates(schedulingHandle.db);
-    expect(templates.length).toBeGreaterThanOrEqual(10);
-    const lunes = templates.filter((template) => template.weekday === 1);
-    expect(lunes.map((template) => template.startTime)).toEqual(['08:00', '13:00']);
+  it('cada día de la semana tiene su jornada configurada', async () => {
+    const activas = (await listTemplates(schedulingHandle.db)).filter(
+      (template) => template.isActive && template.chairId === null,
+    );
+    expect(activas.length).toBeGreaterThanOrEqual(5);
+    const dias = new Set(activas.map((template) => template.weekday));
+    for (const weekday of [1, 2, 3, 4, 5]) {
+      expect(dias.has(weekday), `el día ${String(weekday)} no tiene turnos`).toBe(true);
+    }
   }, 30_000);
 
   it('los eventos de agenda llegan a la auditoría de identity con su resumen', async () => {
@@ -1145,38 +1166,60 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     expect(elapsed).toBeLessThan(300);
   }, 90_000);
 
-  it('el cupo se puede volver a subir y queda con su procedencia explícita', async () => {
-    const restored = await setCapacity(
-      schedulingHandle.db,
-      { date: day, chairId, capacity: 16, notes: `${MARK} cupo restaurado` },
-      admin,
-      config,
-    );
-    expect(restored.source).toBe('explicito');
-    expect(restored.capacity).toBe(16);
-    expect(restored.warning).toBeNull();
-
-    const info = await capacityFor(schedulingHandle.db, day, config, chairId);
-    expect(info.available).toBeGreaterThanOrEqual(0);
-    expect(info.isFull).toBe(false);
+  it('el cupo del día sale de las franjas del horario', async () => {
+    const info = await capacityFor(schedulingHandle.db, day, chairId);
+    expect(info.source).toBe('plantilla');
+    expect(info.capacity).toBe(14);
+    expect(info.available).toBe(Math.max(0, info.capacity - info.assigned));
+    expect(info.isFull).toBe(info.assigned >= info.capacity);
   }, 30_000);
 
-  it('sin cupo explícito ni plantilla se usa el cupo por defecto', async () => {
-    // Un domingo no tiene plantilla: el cupo sale del valor por defecto.
-    const sunday = (() => {
-      const start = new Date(Date.now() + 30 * 86_400_000);
-      for (let extra = 0; extra < 7; extra += 1) {
-        const date = new Date(start.getTime() + extra * 86_400_000).toISOString().slice(0, 10);
-        if (weekdayOf(date) === 0) return date;
-      }
-      throw new Error('no encontré domingo');
-    })();
-
-    const info = await capacityFor(schedulingHandle.db, sunday, config, chairId);
-    expect(info.source).toBe('defecto');
-    expect(info.capacity).toBe(config.DEFAULT_DAY_CAPACITY);
-    const view = await getDayView(schedulingHandle.db, sunday, config);
+  it('sin turnos el día está cerrado (cupo 0)', async () => {
+    const info = await capacityFor(schedulingHandle.db, scheduleSunday, chairId);
+    expect(info.source).toBe('sin_turnos');
+    expect(info.capacity).toBe(0);
+    const view = await getDayView(schedulingHandle.db, scheduleSunday);
     expect(view.isWorkingDay).toBe(false);
     expect(view.chairs.flatMap((chair) => chair.slots)).toHaveLength(0);
   }, 30_000);
+
+  it('el editor de horarios cambia turnos y duración, y cierra el día al quitarlos', async () => {
+    const weekday = weekdayOf(scheduleSunday);
+    const turnos = [
+      { startTime: '09:00', endTime: '11:00' },
+      { startTime: '14:00', endTime: '15:00' },
+    ];
+    const guardar = async (slotMinutes: number, shifts: { startTime: string; endTime: string }[]) =>
+      replaceWeekSchedule(
+        schedulingHandle.db,
+        { weekdays: [weekday], chairId: null, slotMinutes, shifts, reason: `${MARK} horario` },
+        admin,
+      );
+
+    try {
+      await guardar(30, turnos);
+      const delDia = (await listTemplates(schedulingHandle.db)).filter(
+        (template) =>
+          template.weekday === weekday && template.chairId === null && template.isActive,
+      );
+      expect(delDia.map((template) => template.startTime)).toEqual(['09:00', '14:00']);
+      expect(delDia.every((template) => template.slotMinutes === 30)).toBe(true);
+
+      // 2 h + 1 h de turno, con franjas de 30 minutos: 6 franjas.
+      expect((await capacityFor(schedulingHandle.db, scheduleSunday, chairId)).capacity).toBe(6);
+
+      // Franjas de una hora: los mismos turnos dan 3 franjas.
+      await guardar(60, turnos);
+      expect((await capacityFor(schedulingHandle.db, scheduleSunday, chairId)).capacity).toBe(3);
+
+      // Sin turnos el día queda cerrado.
+      await guardar(30, []);
+      const cerrado = await capacityFor(schedulingHandle.db, scheduleSunday, chairId);
+      expect(cerrado.capacity).toBe(0);
+      expect(cerrado.source).toBe('sin_turnos');
+    } finally {
+      // El domingo de la prueba vuelve a quedar cerrado aunque algo falle.
+      await guardar(30, []);
+    }
+  }, 60_000);
 });
