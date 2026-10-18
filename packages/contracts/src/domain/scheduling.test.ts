@@ -16,8 +16,10 @@ import {
   rangesOverlap,
   renderTemplate,
   rescheduleAppointmentSchema,
-  setCapacitySchema,
   slotTemplateInputSchema,
+  shiftsToTemplates,
+  usedCapacity,
+  weekScheduleInputSchema,
   weekdayName,
   weekdayOf,
 } from './scheduling.js';
@@ -97,13 +99,14 @@ describe('franjas de la jornada', () => {
     expect(slots.map((slot) => slot.startTime)).toEqual(['08:00', '09:30']);
   });
 
-  it('la jornada por defecto da 16 franjas al día (8 por turno)', () => {
+  it('la jornada por defecto da 14 franjas al día (8 por la mañana y 6 por la tarde)', () => {
     const lunes = DEFAULT_SLOT_TEMPLATES.filter((template) => template.weekday === 1);
     expect(DEFAULT_SLOT_TEMPLATES).toHaveLength(10);
     const slots = lunes.flatMap((template) => expandTemplateSlots(template));
-    expect(slots).toHaveLength(16);
+    expect(slots).toHaveLength(14);
     expect(slots[7]).toEqual({ startTime: '11:30', endTime: '12:00' });
-    expect(slots[8]).toEqual({ startTime: '13:00', endTime: '13:30' });
+    expect(slots[8]).toEqual({ startTime: '14:00', endTime: '14:30' });
+    expect(slots.at(-1)).toEqual({ startTime: '16:30', endTime: '17:00' });
   });
 
   it('valida que la jornada sea más larga que la franja y que las pausas tengan sentido', () => {
@@ -251,18 +254,126 @@ describe('asignación de citas', () => {
   });
 });
 
-describe('cupo del día', () => {
-  it('admite cualquier cupo entre 0 y 100', () => {
-    const chairId = globalThis.crypto.randomUUID();
-    expect(setCapacitySchema.parse({ date: '2026-10-05', chairId, capacity: 12 }).capacity).toBe(
-      12,
-    );
-    expect(setCapacitySchema.safeParse({ date: '2026-10-05', chairId, capacity: -1 }).success).toBe(
-      false,
-    );
+describe('cupo en franjas', () => {
+  it('una cita larga gasta tantas franjas como cruza', () => {
+    const franjas = expandTemplateSlots({
+      startTime: '08:00',
+      endTime: '10:00',
+      slotMinutes: 30,
+      breaks: [],
+    });
+    expect(franjas).toHaveLength(4);
+
+    // Dos horas sobre franjas de 30 minutos: las 4 franjas del día.
+    expect(usedCapacity(franjas, [{ startTime: '08:00', endTime: '10:00' }])).toBe(4);
+    // Una de 30 minutos: una sola franja.
+    expect(usedCapacity(franjas, [{ startTime: '08:30', endTime: '09:00' }])).toBe(1);
+    // Dos citas cortas en franjas distintas: dos.
     expect(
-      setCapacitySchema.safeParse({ date: '2026-10-05', chairId, capacity: 101 }).success,
+      usedCapacity(franjas, [
+        { startTime: '08:00', endTime: '08:30' },
+        { startTime: '09:00', endTime: '09:30' },
+      ]),
+    ).toBe(2);
+  });
+
+  it('con franjas de una hora una cita de dos horas gasta dos', () => {
+    const franjas = expandTemplateSlots({
+      startTime: '08:00',
+      endTime: '12:00',
+      slotMinutes: 60,
+      breaks: [],
+    });
+    expect(usedCapacity(franjas, [{ startTime: '09:00', endTime: '11:00' }])).toBe(2);
+  });
+
+  it('una cita fuera de la rejilla gasta una: nunca se dice que no ocupa cupo', () => {
+    const franjas = expandTemplateSlots({
+      startTime: '08:00',
+      endTime: '12:00',
+      slotMinutes: 30,
+      breaks: [],
+    });
+    // Hora manual a las 12:15, fuera de toda franja.
+    expect(usedCapacity(franjas, [{ startTime: '12:15', endTime: '12:45' }])).toBe(1);
+    // Día cerrado (sin franjas): cada cita ocupa una.
+    expect(
+      usedCapacity(
+        [],
+        [
+          { startTime: '09:00', endTime: '09:30' },
+          { startTime: '10:00', endTime: '10:30' },
+        ],
+      ),
+    ).toBe(2);
+    expect(usedCapacity([], [])).toBe(0);
+  });
+});
+
+describe('horario de atención', () => {
+  it('acepta varios turnos y los ordena al convertirlos en plantillas', () => {
+    const parsed = weekScheduleInputSchema.parse({
+      weekdays: [1, 2, 3],
+      shifts: [
+        { startTime: '14:00', endTime: '17:00' },
+        { startTime: '08:00', endTime: '12:00' },
+      ],
+      slotMinutes: 30,
+    });
+    expect(parsed.chairId).toBeNull();
+    expect(parsed.slotMinutes).toBe(30);
+
+    const plantillas = parsed.weekdays.flatMap((weekday) =>
+      shiftsToTemplates(weekday, parsed.shifts, parsed.slotMinutes),
+    );
+    expect(plantillas.map((template) => template.startTime)).toEqual([
+      '08:00',
+      '14:00',
+      '08:00',
+      '14:00',
+      '08:00',
+      '14:00',
+    ]);
+    expect(
+      plantillas.reduce((total, template) => total + expandTemplateSlots(template).length, 0),
+    ).toBe(42);
+  });
+
+  it('un día sin turnos es un día cerrado y el contrato lo acepta', () => {
+    const parsed = weekScheduleInputSchema.parse({ weekdays: [0], shifts: [] });
+    expect(parsed.shifts).toHaveLength(0);
+    expect(parsed.slotMinutes).toBe(30);
+  });
+
+  it('rechaza turnos solapados, invertidos o más cortos que la franja', () => {
+    expect(
+      weekScheduleInputSchema.safeParse({
+        weekdays: [1],
+        shifts: [
+          { startTime: '08:00', endTime: '12:00' },
+          { startTime: '11:00', endTime: '13:00' },
+        ],
+      }).success,
     ).toBe(false);
+    expect(
+      weekScheduleInputSchema.safeParse({
+        weekdays: [1],
+        shifts: [{ startTime: '12:00', endTime: '08:00' }],
+      }).success,
+    ).toBe(false);
+    expect(
+      weekScheduleInputSchema.safeParse({
+        weekdays: [1],
+        slotMinutes: 60,
+        shifts: [{ startTime: '08:00', endTime: '08:30' }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rechaza días repetidos y conjuntos fuera de rango', () => {
+    expect(weekScheduleInputSchema.safeParse({ weekdays: [1, 1] }).success).toBe(false);
+    expect(weekScheduleInputSchema.safeParse({ weekdays: [] }).success).toBe(false);
+    expect(weekScheduleInputSchema.safeParse({ weekdays: [7] }).success).toBe(false);
   });
 });
 

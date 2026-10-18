@@ -83,11 +83,13 @@ export const formatTime12h = (time: string): string => {
 };
 
 export const DEFAULT_SLOT_MINUTES = 30;
-/** Cupo por defecto cuando no hay plantilla ni cupo explícito para el día. */
-export const DEFAULT_DAY_CAPACITY = 16;
 /** Tolerancia para marcar una inasistencia (minutos después de la hora de la cita). */
 export const DEFAULT_NO_SHOW_GRACE_MINUTES = 15;
-export const MAX_DAY_CAPACITY = 100;
+
+/** Nombres cortos de los días, en el orden de `WEEKDAY_NAMES` (0 = domingo). */
+export const WEEKDAY_SHORT_NAMES = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'] as const;
+
+export const weekdayShortName = (weekday: number): string => WEEKDAY_SHORT_NAMES[weekday] ?? '';
 
 export interface TimeRange {
   startTime: string;
@@ -129,6 +131,27 @@ export const expandTemplateSlots = (template: {
     cursor = end;
   }
   return slots;
+};
+
+/**
+ * Franjas que **ocupan** una lista de citas: una cita larga gasta tantas franjas
+ * como cruza (una consulta de dos horas sobre franjas de 30 minutos gasta 4). Una
+ * cita fuera de toda franja (hora manual, día cerrado) gasta una: nunca se puede
+ * decir que un paciente citado no ocupa cupo.
+ *
+ * Es puro para que el servicio y la interfaz cuenten igual.
+ */
+export const usedCapacity = (
+  slots: readonly TimeRange[],
+  occupied: readonly TimeRange[],
+): number => {
+  const dentro = slots.filter((slot) =>
+    occupied.some((range) => rangesOverlap(slot, range)),
+  ).length;
+  const fuera = occupied.filter(
+    (range) => !slots.some((slot) => rangesOverlap(slot, range)),
+  ).length;
+  return dentro + fuera;
 };
 
 /** Plantilla de franjas por día de la semana (una jornada; puede haber varias). */
@@ -185,9 +208,98 @@ export const slotTemplateInputSchema = z
 export type SlotTemplateInput = z.infer<typeof slotTemplateInputSchema>;
 
 /**
- * Jornada por defecto del consultorio (plan §16): lunes a viernes de 8:00 a 12:00
- * y de 13:00 a 17:00, franjas de 30 minutos. La migración del servicio la siembra
- * para que el sistema sirva desde el primer día.
+ * Horario de atención de **uno o varios días** tal como lo edita la interfaz: los
+ * turnos (por ejemplo 8:00–12:00 y 14:00–17:00) y la duración de la franja. Un
+ * `shifts` vacío **cierra** esos días: sin franjas no hay cupo.
+ *
+ * Se aplica a la **plantilla común** (todos los consultorios) salvo que se indique
+ * un `chairId`, que es la excepción de un sillón concreto.
+ */
+export const weekScheduleInputSchema = z
+  .object({
+    /** Días de la semana a los que se aplica (0 = domingo … 6 = sábado). */
+    weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7),
+    /** `null` (por defecto) = plantilla común a todos los consultorios. */
+    chairId: z.uuid().nullable().default(null),
+    slotMinutes: z.coerce.number().int().min(5).max(240).default(DEFAULT_SLOT_MINUTES),
+    shifts: z.array(timeRangeSchema).max(6).default([]),
+    /** Motivo del cambio (auditoría); opcional, como en el alta de pacientes. */
+    reason: z.string().trim().max(300).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const vistos = new Set<number>();
+    for (const weekday of value.weekdays) {
+      if (vistos.has(weekday)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['weekdays'],
+          message: 'Cada día de la semana puede aparecer una sola vez',
+        });
+      }
+      vistos.add(weekday);
+    }
+
+    value.shifts.forEach((turno, index) => {
+      const duracion = minutesBetween(turno.startTime, turno.endTime);
+      if (duracion <= 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['shifts', index, 'endTime'],
+          message: 'El turno debe terminar después de empezar',
+        });
+        return;
+      }
+      if (duracion < value.slotMinutes) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['shifts', index, 'endTime'],
+          message: 'El turno es más corto que la duración de la franja',
+        });
+      }
+      const solapa = value.shifts.some(
+        (otro, otroIndex) => otroIndex !== index && rangesOverlap(turno, otro),
+      );
+      if (solapa) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['shifts', index, 'startTime'],
+          message: 'Los turnos no se pueden solapar',
+        });
+      }
+    });
+  });
+
+export type WeekScheduleInput = z.infer<typeof weekScheduleInputSchema>;
+
+/**
+ * Turnos de un día → filas de plantilla. Ordena los turnos y descarta los días sin
+ * atención (un día cerrado no tiene plantilla). Es puro: lo usan el servicio para
+ * reconciliar y la interfaz para previsualizar las franjas.
+ */
+export const shiftsToTemplates = (
+  weekday: number,
+  shifts: readonly TimeRangeInput[],
+  slotMinutes: number,
+): SlotTemplateInput[] =>
+  [...shifts]
+    .sort((left, right) => left.startTime.localeCompare(right.startTime))
+    .map((turno) => ({
+      weekday,
+      chairId: null,
+      startTime: turno.startTime,
+      endTime: turno.endTime,
+      slotMinutes,
+      breaks: [],
+      isActive: true,
+    }));
+
+/**
+ * Jornada por defecto del consultorio: lunes a viernes de 8:00 a 12:00 y de
+ * 14:00 a 17:00, franjas de 30 minutos (8 franjas por la mañana y 6 por la tarde).
+ * La migración del servicio la siembra para que el sistema sirva desde el primer día.
+ *
+ * Una instalación que ya existía conserva su horario guardado: el editor de turnos
+ * es el que lo cambia (no se reescriben datos por una migración).
  */
 export const DEFAULT_SLOT_TEMPLATES: readonly SlotTemplateInput[] = [1, 2, 3, 4, 5].flatMap(
   (weekday) => [
@@ -203,7 +315,7 @@ export const DEFAULT_SLOT_TEMPLATES: readonly SlotTemplateInput[] = [1, 2, 3, 4,
     {
       weekday,
       chairId: null,
-      startTime: '13:00',
+      startTime: '14:00',
       endTime: '17:00',
       slotMinutes: DEFAULT_SLOT_MINUTES,
       breaks: [],
@@ -578,18 +690,11 @@ export type ConfirmAppointmentInput = z.infer<typeof confirmAppointmentSchema>;
 
 /* ── Cupo del día ──────────────────────────────────────────────────────────── */
 
-export const setCapacitySchema = z.object({
-  date: dateSchema,
-  /** Consultorio cuyo cupo se fija: el cupo es **por sillón y día**. */
-  chairId: z.uuid(),
-  capacity: z.coerce.number().int().min(0).max(MAX_DAY_CAPACITY),
-  notes: z.string().trim().max(300).optional(),
-  reason: z.string().trim().max(300).optional(),
-});
-
-export type SetCapacityInput = z.infer<typeof setCapacitySchema>;
-
-export const capacitySourceSchema = z.enum(['explicito', 'plantilla', 'defecto']);
+/**
+ * Origen del cupo. **Siempre sale del horario**: `plantilla` = el día tiene turnos y
+ * su cupo son sus franjas; `sin_turnos` = día cerrado (cupo 0).
+ */
+export const capacitySourceSchema = z.enum(['plantilla', 'sin_turnos']);
 export type CapacitySource = z.infer<typeof capacitySourceSchema>;
 
 export const dayCapacitySchema = z.object({
@@ -600,18 +705,19 @@ export const dayCapacitySchema = z.object({
    */
   chairId: z.uuid().nullable(),
   chairLabel: z.string().nullable(),
-  /** Cupo que se aplica (explícito si existe; si no, deducido de las franjas). */
+  /**
+   * Franjas del día: es el cupo. Una cita larga gasta varias franjas (ver
+   * `usedCapacity`), así que `assigned` puede crecer de dos en dos o de cuatro en
+   * cuatro.
+   */
   capacity: z.number().int().min(0),
   source: capacitySourceSchema,
-  explicitCapacity: z.number().int().nullable(),
-  notes: z.string().nullable(),
+  /** Franjas **ocupadas** por citas que ocupan cupo. */
   assigned: z.number().int().min(0),
   available: z.number().int(),
   isFull: z.boolean(),
-  /** Aviso cuando el cupo queda por debajo de lo ya asignado (no borra nada). */
+  /** Aviso cuando lo ocupado supera las franjas del día (no borra nada). */
   warning: z.string().nullable(),
-  updatedBy: z.uuid().nullable(),
-  updatedAt: z.string().nullable(),
 });
 
 export type DayCapacity = z.infer<typeof dayCapacitySchema>;
