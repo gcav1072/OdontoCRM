@@ -74,7 +74,22 @@ Reglas que no se negocian:
 | Hora | zona `Venezuela Standard Time` (UTC-4) |
 | Disco | separa, si puedes, los adjuntos y los respaldos |
 | Recursos | 11 procesos Node pequeños + PostgreSQL + Chromium para PDF: **4 vCPU / 8 GB RAM / 60 GB SSD** como punto de partida |
-| Software | Node.js 22.9+, PostgreSQL 18, Git. Si falta, la pieza 1 lo instala con `winget` |
+| Software | Node.js 22.9+, PostgreSQL 18, Git. Si falta, la pieza 1 **lo instala sola** con `winget` |
+
+> **Único requisito previo: `winget`.** Windows 10/11 lo trae (Microsoft Store →
+> «Instalador de aplicaciones»). Con `winget` y red **no hace falta nada más instalado**
+> antes de ejecutar los scripts: la pieza 1 pone Node, Git, PostgreSQL 18 y los binarios
+> `mkcert.exe`/`caddy.exe`. Si tu Windows no lo trae —p. ej. una LTSC—, o lo instalas
+> (<https://learn.microsoft.com/windows/package-manager/winget/>) o preinstalas a mano lo
+> que falte ANTES de ejecutar el instalador:
+>
+> | Qué | Dónde |
+> | :-- | :---- |
+> | Node.js 22.9+ (MSI, no `nvm`) | <https://nodejs.org> |
+> | Git | <https://git-scm.com/download/win> |
+> | PostgreSQL 18 (EDB) | <https://www.postgresql.org/download/windows/> |
+>
+> `10-preparar.ps1 --comprobar` dice exactamente qué falta antes de empezar.
 
 > **Node «estándar», no `nvm`.** El servicio de PM2 no soporta `nvm-for-windows`: instala
 > Node con el MSI de <https://nodejs.org> (o deja que lo haga `winget`).
@@ -140,7 +155,7 @@ para no tener que pelearse después con los archivos de `C:\ProgramData\OdontoCR
 | Pregunta | Para qué | Si se omite |
 | :--- | :--- | :--- |
 | **Contraseña del administrador** | es la cuenta con la que se entra la primera vez | se genera una temporal y se imprime UNA vez (queda en `C:\ProgramData\OdontoCRM\contrasena-inicial.txt`) |
-| **Contraseña de `postgres` de PostgreSQL** | es la llave del *motor*: sin ella no se pueden crear las bases (en Windows no hay socket «peer») ni el rol de respaldo | si PostgreSQL ya estaba instalado, la instalación se detiene antes de crear las bases; si lo instala la pieza 1, se usa la que digas |
+| **Contraseña de `postgres` de PostgreSQL** | es la llave del *motor*: sin ella no se pueden crear las bases (en Windows no hay socket «peer») ni el rol de respaldo | si lo instala la pieza 1, con Enter se **genera una al azar y se imprime UNA vez** (esa contraseña nace con el motor); si el motor ya estaba instalado, la instalación se detiene antes de crear las bases —o repite con `--recuperar-postgres`— |
 | **Token del bot de Telegram** | los avisos salen de verdad | el bot queda en **modo simulado** y los avisos esperan en la bandeja. El token se **comprueba contra Telegram** y su nombre (`@usuario`) se guarda solo |
 | **Token del bot de administración** | avisa al dueño de los fallos del sistema | no hay avisos de infraestructura. El **chat se detecta solo**: se te pide escribirle «/start» al bot |
 | **WhatsApp Cloud API** | activa ese canal | el canal no se activa; lo demás funciona igual |
@@ -156,7 +171,9 @@ pide cada vez y solo vive en la memoria del instalador.
 
 > **PostgreSQL: los tres casos.** El instalador nunca deja el servidor sin poder crear las
 > bases: si el motor ya estaba y la contraseña se sabe, la **comprueba**; si lo acaba de
-> instalar la pieza 1 (winget lo instala sin elegir contraseña), **fija** la que le des; y si
+> instalar la pieza 1, la contraseña que des **nace con el motor** —se la pasa al instalador
+> en un fichero de opciones, nunca por la línea de órdenes— y se **comprueba**; con Enter se
+> genera una **al azar y se imprime UNA vez** (no se guarda en ningún sitio: anótala). Y si
 > el motor venía de antes y la contraseña se perdió, `--recuperar-postgres` la **reinicia**
 > (abre la conexión local sin contraseña unos segundos, fija la nueva y restaura
 > `pg_hba.conf` tal como estaba).

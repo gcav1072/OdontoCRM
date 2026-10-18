@@ -173,6 +173,17 @@ genérico: cada servicio lee la suya (`GATEWAY_PORT`, `IDENTITY_PORT`, …; §8.
 | Recursos | 9 procesos Node pequeños + PostgreSQL + Chromium para PDF: se recomienda **4 vCPU / 8 GB RAM / 60 GB SSD** como punto de partida |
 | SELinux | `enforcing` (no se desactiva) |
 | firewalld | activo, solo el puerto del proxy abierto a la LAN |
+| Software previo | **solo `git`** (para clonar el repositorio): `sudo dnf install git`. Nada más |
+
+> **Los scripts instalan todo lo demás.** En una máquina recién instalada no hace falta
+> tener nada de la tabla de §4 a §6 puesto a mano: `infra/fedora/instalar/instalar.sh` (o
+> `infra/fedora/instalar-base-fedora.sh` por su cuenta) instala los paquetes dnf, **el
+> servidor de PostgreSQL 18 completo** (paquete `postgresql-server`: `postgresql-contrib`
+> solo trae el cliente y no basta —fallo real de la prueba en limpio de 2026-10—), Node 26,
+> PM2, nginx, mkcert, las dependencias de Chromium y lo que haga falta más. Si el motor ya
+> estaba instalado —de Fedora o de PGDG— lo adopta tal cual, sin montar otro por debajo.
+> El único caso que NO puede resolverse solo es no tener `git`, porque hace falta para
+> poner el repositorio en la máquina.
 
 > PENDIENTE FASE 10: (P-13) medir el consumo real (RAM/CPU/disco) con la clínica en
 > marcha y ajustar la recomendación; decidir cifrado de disco (LUKS) para los datos
@@ -227,7 +238,8 @@ sudo bash infra/fedora/instalar/instalar.sh
 
 El primer comando **no toca nada**: revisa Fedora, Node, npm, PostgreSQL, git, que la carpeta
 sea un clon y que no haya otra pila usando los puertos. Si todo sale en verde, el segundo hace
-la instalación completa y termina diciendo cómo entrar desde cada aparato.
+la instalación completa y termina diciendo cómo entrar desde cada aparato. **No hace falta
+instalar nada antes** (más allá de `git` para clonar, §2.3): lo que falte lo pone la pieza 1.
 
 ### Las cuatro piezas
 
