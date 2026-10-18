@@ -163,8 +163,6 @@ const hoy = ahoraCaracas.toISOString().slice(0, 10);
 const minutosAhora = ahoraCaracas.getUTCHours() * 60 + ahoraCaracas.getUTCMinutes();
 
 const aMinutos = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-const enHora = (minutos) =>
-  `${String(Math.floor(minutos / 60)).padStart(2, '0')}:${String(minutos % 60).padStart(2, '0')}`;
 
 /** Cédula ficticia distinta en cada corrida (rango reservado 90.000.000+). */
 const DOC = `90${String(Date.now()).slice(-6)}`;
@@ -209,41 +207,59 @@ const solicitud = await call('/api/v1/requests', {
 });
 check('la solicitud nace con su ticket', solicitud.status === 201, `status ${solicitud.status}`);
 
-/** Hora libre de hoy: las corridas anteriores dejan sus citas en la jornada. */
-const citasDeHoy = await call(`/api/v1/appointments?date=${hoy}&pageSize=200`);
-const ocupadas = citasDeHoy.body?.items ?? [];
-const libre = (minuto) =>
-  !ocupadas.some(
-    (cita) => aMinutos(cita.startTime) < minuto + 30 && aMinutos(cita.endTime) > minuto,
-  );
-
-let hora = null;
-for (let minuto = Math.max(0, minutosAhora) + 30; minuto <= 19 * 60; minuto += 30) {
-  if (libre(minuto)) {
-    hora = enHora(minuto);
-    break;
+/** Franja libre de hoy: las corridas anteriores dejan sus citas en la jornada. */
+const buscarFranja = (vista) => {
+  for (const sillon of vista?.chairs ?? []) {
+    const libres = (sillon.slots ?? []).filter((slot) => slot.state === 'libre');
+    // Primero una hora que aún no haya pasado; si el día ya va avanzado, cualquiera libre.
+    const elegida =
+      libres.find((slot) => aMinutos(slot.startTime) >= minutosAhora + 30) ?? libres[0];
+    if (elegida !== undefined) return { sillon, hora: elegida.startTime };
   }
-}
-for (let minuto = 7 * 60; hora === null && minuto <= 19 * 60; minuto += 30) {
-  if (libre(minuto)) hora = enHora(minuto);
-}
-check('hay una hora libre hoy para la cita', hora !== null, String(hora));
-if (hora === null) process.exit(1);
+  return { sillon: null, hora: null };
+};
 
-/** El cupo del día puede estar lleno: lo amplía la propia doctora. */
 const jornada = await call(`/api/v1/agenda/days/${hoy}`);
-const cupo = jornada.body?.capacity;
-if (
-  typeof cupo?.assigned === 'number' &&
-  typeof cupo?.capacity === 'number' &&
-  cupo.assigned + 1 > cupo.capacity
-) {
-  const ampliado = await call('/api/v1/agenda/capacity', {
+let { sillon: sillonElegido, hora } = buscarFranja(jornada.body);
+
+if (hora === null) {
+  /**
+   * Hoy no es día de consulta (por ejemplo, un domingo): la doctora lo **abre** con el
+   * horario de fábrica. Es la operación real del configurador de la jornada y sirve
+   * para que la prueba pueda correr cualquier día de la semana.
+   */
+  const weekday = new Date(`${hoy}T00:00:00Z`).getUTCDay();
+  const abierto = await call('/api/v1/agenda/schedule', {
     method: 'PUT',
-    body: JSON.stringify({ date: hoy, capacity: cupo.assigned + 2, reason: MARK }),
+    body: JSON.stringify({
+      weekdays: [weekday],
+      chairId: null,
+      slotMinutes: 30,
+      shifts: [
+        { startTime: '08:00', endTime: '12:00' },
+        { startTime: '14:00', endTime: '17:00' },
+      ],
+      reason: `${MARK}: abrir el día de la prueba`,
+    }),
   });
-  check('la doctora amplía el cupo del día', ampliado.status === 200, `status ${ampliado.status}`);
+  check(
+    'la doctora abre el día con el horario de fábrica',
+    abierto.status === 200,
+    `status ${abierto.status}`,
+  );
+  const reabierta = await call(`/api/v1/agenda/days/${hoy}`);
+  ({ sillon: sillonElegido, hora } = buscarFranja(reabierta.body));
 }
+
+check('hay una franja libre hoy para la cita', hora !== null, String(hora));
+if (hora === null) {
+  console.error(
+    'Hoy no queda ninguna franja libre. Configura el horario desde /programacion o usa otra fecha.',
+  );
+  process.exit(1);
+}
+const chairId = sillonElegido?.chair?.id;
+if (typeof chairId !== 'string') process.exit(1);
 
 const cita = await call('/api/v1/appointments', {
   method: 'POST',
@@ -253,6 +269,7 @@ const cita = await call('/api/v1/appointments', {
     startTime: hora,
     slotKind: 'manual',
     durationMinutes: 30,
+    chairId,
     notes: MARK,
   }),
 });

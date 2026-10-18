@@ -238,20 +238,12 @@ const sembrarPacientes = async (client) => {
 };
 
 const sembrarAgenda = async (client) => {
-  // El consultorio por defecto (migración multisillón): cupo y citas van ahí.
+  // El consultorio por defecto (migración multisillón): las citas van ahí.
+  // El cupo ya no se siembra: sale de las franjas del horario de cada día.
   const chairId = (await client.query('select id from chairs order by sort_order, label limit 1'))
     .rows[0]?.id;
   if (chairId === undefined) {
     throw new Error('No hay consultorios: aplica las migraciones antes de sembrar.');
-  }
-
-  for (const capacity of world.capacities) {
-    await client.query(
-      `insert into day_capacities (date, chair_id, capacity, notes, updated_at)
-       values ($1,$2,$3,$4, now())
-       on conflict (date, chair_id) do update set capacity = excluded.capacity, notes = excluded.notes, updated_at = now()`,
-      [capacity.date, chairId, capacity.capacity, capacity.notes],
-    );
   }
 
   for (const request of world.requests) {
@@ -1045,7 +1037,6 @@ const borrarAgenda = async (client) => {
   await client.query('delete from status_history where entity_id = any($1::uuid[])', [
     ids.entidades,
   ]);
-  await client.query('delete from day_capacities where date = any($1::date[])', [ids.cupos]);
   await ajustarSecuencia(client, 'ticket_seq', 'appointment_requests', 'ticket_number');
   return await borrarEventos(
     client,

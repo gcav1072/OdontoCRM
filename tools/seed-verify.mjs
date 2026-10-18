@@ -221,17 +221,6 @@ const verificarAgenda = async () => {
     }));
 
   comparar('scheduling.appointments', fingerprint(esperadoCitas), fingerprint(citas));
-
-  const cupos = await consultar(
-    'scheduling',
-    `select to_char(date, 'YYYY-MM-DD') as "date", capacity from day_capacities
-      where date = any($1::date[]) order by date`,
-    [ids.cupos],
-  );
-  const esperadoCupos = [...world.capacities]
-    .sort((left, right) => (left.date < right.date ? -1 : 1))
-    .map((capacity) => ({ date: capacity.date, capacity: capacity.capacity }));
-  comparar('scheduling.day_capacities', fingerprint(esperadoCupos), fingerprint(cupos));
 };
 
 // ── Historia clínica, sesiones y récipes ──────────────────────────────────────

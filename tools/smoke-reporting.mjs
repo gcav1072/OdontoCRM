@@ -143,10 +143,6 @@ const hoy = new Date(Date.now() - 4 * 3_600_000).toISOString().slice(0, 10);
 const haceDias = (dias) =>
   new Date(Date.parse(`${hoy}T00:00:00Z`) + dias * 86_400_000).toISOString().slice(0, 10);
 
-const aMinutos = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-const enHora = (minutos) =>
-  `${String(Math.floor(minutos / 60)).padStart(2, '0')}:${String(minutos % 60).padStart(2, '0')}`;
-
 /* ── Lectura de un documento de reporte ────────────────────────────────────── */
 
 /** Normaliza un texto para comparar sin acentos ni mayúsculas. */
@@ -351,38 +347,30 @@ check(
 
 /* ── 3) La cita de hoy: solicitud → asignación → aviso en lote → flujo ─────── */
 
-const citasDeHoy = await call(`/api/v1/appointments?date=${hoy}&pageSize=200`);
-const ocupadas = citasDeHoy.body?.items ?? [];
-const libre = (minuto) =>
-  !ocupadas.some(
-    (cita) => aMinutos(cita.startTime) < minuto + 30 && aMinutos(cita.endTime) > minuto,
-  );
-
-let hora = null;
-for (let minuto = 7 * 60; hora === null && minuto <= 19 * 60; minuto += 30) {
-  if (libre(minuto)) hora = enHora(minuto);
-}
-check('hay una hora libre hoy para la cita de la prueba', hora !== null, String(hora));
-if (hora === null) process.exit(1);
-
-/** El cupo del día tiene que dar cabida a la cita (y la ocupación se reporta). */
+/** Franja libre de hoy en algún consultorio (las corridas anteriores dejan citas). */
 const jornada = await call(`/api/v1/agenda/days/${hoy}`);
-const cupo = jornada.body?.capacity ?? {};
-const cupoNecesario = Math.max(4, (cupo.assigned ?? 0) + 1);
-if ((cupo.capacity ?? 0) < cupoNecesario) {
-  const ampliado = await call('/api/v1/agenda/capacity', {
-    method: 'PUT',
-    body: JSON.stringify({
-      date: hoy,
-      capacity: cupoNecesario + 1,
-      notes: MARK,
-      reason: `${MARK}: la prueba necesita cupo hoy`,
-    }),
-  });
-  console.log(
-    `· El cupo de hoy se amplía a ${String(ampliado.body?.capacity ?? cupoNecesario + 1)} para que quepa la cita.`,
-  );
+const sillones = jornada.body?.chairs ?? [];
+
+let sillonElegido = null;
+let hora = null;
+for (const sillon of sillones) {
+  const libre = (sillon.slots ?? []).find((slot) => slot.state === 'libre');
+  if (libre !== undefined) {
+    sillonElegido = sillon;
+    hora = libre.startTime;
+    break;
+  }
 }
+check('hay una franja libre hoy para la cita de la prueba', hora !== null, String(hora));
+if (hora === null) {
+  console.error('Hoy no queda ninguna franja libre: configura el horario desde /programacion.');
+  process.exit(1);
+}
+const chairId = sillonElegido?.chair?.id;
+if (typeof chairId !== 'string') process.exit(1);
+
+const cupo = jornada.body?.capacity ?? {};
+const lleno = typeof cupo.assigned === 'number' && cupo.assigned + 1 > (cupo.capacity ?? 0);
 
 const solicitud = await call('/api/v1/requests', {
   method: 'POST',
@@ -412,7 +400,9 @@ const cita = await call('/api/v1/appointments', {
     startTime: hora,
     slotKind: 'manual',
     durationMinutes: 30,
+    chairId,
     notes: MARK,
+    ...(lleno ? { authorizeOverbook: true, overbookReason: `${MARK}: jornada llena` } : {}),
   }),
 });
 check(

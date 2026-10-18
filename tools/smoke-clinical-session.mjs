@@ -222,23 +222,21 @@ const solicitud = await call('/api/v1/requests', {
 check('la solicitud se crea con su ticket', solicitud.status === 201, solicitud.body?.ticket);
 
 /**
- * Cupo del día: cada corrida deja sus citas (una atendida sigue ocupando su hora),
- * así que si la jornada de prueba está llena se le da cupo explícito para las dos
- * citas de esta corrida —es lo que hace la secretaría cuando el día se llena—.
+ * Cupo del día: cada corrida deja sus citas (una atendida sigue ocupando su hora).
+ * El cupo son las franjas del horario; si la jornada de prueba está llena, la cita
+ * se autoriza como sobrecupo (quien corre la prueba es el administrador).
  */
 const vista = await call(`/api/v1/agenda/days/${dia}`);
+const sillon = (vista.body?.chairs ?? []).find((candidato) =>
+  (candidato.slots ?? []).some((slot) => slot.state === 'libre'),
+);
+const chairId = sillon?.chair?.id;
 const cupo = vista.body?.capacity;
 const lleno =
   typeof cupo?.assigned === 'number' &&
   typeof cupo?.capacity === 'number' &&
   cupo.assigned + 2 > cupo.capacity;
-if (lleno) {
-  const ampliado = await call('/api/v1/agenda/capacity', {
-    method: 'PUT',
-    body: JSON.stringify({ date: dia, capacity: cupo.assigned + 4, reason: MARK }),
-  });
-  check('el cupo del día de prueba se amplía para las dos citas', ampliado.status === 200);
-}
+check('el día de prueba tiene un consultorio con franjas', typeof chairId === 'string');
 
 const horas = await horasLibres(6);
 if (horas.length < 2) {
@@ -256,7 +254,9 @@ for (const hora of horas.slice(0, 3)) {
       startTime: hora,
       slotKind: 'manual',
       durationMinutes: 30,
+      chairId,
       notes: MARK,
+      ...(lleno ? { authorizeOverbook: true, overbookReason: `${MARK}: jornada llena` } : {}),
     }),
   });
   if (cita.status === 201) break;

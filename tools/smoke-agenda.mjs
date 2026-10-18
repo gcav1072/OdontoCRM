@@ -143,12 +143,33 @@ const dayFor = (offsetDays) => {
 const day = dayFor(60);
 const otherDay = dayFor(67);
 
+/** Un domingo sin turnos: es el día cerrado con el que se prueba el sobrecupo. */
+const closedSunday = (() => {
+  for (let extra = 0; extra < 14; extra += 1) {
+    const date = new Date(Date.now() + (75 + extra) * 86_400_000).toISOString().slice(0, 10);
+    if (new Date(`${date}T00:00:00Z`).getUTCDay() === 0) return date;
+  }
+  throw new Error('no encontré domingo');
+})();
+
 const dayView = await call(`/api/v1/agenda/days/${day}`);
 check('la jornada del día responde', dayView.status === 200, `status ${dayView.status}`);
-const freeSlots = (dayView.body?.slots ?? []).filter((slot) => slot.state === 'libre');
+// La jornada viene **por consultorio** desde el ADR 0059: las franjas se aplanan.
+const sillones = dayView.body?.chairs ?? [];
+const chairId = sillones[0]?.chair?.id ?? '';
+check('el día tiene un consultorio activo', chairId !== '', `sillones ${sillones.length}`);
+const franjas = sillones.flatMap((sillon) => sillon.slots ?? []);
+const freeSlots = franjas.filter((slot) => slot.state === 'libre');
 check('el día tiene franjas libres', freeSlots.length >= 3, `${freeSlots.length} libres`);
+// El cupo no se fija a mano: son las franjas del horario (las ocupadas incluidas).
+const ocupadas = franjas.filter((slot) => slot.state === 'ocupada').length;
+check(
+  'el cupo del día son sus franjas',
+  dayView.body?.capacity?.source === 'plantilla' &&
+    dayView.body?.capacity?.capacity === freeSlots.length + ocupadas,
+  `${dayView.body?.capacity?.capacity} franjas · ${dayView.body?.capacity?.source}`,
+);
 const slotA = freeSlots[0]?.startTime;
-const slotB = freeSlots[1]?.startTime;
 const slotC = freeSlots[2]?.startTime;
 
 // 4) Solicitud con ticket.
@@ -185,18 +206,7 @@ check(
   `encontradas ${queue.body?.total}`,
 );
 
-// 5) Cupo del día (editable) y asignación de una franja.
-const capacity = await call('/api/v1/agenda/capacity', {
-  method: 'PUT',
-  body: JSON.stringify({ date: day, capacity: 6, notes: `${MARK}: cupo de prueba` }),
-});
-check(
-  'el cupo se fija en 6',
-  capacity.body?.capacity === 6,
-  `capacidad ${capacity.body?.capacity}`,
-);
-check('el cupo queda como explícito', capacity.body?.source === 'explicito');
-
+// 5) Asignación de una franja (el cupo sale del horario, no se fija a mano).
 const assigned = await call('/api/v1/appointments', {
   method: 'POST',
   body: JSON.stringify({
@@ -204,6 +214,7 @@ const assigned = await call('/api/v1/appointments', {
     date: day,
     startTime: slotA,
     slotKind: 'franja',
+    chairId,
     authorizeOverbook: false,
     notes: MARK,
   }),
@@ -231,7 +242,7 @@ check(
 // 6) La misma franja no se puede ocupar dos veces.
 const duplicated = await call('/api/v1/appointments', {
   method: 'POST',
-  body: JSON.stringify({ requestId, date: day, startTime: slotA, slotKind: 'franja' }),
+  body: JSON.stringify({ requestId, date: day, startTime: slotA, slotKind: 'franja', chairId }),
 });
 check(
   'repetir la solicitud o la franja da 409',
@@ -257,6 +268,7 @@ const takenSlot = await call('/api/v1/appointments', {
     date: day,
     startTime: slotA,
     slotKind: 'franja',
+    chairId,
     notes: MARK,
   }),
 });
@@ -266,49 +278,59 @@ check(
   `status ${takenSlot.status}`,
 );
 
-// 7) Bajar el cupo por debajo de lo asignado avisa y no borra.
-const lowered = await call('/api/v1/agenda/capacity', {
+// 7) Un domingo sin turnos está cerrado: su cupo es 0 y asignar exige sobrecupo.
+const cerrado = await call('/api/v1/agenda/schedule', {
   method: 'PUT',
-  body: JSON.stringify({ date: day, capacity: 0, notes: `${MARK}: cupo a cero` }),
+  body: JSON.stringify({ weekdays: [0], chairId: null, slotMinutes: 30, shifts: [] }),
 });
+check('el horario acepta cerrar un día', cerrado.status === 200, `status ${cerrado.status}`);
+
+const closedView = await call(`/api/v1/agenda/days/${closedSunday}`);
 check(
-  'bajar el cupo avisa y no borra citas',
-  typeof lowered.body?.warning === 'string' && lowered.body?.assigned >= 1,
-  String(lowered.body?.warning ?? '').slice(0, 70),
-);
-const stillThere = await call(`/api/v1/appointments/${appointmentId}`);
-check(
-  'la cita sigue existiendo',
-  stillThere.status === 200 && stillThere.body?.status === 'programada',
+  'el domingo cerrado tiene cupo 0',
+  closedView.body?.capacity?.capacity === 0 && closedView.body?.capacity?.source === 'sin_turnos',
+  `${closedView.body?.capacity?.capacity} franjas · ${closedView.body?.capacity?.source}`,
 );
 
-// 8) Sobrecupo: sin motivo no pasa, y con motivo pero sin ser quien puede…
-const overbookWithoutReason = await call('/api/v1/appointments', {
+const sundayRequest = await call('/api/v1/requests', {
   method: 'POST',
   body: JSON.stringify({
-    requestId: second.body?.id,
-    date: day,
-    startTime: slotB,
-    slotKind: 'franja',
-    authorizeOverbook: true,
+    patientId: pacienteDePrueba.id,
+    patientName: pacienteDePrueba.fullName,
+    patientDocument: pacienteDePrueba.document,
+    channel: 'presencial',
+    reason: `${MARK}: control del domingo`,
+    notes: MARK,
   }),
+});
+const enDomingo = (extra) => ({
+  requestId: sundayRequest.body?.id,
+  date: closedSunday,
+  startTime: '09:00',
+  slotKind: 'manual',
+  durationMinutes: 30,
+  chairId,
+  notes: MARK,
+  ...extra,
+});
+
+const sinMotivo = await call('/api/v1/appointments', {
+  method: 'POST',
+  body: JSON.stringify(enDomingo({ authorizeOverbook: true })),
 });
 check(
   'el sobrecupo sin motivo no se acepta',
-  overbookWithoutReason.status === 400 || overbookWithoutReason.status === 409,
-  `status ${overbookWithoutReason.status}`,
+  sinMotivo.status === 400 || sinMotivo.status === 409,
+  `status ${sinMotivo.status}`,
 );
 const overbooked = await call('/api/v1/appointments', {
   method: 'POST',
-  body: JSON.stringify({
-    requestId: second.body?.id,
-    date: day,
-    startTime: slotB,
-    slotKind: 'franja',
-    authorizeOverbook: true,
-    overbookReason: `${MARK}: paciente con dolor agudo`,
-    notes: MARK,
-  }),
+  body: JSON.stringify(
+    enDomingo({
+      authorizeOverbook: true,
+      overbookReason: `${MARK}: paciente con dolor agudo`,
+    }),
+  ),
 });
 check(
   'el admin autoriza el sobrecupo con motivo',
@@ -323,6 +345,7 @@ const moved = await call(`/api/v1/appointments/${appointmentId}/reschedule`, {
     date: otherDay,
     startTime: slotC,
     slotKind: 'franja',
+    chairId,
     reason: `${MARK}: el paciente pidió cambiarla`,
     authorizeOverbook: false,
   }),
@@ -358,10 +381,10 @@ check(
   `status ${noShow.status}: ${String(noShow.body?.detail ?? '').slice(0, 60)}`,
 );
 
-// 11) Aviso en lote con vista previa exacta.
+// 11) Aviso en lote con vista previa exacta (la cita viva quedó en `otherDay`).
 const preview = await call('/api/v1/agenda/notify/preview', {
   method: 'POST',
-  body: JSON.stringify({ date: day }),
+  body: JSON.stringify({ date: otherDay }),
 });
 const previewItems = preview.body?.items ?? [];
 const sendable = previewItems.filter((item) => item.willSend);
@@ -384,7 +407,7 @@ check(
 
 const notified = await call('/api/v1/agenda/notify', {
   method: 'POST',
-  body: JSON.stringify({ date: day, force: false }),
+  body: JSON.stringify({ date: otherDay, force: false }),
 });
 check(
   'el lote marca las citas como notificadas',
@@ -393,7 +416,7 @@ check(
 );
 const secondPreview = await call('/api/v1/agenda/notify/preview', {
   method: 'POST',
-  body: JSON.stringify({ date: day }),
+  body: JSON.stringify({ date: otherDay }),
 });
 check(
   'un segundo intento no repite los avisos',
