@@ -1,7 +1,7 @@
 import { buildCsv, type CsvColumn, type CsvValue } from '../common/csv.js';
 import { z } from 'zod';
 
-import { optionalText } from '../common/optional.js';
+import { optionalQueryText, optionalText } from '../common/optional.js';
 import { paginationQuerySchema } from '../common/pagination.js';
 import {
   CREDIT_NOTE_CANCELLATION_TYPES,
@@ -1380,8 +1380,8 @@ export const billingInvoiceListQuerySchema = paginationQuerySchema
     status: z.enum(INVOICE_STATUSES).optional(),
     from: z.iso.date().optional(),
     to: z.iso.date().optional(),
-    /** Nombre o documento del paciente. */
-    search: optionalText(60),
+    /** Nombre o documento del paciente. Ausente = sin filtro (no la cadena «null»). */
+    search: optionalQueryText(60),
   })
   .strict();
 

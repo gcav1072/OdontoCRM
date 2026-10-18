@@ -24,6 +24,21 @@ export const optionalDate = z
   .transform((value) => (value === '' || value === null || value === undefined ? null : value));
 
 /**
+ * Texto de un **filtro** de consulta: ausente o vacío significa «sin filtro».
+ *
+ * `optionalText` normaliza el vacío a `null` porque en un **cuerpo** el vacío es un dato
+ * («borra este campo»). En la URL no: quien consume el filtro compara con `undefined`
+ * para decidir si lo aplica, y con `null` construía condiciones reales —el historial de
+ * la caja buscaba literalmente la cadena «null» y salía vacío—. Este helper devuelve
+ * `undefined` para que «no hay filtro» tenga una sola forma.
+ */
+export const optionalQueryText = (max: number) =>
+  z
+    .union([z.literal(''), z.string().overwrite(cleanText).max(max)])
+    .optional()
+    .transform((value) => (value === undefined || value === '' ? undefined : value));
+
+/**
  * Booleano que llega por la **URL** de un filtro.
  *
  * `z.coerce.boolean()` no sirve aquí y es una trampa que muerde de verdad:

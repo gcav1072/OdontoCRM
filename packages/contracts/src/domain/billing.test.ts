@@ -7,6 +7,7 @@ import {
   PAYMENT_METHODS,
   ROUNDING_TOLERANCE_CENTS_USD,
   automaticInvoiceTransitions,
+  billingInvoiceListQuerySchema,
   billingSettingsSchema,
   bsPaymentBreakdown,
   canTransitionInvoice,
@@ -499,7 +500,9 @@ describe('descomposición tripartita del cobro en Bs. (ADR 0069, Escuela A)', ()
     });
 
     // Σ histórico = 60.000,00 Bs.: cuadra con el total congelado de la factura (Libro de Ventas).
-    expect((pago1?.historicalVesCentimos ?? 0) + (pago2?.historicalVesCentimos ?? 0)).toBe(6_000_000);
+    expect((pago1?.historicalVesCentimos ?? 0) + (pago2?.historicalVesCentimos ?? 0)).toBe(
+      6_000_000,
+    );
   });
 
   it('CP-02: la Fecha Valor de un domingo se valora con la tasa del viernes', () => {
@@ -557,7 +560,9 @@ describe('descomposición tripartita del cobro en Bs. (ADR 0069, Escuela A)', ()
       absorbsRounding: true,
     });
     // 10.050,00 Bs. → 1.005: cinco céntimos de más, justo en el límite; se absorben.
-    expect(bsPaymentBreakdown({ ...base, tenderedVesCentimos: 1_005_000 })?.closesBalance).toBe(true);
+    expect(bsPaymentBreakdown({ ...base, tenderedVesCentimos: 1_005_000 })?.closesBalance).toBe(
+      true,
+    );
     // 10.070,00 Bs. → 1.007: siete de más. Un sobrepago real se rechaza, no se calla.
     expect(bsPaymentBreakdown({ ...base, tenderedVesCentimos: 1_007_000 })).toBeNull();
   });
@@ -719,5 +724,22 @@ describe('los campos nuevos del contrato (ADR 0069)', () => {
     });
     expect(ajustes.igtfRateBp).toBe(300);
     expect(billingSettingsSchema.safeParse({ ...ajustes, igtfRateBp: 20_000 }).success).toBe(false);
+  });
+
+  it('el filtro del historial sin texto es «sin filtro», no la cadena «null»', () => {
+    // Sin `search` el consumidor compara con `undefined`: si el esquema devolviera `null`,
+    // el historial de la caja buscaba literalmente «null» y salía vacío.
+    const sinBusqueda = billingInvoiceListQuerySchema.parse({ page: 1, pageSize: 20 });
+    expect(sinBusqueda.search).toBeUndefined();
+    expect(billingInvoiceListQuerySchema.parse({ search: '' }).search).toBeUndefined();
+    expect(billingInvoiceListQuerySchema.parse({ search: '   ' }).search).toBeUndefined();
+    expect(billingInvoiceListQuerySchema.parse({ search: '  Astudillo ' }).search).toBe(
+      'Astudillo',
+    );
+    // El resto de filtros siguen igual.
+    expect(
+      billingInvoiceListQuerySchema.parse({ status: 'pagada', from: '2026-10-01' }),
+    ).toMatchObject({ status: 'pagada', from: '2026-10-01' });
+    expect(billingInvoiceListQuerySchema.safeParse({ status: 'cobrada' }).success).toBe(false);
   });
 });
