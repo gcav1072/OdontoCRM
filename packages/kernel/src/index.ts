@@ -7,4 +7,5 @@ export * from './errors.js';
 export * from './health.js';
 export * from './logger.js';
 export * from './server.js';
+export * from './stable-uuid.js';
 export * from './validation.js';
