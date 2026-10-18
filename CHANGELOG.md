@@ -4,6 +4,47 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Corrida QA · 2.ª pasada] — el historial vacío, la cita que respalda la sesión y el monto de la otra moneda · 2026-10-18
+
+Re-probando `CFG-04` (ya pasa: el interruptor del IGTF guarda y el cobro lo refleja) aparecieron tres
+cosas que no eran del arreglo anterior y que sí se notan en el mostrador.
+
+La primera es la más visible: **el historial de la caja salía vacío**. `billingInvoiceListQuerySchema`
+declaraba `search` con `optionalText`, que devuelve `null` cuando el parámetro no viene —en un
+cuerpo eso significa «vacía el campo», pero en una URL es «sin filtro»—, y el servicio compara con
+`undefined` para decidir si lo aplica. Resultado: sin escribir nada en el buscador, la consulta
+llevaba `patientName ilike '%null%'` y no encontraba ninguna factura. Escribir un nombre la hacía
+aparecer, que es la clase de síntoma que se achaca a la caché. Ahora hay `optionalQueryText`, que
+normaliza ausente y vacío a `undefined`: «no hay filtro» tiene una sola forma.
+
+La segunda se vio en la pestaña **Sesión clínica**: el desplegable «Cita que respalda la sesión» solo
+ofrecía «Sin cita». La lista se pedía con `date=<hoy>`, así que si la cita estaba programada para
+otro día —la sesión se abre desde la ficha del paciente, o el paciente llega antes de su cita— no
+había nada que ofrecer. Ahora se piden las citas del paciente desde hoy y hasta dos meses, se
+filtran a las que pueden respaldar una sesión (pendientes y las del circuito del día; nunca las
+cerradas) y se ordenan con el paciente del sillón primero. La etiqueta lleva la fecha cuando no es
+de hoy, y solo se marca sola la cita cuando no hay ambigüedad.
+
+La tercera explica los diferenciales que quedaban: el campo del monto se rellenaba **solo si estaba
+vacío**, así que al cambiar el medio de pago el importe seguía siendo el de la otra moneda (34,49
+dólares cobrados como 34,49 bolívares). El campo pasa a ser una propuesta: se recalcula al cambiar
+el medio, la moneda, la tasa de la Fecha Valor o el saldo, y se respeta en cuanto el cajero escribe.
+Además, la fila «Diferencial» ya no se pinta cuando vale cero, que era lo que hacía dudar de un cobro
+correcto. Verificado en vivo: un cobro del saldo exacto en bolívares a la misma tasa deja
+`exchangeDiffVesCentimos = 0`.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `packages/contracts/src/common/optional.ts` | Nuevo `optionalQueryText`: en una URL, ausente o vacío es «sin filtro» (`undefined`) |
+| `packages/contracts/src/domain/billing.ts` | El `search` del historial usa `optionalQueryText`; deja de generar `ilike '%null%'` |
+| `apps/web/src/components/clinical/session-appointments.ts` | Nuevo: qué citas respaldan una sesión, en qué orden y cuál se marca sola |
+| `apps/web/src/components/clinical/SessionPanel.tsx` | Pide las citas desde hoy a dos meses, filtra por estado y etiqueta con la fecha |
+| `apps/web/src/components/caja/CobroDialog.tsx` | El monto se propone y se recalcula al cambiar de moneda; el diferencial en cero no se pinta |
+| `apps/web/src/lib/caja.test.ts` | Ida y vuelta `formatBs`/`formatUsd` → `parseUsdToCents` |
+| `packages/contracts/src/domain/billing.test.ts` | El filtro sin texto es «sin filtro», no la cadena «null» |
+| `apps/web/src/components/clinical/session-appointments.test.ts` | Nuevo: estados que respaldan, orden y elección por defecto |
+| `docs/plan_de_pruebas_manuales_e2e_odontocrm.md` | `CFG-04` a PASS y los hallazgos `CAJ-12`, `CAJ-13` y del adelanto de `CLI-03` |
+
 ## [Corrida QA] — el consultorio se entera de la historia, el IGTF se guarda y el monto autocompletado se puede leer · 2026-10-18
 
 Primera pasada completa de los bloques `PRE`, `E2E`, `ID` y `CFG` del

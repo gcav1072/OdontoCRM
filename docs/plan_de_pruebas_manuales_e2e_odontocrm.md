@@ -131,9 +131,9 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `CFG-04` — Régimen tributario de la caja (Sujeto Pasivo Especial y alícuota del IGTF)
 - **Rutas / Componentes:** `TributarioSection.tsx`, `ConfiguracionPage.tsx`, `CajaPage.tsx` (ADR `0045`, `0069`).
 - **Pasos de prueba:**
-  - [ ] Entrar a `/configuracion` con el rol **Administrador** y, en **Régimen tributario**, marcar *Sujeto Pasivo Especial (Agente de Percepción IGTF)* y fijar una alícuota (ej. $3{,}00\%$); guardar.
-  - [ ] Abrir `CobroDialog.tsx` y comprobar que aparece el bloque del IGTF con la alícuota configurada y el selector de **moneda de percepción**.
-  - [ ] Iniciar sesión con **Secretaría** y escribir la URL `/configuracion` en la barra de direcciones.
+  - [x] Entrar a `/configuracion` con el rol **Administrador** y, en **Régimen tributario**, marcar *Sujeto Pasivo Especial (Agente de Percepción IGTF)* y fijar una alícuota (ej. $3{,}00\%$); guardar.
+  - [x] Abrir `CobroDialog.tsx` y comprobar que aparece el bloque del IGTF con la alícuota configurada y el selector de **moneda de percepción**.
+  - [x] Iniciar sesión con **Secretaría** y escribir la URL `/configuracion` en la barra de direcciones.
 - **Resultado esperado:** `PATCH /api/v1/billing/settings` guarda la configuración fiscal y el cobro la refleja; editar la configuración exige `settings:manage` (solo `admin`), así que la secretaría recibe `ForbiddenPage.tsx` (HTTP $403$).
 
 ---
@@ -500,7 +500,7 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 | `PRE` | Pre-Flight y Entorno | $5$ | $5$ | $0$ | $0$ | | 2026-10-18 |
 | `E2E` | Ciclo de Vida Completo | $7$ | $6$ | $1$ | $0$ | | 2026-10-18 |
 | `ID` | Identidad, Auth y RBAC | $5$ | $5$ | $0$ | $0$ | | 2026-10-18 |
-| `CFG` | Configuración y Membrete | $4$ | $3$ | $1$ | $0$ | | 2026-10-18 |
+| `CFG` | Configuración y Membrete | $4$ | $4$ | $0$ | $0$ | | 2026-10-18 |
 | `PAC` | Pacientes y Adjuntos Cifrados | $4$ | | | | | |
 | `AGE` | Agenda, Cupos y Tickets | $4$ | | | | | |
 | `SEC` | Secretaría y Flujo Diario | $2$ | | | | | |
@@ -524,7 +524,69 @@ corregidos** en el árbol; quedan por re-ejecutar los tres casos para firmar el 
 | `PRE` | $5$ | $5$ PASS | Servicios, migraciones, entorno, semilla y banner de Modo Test correctos. |
 | `E2E` | $7$ | $6$ PASS · $1$ FAIL | `E2E-04`: la pantalla del consultorio no se enteró del alta y firma de la historia. |
 | `ID` | $5$ | $5$ PASS | El usuario desactivado en `ID-01` se volvió a activar al terminar la prueba. |
-| `CFG` | $4$ | $3$ PASS · $1$ FAIL | `CFG-04`: el interruptor del IGTF devolvía **500** y no guardaba. |
+| `CFG` | $4$ | $4$ PASS | `CFG-04` pasó en la segunda pasada, después del arreglo del UUID: guarda y se refleja en el cobro. |
+
+### 5.0 Hallazgos de la segunda pasada (mismo día)
+
+Al re-probar `CFG-04` y el ciclo de caja aparecieron tres cosas más. Las tres están corregidas en el
+árbol y con prueba.
+
+#### `CAJ-12` — el historial de la caja salía **vacío** sin filtros
+
+- **Síntoma.** `/caja` → **Historial** no listaba nada, aunque `/api/v1/billing/books/sales.csv`
+  mostraba las facturas del período. Escribir un nombre en el buscador las hacía aparecer.
+- **Causa.** `billingInvoiceListQuerySchema.search` usaba `optionalText`, que devuelve **`null`**
+  cuando el parámetro no viene (en un cuerpo eso significa «vacía el campo»). El servicio compara
+  con `undefined` para decidir si aplica el filtro, así que construía
+  `patientName ilike '%null%'` y no encontraba nada. Cualquier filtro acompañado del `search`
+  ausente heredaba el problema.
+- **Arreglo.** `optionalQueryText` (nuevo, en `packages/contracts/src/common/optional.ts`): en una
+  **URL**, ausente o vacío significa «sin filtro» y se normaliza a `undefined`. Lo usa el filtro del
+  historial.
+- **Cómo re-probar.** Abrir `/caja` → **Historial** sin tocar los filtros: tienen que salir las
+  facturas del período. Añadir `from`/`to` o un estado y comprobar que el conjunto cambia.
+
+#### `CLI-03` (adelanto) — «Cita que respalda la sesión» solo ofrecía «Sin cita»
+
+- **Síntoma.** En la pestaña **Sesión clínica**, el desplegable de la cita que respalda la sesión
+  mostraba únicamente «Sin cita (el paciente vino sin cita)», aunque el paciente tuviera citas
+  programadas.
+- **Causa.** La lista se pedía **solo del día de hoy** (`date=<hoy>`). Si la cita estaba programada
+  para otro día —la sesión se abre desde la ficha del paciente, o el paciente viene antes de su
+  cita— la lista llegaba vacía.
+- **Arreglo.** `apps/web/src/components/clinical/session-appointments.ts` (nuevo) decide qué citas
+  respaldan una sesión: las **pendientes** (`programada`, `notificada`, `confirmada`) y las del
+  **circuito del día** (`en_sala_espera`, `llamado`, `en_consulta`), desde hoy y hasta dos meses;
+  fuera quedan las cerradas (`atendido`, `no_asistio`, `cancelada`, `reprogramada`) y los días
+  pasados. Se ordena con el paciente del sillón primero y la etiqueta muestra la **fecha** cuando
+  no es de hoy. Solo se marca sola cuando no hay ambigüedad (una cita en curso o una única
+  pendiente de hoy).
+- **Cómo re-probar.** Con un paciente que tenga una cita `programada`/`confirmada` para otro día,
+  abrir su tab **Sesión clínica**: la cita aparece en el desplegable con su fecha, y al abrir la
+  sesión queda enlazada. Al cerrarla, «Marcar atendida» sale sin pedir motivo **si la cita está en
+  consulta** (la máquina de estados solo admite `en_consulta → atendido`).
+
+#### `CAJ-13` — el monto del cobro se quedaba con la moneda del medio anterior
+
+- **Síntoma.** Un cobro en bolívares registraba un diferencial de céntimos aunque la tasa fuera la
+  misma, y el recibo mostraba una imputación que no era el saldo.
+- **Causa.** El campo del monto se rellenaba **solo si estaba vacío**. Al cambiar el medio de pago
+  (por ejemplo de Zelle a Pago Móvil) el importe seguía siendo el de la otra moneda: 34,49 (US$) se
+  cobraba como 34,49 **Bs.**, y la diferencia aparecía como diferencial cambiario.
+- **Arreglo.** El monto es una **propuesta** mientras nadie lo escriba: se recalcula al cambiar el
+  medio, la moneda, la tasa de la Fecha Valor o el saldo. Si el cajero lo escribe, se respeta. La
+  fila de «Diferencial» solo se pinta cuando **no** es cero.
+- **Cómo re-probar.** Abrir `CobroDialog`, cambiar de un medio en divisas a uno en bolívares y
+  comprobar que el monto pasa a bolívares; cobrar sin tocarlo → `Diferencial` no aparece y queda
+  `Bs. 0,00`.
+
+#### Sobre el diferencial histórico que sigue en el libro
+
+El libro cambiario del período conserva las pérdidas de la corrida anterior (`REC-000002`): ese
+cobro se registró **antes** del arreglo, con el monto tecleado a mano y **450,05 Bs.** de menos, así
+que la diferencia es real y no se puede «recalcular» sin anular el cobro. En una base de pruebas se
+limpia con `AnularDialog` (reembolso) o `npm run db:reset`; en producción, el ADR `0069` manda
+conservarlo tal cual.
 
 ### 5.1 `E2E-04` — la pantalla del consultorio no se refrescaba al firmar la historia
 
@@ -585,6 +647,10 @@ corregidos** en el árbol; quedan por re-ejecutar los tres casos para firmar el 
 - **Arreglo.** `parseUsdToCents` acepta el separador de miles en las dos convenciones
   (`1.234,56` y `1,234.56`), valida el agrupado y sigue rechazando lo que no es un importe
   (`12,345`, `1.23.4`). El monto que la pantalla propone vuelve a ser el exacto.
+- **Verificado en vivo** (2026-10-18, `odontocrm.local`): un cobro del saldo exacto en bolívares a la
+  misma tasa (factura `A-3`, `REC-000005`) quedó con `exchangeDiffVesCentimos = 0` y
+  `fxDifferenceCentsUsd = 0`. El arreglo del monto heredado de la otra moneda se describe en
+  `CAJ-13` ($5.0$).
 - **Cómo re-probar.** Cobrar el saldo de una factura en bolívares con la tasa de emisión vigente,
   **sin tocar** el monto autocompletado → `Diferencial` debe salir en `Bs. 0,00` y **sin** el badge
   «ajuste de redondeo absorbido». Si se teclea un monto redondeado al bolívar, el diferencial sigue
@@ -596,5 +662,10 @@ Los tres arreglos llevan prueba: `packages/kernel/src/stable-uuid.test.ts`,
 `services/billing/src/settings.integration.test.ts` (el `PATCH` publica un sobre y una auditoría
 válidos), `services/screens/src/screens.integration.test.ts` (la historia del paciente en el sillón
 republica el consultorio; la de otro paciente, no) y los casos nuevos de
-`apps/web/src/lib/caja.test.ts`. La suite unitaria completa (`npm test`) pasa; las suites de
-integración se ejecutan con `npm run test:integration`.
+`apps/web/src/lib/caja.test.ts` (incluida la ida y vuelta `formatBs → parseUsdToCents`).
+
+De la segunda pasada: `packages/contracts/src/domain/billing.test.ts` fija que el filtro sin texto
+es «sin filtro» y no la cadena «null», y
+`apps/web/src/components/clinical/session-appointments.test.ts` fija qué citas respaldan una sesión
+y cuál se marca sola. La suite unitaria completa (`npm test`) pasa; las suites de integración se
+ejecutan con `npm run test:integration`.
