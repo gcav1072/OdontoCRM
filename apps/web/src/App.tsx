@@ -23,6 +23,7 @@ import { PatientDetailPage } from './pages/PatientDetailPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { PatientRegistryPage } from './pages/PatientRegistryPage';
 import { PatientsPage } from './pages/PatientsPage';
+import { PeriodontogramPrintPage } from './pages/PeriodontogramPrintPage';
 import { ReportesPage } from './pages/ReportesPage';
 import { AuditoriaPage } from './pages/AuditoriaPage';
 import { CajaPage } from './pages/CajaPage';
@@ -138,6 +139,20 @@ export const App = () => {
             <RequireAuth>
               <RequirePermission permission="odontogram:read">
                 <OdontogramPrintPage />
+              </RequirePermission>
+            </RequireAuth>
+          }
+        />
+
+        {/* v1.1: el periodontograma se imprime fuera del shell igual que el
+          odontograma y con el mismo permiso: imprimir es leer, y `odontogram:write`
+          sigue siendo del odontólogo y del admin. */}
+        <Route
+          path="/consultorio/:patientId/periodontograma/imprimir"
+          element={
+            <RequireAuth>
+              <RequirePermission permission="odontogram:read">
+                <PeriodontogramPrintPage />
               </RequirePermission>
             </RequireAuth>
           }

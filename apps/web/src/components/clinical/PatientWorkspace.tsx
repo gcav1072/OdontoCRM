@@ -22,6 +22,7 @@ import { formatDate } from '../../lib/format';
 import { SEX_LABELS, t, type TranslationKey } from '../../lib/i18n';
 import { NoticeBanner } from '../NoticeBanner';
 import { OdontogramPanel } from '../odontogram/OdontogramPanel';
+import { PeriodontogramPanel } from '../periodontogram/PeriodontogramPanel';
 import { AmendmentDialog } from './AmendmentDialog';
 import { ClinicalAlerts } from './ClinicalAlerts';
 import { ConsentDialog } from './ConsentDialog';
@@ -43,13 +44,18 @@ import { SignRecordDialog } from './SignRecordDialog';
 const parseSex = (value: string): string =>
   value === 'M' || value === 'F' || value === 'O' ? SEX_LABELS[value] : value;
 
-/** Pestañas del área del paciente: historia, sesión y odontograma (Fases 6 y 7). */
-export type PatientTab = 'historia' | 'sesion' | 'odontograma';
+/**
+ * Pestañas del área del paciente: historia, sesión, odontograma (Fases 6 y 7) y
+ * periodontograma (v1.1). El periodontograma reutiliza los permisos del odontograma,
+ * así que solo aparece donde ya se ve el odontograma.
+ */
+export type PatientTab = 'historia' | 'sesion' | 'odontograma' | 'periodontograma';
 
 const TABS: readonly { key: PatientTab; labelKey: TranslationKey }[] = [
   { key: 'historia', labelKey: 'odonto.pestana.historia' },
   { key: 'sesion', labelKey: 'clinica.sesion.pestana' },
   { key: 'odontograma', labelKey: 'odonto.pestana.odontograma' },
+  { key: 'periodontograma', labelKey: 'periodonto.pestana.periodontograma' },
 ];
 
 export interface PatientWorkspaceProps {
@@ -213,7 +219,8 @@ export const PatientWorkspace = ({
       )}
 
       {/* Pestañas del área del paciente: la historia clínica (Fase 6A), la sesión
-          del día (Fase 7A) y el odontograma (Fase 6B) comparten contexto. */}
+          del día (Fase 7A), el odontograma (Fase 6B) y el periodontograma (v1.1)
+          comparten contexto. */}
       {puedeVerOdontograma && (
         <div className="flex flex-wrap gap-1 border-b border-border" role="tablist">
           {TABS.map((tab) => (
@@ -242,6 +249,12 @@ export const PatientWorkspace = ({
 
       {pestana === 'odontograma' && puedeVerOdontograma ? (
         <OdontogramPanel
+          patientId={patientId}
+          canWrite={puedeEditarOdontograma}
+          sessionId={sesionAbierta?.id ?? null}
+        />
+      ) : pestana === 'periodontograma' && puedeVerOdontograma ? (
+        <PeriodontogramPanel
           patientId={patientId}
           canWrite={puedeEditarOdontograma}
           sessionId={sesionAbierta?.id ?? null}

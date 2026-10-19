@@ -40,11 +40,17 @@ export const ConsultorioPage = () => {
   const { hasPermission } = useAuth();
   const [params, setParams] = useSearchParams();
   const patientId = params.get('paciente');
-  // La ficha del paciente enlaza directo a la pestaña del odontograma y la
-  // secretaría, a la sesión.
+  // La ficha del paciente enlaza directo a la pestaña del odontograma (o del
+  // periodontograma, que vive al lado) y la secretaría, a la sesión.
   const vista = params.get('vista');
   const vistaInicial: PatientTab =
-    vista === 'odontograma' ? 'odontograma' : vista === 'sesion' ? 'sesion' : 'historia';
+    vista === 'odontograma'
+      ? 'odontograma'
+      : vista === 'periodontograma'
+        ? 'periodontograma'
+        : vista === 'sesion'
+          ? 'sesion'
+          : 'historia';
 
   return (
     <div className="space-y-5">
