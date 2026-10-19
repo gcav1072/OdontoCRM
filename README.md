@@ -227,7 +227,7 @@ logo de respaldo y marca de agua) y las vías de producción— está en
 | scheduling | 4003 | ✅ Fase 3 |
 | notifications | 4004 | ✅ Fase 4 (Telegram) · Fase 4.1 (multicanal + webhook) |
 | clinical | 4005 | ✅ Fase 6 (historia clínica) · Fase 7 (sesiones, adjuntos y récipes) |
-| odontogram | 4006 | ✅ Fase 6, sesión B (odontograma FDI) |
+| odontogram | 4006 | ✅ Fase 6, sesión B (odontograma FDI) · v1.1 (periodontograma) |
 | screens | 4007 | ✅ Fase 5 (secretaría y pantallas con SSE) |
 | reporting | 4008 | ✅ Fase 9 (read model, KPIs y auditoría UI) |
 | billing | 4009 | ✅ Fase 11 (facturación y pagos) · Fase 12 (diferencial cambiario e IGTF configurable) |
@@ -522,6 +522,51 @@ fila**— y motor geométrico SVG sin dependencias. La dentición (permanente 11
 
 ---
 
+## API de la v1.1 (periodontograma)
+
+El **periodontograma** es un documento de examen fechado: se sondean los **6 sitios** de cada
+una de las 32 piezas permanentes (192 mediciones), se guarda como **un examen** con su boca en
+`jsonb`, se **firma cerrando** el documento y se compara contra exámenes anteriores. Vive en el
+servicio de odontograma (sin microservicios nuevos) y reutiliza sus permisos:
+`odontogram:write` para sondar y cerrar, `odontogram:read` para leer, comparar e imprimir. Las
+decisiones están en el [ADR 0071](docs/adr/0071-periodontograma-integrado.md) y la convención
+clínica en [`docs/PERIODONTOGRAMA_BASES_CLINICAS.md`](docs/PERIODONTOGRAMA_BASES_CLINICAS.md).
+
+| Método y ruta | Qué hace | Permiso |
+| :--- | :--- | :--- |
+| `POST /api/v1/odontogram/patients/:patientId/periodontograms` | Abre un examen en borrador desde el odontograma, clonando el anterior o en blanco | `odontogram:write` |
+| `GET /api/v1/odontogram/patients/:patientId/periodontograms` | Listado de exámenes del más reciente al más antiguo (`?status`, `?limit`) | `odontogram:read` |
+| `GET /api/v1/odontogram/patients/:patientId/periodontograms/latest` | Último examen (o `exists: false`) con la ficha del paciente para el membrete | `odontogram:read` |
+| `GET /api/v1/odontogram/patients/:patientId/periodontograms/:examId` | Examen completo (boca, factores de riesgo y clasificación) | `odontogram:read` |
+| `PUT /api/v1/odontogram/patients/:patientId/periodontograms/:examId` | Guarda el borrador con **revisión optimista** (409 si otra pestaña guardó) | `odontogram:write` |
+| `POST /api/v1/odontogram/patients/:patientId/periodontograms/:examId/finalize` | Cierra el examen: a partir de ahí es **inmutable** (idempotente) | `odontogram:write` |
+| `DELETE /api/v1/odontogram/patients/:patientId/periodontograms/:examId` | Descarta un **borrador** (un finalizado no se borra); queda auditado | `odontogram:write` |
+| `GET /api/v1/odontogram/patients/:patientId/periodontograms/:examId/compare?with=…` | Comparación longitudinal sitio a sitio (deltas de PS/NIC, bolsas nuevas/resueltas) | `odontogram:read` |
+| `POST /api/v1/odontogram/patients/:patientId/periodontograms/:examId/printed` | Deja constancia de la impresión (también la secretaría) | `odontogram:read` |
+| `GET /internal/v1/periodontogram/patients/:patientId/summary` | Resumen del último **finalizado** para el dossier y los reportes | secreto interno |
+
+- **Sin dato no es cero.** `pd` y `gm` son `null` hasta que se miden; un sitio sin sondar se pinta
+  «—» y **no entra en ningún denominador**. Los índices (BOP %, placa %, PS/NIC medios, bolsas
+  ≥ 4/5/6 mm, sitios de retratamiento EFP S3) se calculan en el contrato y los implantes se
+  informan en un bloque aparte. El NIC se **deriva** (`max(0, PS − MG)`), nunca se captura.
+- **El examen se congela desde el odontograma** al abrirlo (ausentes e implantes) y no vuelve a
+  sincronizarse: la extracción de hoy pertenece al examen siguiente, no reescribe el de ayer. Solo
+  puede haber **un borrador abierto por paciente**.
+- **La clasificación AAP/EFP se sugiere, no se firma sola.** El sistema propone estadio y grado con
+  **códigos de evidencia** (NIC interproximal, PS máxima, furca, movilidad, pérdida dental, tabaco,
+  diabetes, HbA1c) y el odontólogo elige y firma la clasificación que queda en el documento.
+- **La interfaz** es una pestaña más de `/consultorio` (`?vista=periodontograma`): dos arcadas SVG
+  interactivas, tabla de los 192 sitios, **pad clínico táctil** (PS/MG, signo ±, BOP/placa/
+  supuración, auto-avance y deshacer; botones ≥ 44 px y sin `<input>` numéricos), KPIs en vivo,
+  modo comparación y lista de exámenes. El informe se imprime desde
+  `/consultorio/:patientId/periodontograma/imprimir` (carta, con membrete, las 192 cifras y una
+  hoja de evolución si se pide).
+- **Cada guardado, cierre, impresión y descarte publica su evento** por el outbox
+  (`odontogram.periodontogram.*`, `entityType: periodontogram`) con los KPIs y un diff legible; el
+  dossier y `reporting` quedan para la v1.2, con el resumen interno ya servido.
+
+---
+
 ## API de la Fase 7A (sesión clínica)
 
 La sesión es la **evolución** del paciente (§11 de
@@ -755,6 +800,7 @@ borra: se anula con **nota de crédito**.
 - [Política de secretos y tokens](docs/SEGURIDAD_SECRETOS.md)
 - [Formato de historia clínica odontológica](docs/formato_historia.md)
 - [Plan del servicio de odontograma](docs/implementation_plan_odontogram_microservice.md)
-- [Decisiones de arquitectura (ADR)](docs/adr/README.md)
+- [Bases clínicas del periodontograma (v1.1)](docs/PERIODONTOGRAMA_BASES_CLINICAS.md) · [plan y revisión de la v1.1](docs/v1.1_periodontograma/revision_critica_y_decisiones.md)
+- [Decisiones de arquitectura (ADR)](docs/adr/README.md) — el [ADR 0071](docs/adr/0071-periodontograma-integrado.md) documenta el periodontograma
 - **Instalación del servidor**: [en Windows](infra/windows/INSTALL.md) · [en Fedora](infra/fedora/INSTALL.md)
 - **Desarrollo**: [en Windows](infra/windows/DESARROLLO.md)

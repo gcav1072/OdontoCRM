@@ -4,6 +4,36 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [1.1.0] — en desarrollo (periodontograma)
+
+La v1.1 añade la **sección de periodontogramas** sin tocar el odontograma de la v1: un examen
+fechado con las 32 piezas permanentes y sus 6 sitios (192 mediciones), un pad clínico táctil para
+tablet y ratón, comparación longitudinal entre exámenes, informe imprimible y auditoría. El módulo
+vive en el servicio de odontograma (sin microservicios nuevos ni cambios de gateway) y reutiliza
+sus permisos: `odontogram:write` para sondar y finalizar, `odontogram:read` para leer, comparar e
+imprimir.
+
+Se implementó el **núcleo completo del plan** (fases 1–4 del
+[plan de la v1.1](docs/v1.1_periodontograma/plan_primigenio_implementación.md)) y se corrigieron
+los riesgos clínicos y de datos de la revisión
+([revisión crítica y decisiones](docs/v1.1_periodontograma/revision_critica_y_decisiones.md)):
+las mediciones nunca se inventan (`null` = no sondado), el examen es un snapshot del odontograma,
+el guardado es optimista por revisión, el cierre es inmutable y la clasificación AAP/EFP se
+**sugiere** con evidencia explicable pero la firma el odontólogo. La fase 5 (dossier, reporting,
+semillas y E2E transversales) queda declarada para la v1.2; la auditoría sí entra ya por el outbox.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `packages/contracts/src/domain/periodontogram.ts` | Dominio completo: sitios y anatomía por cuadrante, esquemas Zod (32 piezas en orden canónico, furcas anatómicas, coherencia de ausentes/implantes), métricas (BOP %, placa %, PS/NIC medios, bolsas, retratamiento, implantes), sugerencia AAP/EFP con códigos de evidencia, comparación longitudinal, DTOs y entradas de la API |
+| `packages/events/src/topics.ts` · `packages/contracts/src/domain/audit.ts` | Tópicos `odontogram.periodontogram.saved/finalized/printed` y acciones de auditoría `periodontogram_*` |
+| `services/odontogram/src/db/schema.ts` · migración `0004` | Tabla `periodontogram_exams` (JSONB `teeth_data`, métricas, riesgo y diagnóstico), `revision`, `schema_version`, un solo borrador por paciente y checks de coherencia |
+| `services/odontogram/src/odontogram/periodontogram-service.ts` · rutas | Crear desde el odontograma/clonar/en blanco, listar, leer, guardar con revisión (409), finalizar inmutable, descartar borrador, comparar, imprimir y resumen interno; eventos de auditoría dentro de la transacción |
+| `apps/web/src/components/periodontogram/**` | Pad táctil (PS/MG, signo, BOP/placa/supuración, auto-avance, undo), SVG de las dos arcadas con zonas de toque, tabla numérica, KPIs en vivo, sugerencia de clasificación, lista de exámenes y modo comparación |
+| `apps/web/src/components/periodontogram/PeriodontogramDocument.tsx` · `PeriodontogramPrintPage` | Informe imprimible con membrete en carta, saltos de página y hoja de evolución: arcadas, 192 cifras con etiqueta anatómica, NIC, índices, clasificación y comparación |
+| `apps/web/src/components/clinical/PatientWorkspace.tsx` · `App.tsx` · `ConsultorioPage.tsx` | Pestaña «Periodontograma», ruta de impresión y `?vista=periodontograma`; el resto del expediente queda igual |
+| `tools/smoke-periodontogram.mjs` · `tools/check-responsive.mjs` | Humo contra el gateway y comprobación de anchos/targets táctiles del módulo |
+| `docs/adr/0071-periodontograma-integrado.md` · `docs/PERIODONTOGRAMA_BASES_CLINICAS.md` | La decisión de arquitectura y las bases clínicas implementadas (convención de signos, NIC, índices, furcas, límites de la clasificación) |
+
 ## [1.0.0] — 2026-10-18
 
 Primera versión estable del programa: la batería de pruebas manuales E2E se pasó completa y los

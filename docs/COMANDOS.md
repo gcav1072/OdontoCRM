@@ -39,7 +39,7 @@
 | `npm run stack:dev` / `stack:fijo` / `stack:down` | Cambiar de modo sin dejar dos pilas: con recarga, con PM2 o parar todo | Al pasar de trabajar el código a dejarlo corriendo, y al revés |
 | `npm test` | Pruebas unitarias y de contrato (Vitest, sin base de datos) | Mientras se programa: `npm run test:watch` |
 | `npm run test:integration` | Las mismas suites **contra PostgreSQL real** (outbox, colas, sesiones, agenda, pantallas) | Antes de dar algo por terminado |
-| `npm run smoke:<módulo>` | Recorrido de punta a punta **contra los servicios arrancados** por el gateway | Cuando algo «funciona en las pruebas pero no en la app» (`auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `clinical`, `prescription`, `billing`) |
+| `npm run smoke:<módulo>` | Recorrido de punta a punta **contra los servicios arrancados** por el gateway | Cuando algo «funciona en las pruebas pero no en la app» (`auth`, `patients`, `agenda`, `notifications`, `screens`, `odontogram`, `periodontogram`, `clinical`, `prescription`, `billing`) |
 
 > `npm run verify` **no** ejecuta las pruebas de integración ni las de humo: no toca
 > la base de datos ni arranca servicios. Para el DoD de una fase hay que correr
@@ -510,6 +510,7 @@ base de datos). Necesitan los servicios arrancados y datos sembrados.
 | `npm run smoke:notifications` | Estado de canales, plantillas, vinculación con QR, aviso de cita con `.ics` y el botón «Notificar» sin duplicar | 27 |
 | `npm run smoke:screens` | Pantalla kiosko, llamado en el lobby por SSE (mide la latencia), consultorio y baja de la pantalla | 26 |
 | `npm run smoke:odontogram` | Boca por teclado, superación de caras por la pieza completa, borrado y auditoría | 29 |
+| `npm run smoke:periodontogram` | Periodontograma: abrir examen, guardar borrador con mediciones, revisión optimista (409), finalizado inmutable, clon del anterior y **comparación sitio a sitio**, impresión auditada y secretaría que lee/imprime pero no escribe | 37 |
 | `npm run smoke:clinical` | Sesión clínica: abrir, autoguardar, cerrar (y no cerrar en blanco), enmendar, hallazgo del odontograma ligado a la sesión y «atendido» con y sin sesión (estrena paciente y busca hora libre en cada corrida) | 30 |
 | `npm run smoke:prescription` | Fase 7B: adjunto de la sesión (subida, listado, descarga y pieza), catálogo, borrador del récipe, **emisión con número y PDF del récipe**, no emitir dos veces, reimpresión auditada, anulación con motivo, **verificación pública sin token**, y que la secretaría imprime pero no receta | 32 |
 | `npm run smoke:reporting` | Fase 9: **el recorrido que alimenta los reportes** —alta, teléfono editado con motivo, cita, aviso, historia firmada con diabetes y alergia, sesión cerrada, récipe emitido y tres hallazgos del odontograma— y después el tablero, los **seis reportes** con sus cifras, la **exportación CSV y PDF**, los permisos de la secretaría (operativos 200 / clínicos 403) y la **auditoría del teléfono** con su valor anterior, el nuevo y el motivo | 81 |
