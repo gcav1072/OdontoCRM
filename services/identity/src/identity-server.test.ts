@@ -131,7 +131,7 @@ describe('servidor de identity', () => {
     const response = await app.inject({ method: 'GET', url: '/health' });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ service: 'identity', version: '0.1.0', status: 'ok' });
+    expect(response.json()).toMatchObject({ service: 'identity', version: '1.0.0', status: 'ok' });
   });
 
   it('/ready confirma la conexión a PostgreSQL y publica las cifras del pool y del outbox', async () => {

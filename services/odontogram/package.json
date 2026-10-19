@@ -1,6 +1,6 @@
 {
   "name": "@odontocrm/odontogram",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Odontograma FDI: captura por excepción, histórico de hallazgos y eventos",
   "type": "module",

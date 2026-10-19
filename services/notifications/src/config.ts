@@ -9,7 +9,7 @@ import { baseEnvSchema, loadConfig, testModeEnabled } from '@odontocrm/kernel';
 import { z } from 'zod';
 
 export const notificationsEnvSchema = baseEnvSchema.extend({
-  SERVICE_VERSION: z.string().min(1).default('0.1.0'),
+  SERVICE_VERSION: z.string().min(1).default('1.0.0'),
   NOTIFICATIONS_HOST: z.string().min(1).default('127.0.0.1'),
   NOTIFICATIONS_PORT: z.coerce.number().int().min(1).max(65_535).default(4004),
   DATABASE_URL: z.string().min(1),

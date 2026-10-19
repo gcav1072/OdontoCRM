@@ -1,6 +1,6 @@
 {
   "name": "@odontocrm/gateway",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "API Gateway: punto único de entrada, proxy por recurso, verificación de tokens y límite de peticiones",
   "type": "module",

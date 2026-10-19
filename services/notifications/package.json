@@ -1,6 +1,6 @@
 {
   "name": "@odontocrm/notifications",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Bot de Telegram, plantillas, cola de envíos con reintentos y archivos .ics",
   "type": "module",

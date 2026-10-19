@@ -1,6 +1,6 @@
 {
   "name": "@odontocrm/db",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Infraestructura de datos: pool PostgreSQL, Drizzle, migraciones, outbox y cola pg-boss",
   "type": "module",

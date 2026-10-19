@@ -107,7 +107,7 @@ describe('servidor del odontograma', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       service: 'odontogram',
-      version: '0.1.0',
+      version: '1.0.0',
       status: 'ok',
     });
   });

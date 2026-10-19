@@ -2,7 +2,7 @@ import { baseEnvSchema, loadConfig } from '@odontocrm/kernel';
 import { z } from 'zod';
 
 export const odontogramEnvSchema = baseEnvSchema.extend({
-  SERVICE_VERSION: z.string().min(1).default('0.1.0'),
+  SERVICE_VERSION: z.string().min(1).default('1.0.0'),
   ODONTOGRAM_HOST: z.string().min(1).default('127.0.0.1'),
   ODONTOGRAM_PORT: z.coerce.number().int().min(1).max(65_535).default(4006),
   DATABASE_URL: z.string().min(1),

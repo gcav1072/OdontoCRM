@@ -2,7 +2,7 @@ import { baseEnvSchema, loadConfig } from '@odontocrm/kernel';
 import { z } from 'zod';
 
 export const screensEnvSchema = baseEnvSchema.extend({
-  SERVICE_VERSION: z.string().min(1).default('0.1.0'),
+  SERVICE_VERSION: z.string().min(1).default('1.0.0'),
   SCREENS_HOST: z.string().min(1).default('127.0.0.1'),
   SCREENS_PORT: z.coerce.number().int().min(1).max(65_535).default(4007),
   DATABASE_URL: z.string().min(1),

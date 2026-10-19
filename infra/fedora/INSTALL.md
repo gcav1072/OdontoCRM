@@ -823,7 +823,7 @@ raíz del repositorio):
 | `LOG_LEVEL` | `info` | `baseEnvSchema` (en desarrollo es `debug`). |
 | `LOG_PRETTY` | `false` | Sin colores: los logs van al journal. |
 | `TZ` | `America/Caracas` | Zona fija del proyecto (plan §16). |
-| `SERVICE_VERSION` | `0.1.0` | Informativa; aparece en logs y `/health`. |
+| `SERVICE_VERSION` | `1.0.0` | Informativa; aparece en logs y `/health`. |
 | `TEST_MODE`, `ALLOW_TEST_MODE` | `false` y `false` | El plan §12 usa `ALLOW_TEST_MODE` y `.env.example` usa `TEST_MODE`; en producción **nunca** `true`. |
 | `GATEWAY_PORT` | `8090` | **No existe una variable `PORT` genérica**: cada servicio lee la suya (`<SERVICIO>_PORT`). |
 | `IDENTITY_PORT` … `REPORTING_PORT` | `4001` … `4008` | Una por servicio, en el orden de §2.2. |
