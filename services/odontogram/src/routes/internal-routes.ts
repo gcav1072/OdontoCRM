@@ -4,6 +4,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
 import { getInternalChart, getInternalSummary } from '../odontogram/chart-service.js';
+import { getInternalSummary as getPeriodontalInternalSummary } from '../odontogram/periodontogram-service.js';
 import type { OdontogramServices } from '../services.js';
 
 const patientParamsSchema = z.object({ patientId: z.uuid() });
@@ -56,5 +57,15 @@ export const registerInternalRoutes = (
   app.get('/internal/v1/odontogram/patients/:patientId/chart', async (request, reply) => {
     const { patientId } = parseOrThrow(patientParamsSchema, request.params);
     return reply.status(200).send(await getInternalChart(db, patientId));
+  });
+
+  /**
+   * Resumen del **último periodontograma finalizado** del paciente: fecha, KPIs y
+   * clasificación firmada. Es lo que el dossier y los reportes necesitan sin abrir
+   * las 192 mediciones. Sin examen finalizado responde 200 con `hasExam: false`.
+   */
+  app.get('/internal/v1/periodontogram/patients/:patientId/summary', async (request, reply) => {
+    const { patientId } = parseOrThrow(patientParamsSchema, request.params);
+    return reply.status(200).send(await getPeriodontalInternalSummary(db, patientId));
   });
 };
