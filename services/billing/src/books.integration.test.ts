@@ -46,6 +46,8 @@ describeWithDatabase('el libro de ventas', () => {
   let app: FastifyInstance;
   const dirAlmacen = mkdtempSync(join(tmpdir(), 'odontocrm-libro-'));
   const idsFacturas: string[] = [];
+  /** El HTML que el servicio mandó a Chromium en la última petición de PDF. */
+  let htmlDelPdf = '';
   /** Del mes en curso y de 2020: el rango tiene que separarlos. */
   const deEsteMes = 810_001;
   const de2020 = 810_002;
@@ -90,7 +92,10 @@ describeWithDatabase('el libro de ventas', () => {
       services: {
         blobStore: createDiskBlobStore({ rootDir: dirAlmacen }),
         pdf: {
-          render: () => Promise.resolve(Buffer.from('%PDF-1.4 prueba del libro')),
+          render: (html: string) => {
+            htmlDelPdf = html;
+            return Promise.resolve(Buffer.from('%PDF-1.4 prueba del libro'));
+          },
           close: () => Promise.resolve(),
           isRunning: () => false,
         },
@@ -185,6 +190,32 @@ describeWithDatabase('el libro de ventas', () => {
 
   it('sin sesión no se descarga el libro (401)', async () => {
     const respuesta = await app.inject({ method: 'GET', url: '/api/v1/billing/books/sales.csv' });
+    expect(respuesta.statusCode).toBe(401);
+  });
+
+  it('el PDF del libro sale con membrete y el mismo rango que el CSV', async () => {
+    const respuesta = await app.inject({
+      method: 'GET',
+      url: '/api/v1/billing/books/sales.pdf?from=2026-10-01&to=2026-10-31',
+      headers: identidad(),
+    });
+
+    expect(respuesta.statusCode).toBe(200);
+    expect(String(respuesta.headers['content-type'])).toContain('application/pdf');
+    expect(String(respuesta.headers['content-disposition'])).toBe(
+      'attachment; filename="libro-de-ventas-2026-10-01_2026-10-31.pdf"',
+    );
+    // Chromium no está en la suite: lo que se comprueba es el HTML que se le entregó.
+    expect(htmlDelPdf).toContain('brand-lh-name');
+    expect(htmlDelPdf).toContain('Del 01/10/2026 al 31/10/2026');
+    expect(htmlDelPdf).toContain(`R-${String(deEsteMes)}`);
+  });
+
+  it('el PDF del libro tampoco se sirve sin sesión (401)', async () => {
+    const respuesta = await app.inject({
+      method: 'GET',
+      url: '/api/v1/billing/books/sales.pdf',
+    });
     expect(respuesta.statusCode).toBe(401);
   });
 });

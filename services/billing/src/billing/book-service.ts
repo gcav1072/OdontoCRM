@@ -3,6 +3,7 @@ import {
   formatInvoiceNumber,
   formatReceiptNumber,
   paymentMethodLabel,
+  rangoDelMes,
   rateDateInCaracas,
   type BookQuery,
   type ExchangeDiffBookRow,
@@ -29,23 +30,19 @@ import { creditNotes, invoices, payments } from '../db/schema.js';
  *   esconder la operación anulada, y el total del libro cuadra con la realidad.
  */
 
-/** El último día del mes de `aaaa-mm` (el mes en curso del libro, si no se pide rango). */
-const ultimoDiaDelMes = (mes: string): string => {
-  const [anio = '1970', numeroMes = '1'] = mes.split('-');
-  const dias = new Date(Date.UTC(Number(anio), Number(numeroMes), 0)).getUTCDate();
-  return `${mes}-${String(dias).padStart(2, '0')}`;
-};
-
-/** El rango efectivo: lo pedido o, por defecto, el **mes en curso** de Caracas. */
+/**
+ * El rango efectivo: lo pedido o, por defecto, el **mes en curso** de Caracas.
+ *
+ * El cálculo del mes (y del fin de mes) vive en el contrato (`rangoDelMes`): la pantalla propone el
+ * mismo período con esa función, así que el libro que se descarga y el que se ve en pantalla no
+ * pueden caer en meses distintos por una cuenta repetida.
+ */
 export const rangoDelLibro = (
   query: BookQuery,
   hoy: string = rateDateInCaracas(),
 ): { from: string; to: string } => {
-  const mes = hoy.slice(0, 7);
-  return {
-    from: query.from ?? `${mes}-01`,
-    to: query.to ?? ultimoDiaDelMes(mes),
-  };
+  const mes = rangoDelMes(hoy);
+  return { from: query.from ?? mes.from, to: query.to ?? mes.to };
 };
 
 /** El día de Caracas de un instante, en `aaaa-mm-dd`. */

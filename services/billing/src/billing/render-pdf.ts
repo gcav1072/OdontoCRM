@@ -1,8 +1,10 @@
 import { ServiceUnavailableError } from '@odontocrm/kernel';
 
-/** Lo mínimo del renderizador: `render(html) → bytes`. */
+import type { PdfPageOptions } from '../pdf-renderer.js';
+
+/** Lo mínimo del renderizador: `render(html, opciones) → bytes`. */
 export interface PdfRender {
-  render: (html: string) => Promise<Buffer>;
+  render: (html: string, options?: PdfPageOptions) => Promise<Buffer>;
 }
 
 /**
@@ -18,9 +20,10 @@ export const renderBillingPdf = async (
   pdf: PdfRender,
   html: string,
   documento: string,
+  options?: PdfPageOptions,
 ): Promise<Buffer> => {
   try {
-    return await pdf.render(html);
+    return await pdf.render(html, options);
   } catch (error) {
     throw new ServiceUnavailableError(
       `No se pudo generar el PDF de ${documento}: revisa el navegador (Chromium) del servidor. ` +

@@ -10,7 +10,6 @@ import { chromium, type Browser } from 'playwright';
  * Se copia en vez de compartirse porque el paquete de utilidades comunes no tiene (ni debe tener)
  * dependencia de Playwright.
  */
-
 export interface PdfRendererOptions {
   /** Ruta a un Chromium concreto; vacío usa el que administra Playwright. */
   executablePath?: string | undefined;
@@ -18,14 +17,29 @@ export interface PdfRendererOptions {
   timeoutMs: number;
 }
 
+/** Cómo se compone el papel. La factura usa los valores por defecto (carta vertical, sin folio). */
+export interface PdfPageOptions {
+  /** Tabla ancha (los libros fiscales): carta **horizontal**. */
+  landscape?: boolean;
+  /** Numera las páginas al pie («Página 1 de 3»). Para informes de varias hojas. */
+  folios?: boolean;
+}
+
 export interface PdfRenderer {
-  /** HTML → PDF carta vertical (devuelve los bytes). */
-  render: (html: string) => Promise<Buffer>;
+  /** HTML → PDF (devuelve los bytes). */
+  render: (html: string, options?: PdfPageOptions) => Promise<Buffer>;
   /** Cierra el navegador (lo llama el apagado del servicio). */
   close: () => Promise<void>;
   /** `true` cuando el navegador ya está levantado (diagnóstico y pruebas). */
   isRunning: () => boolean;
 }
+
+/**
+ * El pie de página de Chromium. Solo tiene las clases que inyecta el propio navegador
+ * (`pageNumber`/`totalPages`); el resto del estilo va en línea porque la plantilla se carga en un
+ * documento aparte, sin nuestras hojas.
+ */
+const PLANTILLA_FOLIO = `<div style="width:100%;font-size:7.5pt;color:#6b7280;padding:0 12mm;text-align:right;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>`;
 
 export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
   let browser: Browser | null = null;
@@ -43,7 +57,7 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
     return browser;
   };
 
-  const render = (html: string): Promise<Buffer> => {
+  const render = (html: string, paper: PdfPageOptions = {}): Promise<Buffer> => {
     const tarea = async (): Promise<Buffer> => {
       const instance = await launch();
       const page = await instance.newPage();
@@ -62,8 +76,17 @@ export const createPdfRenderer = (options: PdfRendererOptions): PdfRenderer => {
         });
         return await page.pdf({
           format: 'Letter',
-          landscape: false,
+          landscape: paper.landscape ?? false,
           printBackground: true,
+          // Los folios se piden solo para los informes: la factura es de una página (Art. 33).
+          displayHeaderFooter: paper.folios === true,
+          ...(paper.folios === true
+            ? {
+                headerTemplate: '<span></span>',
+                footerTemplate: PLANTILLA_FOLIO,
+                margin: { top: '12mm', bottom: '16mm', left: '12mm', right: '12mm' },
+              }
+            : {}),
         });
       } finally {
         await page.close().catch(() => undefined);
