@@ -1,16 +1,24 @@
 import {
   CLINICAL_STATES,
   DENTITIONS,
+  PERIODONTAL_EXAM_STATUSES,
+  PERIODONTAL_SCHEMA_VERSION,
   PROSTHESIS_ARCHES,
   PROSTHESIS_KINDS,
   TOOTH_CONDITIONS,
   TOOTH_SURFACES,
+  type PeriodontalChart,
+  type PeriodontalDiagnosis,
+  type PeriodontalMetrics,
+  type PeriodontalRiskFactors,
 } from '@odontocrm/contracts';
 import { sql } from 'drizzle-orm';
 import {
   check,
+  date,
   index,
   integer,
+  jsonb,
   pgTable,
   smallint,
   text,
@@ -280,3 +288,73 @@ export type ToothFindingHistoryRow = typeof toothFindingHistory.$inferSelect;
 export type ProsthesisRow = typeof prostheses.$inferSelect;
 export type ProsthesisHistoryRow = typeof prosthesisHistory.$inferSelect;
 export type OdontogramPrintRow = typeof odontogramPrints.$inferSelect;
+
+/**
+ * Examen de periodontograma (v1.1): **una fila por examen**, con la boca completa
+ * en `teeth_data` (JSONB) tal como se sondó en su fecha.
+ *
+ * El odontograma es estado vigente que evoluciona fila a fila; el periodontograma
+ * es un **documento de examen**: se congela al finalizar y la evolución se lee
+ * comparando exámenes, no reescribiendo el anterior (ADR 0071). Por eso no hay
+ * tabla por sitio: 192 filas × examen no aportan ninguna relación que se consulte;
+ * el examen se lee y se compara entero.
+ *
+ * `metrics` guarda los índices derivados para que el listado y los reportes no
+ * tengan que recorrer los 192 sitios, y `schema_version` permite migrar documentos
+ * viejos sin adivinar su forma.
+ */
+export const periodontogramExams = pgTable(
+  'periodontogram_exams',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    patientId: uuid('patient_id').notNull(),
+    /** `borrador` (editable) o `finalizado` (inmutable). */
+    status: text('status').notNull().default('borrador'),
+    /** Fecha clínica del sondaje (`YYYY-MM-DD`), no la de la fila. */
+    examDate: date('exam_date').notNull(),
+    /** Las 32 piezas permanentes en orden canónico, cada una con sus 6 sitios. */
+    teethData: jsonb('teeth_data').$type<PeriodontalChart>().notNull(),
+    riskFactors: jsonb('risk_factors').$type<PeriodontalRiskFactors>().notNull(),
+    /** Clasificación AAP/EFP que **firma** el odontólogo (no la sugerida). */
+    diagnosis: jsonb('diagnosis').$type<PeriodontalDiagnosis | null>(),
+    metrics: jsonb('metrics').$type<PeriodontalMetrics>().notNull(),
+    notes: text('notes'),
+    /** Revisión optimista del borrador: cada guardado la incrementa. */
+    revision: integer('revision').notNull().default(0),
+    /** Versión del esquema de `teeth_data` con la que se guardó el documento. */
+    schemaVersion: integer('schema_version').notNull().default(PERIODONTAL_SCHEMA_VERSION),
+    sessionId: uuid('session_id'),
+    recordedBy: uuid('recorded_by'),
+    recordedByUsername: text('recorded_by_username'),
+    finalizedBy: uuid('finalized_by'),
+    finalizedByUsername: text('finalized_by_username'),
+    finalizedAt: timestamp('finalized_at', { withTimezone: true }),
+    printCount: integer('print_count').notNull().default(0),
+    lastPrintedAt: timestamp('last_printed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_periodontogram_exams_patient_created').on(table.patientId, table.createdAt),
+    index('idx_periodontogram_exams_patient_status').on(table.patientId, table.status),
+    // **Un solo borrador abierto por paciente** (ADR 0071 §2): el autoguardado no
+    // debe dejar dos documentos editables compitiendo por la misma boca.
+    uniqueIndex('uq_periodontogram_exam_draft')
+      .on(table.patientId)
+      .where(sql`${table.status} = 'borrador'`),
+    check(
+      'chk_periodontogram_exams_status',
+      sql`${table.status} in (${sqlLiteralList(PERIODONTAL_EXAM_STATUSES)})`,
+    ),
+    check('chk_periodontogram_exams_revision', sql`${table.revision} >= 0`),
+    // El contrato impone 32 piezas; la base lo blinda aunque alguien escriba a mano.
+    check('chk_periodontogram_exams_teeth_count', sql`jsonb_array_length(${table.teethData}) = 32`),
+    // Coherencia del cierre: finalizado ⇔ tiene fecha de finalización.
+    check(
+      'chk_periodontogram_exams_finalized',
+      sql`(${table.status} = 'finalizado') = (${table.finalizedAt} is not null)`,
+    ),
+  ],
+);
+
+export type PeriodontogramExamRow = typeof periodontogramExams.$inferSelect;
