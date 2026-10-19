@@ -120,24 +120,26 @@ export const DocumentoDetalle = ({
           US$ {formatBs(documento.balanceCentsUsd)}
         </dd>
         {/* La misma deuda a las dos tasas (ADR 0069): lo que se debía al emitir y lo que vale hoy. */}
-        {documento.balanceCentsUsd > 0 && saldoEnBs(documento.balanceCentsUsd, documento.exchangeRateMicros) !== null && (
-          <>
-            <dt className="text-ink-muted">
-              {t('caja.doc.saldoAlEmitir')} ({tasaEnTexto(documento.exchangeRateMicros)})
-            </dt>
-            <dd className="text-right tabular-nums text-ink">
-              Bs. {formatBs(saldoEnBs(documento.balanceCentsUsd, documento.exchangeRateMicros) ?? 0)}
-            </dd>
-            {detalle !== undefined && (
-              <>
-                <dt className="text-ink-muted">{t('caja.doc.saldoHoy')}</dt>
-                <dd className="text-right tabular-nums text-ink">
-                  Bs. {formatBs(detalle.currentDebtAtTodayRateVesCentimos)}
-                </dd>
-              </>
-            )}
-          </>
-        )}
+        {documento.balanceCentsUsd > 0 &&
+          saldoEnBs(documento.balanceCentsUsd, documento.exchangeRateMicros) !== null && (
+            <>
+              <dt className="text-ink-muted">
+                {t('caja.doc.saldoAlEmitir')} ({tasaEnTexto(documento.exchangeRateMicros)})
+              </dt>
+              <dd className="text-right tabular-nums text-ink">
+                Bs.{' '}
+                {formatBs(saldoEnBs(documento.balanceCentsUsd, documento.exchangeRateMicros) ?? 0)}
+              </dd>
+              {detalle !== undefined && (
+                <>
+                  <dt className="text-ink-muted">{t('caja.doc.saldoHoy')}</dt>
+                  <dd className="text-right tabular-nums text-ink">
+                    Bs. {formatBs(detalle.currentDebtAtTodayRateVesCentimos)}
+                  </dd>
+                </>
+              )}
+            </>
+          )}
         {detalle !== undefined && detalle.totalExchangeDiffVesCentimos !== 0 && (
           <>
             <dt className="text-ink-muted">{t('caja.doc.diferencialAcum')}</dt>
@@ -156,7 +158,8 @@ export const DocumentoDetalle = ({
           <>
             <dt className="text-ink-muted">{t('caja.doc.igtfAcum')}</dt>
             <dd className="text-right tabular-nums text-ink">
-              US$ {formatBs(detalle.totalIgtfCentsUsd)} · Bs. {formatBs(detalle.totalIgtfVesCentimos)}
+              US$ {formatBs(detalle.totalIgtfCentsUsd)} · Bs.{' '}
+              {formatBs(detalle.totalIgtfVesCentimos)}
             </dd>
           </>
         )}
@@ -238,7 +241,8 @@ export const DocumentoDetalle = ({
               <span className="font-medium text-ink">{cobro.receiptLabel}</span>
               <span className="text-ink-muted">{formatDateTime(cobro.createdAt)}</span>
               <span className="text-ink-muted">
-                {t('caja.doc.fechaValor')}: {cobro.effectiveDate} · {tasaEnTexto(cobro.exchangeRateMicros)}
+                {t('caja.doc.fechaValor')}: {cobro.effectiveDate} ·{' '}
+                {tasaEnTexto(cobro.exchangeRateMicros)}
               </span>
               <span className="tabular-nums text-ink">
                 {cobro.tenderedCurrency === 'USD' ? 'US$' : 'Bs.'} {formatBs(cobro.tenderedAmount)}

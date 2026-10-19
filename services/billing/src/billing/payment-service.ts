@@ -223,7 +223,10 @@ export const currentDebtAtTodayRate = async (
   factura: { balanceCentsUsd: number; exchangeRateMicros: number | null },
 ): Promise<number> => {
   const vigente = await rateForDate(db, rateDateInCaracas());
-  const tasa = (vigente?.rate.rateMicros ?? 0) > 0 ? (vigente?.rate.rateMicros ?? 0) : (factura.exchangeRateMicros ?? 0);
+  const tasa =
+    (vigente?.rate.rateMicros ?? 0) > 0
+      ? (vigente?.rate.rateMicros ?? 0)
+      : (factura.exchangeRateMicros ?? 0);
   return tasa > 0 ? vesCentimosFromUsd(factura.balanceCentsUsd, tasa) : 0;
 };
 
@@ -361,9 +364,12 @@ export const collectPayment = async (
     );
   }
   if (!loPercibeLaClinica && input.igtfCollectedCurrency !== undefined) {
-    throw new ConflictError('Este cobro no tiene IGTF que percibir en caja: quita la moneda declarada', {
-      extensions: { invoiceId, perceivedBy: decision.perceivedBy },
-    });
+    throw new ConflictError(
+      'Este cobro no tiene IGTF que percibir en caja: quita la moneda declarada',
+      {
+        extensions: { invoiceId, perceivedBy: decision.perceivedBy },
+      },
+    );
   }
   const igtfAmountCentsUsd = igtfToCollectCents(decision, amountCentsUsd);
   const igtfCollectedCurrency: IgtfCollectedCurrency | null = loPercibeLaClinica

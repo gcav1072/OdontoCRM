@@ -317,9 +317,12 @@ describeWithDatabase('anular con nota de crédito', () => {
   it('una factura pagada se rechaza hasta devolver sus cobros', async () => {
     const { id } = await factura('pagada');
 
-    const error = await voidInvoice(deps(), id, { reason: MOTIVO, cancellationType: 'REFUND' }, actor).catch(
-      (e: unknown) => e,
-    );
+    const error = await voidInvoice(
+      deps(),
+      id,
+      { reason: MOTIVO, cancellationType: 'REFUND' },
+      actor,
+    ).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConflictError);
     expect((error as ConflictError).status).toBe(409);
     expect((error as Error).message).toMatch(/pagada/);
@@ -337,9 +340,12 @@ describeWithDatabase('anular con nota de crédito', () => {
     const { id } = await factura('emitida');
     await voidInvoice(deps(), id, { reason: MOTIVO, cancellationType: 'ADMINISTRATIVE' }, actor);
 
-    const error = await voidInvoice(deps(), id, { reason: 'otra vez', cancellationType: 'ADMINISTRATIVE' }, actor).catch(
-      (e: unknown) => e,
-    );
+    const error = await voidInvoice(
+      deps(),
+      id,
+      { reason: 'otra vez', cancellationType: 'ADMINISTRATIVE' },
+      actor,
+    ).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConflictError);
     expect((error as ConflictError).status).toBe(409);
     expect((error as Error).message).toMatch(/ya está anulada/);

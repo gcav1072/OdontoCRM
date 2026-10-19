@@ -3,7 +3,17 @@ import {
   type BillingSettings,
   type UpdateBillingSettingsInput,
 } from '@odontocrm/contracts';
-import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Switch } from '@odontocrm/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Field,
+  Input,
+  Switch,
+} from '@odontocrm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -73,9 +83,7 @@ export const TributarioSection = ({ onNotice }: TributarioSectionProps) => {
         <p className="pt-1 text-sm text-ink-muted">{t('config.tributario.descripcion')}</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {ajustes.isError && (
-          <Alert variant="danger">{apiErrorMessage(ajustes.error)}</Alert>
-        )}
+        {ajustes.isError && <Alert variant="danger">{apiErrorMessage(ajustes.error)}</Alert>}
 
         <Switch
           checked={isSpecialTaxpayer}
@@ -100,7 +108,10 @@ export const TributarioSection = ({ onNotice }: TributarioSectionProps) => {
                 onChange={(evento) => setSpeReference(evento.target.value)}
               />
             </Field>
-            <Field label={t('config.tributario.alicuota')} hint={t('config.tributario.alicuotaAyuda')}>
+            <Field
+              label={t('config.tributario.alicuota')}
+              hint={t('config.tributario.alicuotaAyuda')}
+            >
               <Input
                 inputMode="decimal"
                 autoComplete="off"

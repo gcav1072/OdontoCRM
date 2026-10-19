@@ -13,7 +13,13 @@ import { z } from 'zod';
 
 import { discardDraft, voidInvoice } from '../billing/credit-note-service.js';
 import { issueInvoice } from '../billing/issue-service.js';
-import { collectPayment, currentDebtAtTodayRate, invoicePaymentTotals, listInvoicePayments, voidPayment } from '../billing/payment-service.js';
+import {
+  collectPayment,
+  currentDebtAtTodayRate,
+  invoicePaymentTotals,
+  listInvoicePayments,
+  voidPayment,
+} from '../billing/payment-service.js';
 import { getBillingSettings, updateBillingSettings } from '../billing/settings-service.js';
 import {
   getDraft,
