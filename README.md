@@ -5,8 +5,9 @@ odontograma, récipes, reportes y auditoría — construido como **microservicio
 TypeScript** sobre **PostgreSQL**, pensado para correr en la red local de la clínica y,
 más adelante, fuera de ella por VPN.
 
-> **Estado: Fases 10, 11 y 12 completadas, con las mejoras de resiliencia ya dentro — el sistema
-> está listo para la clínica.** Las diez fases del plan están implementadas y validadas:
+> **Estado: versión `1.0.0` — Fases 10, 11 y 12 completadas, con las mejoras de resiliencia ya
+> dentro y la batería de pruebas manuales E2E pasada completa; el sistema está listo para la
+> clínica.** Las diez fases del plan están implementadas y validadas:
 > identidad y sesiones, pacientes, agenda, bot de Telegram, secretaría y pantallas kiosko,
 > historia clínica, odontograma FDI, sesiones y récipes con QR, reportes y auditoría, con el
 > **modo test**, el **seed determinista**, la **observabilidad** (`npm run estado`) y el
@@ -33,7 +34,7 @@ más adelante, fuera de ella por VPN.
 > | **Usar el consultorio** (sin terminal) | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) |
 > | **Conectar tablets, móviles y TVs** | [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) |
 > | **Desarrollar** | este README y [`docs/COMANDOS.md`](docs/COMANDOS.md) |
-> | **Entender las decisiones** | [`docs/adr/`](docs/adr/README.md) (69 ADRs) y [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md) |
+> | **Entender las decisiones** | [`docs/adr/`](docs/adr/README.md) (70 ADRs) y [`docs/PLAN_MAESTRO_FASES.md`](docs/PLAN_MAESTRO_FASES.md) |
 > | **Ver qué se probó y con qué evidencia** | [`infra/fedora/INSTALL.md` §20](infra/fedora/INSTALL.md) y [`docs/REVISION_SEGURIDAD_FASE_10.md`](docs/REVISION_SEGURIDAD_FASE_10.md) |
 > | **Avisar y confirmar citas** | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) §8 y [ADR 0052](docs/adr/0052-confirmacion-de-citas-por-el-paciente.md) |
 
@@ -689,9 +690,10 @@ nuevo en negrita), el autor, la IP y la petición. `Descargar CSV` baja exactame
 ## Caja y facturación (Fases 11–12)
 
 **`/caja`** es el mostrador del dinero: los **pendientes** (los borradores que deja el cierre de cada
-sesión clínica), el **historial** de documentos con filtros y el detalle de cada factura, recibo y
-nota de crédito. El recorrido es **sesión cerrada → borrador → precio → emisión → cobro → libros**, y
-ningún documento fiscal se borra: se anula con **nota de crédito**.
+sesión clínica), el **historial** de documentos con filtros, el detalle de cada factura, recibo y
+nota de crédito, y los **libros fiscales** del período. El recorrido es
+**sesión cerrada → borrador → precio → emisión → cobro → libros**, y ningún documento fiscal se
+borra: se anula con **nota de crédito**.
 
 | Endpoint (por el gateway) | Qué hace | Permiso |
 | :--- | :--- | :--- |
@@ -708,7 +710,7 @@ ningún documento fiscal se borra: se anula con **nota de crédito**.
 | `GET /api/v1/billing/forms` · `POST /forms` · `POST /forms/:id/spoil` | El **lote de formas libres** (talonario fiscal): alta y anulación de una forma | `billing:read` / `billing:rates` |
 | `GET /api/v1/billing/catalog` | El arancel de servicios | `billing:read` |
 | `GET /api/v1/billing/settings` · `PATCH …` | Configuración fiscal (SPE y alícuota del IGTF); **editar**, solo `admin` | `billing:read` / `settings:manage` |
-| `GET /api/v1/billing/books/sales.csv` · `/igtf.csv` · `/exchange-diff.csv` · `/summary` | **Libros fiscales** del período: ventas, IGTF con arqueo y el **Estado de Ganancias y Pérdidas cambiarias** | `billing:read` |
+| `GET /api/v1/billing/books/{sales,exchange-diff,igtf}.{csv,pdf}` · `/summary` | **Libros fiscales** del período: ventas, IGTF con arqueo y el **Estado de Ganancias y Pérdidas cambiarias**. Los PDF salen en carta horizontal con el **membrete** y folio, y no se archivan ni consumen numeración | `billing:read` |
 
 - **La tasa es histórica y se congela por documento** ([ADR 0046](docs/adr/0046-tasa-bcv-historica-y-regla-de-imputacion.md)):
   emitir fija el valor del día y el detalle muestra la deuda «al emitir» frente a la «de hoy».

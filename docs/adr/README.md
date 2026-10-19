@@ -17,7 +17,9 @@ en `brand.ts` y sin usar). Las **0055–0065** cierran el membrete y la tipograf
 imprimibles, la identidad en la base, la cancelación del paciente con plazo, el sillón como
 recurso de la agenda y el panel de configuración; las **0066–0068** documentan el aspecto propio
 de las pantallas kiosko, la partida escrita a mano en la caja y lo que hace `restaurar --all`
-(repoblar el almacén y reconciliar su clave).
+(repoblar el almacén y reconciliar su clave). La **0069** fija el **diferencial cambiario** por
+Fecha Valor y el **IGTF configurable** con destino de caja, y la **0070** mide el **cupo del día
+en franjas ocupadas** (supera el ADR 0009).
 
 > **Numeración de la Fase 11:** el plan de facturación
 > ([`../feat_billing.md`](../feat_billing.md)) numeraba sus cinco ADRs **0043–0047** porque daba por hecho

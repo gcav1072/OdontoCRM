@@ -4,6 +4,19 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [1.0.0] — 2026-10-18
+
+Primera versión estable del programa: la batería de pruebas manuales E2E se pasó completa y los
+defectos que encontró quedaron corregidos. La versión sube de `0.1.0` a `1.0.0` en la raíz y en
+los dieciocho workspaces, y `SERVICE_VERSION` —la cifra que publican `/health` y `/ready`— toma
+`1.0.0` por defecto en todos los servicios y en el aprovisionamiento de Fedora.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `package.json` · `packages/*/package.json` · `services/*/package.json` · `apps/*/package.json` | Versión `1.0.0` (raíz y workspaces) |
+| `apps/gateway/src/config.ts` · `services/*/src/config.ts` | `SERVICE_VERSION` por defecto `1.0.0` |
+| `.env.example` · `infra/fedora/{install.sh,instalar/aprovisionar.mjs,INSTALL.md}` | Ejemplos y aprovisionamiento alineados con `1.0.0` |
+
 ## [Programación] — la rejilla de franjas se refresca sola en las demás pantallas · 2026-10-18
 
 Guardar los turnos de un día actualizaba la jornada de la pestaña que lo hacía, pero no la de
