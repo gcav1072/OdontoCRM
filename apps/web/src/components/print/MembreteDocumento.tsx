@@ -64,7 +64,18 @@ export const MembreteDocumento = ({ title }: MembreteDocumentoProps) => {
       style={{ borderColor: 'var(--brand-accent)' }}
     >
       <div className="brand-lh">
-        {logo !== null && <img src={logo} alt="" aria-hidden className="brand-lh-logo" />}
+        {logo !== null && (
+          /* El logo se dimensiona con la marca (`--brand-logo-height-mm`), igual que
+             en `.brand-lh-logo` del servidor. Sin esta medida, el `<img>` se pintaba
+             a su tamaño natural y el membrete se comía media hoja: en el
+             periodontograma empujaba la mandíbula a la página siguiente. */
+          <img
+            src={logo}
+            alt=""
+            aria-hidden
+            className="brand-lh-logo h-[var(--brand-logo-height-mm)] w-auto shrink-0"
+          />
+        )}
         <div className="brand-lh-body">
           <p className="brand-lh-name">{membrete.name}</p>
           {membrete.subtitle !== null && <p className="brand-lh-line">{membrete.subtitle}</p>}
