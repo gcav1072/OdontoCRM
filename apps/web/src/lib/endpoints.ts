@@ -14,6 +14,8 @@ import {
   type BillingDraftSaved,
   type BillingDraftSummary,
   type BotStatus,
+  type BookQuery,
+  type BooksSummary,
   type CancelAppointmentInput,
   type CancelRequestInput,
   type ChangePasswordInput,
@@ -582,6 +584,32 @@ export const billingApi = {
     apiBinary('GET', `/billing/payments/${id}/receipt`, { signal }),
   downloadCreditNotePdf: (id: string, signal?: AbortSignal): Promise<Blob> =>
     apiBinary('GET', `/billing/credit-notes/${id}/pdf`, { signal }),
+
+  /**
+   * Los **libros fiscales** (Art. 75): los CSV que se llevan al contador y los mismos libros en PDF
+   * con el membrete del consultorio. El período es el que se pide (`from`/`to`, días de Caracas);
+   * vacío, el servidor usa el mes en curso. El nombre del archivo lo compone `bookFileName`.
+   */
+  books: {
+    salesCsv: (query: BookQuery, signal?: AbortSignal): Promise<Blob> =>
+      apiBinary('GET', '/billing/books/sales.csv', { query: { ...query }, signal }),
+    exchangeDiffCsv: (query: BookQuery, signal?: AbortSignal): Promise<Blob> =>
+      apiBinary('GET', '/billing/books/exchange-diff.csv', { query: { ...query }, signal }),
+    igtfCsv: (query: BookQuery, signal?: AbortSignal): Promise<Blob> =>
+      apiBinary('GET', '/billing/books/igtf.csv', { query: { ...query }, signal }),
+    salesPdf: (query: BookQuery, signal?: AbortSignal): Promise<Blob> =>
+      apiBinary('GET', '/billing/books/sales.pdf', { query: { ...query }, signal }),
+    exchangeDiffPdf: (query: BookQuery, signal?: AbortSignal): Promise<Blob> =>
+      apiBinary('GET', '/billing/books/exchange-diff.pdf', { query: { ...query }, signal }),
+    igtfPdf: (query: BookQuery, signal?: AbortSignal): Promise<Blob> =>
+      apiBinary('GET', '/billing/books/igtf.pdf', { query: { ...query }, signal }),
+    /** Los resúmenes del período: el neto cambiario y el arqueo del IGTF. */
+    summary: (query: BookQuery, signal?: AbortSignal): Promise<BooksSummary> =>
+      api.get<BooksSummary>('/billing/books/summary', {
+        query: { ...query } as QueryParams,
+        signal,
+      }),
+  },
   /** Constancia de impresión o descarga (la reimpresión se cuenta y queda en la auditoría). */
   markInvoicePrinted: (id: string): Promise<BillingPrintResult> =>
     api.post<BillingPrintResult>(`/billing/invoices/${id}/printed`, {}),

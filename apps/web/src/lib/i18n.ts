@@ -1118,8 +1118,54 @@ const DICCIONARIO = {
   'caja.cobro.anulado': 'Anulado',
 
   // El historial
+  'caja.vista.titulo': 'Vistas de la caja',
   'caja.vista.pendientes': 'Pendientes',
   'caja.vista.historial': 'Historial',
+  'caja.vista.libros': 'Libros fiscales',
+
+  // Los libros fiscales: el período, el resumen y las descargas
+  'caja.libros.titulo': 'Libros fiscales',
+  'caja.libros.texto':
+    'El período que se declara y los libros del Art. 75. El CSV se abre en Excel; el PDF sale con el membrete del consultorio.',
+  'caja.libros.periodo': 'Período del {desde} al {hasta} (días del consultorio).',
+  'caja.libros.periodoAyuda': 'Elige el período que vas a declarar.',
+  'caja.libros.desde': 'Desde',
+  'caja.libros.hasta': 'Hasta',
+  'caja.libros.mesActual': 'Este mes',
+  'caja.libros.mesAnterior': 'Mes anterior',
+  'caja.libros.rangoInvalido':
+    'La fecha inicial es posterior a la final: no se descarga ningún libro.',
+  'caja.libros.descargas': 'Descargar',
+  'caja.libros.csv': 'CSV',
+  'caja.libros.pdf': 'PDF',
+  'caja.libros.descargando': 'Descargando…',
+  'caja.libros.descargado': 'Descargado {nombre}',
+  'caja.libros.formatoAyuda':
+    'El PDF es el mismo libro con el membrete del consultorio, para imprimirlo o firmarlo; no se archiva ni consume numeración.',
+  'caja.libros.ventas.titulo': 'Libro de ventas',
+  'caja.libros.ventas.ayuda':
+    'Facturas emitidas y sus notas de crédito, con la base exenta y la gravada por alícuota, el IVA y la tasa congelada.',
+  'caja.libros.cambiario.titulo': 'Diferencial cambiario',
+  'caja.libros.cambiario.ayuda':
+    'Ganancias, pérdidas y reversiones por reembolso de cada cobro, valorado a su Fecha Valor.',
+  'caja.libros.igtf.titulo': 'Percepción del IGTF',
+  'caja.libros.igtf.ayuda':
+    'Solo los cobros en los que el tributo se causó, con su alícuota, quién lo percibió y el destino de caja.',
+  'caja.libros.resumen': 'Resumen del período',
+  'caja.libros.resumen.cambiario': 'Cambiario',
+  'caja.libros.resumen.igtf': 'IGTF',
+  'caja.libros.ganancias': 'Ganancias',
+  'caja.libros.perdidas': 'Pérdidas',
+  'caja.libros.reversiones': 'Reversiones',
+  'caja.libros.neto': 'Neto',
+  'caja.libros.baseDivisas': 'Base en divisas',
+  'caja.libros.igtfCausado': 'IGTF causado',
+  'caja.libros.igtfCajaDivisas': 'Arqueo Caja Divisas',
+  'caja.libros.igtfCajaBs': 'Arqueo Banco/Caja Bs.',
+  'caja.libros.sinIgtf': 'No hay IGTF causado en el período.',
+  'caja.libros.cargando': 'Cargando el resumen del período',
+  'caja.libros.error': 'No se pudo leer el resumen del período',
+
   'caja.historial.titulo': 'Historial de la caja',
   'caja.historial.filtros': 'Filtros',
   'caja.historial.estado': 'Estado',
