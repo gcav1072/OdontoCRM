@@ -70,12 +70,24 @@ const POR_DOMINIO: Readonly<Record<string, readonly (readonly unknown[])[]>> = {
 export const dominioDe = (topic: string): string => topic.split('.')[0] ?? '';
 
 /**
+ * Excepciones por **tema exacto**, para lo que no se puede resolver por dominio.
+ *
+ * El horario es el caso: guardar los turnos no solo cambia la jornada (`['jornada']`),
+ * también las **plantillas** que lee el configurador. Se declara aquí y no en `AGENDA`
+ * porque los pasos de cita —que sí son frecuentes— no tienen por qué volver a pedir las
+ * plantillas cada vez.
+ */
+const POR_TEMA: Readonly<Record<string, readonly (readonly unknown[])[]>> = {
+  'scheduling.capacity.changed': [...AGENDA, schedulingKeys.templates],
+};
+
+/**
  * Claves raíz que un aviso deja obsoletas. Un tema desconocido devuelve la lista vacía
  * —no se inventa nada: si el servidor avisa de algo que esta versión no entiende, no se
  * recarga por recargar—.
  */
 export const invalidacionesDe = (topic: string): readonly (readonly unknown[])[] =>
-  POR_DOMINIO[dominioDe(topic)] ?? [];
+  POR_TEMA[topic] ?? POR_DOMINIO[dominioDe(topic)] ?? [];
 
 /* ── El flujo en vivo ──────────────────────────────────────────────────────── */
 

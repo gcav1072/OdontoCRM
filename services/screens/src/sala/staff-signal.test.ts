@@ -38,6 +38,26 @@ describe('los avisos al personal', () => {
     expect(staffSignals([evento(EVENT_TOPICS.userCreated)])).toEqual([]);
   });
 
+  it('un cambio de horario suena: la rejilla de franjas y el cupo se deducen, no se guardan', () => {
+    // Guardar los turnos de un día cambia la jornada de todas las fechas de ese día de la
+    // semana. Sin el aviso, la otra pestaña seguía con la rejilla vieja hasta un F5.
+    const avisos = staffSignals([
+      evento(EVENT_TOPICS.capacityChanged, '33333333-3333-4333-8333-333333333333'),
+    ]);
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0]?.topic).toBe(EVENT_TOPICS.capacityChanged);
+  });
+
+  it('un guardado que toca varios días suena una sola vez', () => {
+    // «Lunes a viernes» publica un evento por día; la pantalla solo necesita enterarse una vez.
+    const avisos = staffSignals([
+      evento(EVENT_TOPICS.capacityChanged, '44444444-4444-4444-8444-444444444444'),
+      evento(EVENT_TOPICS.capacityChanged, '55555555-5555-4555-8555-555555555555'),
+      evento(EVENT_TOPICS.capacityChanged, '66666666-6666-4666-8666-666666666666'),
+    ]);
+    expect(avisos).toHaveLength(1);
+  });
+
   it('varios eventos del MISMO tema suenan una sola vez', () => {
     const avisos = staffSignals([
       evento(EVENT_TOPICS.invoiceIssued, factura),

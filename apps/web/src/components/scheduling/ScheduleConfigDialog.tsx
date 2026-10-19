@@ -131,9 +131,13 @@ export const ScheduleConfigDialog = ({ weekday, onClose, onSaved }: ScheduleConf
           endTime: turno.endTime,
         })),
       });
-      // La jornada y el horario cambian a la vez: el cupo se recalcula solo.
-      void cliente.invalidateQueries({ queryKey: schedulingKeys.daysRoot });
-      void cliente.invalidateQueries({ queryKey: schedulingKeys.templates });
+      // La jornada y el horario cambian a la vez: el cupo se recalcula solo. Se esperan
+      // las dos invalidaciones para que, cuando el diálogo se cierre, la rejilla que hay
+      // detrás ya esté repintada (no queda un parpadeo con las franjas viejas).
+      await Promise.all([
+        cliente.invalidateQueries({ queryKey: schedulingKeys.daysRoot }),
+        cliente.invalidateQueries({ queryKey: schedulingKeys.templates }),
+      ]);
       onSaved();
     } catch (fallo) {
       setErrorGeneral(apiErrorMessage(fallo));

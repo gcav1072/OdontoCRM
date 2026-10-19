@@ -46,6 +46,20 @@ describe('la traducción de un aviso a consultas por refrescar', () => {
     expect(contiene(claves, ['billing'])).toBe(false);
   });
 
+  it('un cambio de horario refresca la jornada Y las plantillas del configurador', () => {
+    const claves = invalidacionesDe('scheduling.capacity.changed');
+    expect(contiene(claves, schedulingKeys.daysRoot)).toBe(true);
+    expect(contiene(claves, schedulingKeys.templates)).toBe(true);
+  });
+
+  it('un paso de cita no vuelve a pedir las plantillas', () => {
+    // La excepción es solo del tema del horario: los pasos de la cita son frecuentes y
+    // las plantillas no cambian con ellos.
+    expect(
+      contiene(invalidacionesDe('scheduling.appointment.called'), schedulingKeys.templates),
+    ).toBe(false);
+  });
+
   it('un hallazgo del odontograma refresca el odontograma y la historia', () => {
     const claves = invalidacionesDe('odontogram.finding.recorded');
     expect(contiene(claves, ['odontograma'])).toBe(true);

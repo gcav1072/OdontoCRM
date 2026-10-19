@@ -16,10 +16,18 @@ import { ordenarLote } from '../consumer.js';
  *    cobro»; sin este aviso, la caja no se entera hasta que alguien recarga.
  *  - **facturación y cobros**: la caja y los libros cambian cuando nace una factura, se
  *    cobra, se anula o se emite una nota de crédito.
+ *  - **horario**: guardar los turnos de un día cambia la rejilla de franjas y el cupo de
+ *    todas las fechas de ese día de la semana, y el cupo no es un dato guardado: se
+ *    deduce. Sin este aviso, la otra pestaña —o la recepción en otra máquina— seguía
+ *    pintando la jornada vieja hasta un F5.
  *
  * Los eventos que **no** están aquí no se descartan: siguen alimentando la proyección de
  * la sala y la auditoría. Lo que no hacen es despertar a la interfaz, y eso es
  * deliberado: cada aviso cuesta una invalidación de caché en cada pantalla abierta.
+ *
+ * `scheduling.capacity.changed` entra a propósito aunque sea poco frecuente: un cambio
+ * de horario lo ve todo el mundo y, a diferencia de un paso de cita, viene de una acción
+ * deliberada del administrador, no de la operación del día.
  */
 export const STAFF_TOPICS: readonly EventTopic[] = [
   EVENT_TOPICS.appointmentScheduled,
@@ -31,6 +39,9 @@ export const STAFF_TOPICS: readonly EventTopic[] = [
   EVENT_TOPICS.appointmentInConsultation,
   EVENT_TOPICS.appointmentAttended,
   EVENT_TOPICS.appointmentNoShow,
+
+  /** Turnos de atención y duración de la franja: cambia el cupo de todo el día de la semana. */
+  EVENT_TOPICS.capacityChanged,
 
   EVENT_TOPICS.sessionCreated,
   EVENT_TOPICS.sessionClosed,
