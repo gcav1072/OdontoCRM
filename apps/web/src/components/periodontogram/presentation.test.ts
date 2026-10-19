@@ -78,7 +78,7 @@ describe('cifras clínicas', () => {
   });
 
   it('porcentajes y deltas muestran la unidad y el signo', () => {
-    expect(percentText(12.5)).toBe('12.5 %');
+    expect(percentText(12.5)).toBe('12,5 %');
     expect(percentText(null)).toBe('—');
     expect(percentText(4, true)).toBe('+4 %');
     expect(deltaText(-2)).toBe('-2 mm');
@@ -199,6 +199,7 @@ describe('textos de la sugerencia y del riesgo', () => {
     });
     expect(texto).toContain('Menos de 10 cigarrillos');
     expect(texto).toContain('Diabetes controlada');
-    expect(texto).toContain('6.8');
+    // HbA1c con coma decimal, como el resto de las cifras del informe.
+    expect(texto).toContain('6,8');
   });
 });

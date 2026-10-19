@@ -27,7 +27,7 @@ import {
   type PeriodontalSiteAnatomy,
 } from '@odontocrm/contracts';
 
-import { formatDate } from '../../lib/format';
+import { formatDate, formatDecimal } from '../../lib/format';
 import { t, type TranslationKey } from '../../lib/i18n';
 
 /**
@@ -193,7 +193,7 @@ export const numberText = (value: number | null): string =>
 
 /** Milímetros con su unidad; `null` = sin dato. */
 export const millimetersText = (value: number | null): string =>
-  value === null ? t('comun.sinDato') : `${String(value)} mm`;
+  value === null ? t('comun.sinDato') : `${formatDecimal(value)} mm`;
 
 /** Margen gingival con signo: `+2` es hiperplasia y `−2`, recesión. */
 export const gmText = (value: number | null): string => {
@@ -235,14 +235,14 @@ export const calText = (site: Pick<PeriodontalSite, 'pd' | 'gm'>): string =>
  */
 export const percentText = (value: number | null, signed = false): string => {
   if (value === null) return t('comun.sinDato');
-  const texto = `${String(value)} %`;
+  const texto = `${formatDecimal(value)} %`;
   return signed && value > 0 ? `+${texto}` : texto;
 };
 
 /** Diferencia en milímetros con signo explícito (`+2 mm`, `-1 mm`, `0 mm`). */
 export const deltaText = (value: number | null): string => {
   if (value === null) return t('comun.sinDato');
-  const texto = `${String(value)} mm`;
+  const texto = `${formatDecimal(value)} mm`;
   return value > 0 ? `+${texto}` : texto;
 };
 
@@ -324,7 +324,7 @@ export const suggestionText = (suggestion: PeriodontalDiagnosisSuggestion): stri
 export const riskFactorsText = (riskFactors: PeriodontalRiskFactors): string => {
   const partes = [smokingLabel(riskFactors.smoking), diabetesLabel(riskFactors.diabetes)];
   if (riskFactors.hba1c !== null) {
-    partes.push(t('periodonto.riesgo.hba1cValor', { valor: riskFactors.hba1c }));
+    partes.push(t('periodonto.riesgo.hba1cValor', { valor: formatDecimal(riskFactors.hba1c) }));
   }
   return partes.join(' · ');
 };

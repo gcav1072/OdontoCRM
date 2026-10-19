@@ -31,6 +31,28 @@ const formateadorHora = new Intl.DateTimeFormat(LOCALE, {
 
 const formateadorNumero = new Intl.NumberFormat(LOCALE);
 
+const formateadoresDecimales = new Map<number, Intl.NumberFormat>();
+
+/**
+ * Número con **coma decimal** y hasta `digits` decimales (`5,8`, pero `9` y no `9,0`).
+ *
+ * `String(5.8)` da `5.8` con punto, y en un documento clínico venezolano eso se lee
+ * como un separador de miles o directamente como una errata. Todo decimal que se
+ * imprima o se muestre pasa por aquí. Los enteros no ganan decimales: una PS de 9 mm
+ * se escribe `9 mm`, no `9,0 mm`.
+ */
+export const formatDecimal = (value: number, digits = 1): string => {
+  let formateador = formateadoresDecimales.get(digits);
+  if (formateador === undefined) {
+    formateador = new Intl.NumberFormat(LOCALE, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: digits,
+    });
+    formateadoresDecimales.set(digits, formateador);
+  }
+  return formateador.format(value);
+};
+
 /** Convierte el valor que llega de la API en fecha válida, o `null` si no lo es. */
 export const toDate = (value: string | number | Date | null | undefined): Date | null => {
   if (value === null || value === undefined || value === '') return null;
