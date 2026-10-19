@@ -85,6 +85,12 @@ export const AUDIT_ACTIONS = [
   'prosthesis_recorded',
   'prosthesis_removed',
   'odontogram_printed',
+  // Periodontograma (v1.1): borradores, cierre inmutable, impresión y descarte.
+  'periodontogram_created',
+  'periodontogram_updated',
+  'periodontogram_finalized',
+  'periodontogram_printed',
+  'periodontogram_discarded',
   // Facturación y pagos (Fase 11; llegan por el outbox desde el servicio de facturación)
   'invoice_issued',
   'invoice_printed',
