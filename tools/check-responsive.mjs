@@ -49,7 +49,9 @@ let token = '';
 /**
  * Rutas que se auditan, con el nombre del botón que abre su diálogo principal (para
  * revisar también el modal). `scope` es el contenedor a medir: `main` dentro del
- * shell, `#root` en el acceso, que no tiene armazón.
+ * shell, `#root` en el acceso, que no tiene armazón. `vista` pulsa un botón que cambia
+ * de pestaña o de vista en la misma ruta (la caja tiene «Pendientes», «Historial» y
+ * «Libros fiscales» sobre el mismo mostrador).
  */
 const RUTAS = [
   { path: '/login', scope: '#root' },
@@ -63,6 +65,7 @@ const RUTAS = [
   { path: '/secretaria' },
   { path: '/flujo' },
   { path: '/caja' },
+  { path: '/caja', nombre: '/caja · Libros fiscales', vista: 'Libros fiscales' },
   { path: '/pantallas', dialogo: 'Nueva pantalla' },
   { path: '/reportes' },
   { path: '/auditoria' },
@@ -347,6 +350,23 @@ for (const ancho of ANCHOS) {
     }
 
     await revisar(`${nombre}`, scope);
+
+    if (typeof ruta.vista === 'string') {
+      const botonVista = page.getByRole('button', { name: ruta.vista }).first();
+      try {
+        if ((await botonVista.count()) === 0) {
+          avisos += 1;
+          console.log(`· ${nombre}: sin botón «${ruta.vista}» (se omite la vista)`);
+        } else {
+          await botonVista.click();
+          await sleep(350);
+          await revisar(`${nombre} · «${ruta.vista}»`, scope);
+        }
+      } catch {
+        avisos += 1;
+        console.log(`· ${nombre}: no se pudo abrir «${ruta.vista}» (se omite)`);
+      }
+    }
 
     if (typeof ruta.dialogo === 'string') {
       const boton = page.getByRole('button', { name: ruta.dialogo }).first();

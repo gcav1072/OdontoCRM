@@ -111,6 +111,32 @@ const check = (etiqueta, condicion, detalle = '') => {
   console.log(`${condicion ? '✔' : '✖'} ${etiqueta}${detalle === '' ? '' : ` → ${detalle}`}`);
 };
 
+/** Descarga un libro (CSV o PDF) y devuelve lo que hay que comprobar: estado, cabeceras y bytes. */
+const descargarLibro = async (path) => {
+  try {
+    const response = await fetch(`${GATEWAY}${path}`, {
+      signal: AbortSignal.timeout(30_000),
+      headers: token === '' ? {} : { authorization: `Bearer ${token}` },
+    });
+    const bytes = Buffer.from(await response.arrayBuffer());
+    return {
+      status: response.status,
+      tipo: String(response.headers.get('content-type') ?? ''),
+      disposicion: String(response.headers.get('content-disposition') ?? ''),
+      inicio: bytes.subarray(0, 5).toString('latin1'),
+      texto: bytes.toString('utf8'),
+    };
+  } catch (error) {
+    return {
+      status: 0,
+      tipo: '',
+      disposicion: '',
+      inicio: '',
+      texto: String(error).slice(0, 120),
+    };
+  }
+};
+
 const sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 
 /** ¿Hay alguien escuchando en el puerto del gateway? */
@@ -413,9 +439,7 @@ const precio = await call(`/api/v1/billing/drafts/${resumen.id}/items`, {
 const precioTotal = precio.body?.totals?.totalCentsUsd ?? 0;
 check(
   'el borrador se precia en US$ 60,00 y deja de estar marcado',
-  precio.status === 200 &&
-    precio.body?.needsPricing === false &&
-    precioTotal === CP_TOTAL_CENTIMOS,
+  precio.status === 200 && precio.body?.needsPricing === false && precioTotal === CP_TOTAL_CENTIMOS,
   `status ${precio.status} · total US$ ${(precioTotal / 100).toFixed(2)}`,
 );
 // Los servicios odontológicos son EXENTOS (Art. 19.6): el total va por lo exento, sin IVA.
@@ -711,7 +735,40 @@ check(
   `caja USD ${String(resumenLibros.body?.igtf?.igtfCajaDivisasCentsUsd)} · caja Bs. ${String(resumenLibros.body?.igtf?.igtfCajaBsVesCentimos)}`,
 );
 
-/* ── 11) Auditoría ─────────────────────────────────────────────────────────── */
+/* ── 11) Los libros, en CSV y en PDF ───────────────────────────────────────── */
+
+const LIBROS = [
+  { camino: 'sales', nombre: 'ventas', cabecera: 'Fecha;Documento' },
+  { camino: 'exchange-diff', nombre: 'cambiario', cabecera: 'Fecha;Documento;Concepto' },
+  { camino: 'igtf', nombre: 'igtf', cabecera: 'Fecha;Recibo;Factura' },
+];
+
+for (const libro of LIBROS) {
+  const csv = await descargarLibro(`/api/v1/billing/books/${libro.camino}.csv`);
+  check(
+    `el libro de ${libro.nombre} baja en CSV, con BOM y su cabecera`,
+    csv.status === 200 &&
+      csv.tipo.includes('text/csv') &&
+      csv.texto.startsWith('\uFEFF') &&
+      csv.texto.includes(libro.cabecera) &&
+      csv.disposicion.includes(`libro-de-${libro.nombre}-`) &&
+      csv.disposicion.endsWith('.csv"'),
+    `status ${String(csv.status)} · ${csv.disposicion}`,
+  );
+
+  const pdf = await descargarLibro(`/api/v1/billing/books/${libro.camino}.pdf`);
+  check(
+    `el libro de ${libro.nombre} baja en PDF con su nombre y es un PDF`,
+    pdf.status === 200 &&
+      pdf.tipo.includes('application/pdf') &&
+      pdf.inicio === '%PDF-' &&
+      pdf.disposicion.includes(`libro-de-${libro.nombre}-`) &&
+      pdf.disposicion.endsWith('.pdf"'),
+    `status ${String(pdf.status)} · ${pdf.disposicion}`,
+  );
+}
+
+/* ── 11.b) Auditoría ───────────────────────────────────────────────────────── */
 
 const eventosFactura = await esperarAuditoria(
   `entityType=invoice&entityId=${invoiceId}&action=invoice_issued&pageSize=50`,
