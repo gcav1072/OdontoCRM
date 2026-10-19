@@ -179,12 +179,12 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `AGE-01` — Horario de atención, franjas y cupo en franjas, en formato de $12\text{ h}$
 - **Rutas / Componentes:** `SchedulingPage.tsx`, `DayToolbar.tsx`, `ScheduleConfigDialog.tsx`, `Hora12hField.tsx`, `DayCapacityCard.tsx` (ADR `0070`, `0025`).
 - **Pasos de prueba:**
-  - [ ] Abrir `/programacion` y pulsar **Configurar la jornada** en la tarjeta del cupo (o **Horario y franjas** en la barra).
-  - [ ] Comprobar que el día propuesto es el que se está viendo, que los turnos se leen en 12 h (`8:00 a. m. – 12:00 p. m.` y `2:00 p. m. – 5:00 p. m.`) y que la franja es de 30 minutos.
-  - [ ] Añadir un turno, quitar otro, cambiar la franja a 60 minutos y aplicar el horario a **Lunes a viernes**.
-  - [ ] Intentar guardar dos turnos solapados y un turno más corto que la franja.
-  - [ ] Quitar todos los turnos de un día (por ejemplo un domingo) y guardar.
-  - [ ] Asignar una cita manual de dos horas sobre franjas de 30 minutos en un día de consulta.
+  - [x] Abrir `/programacion` y pulsar **Configurar la jornada** en la tarjeta del cupo (o **Horario y franjas** en la barra).
+  - [x] Comprobar que el día propuesto es el que se está viendo, que los turnos se leen en 12 h (`8:00 a. m. – 12:00 p. m.` y `2:00 p. m. – 5:00 p. m.`) y que la franja es de 30 minutos.
+  - [x] Añadir un turno, quitar otro, cambiar la franja a 60 minutos y aplicar el horario a **Lunes a viernes**.
+  - [x] Intentar guardar dos turnos solapados y un turno más corto que la franja.
+  - [x] Quitar todos los turnos de un día (por ejemplo un domingo) y guardar.
+  - [x] Asignar una cita manual de dos horas sobre franjas de 30 minutos en un día de consulta.
 - **Resultado esperado:** Los turnos solapados y el turno más corto que la franja **no** dejan guardar (error en línea); el horario guardado recalcula el cupo de la jornada sin mover las citas; el día sin turnos queda **cerrado** (cupo 0, aviso «Día cerrado») y asignar ahí exige sobrecupo de admin con motivo; la cita de dos horas ocupa **cuatro** franjas y el contador sube 4; todas las horas visibles y editables están en formato de 12 horas.
 
 #### `AGE-02` — Cola de solicitudes, asignación de cita y ticket consecutivo
@@ -198,16 +198,16 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `AGE-03` — Máquina de estados, reprogramación y devolución del ticket al cancelar
 - **Rutas / Componentes:** `AppointmentActionDialog.tsx`, `RescheduleAppointmentDialog.tsx`, `AppointmentHistoryDialog.tsx`, `RequestCancelDialog.tsx` (ADR `0012`, `0028`).
 - **Pasos de prueba:**
-  - [ ] Cancelar la cita que tenía asignado el ticket número $2$ del día.
-  - [ ] Asignar inmediatamente una nueva cita para otro paciente en ese mismo día y franja liberada.
-  - [ ] Reprogramar otra cita activa hacia una fecha distinta con `RescheduleAppointmentDialog.tsx`.
-  - [ ] Abrir `AppointmentHistoryDialog.tsx` en ambas citas.
+  - [x] Cancelar la cita que tenía asignado el ticket número $2$ del día.
+  - [x] Asignar inmediatamente una nueva cita para otro paciente en ese mismo día y franja liberada.
+  - [x] Reprogramar otra cita activa hacia una fecha distinta con `RescheduleAppointmentDialog.tsx`.
+  - [x] Abrir `AppointmentHistoryDialog.tsx` en ambas citas.
 - **Resultado esperado:** Al cancelar la cita, el cupo se libera y **el número de ticket se devuelve/reutiliza** según `0028-cancelar-devuelve-el-ticket.md`; el historial de la cita muestra cada transición de estado con fecha y usuario responsable.
 
 #### `AGE-04` — Notificación en lote de la jornada
 - **Rutas / Componentes:** `NotifyBatchDialog.tsx` (ADR `0010`).
 - **Pasos de prueba:**
-  - [ ] En un día con múltiples citas agendadas pendientes de notificar, abrir `NotifyBatchDialog.tsx` y disparar el envío en lote.
+  - [x] En un día con múltiples citas agendadas pendientes de notificar, abrir `NotifyBatchDialog.tsx` y disparar el envío en lote.
 - **Resultado esperado:** El servicio emite los eventos de notificación para todas las citas seleccionadas del lote y actualiza su estado de notificación.
 
 ---
@@ -217,16 +217,16 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `SEC-01` — Tablero de Secretaría, contadores del día, No-Show y Llamado de Emergencia
 - **Rutas / Componentes:** `SecretariaToolbar.tsx`, `DayCounters.tsx`, `SecretariaAppointmentsTable.tsx`, `NoShowDialog.tsx`, `EmergencyCallDialog.tsx`.
 - **Pasos de prueba:**
-  - [ ] Verificar los contadores iniciales en `DayCounters.tsx` (Agendadas, Confirmadas, En sala, En atención, Atendidas, Canceladas/No-Show).
-  - [ ] Marcar un paciente como **No asistió (No-Show)** usando `NoShowDialog.tsx`.
-  - [ ] Accionar el botón de **Llamado de Emergencia** (`EmergencyCallDialog.tsx`) indicando el consultorio/sillón.
+  - [x] Verificar los contadores iniciales en `DayCounters.tsx` (Agendadas, Confirmadas, En sala, En atención, Atendidas, Canceladas/No-Show).
+  - [x] Marcar un paciente como **No asistió (No-Show)** usando `NoShowDialog.tsx`.
+  - [x] Accionar el botón de **Llamado de Emergencia** (`EmergencyCallDialog.tsx`) indicando el consultorio/sillón.
 - **Resultado esperado:** Los contadores se recalculan al instante; el llamado de emergencia dispara una alerta prioritaria hacia las pantallas Kiosko.
 
 #### `SEC-02` — Flujo operativo de sillón y permisos de "Marcar Atendido"
 - **Rutas / Componentes:** `FlujoPage.tsx`, `FlowTopBar.tsx`, `DayQueue.tsx`, `AttendDialog.tsx` (ADR `0017`, `0038`).
 - **Pasos de prueba:**
-  - [ ] Abrir `FlujoPage.tsx` con el rol **Odontólogo** y con el rol **Secretaría**.
-  - [ ] Avanzar un paciente por la cola del día (`DayQueue.tsx`) hasta concluir la atención con `AttendDialog.tsx`.
+  - [x] Abrir `FlujoPage.tsx` con el rol **Odontólogo** y con el rol **Secretaría**.
+  - [x] Avanzar un paciente por la cola del día (`DayQueue.tsx`) hasta concluir la atención con `AttendDialog.tsx`.
 - **Resultado esperado:** Se respetan los permisos del odontólogo sobre su flujo (ADR `0038`) y el cierre de atención vincula o actualiza correctamente el estado de la cita (ADR `0017`).
 
 ---
@@ -236,34 +236,34 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `CLI-01` — Historia Clínica, Alertas Críticas Leídas (No Empujadas) y Vista de Impresión
 - **Rutas / Componentes:** `MedicalRecordForm.tsx`, `ClinicalSectionFields.tsx`, `ClinicalAlerts.tsx`, `MedicalRecordDocument.tsx`, `MedicalRecordPrintPage.tsx` (ADR `0035`, `formato_historia.md`).
 - **Pasos de prueba:**
-  - [ ] Llenar todas las secciones de la historia clínica de un paciente en `MedicalRecordForm.tsx`, marcando patologías de alerta crítica (ej. Diabetes, Alergia a Anestésicos, Embarazo).
-  - [ ] Guardar y observar el banner `ClinicalAlerts.tsx` en el espacio de trabajo y `CriticalFlagsCard.tsx` en la pantalla Kiosko del consultorio.
-  - [ ] Abrir la vista de impresión en `MedicalRecordPrintPage.tsx`.
+  - [x] Llenar todas las secciones de la historia clínica de un paciente en `MedicalRecordForm.tsx`, marcando patologías de alerta crítica (ej. Diabetes, Alergia a Anestésicos, Embarazo).
+  - [x] Guardar y observar el banner `ClinicalAlerts.tsx` en el espacio de trabajo y `CriticalFlagsCard.tsx` en la pantalla Kiosko del consultorio.
+  - [x] Abrir la vista de impresión en `MedicalRecordPrintPage.tsx`.
 - **Resultado esperado:** Las alertas críticas son visibles inmediatamente al consultar el paciente y el formato impreso respeta la estructura clínica oficial con el membrete activo.
 
 #### `CLI-02` — Firma, Consentimiento Informado e Inmutabilidad con Enmiendas
 - **Rutas / Componentes:** `ConsentDialog.tsx`, `SignRecordDialog.tsx`, `AmendmentDialog.tsx` (ADR `0016`).
 - **Pasos de prueba:**
-  - [ ] Registrar el consentimiento informado en `ConsentDialog.tsx` y firmar la historia en `SignRecordDialog.tsx`.
-  - [ ] Intentar modificar directamente un campo de la historia clínica ya firmada.
-  - [ ] Crear una enmienda formal mediante `AmendmentDialog.tsx` explicando la adición o corrección clínica.
+  - [x] Registrar el consentimiento informado en `ConsentDialog.tsx` y firmar la historia en `SignRecordDialog.tsx`.
+  - [x] Intentar modificar directamente un campo de la historia clínica ya firmada.
+  - [x] Crear una enmienda formal mediante `AmendmentDialog.tsx` explicando la adición o corrección clínica.
 - **Resultado esperado:** La historia firmada es inmutable; cualquier actualización posterior se almacena como una enmienda aditiva con sello de tiempo y autor.
 
 #### `CLI-03` — Sesiones Clínicas (Evolución), Adjuntos de Sesión y Agendamiento de Control
 - **Rutas / Componentes:** `PatientSessionsCard.tsx`, `SessionPanel.tsx`, `SessionForm.tsx`, `SessionDetailView.tsx`, `SessionAttachments.tsx`, `CloseSessionDialog.tsx`, `AmendSessionDialog.tsx`, `ScheduleNextAppointmentDialog.tsx` (ADR `0034`).
 - **Pasos de prueba:**
-  - [ ] Iniciar una sesión clínica para el paciente en atención, redactar el procedimiento realizado y subir una foto intraoral en `SessionAttachments.tsx`.
-  - [ ] Cerrar la sesión en `CloseSessionDialog.tsx` y, desde el flujo de cierre, agendar la próxima cita en `ScheduleNextAppointmentDialog.tsx`.
-  - [ ] Abrir la sesión cerrada en `SessionDetailView.tsx`, comprobar que no se puede sobrescribir y agregar una nota aclaratoria con `AmendSessionDialog.tsx`.
+  - [x] Iniciar una sesión clínica para el paciente en atención, redactar el procedimiento realizado y subir una foto intraoral en `SessionAttachments.tsx`.
+  - [x] Cerrar la sesión en `CloseSessionDialog.tsx` y, desde el flujo de cierre, agendar la próxima cita en `ScheduleNextAppointmentDialog.tsx`.
+  - [x] Abrir la sesión cerrada en `SessionDetailView.tsx`, comprobar que no se puede sobrescribir y agregar una nota aclaratoria con `AmendSessionDialog.tsx`.
 - **Resultado esperado:** La evolución queda sellada al cerrar la sesión, admite enmiendas posteriores y deja creada la cita o solicitud de próximo control.
 
 #### `CLI-04` — Emisión de Récipe PDF en Dos Mitades, Autoajuste al Papel y Verificación Pública por QR
 - **Rutas / Componentes:** `PrescriptionCard.tsx`, `PrescriptionDialog.tsx`, `prescription-document.ts`, `fit-to-page.ts`, `qr.ts`, `VerifyPrescriptionPage.tsx` (ADR `0015`, `0036`, `0061`, `0065`).
 - **Pasos de prueba:**
-  - [ ] En `PrescriptionDialog.tsx`, agregar $5$ medicamentos con posologías e indicaciones extensas.
-  - [ ] Emitir el récipe y abrir el PDF generado.
-  - [ ] Copiar el código de verificación o escanear el código QR del PDF y abrir `/verificar/recipe/:codigo` (`VerifyPrescriptionPage.tsx`) en una ventana de incógnito (sin sesión iniciada).
-  - [ ] Probar en la misma URL un código alterado o inexistente.
+  - [x] En `PrescriptionDialog.tsx`, agregar $5$ medicamentos con posologías e indicaciones extensas.
+  - [x] Emitir el récipe y abrir el PDF generado.
+  - [x] Copiar el código de verificación o escanear el código QR del PDF y abrir `/verificar/recipe/:codigo` (`VerifyPrescriptionPage.tsx`) en una ventana de incógnito (sin sesión iniciada).
+  - [x] Probar en la misma URL un código alterado o inexistente.
 - **Resultado esperado:**
   - El PDF muestra dos mitades (Medicamentos / Indicaciones) con los datos del especialista en el membrete (ADR `0061`).
   - El motor `fit-to-page.ts` escala el contenido para que entre en $1$ sola página sin cortarse (ADR `0065`).
@@ -273,8 +273,8 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `CLI-05` — Emisión y Verificación Pública de Dossier Clínico Integral
 - **Rutas / Componentes:** `DossierCard.tsx`, `dossier-document.ts`, `dossier-odontogram.ts`, `VerifyDossierPage.tsx`.
 - **Pasos de prueba:**
-  - [ ] Generar el Dossier Clínico desde `DossierCard.tsx` y descargar el PDF.
-  - [ ] Verificar en una ventana de incógnito la ruta `/verificar/dossier/:codigo` (`VerifyDossierPage.tsx`).
+  - [x] Generar el Dossier Clínico desde `DossierCard.tsx` y descargar el PDF.
+  - [x] Verificar en una ventana de incógnito la ruta `/verificar/dossier/:codigo` (`VerifyDossierPage.tsx`).
 - **Resultado esperado:** El PDF consolida datos filiatorios, historia clínica, gráfico del odontograma actual y evoluciones, con código de verificación válido públicamente.
 
 ---
@@ -319,22 +319,22 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `SCR-01` — Gestión de Pantallas, Tokens de Dispositivo y Desactivación
 - **Rutas / Componentes:** `ScreensPage.tsx`, `NewScreenDialog.tsx`, `ScreenTokenDialog.tsx`, `ScreenSettingsDialog.tsx`, `DeactivateScreenDialog.tsx` (ADR `0030`).
 - **Pasos de prueba:**
-  - [ ] En `/pantallas` (`ScreensPage.tsx`), crear una pantalla de Sala y una de Consultorio (`NewScreenDialog.tsx`).
-  - [ ] Obtener el token de vinculación en `ScreenTokenDialog.tsx`, abrir la pantalla Kiosko con dicho token y personalizar sus textos/avisos en `ScreenSettingsDialog.tsx`.
-  - [ ] Desactivar la pantalla desde `DeactivateScreenDialog.tsx`.
+  - [x] En `/pantallas` (`ScreensPage.tsx`), crear una pantalla de Sala y una de Consultorio (`NewScreenDialog.tsx`).
+  - [x] Obtener el token de vinculación en `ScreenTokenDialog.tsx`, abrir la pantalla Kiosko con dicho token y personalizar sus textos/avisos en `ScreenSettingsDialog.tsx`.
+  - [x] Desactivar la pantalla desde `DeactivateScreenDialog.tsx`.
 - **Resultado esperado:** La pantalla Kiosko se conecta sin requerir usuario humano (usa token de dispositivo) y al desactivarse corta inmediatamente el flujo de datos SSE.
 
 #### `SCR-02` — Kiosko de Sala de Espera (Lobby), Audio TTS y Reconexión
 - **Rutas / Componentes:** `ScreenLobbyPage.tsx`, `KioskStatusBar.tsx`, `KioskNotice.tsx`, `kiosk-speech.ts`, `useKioskState.ts`.
 - **Pasos de prueba:**
-  - [ ] Con `ScreenLobbyPage.tsx` abierta y audio habilitado en el navegador, llamar a $2$ pacientes seguidos desde Secretaría.
-  - [ ] Desconectar brevemente la red o reiniciar el servicio `screens` y observar `KioskStatusBar.tsx`.
+  - [x] Con `ScreenLobbyPage.tsx` abierta y audio habilitado en el navegador, llamar a $2$ pacientes seguidos desde Secretaría.
+  - [x] Desconectar brevemente la red o reiniciar el servicio `screens` y observar `KioskStatusBar.tsx`.
 - **Resultado esperado:** Los llamados se encolan y pronuncian claramente por voz en español (`kiosk-speech.ts`), el turno parpadea/destaca en pantalla y el cliente SSE se reconecta automáticamente si cae la red.
 
 #### `SCR-03` — Kiosko de Consultorio y Estética Propia
 - **Rutas / Componentes:** `ScreenConsultorioPage.tsx`, `CriticalFlagsCard.tsx`, `kiosk-theme.ts`, `pantalla.css` (ADR `0066`).
 - **Pasos de prueba:**
-  - [ ] Abrir `ScreenConsultorioPage.tsx` vinculada al Sillón $1$ y poner un paciente con alertas médicas en estado de atención en ese sillón.
+  - [x] Abrir `ScreenConsultorioPage.tsx` vinculada al Sillón $1$ y poner un paciente con alertas médicas en estado de atención en ese sillón.
 - **Resultado esperado:** Visualización limpia con estética de pantalla dedicada (`pantalla.css`) mostrando el paciente actual, el odontólogo del sillón y las banderas críticas en `CriticalFlagsCard.tsx`.
 
 ---
@@ -344,25 +344,25 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `NOT-01` — Estado del Bot, Configuración de Canales y Plantillas sin Comandos
 - **Rutas / Componentes:** `NotificationsPage.tsx`, `BotStatusCard.tsx`, `CanalesSection.tsx`, `MessageTemplatesCard.tsx`, `TemplateResetDialog.tsx` (ADR `0008`, `0029`).
 - **Pasos de prueba:**
-  - [ ] Verificar el estado de conexión del bot en `BotStatusCard.tsx` y los canales activos en `CanalesSection.tsx`.
+  - [x] Verificar el estado de conexión del bot en `BotStatusCard.tsx` y los canales activos en `CanalesSection.tsx`.
   - [ ] Editar el texto de una plantilla en `MessageTemplatesCard.tsx`, guardar y luego restaurarla con `TemplateResetDialog.tsx`.
 - **Resultado esperado:** Las plantillas admiten variables dinámicas válidas, no exponen comandos técnicos crudos al paciente (`0002_plantillas_sin_comandos.sql`) y pueden restablecerse a su texto original.
 
 #### `NOT-02` — Flujo Conversacional del Bot y Confirmación por el Paciente
 - **Rutas / Componentes:** `asistente.ts`, `BotConversationsCard.tsx`, `PatientChannelCard.tsx`, `UpcomingAppointmentsCard.tsx` (ADR `0018`, `0052`).
 - **Pasos de prueba:**
-  - [ ] Vincular el canal de mensajería de un paciente (`PatientChannelCard.tsx`).
-  - [ ] Enviar `/ayuda` o texto libre al bot para recibir el menú interactivo (`0003_ayuda_con_menu_de_comandos.sql`).
-  - [ ] Confirmar una cita próxima (`0004_cita_confirmada_invita.sql`).
+  - [x] Vincular el canal de mensajería de un paciente (`PatientChannelCard.tsx`).
+  - [x] Enviar `/ayuda` o texto libre al bot para recibir el menú interactivo (`0003_ayuda_con_menu_de_comandos.sql`).
+  - [x] Confirmar una cita próxima (`0004_cita_confirmada_invita.sql`).
 - **Resultado esperado:** El bot responde coherentemente, invita a agregar el evento al calendario o cancelar si es necesario (`0005_cita_invita_cancelar.sql`), actualiza la cita a **Confirmada** y registra la traza en `BotConversationsCard.tsx`.
 
 #### `NOT-03` — Cancelación por el Paciente con Plazo Límite y Gestión de Novedades
 - **Rutas / Componentes:** `CancellationPolicyCard.tsx`, `PatientCancellationsCard.tsx`, `ContactedDialog.tsx` (ADR `0053`, `0057`).
 - **Pasos de prueba:**
-  - [ ] En `CancellationPolicyCard.tsx`, configurar una ventana mínima de cancelación (ej. $24\text{ h}$ antes de la cita).
-  - [ ] Intentar cancelar desde el bot una cita programada para dentro de $2\text{ h}$ (tiempo $\le 24\text{ h}$).
-  - [ ] Cancelar desde el bot una cita programada para dentro de $48\text{ h}$ (tiempo $\ge 24\text{ h}$).
-  - [ ] Ir a `SchedulingPage.tsx` / `NotificationsPage.tsx`, ubicar la novedad en `PatientCancellationsCard.tsx` y marcar al paciente como contactado en `ContactedDialog.tsx`.
+  - [x] En `CancellationPolicyCard.tsx`, configurar una ventana mínima de cancelación (ej. $24\text{ h}$ antes de la cita).
+  - [x] Intentar cancelar desde el bot una cita programada para dentro de $2\text{ h}$ (tiempo $\le 24\text{ h}$).
+  - [x] Cancelar desde el bot una cita programada para dentro de $48\text{ h}$ (tiempo $\ge 24\text{ h}$).
+  - [x] Ir a `SchedulingPage.tsx` / `NotificationsPage.tsx`, ubicar la novedad en `PatientCancellationsCard.tsx` y marcar al paciente como contactado en `ContactedDialog.tsx`.
 - **Resultado esperado:**
   - El bot impide la cancelación libre fuera de plazo indicando los canales de contacto directo con la clínica.
   - La cancelación en plazo libera el cupo/ticket y crea un registro de novedad pendiente hasta que el personal lo gestione en `ContactedDialog.tsx`.
@@ -370,8 +370,8 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `NOT-04` — Historial de Envíos y Reintento Manual
 - **Rutas / Componentes:** `NotificationsTable.tsx`, `NotificationDetailDialog.tsx`, `RetryNotificationDialog.tsx`.
 - **Pasos de prueba:**
-  - [ ] Abrir el detalle de una notificación en `NotificationDetailDialog.tsx` y verificar el payload/destinatario.
-  - [ ] Ejecutar un reintento en `RetryNotificationDialog.tsx` sobre un registro con fallo de entrega.
+  - [x] Abrir el detalle de una notificación en `NotificationDetailDialog.tsx` y verificar el payload/destinatario.
+  - [x] Ejecutar un reintento en `RetryNotificationDialog.tsx` sobre un registro con fallo de entrega.
 - **Resultado esperado:** La notificación vuelve a procesarse por el adaptador activo y actualiza su estado a enviada/entregada.
 
 ---
@@ -381,18 +381,18 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `CAJ-01` — Tasa BCV Histórica, Fecha Valor y Regla de Imputación
 - **Rutas / Componentes:** `TasaDelDia.tsx`, `rate-service.ts`, `CobroDialog.tsx` (ADR `0046`, `0049`, `0069`).
 - **Pasos de prueba:**
-  - [ ] Establecer una tasa BCV de prueba (ej. $\$1 = 40{,}00\text{ Bs.}$) en `TasaDelDia.tsx` y emitir un documento de cobro.
-  - [ ] Cambiar posteriormente la tasa del día a $\$1 = 42{,}50\text{ Bs.}$ y consultar el detalle del primer documento emitido.
-  - [ ] Cobrar una factura declarando una **Fecha Valor** distinta de hoy (p. ej. un Pago Móvil del domingo registrado el lunes).
+  - [x] Establecer una tasa BCV de prueba (ej. $\$1 = 40{,}00\text{ Bs.}$) en `TasaDelDia.tsx` y emitir un documento de cobro.
+  - [x] Cambiar posteriormente la tasa del día a $\$1 = 42{,}50\text{ Bs.}$ y consultar el detalle del primer documento emitido.
+  - [x] Cobrar una factura declarando una **Fecha Valor** distinta de hoy (p. ej. un Pago Móvil del domingo registrado el lunes).
 - **Resultado esperado:** El primer documento conserva inmutable su tasa histórica de $40{,}00\text{ Bs.}$ (ADR `0046`); el nuevo cobro se valora con la tasa **vigente para su Fecha Valor** —la del viernes, arrastrada por `rateForDate`— y no con la de hoy (ADR `0069`).
 
 #### `CAJ-02` — Cobro, Partida Escrita a Mano y Cálculo Tributario (IVA + IGTF configurable)
 - **Rutas / Componentes:** `CobroDialog.tsx`, `invoice-service.ts`, `payment-service.ts`, `TributarioSection.tsx` (ADR `0044`, `0045`, `0067`, `0069`).
 - **Pasos de prueba:**
-  - [ ] Abrir `CobroDialog.tsx`, seleccionar un paciente y agregar un ítem predeterminado por $\$100{,}00$.
-  - [ ] Agregar una **partida escrita a mano** (concepto libre manual, ADR `0067`) por $\$50{,}00$ (Total base: $\$150{,}00$).
-  - [ ] Con la clínica marcada como **Sujeto Pasivo Especial** y una alícuota de $3{,}00\%$ en `/configuracion`, registrar el pago dividiéndolo en dos métodos: $\$50{,}00$ equivalentes en Bolívares (Pago Móvil / Transferencia) y $\$100{,}00$ en Divisas Efectivo (USD).
-  - [ ] Repetir el cobro con una alícuota distinta (ej. $2{,}00\%$) y comprobar que el sistema aplica el valor configurado.
+  - [x] Abrir `CobroDialog.tsx`, seleccionar un paciente y agregar un ítem predeterminado por $\$100{,}00$.
+  - [x] Agregar una **partida escrita a mano** (concepto libre manual, ADR `0067`) por $\$50{,}00$ (Total base: $\$150{,}00$).
+  - [x] Con la clínica marcada como **Sujeto Pasivo Especial** y una alícuota de $3{,}00\%$ en `/configuracion`, registrar el pago dividiéndolo en dos métodos: $\$50{,}00$ equivalentes en Bolívares (Pago Móvil / Transferencia) y $\$100{,}00$ en Divisas Efectivo (USD).
+  - [x] Repetir el cobro con una alícuota distinta (ej. $2{,}00\%$) y comprobar que el sistema aplica el valor configurado.
 - **Resultado esperado:**
   - Se aplican las alícuotas de IVA configuradas según el régimen de servicios de salud (exento o gravado según corresponda en ADR `0045`).
   - El **IGTF** se calcula con la **alícuota configurada** (por defecto $3{,}00\%$), **no** con un valor fijo: al cambiarla en `/configuracion` el cobro siguiente la refleja (ADR `0069`). En un pago mixto, el tributo se percibe solo sobre la porción percibida (en divisas), sin recargar la parte pagada en Bolívares.
@@ -400,28 +400,29 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `CAJ-03` — Numeración en Modo Software vs. Formas Libres y Archivo PDF
 - **Rutas / Componentes:** `DocumentoDetalle.tsx`, `issue-service.ts`, `fiscal-forms-service.ts`, `invoice-pdf.ts`, `receipt-pdf.ts` (ADR `0047`, `0048`, `0049`).
 - **Pasos de prueba:**
-  - [ ] Emitir dos documentos consecutivos en modo software (serie por defecto `0004_serie_por_defecto_en_software.sql`) y verificar sus números correlativos.
-  - [ ] Probar el registro de lote de formas libres / números de control (`fiscal-forms-service.ts`) cuando aplica talonario fiscal.
-  - [ ] Abrir `DocumentoDetalle.tsx` y descargar el PDF del documento.
+  - [x] Emitir dos documentos consecutivos en modo software (serie por defecto `0004_serie_por_defecto_en_software.sql`) y verificar sus números correlativos.
+  - [x] Probar el registro de lote de formas libres / números de control (`fiscal-forms-service.ts`) cuando aplica talonario fiscal.
+  - [x] Abrir `DocumentoDetalle.tsx` y descargar el PDF del documento.
 - **Resultado esperado:** Correlativos sin saltos ni duplicados (ADR `0047`); el PDF descargado coincide con el snapshot archivado en el almacén cifrado (ADR `0048`).
 
 #### `CAJ-04` — Descarte de Borradores, Anulación y Notas de Crédito (Administrativa vs. Reembolso)
 - **Rutas / Componentes:** `AnularDialog.tsx`, `credit-note-service.ts`, `credit-note-pdf.ts` (`0002_descartar_borrador.sql`) (ADR `0048`, `0069`).
 - **Pasos de prueba:**
-  - [ ] Crear un borrador de cobro y descartarlo antes de emitir.
-  - [ ] Seleccionar una factura ya cobrada (con diferencial cambiario realizado) y anularla por **corrección administrativa** (`ADMINISTRATIVE`) mediante `AnularDialog.tsx`, ingresando el motivo fiscal.
-  - [ ] Repetir sobre otra factura cobrada anulando por **reembolso real** (`REFUND`).
+  - [x] Crear un borrador de cobro y descartarlo antes de emitir.
+  - [x] Seleccionar una factura ya cobrada (con diferencial cambiario realizado) y anularla por **corrección administrativa** (`ADMINISTRATIVE`) mediante `AnularDialog.tsx`, ingresando el motivo fiscal.
+  - [x] Repetir sobre otra factura cobrada anulando por **reembolso real** (`REFUND`).
 - **Resultado esperado:**
   - El borrador descartado no consume correlativo fiscal.
   - La factura emitida genera una Nota de Crédito con su propio correlativo y PDF archivado (`credit-note-pdf.ts`), **siempre a la tasa original de la factura**.
   - La anulación `ADMINISTRATIVE` **conserva** el diferencial cambiario ya realizado; la `REFUND` lo **reversa** (ADR `0069`).
 
 #### `CAJ-05` — Cuadre de los Libros Fiscales (Ventas, Diferencial Cambiario e IGTF)
-- **Rutas / Componentes:** `book-service.ts`, `book-routes.ts`, `CajaPage.tsx` (ADR `0069`).
+- **Rutas / Componentes:** `/caja` → **Libros fiscales** (`LibrosFiscalesPanel.tsx`), `book-service.ts`, `book-routes.ts`, `book-pdf.ts` (ADR `0069`).
 - **Pasos de prueba:**
-  - [ ] Generar el **Libro de Ventas** del período (`GET /api/v1/billing/books/sales.csv`) tras haber emitido facturas, cobros con IGTF y una Nota de Crédito.
-  - [ ] Descargar el **Estado de Ganancias y Pérdidas por Diferencial Cambiario** (`books/exchange-diff.csv`) y el **Reporte de Percepción IGTF** (`books/igtf.csv`), y consultar el resumen del período (`books/summary`).
-- **Resultado esperado:** El Libro de Ventas lista cronológicamente cada factura y nota de crédito cuadrando base exenta, base imponible e IVA; el libro cambiario cuadra $\text{neto} = \text{ganancias} - \text{pérdidas} + \text{reversiones}$; y el resumen del IGTF separa el arqueo de **Caja Divisas** del de **Banco/Caja Bs.**
+  - [ ] Con facturas emitidas, cobros con IGTF y una Nota de Crédito del mes, abrir `/caja` → **Libros fiscales** y comprobar que el período propuesto es el **mes en curso** y que el resumen de la pantalla (ganancias, pérdidas, reversiones, neto; base y arqueo del IGTF) coincide con el de los archivos.
+  - [ ] Descargar los tres libros en **CSV** (`sales.csv`, `exchange-diff.csv`, `igtf.csv`) y comprobar que abren en Excel con los acentos bien y la coma decimal.
+  - [ ] Descargar los tres en **PDF**: tiene que salir el **membrete del consultorio** (nombre, RIF, dirección y teléfono del panel), carta horizontal y el folio «Página X de Y».
+- **Resultado esperado:** El Libro de Ventas lista cronológicamente cada factura y nota de crédito cuadrando base exenta, base imponible e IVA; el libro cambiario cuadra $\text{neto} = \text{ganancias} - \text{pérdidas} + \text{reversiones}$; y el resumen del IGTF separa el arqueo de **Caja Divisas** del de **Banco/Caja Bs.** El CSV y el PDF del mismo período traen las mismas cifras; un período sin movimientos descarga solo la cabecera y el PDF dice «Sin operaciones en el período seleccionado».
 
 #### `CAJ-06` — Fecha Valor y Validación de Rango
 - **Rutas / Componentes:** `CobroDialog.tsx`, `payment-service.ts`, `rate-service.ts` (ADR `0046`, `0069`).
@@ -460,11 +461,12 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 - **Resultado esperado:** La `ADMINISTRATIVE` deja `reversed_exchange_diff = 0` (el diferencial se conserva); la `REFUND` reversa el diferencial acumulado de los cobros vigentes; en **ambos** casos la nota fiscal sale a la **tasa original** de la factura.
 
 #### `CAJ-11` — Libros del Período y Arqueo
-- **Rutas / Componentes:** `book-routes.ts`, `book-service.ts`, `CajaPage.tsx` (ADR `0069`).
+- **Rutas / Componentes:** `/caja` → **Libros fiscales** (`LibrosFiscalesPanel.tsx`), `book-routes.ts`, `book-service.ts`, `book-pdf.ts` (ADR `0069`).
 - **Pasos de prueba:**
   - [ ] Generar un período con facturas, cobros con diferencial (ganancia y pérdida), IGTF en ambas monedas y una Nota de Crédito de cada tipo.
-  - [ ] Descargar los tres CSV y consultar `books/summary`.
-- **Resultado esperado:** El libro cambiario cuadra $\text{neto} = \text{ganancias} - \text{pérdidas} + \text{reversiones}$; el arqueo del IGTF separa Caja Divisas de Banco/Caja Bs.; los cobros anulados **no** cuentan como diferencial realizado.
+  - [ ] Desde **Libros fiscales**, usar los atajos **Este mes** y **Mes anterior**, descargar los tres CSV y los tres PDF, y comprobar el resumen de la pantalla contra los archivos.
+  - [ ] Probar un rango con la fecha inicial posterior a la final: los botones quedan deshabilitados y hay aviso.
+- **Resultado esperado:** El libro cambiario cuadra $\text{neto} = \text{ganancias} - \text{pérdidas} + \text{reversiones}$; el arqueo del IGTF separa Caja Divisas de Banco/Caja Bs.; los cobros anulados **no** cuentan como diferencial realizado; y el PDF y el CSV del mismo período coinciden cifra a cifra.
 
 ---
 
@@ -501,33 +503,52 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 | ID Bloque | Módulo / Alcance | Total Casos | Aprobados (`PASS`) | Fallidos (`FAIL`) | Bloqueados (`BLOCKED`) | Responsable QA | Fecha |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- | :--- |
 | `PRE` | Pre-Flight y Entorno | $5$ | $5$ | $0$ | $0$ | | 2026-10-18 |
-| `E2E` | Ciclo de Vida Completo | $7$ | $6$ | $1$ | $0$ | | 2026-10-18 |
+| `E2E` | Ciclo de Vida Completo | $7$ | $7$ | $0$ | $0$ | | 2026-10-18 |
 | `ID` | Identidad, Auth y RBAC | $5$ | $5$ | $0$ | $0$ | | 2026-10-18 |
 | `CFG` | Configuración y Membrete | $4$ | $4$ | $0$ | $0$ | | 2026-10-18 |
-| `PAC` | Pacientes y Adjuntos Cifrados | $4$ | | | | | |
-| `AGE` | Agenda, Cupos y Tickets | $4$ | | | | | |
-| `SEC` | Secretaría y Flujo Diario | $2$ | | | | | |
-| `CLI` | Historia, Sesiones, Récipe y Dossier | $5$ | | | | | |
-| `ODO` | Odontograma Anatómico | $4$ | | | | | |
-| `SCR` | Pantallas Kiosko y SSE | $3$ | | | | | |
-| `NOT` | Bot, Canales y Cancelaciones | $4$ | | | | | |
-| `CAJ` | Caja, BCV, Diferencial, IVA/IGTF y Libros | $11$ | | | | | |
-| `REP/AUD/SYS` | Reportes, Auditoría y Backups | $3$ | | | | | |
+| `PAC` | Pacientes y Adjuntos Cifrados | $4$ | $4$ | $0$ | $0$ | | 2026-10-18 |
+| `AGE` | Agenda, Cupos y Tickets | $4$ | $4$ | $0$ | $0$ | | 2026-10-18 |
+| `SEC` | Secretaría y Flujo Diario | $2$ | $2$ | $0$ | $0$ | | 2026-10-18 |
+| `CLI` | Historia, Sesiones, Récipe y Dossier | $5$ | $5$ | $0$ | $0$ | | 2026-10-18 |
+| `ODO` | Odontograma Anatómico | $4$ | $4$ | $0$ | $0$ | | 2026-10-18 |
+| `SCR` | Pantallas Kiosko y SSE | $3$ | $3$ | $0$ | $0$ | | 2026-10-18 |
+| `NOT` | Bot, Canales y Cancelaciones | $4$ | $3$ | $0$ | $0$ | | 2026-10-18 |
+| `CAJ` | Caja, BCV, Diferencial, IVA/IGTF y Libros | $11$ | $4$ | $0$ | $0$ | | 2026-10-18 |
+| `REP/AUD/SYS` | Reportes, Auditoría y Backups | $3$ | $3$ | $0$ | $0$ | | 2026-10-18 |
+
+> **Casos abiertos** (no fallan: todavía no se ejecutaron). `NOT-01` va por $2/3$ —falta editar una
+> plantilla y restablecerla con `TemplateResetDialog.tsx`— y de `CAJ` quedan `CAJ-05` a `CAJ-11`. Los
+> **libros fiscales ya se exportan desde la SPA**: `/caja` → **Libros fiscales**
+> (`LibrosFiscalesPanel.tsx`) elige el período, muestra el resumen y descarga cada libro en **CSV**
+> (para Excel) y en **PDF** con el membrete del consultorio. Las rutas
+> (`services/billing/src/routes/book-routes.ts`: `books/sales`, `exchange-diff`, `igtf` y `summary`)
+> siguen disponibles por HTTP para automatizar.
 
 ---
 
 ## 5. Registro de la corrida (2026-10-18)
 
-Primera pasada completa de los bloques `PRE`, `E2E`, `ID` y `CFG` sobre una instalación Fedora de
-pruebas (los $9$ microservicios más el gateway en pie). Los tres fallos de abajo **ya están
-corregidos** en el árbol; quedan por re-ejecutar los tres casos para firmar el bloque.
+Primera pasada de los bloques `PRE`, `E2E`, `ID` y `CFG` sobre una instalación Fedora de pruebas
+(los $9$ microservicios más el gateway en pie); después de los arreglos de los apartados $5.0$ a $5.3$
+se siguió con el resto de los módulos, de `PAC` a `REP/AUD/SYS`, sobre la misma instalación. Los
+fallos de la primera pasada **ya están corregidos** en el árbol y `E2E-04` se re-ejecutó (el paso $4$
+queda marcado).
 
 | Bloque | Casos | Resultado | Observación |
 | :--- | :---: | :--- | :--- |
 | `PRE` | $5$ | $5$ PASS | Servicios, migraciones, entorno, semilla y banner de Modo Test correctos. |
-| `E2E` | $7$ | $6$ PASS · $1$ FAIL | `E2E-04`: la pantalla del consultorio no se enteró del alta y firma de la historia. |
+| `E2E` | $7$ | $7$ PASS | `E2E-04` pasó en la repetición, tras el arreglo del refresco del consultorio ($5.1$). |
 | `ID` | $5$ | $5$ PASS | El usuario desactivado en `ID-01` se volvió a activar al terminar la prueba. |
 | `CFG` | $4$ | $4$ PASS | `CFG-04` pasó en la segunda pasada, después del arreglo del UUID: guarda y se refleja en el cobro. |
+| `PAC` | $4$ | $4$ PASS | Registro (adulto, menor con representante, extranjero), búsqueda con *debounce*, adjuntos cifrados en disco y borrado lógico. |
+| `AGE` | $4$ | $4$ PASS | Horario y franjas (incluida la cita de dos horas sobre franjas de $30$ min), cola con ticket, estados con devolución del ticket y aviso en lote. |
+| `SEC` | $2$ | $2$ PASS | Contadores del día, No-Show, llamado de emergencia y avance de la cola con ambos roles. |
+| `CLI` | $5$ | $5$ PASS | Historia firmada e inmutable, enmienda, sesión con adjuntos y cierre, récipe y dossier verificados por QR en incógnito. |
+| `ODO` | $4$ | $4$ PASS | Caras y pieza completa, prótesis, historial de versiones e impresión. |
+| `SCR` | $3$ | $3$ PASS | Alta, token, personalización, desactivación, TTS en dos llamados seguidos y reconexión. |
+| `NOT` | $4$ | $3$ PASS · $1$ parcial | Falta `NOT-01` (editar y restablecer una plantilla). Bot, confirmación, plazo de cancelación y reintento, correctos. |
+| `CAJ` | $11$ | $4$ PASS · $7$ pendientes | `CAJ-01` a `CAJ-04` correctos: tasa histórica, Fecha Valor, partida manual, IGTF configurable, correlativos y anulaciones. `CAJ-05` a `CAJ-11` son los libros fiscales (ver nota del §4). |
+| `REP/AUD/SYS` | $3$ | $3$ PASS | Reportes y exportación, auditoría con diffs y exportación, y respaldo con restauración del almacén. |
 
 ### 5.0 Hallazgos de la segunda pasada (mismo día)
 
@@ -672,3 +693,21 @@ es «sin filtro» y no la cadena «null», y
 `apps/web/src/components/clinical/session-appointments.test.ts` fija qué citas respaldan una sesión
 y cuál se marca sola. La suite unitaria completa (`npm test`) pasa; las suites de integración se
 ejecutan con `npm run test:integration`.
+
+### 5.5 Pendiente para la próxima pasada
+
+Quedan abiertos un paso de `NOT-01` y los siete casos de libros de `CAJ`, más los dos que ya estaban
+escritos como casos nuevos (`CAJ-12`, `CAJ-13`) y que se firman en esta misma corrida:
+
+- **`NOT-01`, tercer paso.** Editar el texto de una plantilla en `MessageTemplatesCard.tsx`,
+  guardarlo y restablecerlo con `TemplateResetDialog.tsx`.
+- **`CAJ-05` y `CAJ-11` (libros).** Abrir `/caja` → **Libros fiscales** y cuadrar el resumen de la
+  pantalla contra los tres CSV y los tres PDF del mismo período. Los libros están cubiertos por
+  `services/billing/src/books.integration.test.ts` (rango, cabeceras, el HTML del PDF con membrete y
+  el `401` sin sesión) y `tools/smoke-billing.mjs` (las seis descargas), así que lo que falta es la
+  comprobación **manual** de las cifras y del membrete en el papel.
+- **`CAJ-06` a `CAJ-10`.** Fecha Valor fuera de rango, descomposición tripartita del recibo,
+  absorción de redondeo y sobrepago, IGTF con destino de caja (USD/VES/tarjeta) y las dos clases de
+  anulación sobre una factura con diferencial. Se apoyan en `CAJ-01` a `CAJ-04`, que ya pasaron.
+- **`CAJ-12` y `CAJ-13`.** Re-probar el historial de `/caja` sin filtros y el monto propuesto al
+  cambiar de medio de pago, según los apartados $5.0$.

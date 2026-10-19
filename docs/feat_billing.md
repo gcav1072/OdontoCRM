@@ -372,7 +372,7 @@ services/billing/
     │   ├── payment-service.ts         # cobro, IGTF, imputación, anulación y saldo
     │   ├── credit-note-service.ts     # NC-000001, motivo y PDF
     │   ├── catalog-service.ts         # aranceles, categoría fiscal y vigencia de precios
-    │   └── books-service.ts           # libro de ventas e IGTF percibido (CSV)
+    │   └── books-service.ts           # libro de ventas, cambiario e IGTF (CSV y PDF con membrete)
     ├── documents/
     │   ├── invoice-pdf.ts             # factura A4 con membrete, (E)/(G) y leyendas
     │   └── receipt-pdf.ts             # recibo de cobro con tasa, IGTF y desglose
@@ -1408,9 +1408,13 @@ Una sola pantalla, pensada para el mostrador (y para la tableta, como `/flujo`):
 * **Historial** — facturas del día/semana con estado, saldo, reimpresión (contada y auditada), anulación
   (`admin` o secretaría, con motivo) y descarga del PDF archivado.
 * **Libros** — libro de ventas (con la base **desglosada por alícuota y el total exento aparte**, que es
-  lo que pide el Art. 13 num. 10) en CSV, y el de IGTF cuando algún día haya algo que declarar. **No** se
-  genera libro de compras (decisión cerrada: lo lleva el contador). Si más adelante hay ventas en línea,
-  el libro tiene que poder **separarlas** de las presenciales (Providencia SNAT/2024/000102, Art. 6).
+  lo que pide el Art. 13 num. 10) en CSV, y el de IGTF cuando algún día haya algo que declarar. Desde
+  la vista **Libros fiscales** de `/caja` se elige el período (mes en curso, mes anterior), se ve el
+  resumen que cuadra y se descargan los tres libros —ventas, diferencial cambiario e IGTF— en **CSV**
+  (Excel) y en **PDF** con el membrete del consultorio y folio, compuesto al pedirlo y sin archivarse
+  ni consumir numeración. **No** se genera libro de compras (decisión cerrada: lo lleva el contador).
+  Si más adelante hay ventas en línea, el libro tiene que poder **separarlas** de las presenciales
+  (Providencia SNAT/2024/000102, Art. 6).
 * **Catálogo y configuración** — aranceles con su categoría fiscal, y los interruptores de la clínica
   (SPE, política de imputación, alícuota adicional, modo de numeración): solo `admin`.
 * **Modo test** — el banner de ADR 0020 ya existe; la caja muestra además que la numeración es la de

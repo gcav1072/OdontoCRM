@@ -4,6 +4,53 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Programación] — la rejilla de franjas se refresca sola en las demás pantallas · 2026-10-18
+
+Guardar los turnos de un día actualizaba la jornada de la pestaña que lo hacía, pero no la de
+nadie más: la rejilla de franjas y el contador de cupo de otra pestaña —o de la recepción en otra
+máquina— seguían mostrando el horario viejo hasta pulsar F5. El servidor ya publicaba
+`scheduling.capacity.changed` y la auditoría lo registraba; lo que faltaba era despertar al canal
+del personal con ese tema (`STAFF_TOPICS` no lo incluía), así que el aviso nunca salía por SSE.
+
+Ahora el cambio de horario entra en los avisos del personal, y la SPA lo traduce además a las
+**plantillas** que lee el configurador (no se metió en la lista común para no refetchearlas en
+cada paso de cita, que es lo frecuente). El diálogo espera las dos invalidaciones antes de cerrarse,
+así la rejilla que queda detrás ya está repintada.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `services/screens/src/sala/staff-signal.ts` | `scheduling.capacity.changed` en `STAFF_TOPICS` |
+| `apps/web/src/lib/realtime.ts` | Excepciones por tema: el cambio de horario invalida también `['plantillas']` |
+| `apps/web/src/components/scheduling/ScheduleConfigDialog.tsx` | Espera las invalidaciones antes de avisar (`onSaved`) |
+| `services/screens/src/sala/staff-signal.test.ts` · `apps/web/src/lib/realtime.test.ts` | Un guardado de varios días suena una sola vez; las plantillas solo se refrescan con el horario |
+
+## [Caja] — los libros fiscales se exportan desde el mostrador · 2026-10-18
+
+El libro de ventas, el estado de ganancias y pérdidas por diferencial cambiario y el reporte de
+percepción del IGTF ya existían en el servidor, pero solo se obtenían pidiendo el CSV por HTTP: el
+contador los pedía y había que bajar el archivo a mano, sin ver antes si las cifras cuadraban.
+
+Ahora `/caja` tiene una tercera vista, **Libros fiscales**, junto a *Pendientes* e *Historial*:
+propone el mes en curso (con atajos a este mes y al anterior), muestra en pantalla el resumen que
+se declara —ganancias, pérdidas, reversiones y neto; base del IGTF y arqueo separado por caja— y
+descarga cada libro en **CSV** (Excel en español) o en **PDF**. El PDF se compone con el **membrete
+del consultorio** y la marca del panel, en carta horizontal y con folio, y **no se archiva ni
+consume numeración**: es un informe que se pide, no un documento fiscal por operación. El período
+lo resuelve una sola función (`rangoDelMes`, en contratos) para el servidor y para la pantalla, así
+que el mes que se ve es el mes que se descarga; antes el fin de mes estaba duplicado en cada lado.
+
+| Pieza | Qué cambia |
+| :--- | :--- |
+| `packages/contracts/src/domain/billing.ts` | `rangoDelMes`/`rangoDelMesAnterior` (calendario, sin `Date` de instante), `bookFileName` con extensión y `BooksSummary` |
+| `services/billing/src/billing/book-service.ts` | El rango por defecto sale del contrato: se borra el `ultimoDiaDelMes` privado |
+| `services/billing/src/documents/book-pdf.ts` | Nuevo: los tres libros en carta horizontal con el membrete compartido, cabecera de tabla repetida y resumen; formato por columna, sin adivinar |
+| `services/billing/src/pdf-renderer.ts` | `render(html, { landscape, folios })`: la factura sigue en vertical y sin folio |
+| `services/billing/src/routes/book-routes.ts` | `books/{sales,exchange-diff,igtf}.pdf`, con `billing:read` y el nombre de archivo del contrato |
+| `apps/web/src/components/caja/LibrosFiscalesPanel.tsx` | Nuevo: período, atajos, resumen y las seis descargas; fechas con `formatDateOnly` |
+| `apps/web/src/pages/CajaPage.tsx` | Tercera vista de la caja; el selector de vista sube encima de la rejilla |
+| `apps/web/src/lib/{endpoints,i18n}.ts` | `billingApi.books` (CSV, PDF y resumen) y las claves `caja.libros.*` |
+| `services/billing/src/{books.integration.test.ts,documents/book-pdf.test.ts}` · `tools/{smoke-billing,check-responsive}.mjs` | El PDF se prueba por el HTML que recibe Chromium; el humo baja las seis descargas y la auditoría de responsive mide la vista |
+
 ## [Agenda] — el cupo se mide en franjas ocupadas · 2026-10-18
 
 El botón **«Editar el cupo»** pedía un número que no tenía relación con la rejilla: se podía
