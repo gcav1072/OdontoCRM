@@ -19,7 +19,9 @@ recurso de la agenda y el panel de configuración; las **0066–0068** documenta
 de las pantallas kiosko, la partida escrita a mano en la caja y lo que hace `restaurar --all`
 (repoblar el almacén y reconciliar su clave). La **0069** fija el **diferencial cambiario** por
 Fecha Valor y el **IGTF configurable** con destino de caja, y la **0070** mide el **cupo del día
-en franjas ocupadas** (supera el ADR 0009).
+en franjas ocupadas** (supera el ADR 0009). La **0071** incorpora el **periodontograma de la v1.1**
+como examen JSONB versionado del servicio de odontograma (mediciones sin valores por defecto,
+revisión optimista, cierre inmutable y clasificación AAP/EFP sugerida, no automática).
 
 > **Numeración de la Fase 11:** el plan de facturación
 > ([`../feat_billing.md`](../feat_billing.md)) numeraba sus cinco ADRs **0043–0047** porque daba por hecho
@@ -99,3 +101,4 @@ en franjas ocupadas** (supera el ADR 0009).
 | [0068](0068-restaurar-repone-el-almacen.md) | `restaurar --all` y `recuperar` **repueblan el almacén**, **reconcilian `STORAGE_ENCRYPTION_KEY`** y comprueban que se descifra; el despliegue siembra **solo `admin`** y hay `purgar-prueba` | aceptada |
 | [0069](0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md) | Diferencial cambiario por **Fecha Valor** (Escuela A: recibo + reporte contable, sin Nota de Débito), absorción de redondeo ±0,05 USD, IGTF configurable con destino de caja y Notas de Crédito ADMINISTRATIVE vs REFUND | aceptada (fase 12) |
 | [0070](0070-el-cupo-se-mide-en-franjas.md) | El **cupo del día se mide en franjas ocupadas**: sale del horario de atención, una cita larga gasta varias franjas, sin turnos el día está cerrado y se elimina el cupo explícito por fecha | aceptada |
+| [0071](0071-periodontograma-integrado.md) | El **periodontograma** es un examen JSONB versionado del servicio de odontograma: mediciones sin valores por defecto, snapshot del odontograma, revisión optimista, cierre inmutable, comparación longitudinal y clasificación AAP/EFP **sugerida** (la firma el odontólogo) | aceptada (v1.1) |
