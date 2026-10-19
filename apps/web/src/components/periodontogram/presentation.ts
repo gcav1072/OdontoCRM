@@ -148,6 +148,21 @@ export const sideName = (toothNumber: number, side: PeriodontalSide): string => 
     : t('periodonto.cara.lingual');
 };
 
+/**
+ * Etiqueta lateral de una banda del gráfico (`VESTIBULAR`, `PALATINO`, `LINGUAL`).
+ * Se escribe en mayúsculas porque va girada, junto a la rejilla, y tiene que leerse
+ * de un vistazo sin confundirse con las cotas en milímetros.
+ */
+export const bandFaceLabel = (arch: PeriodontalArch, side: PeriodontalSide): string => {
+  const cara =
+    side === 'vestibular'
+      ? t('periodonto.cara.vestibular')
+      : arch === 'maxilar'
+        ? t('periodonto.cara.palatina')
+        : t('periodonto.cara.lingual');
+  return cara.toUpperCase();
+};
+
 /** Etiqueta accesible de un sitio: «Diente 16, vestibular, mesiovestibular». */
 export const siteAriaLabel = (
   toothNumber: number,
@@ -224,7 +239,7 @@ export const percentText = (value: number | null, signed = false): string => {
   return signed && value > 0 ? `+${texto}` : texto;
 };
 
-/** Diferencia en milímetros con signo explícito (`+2 mm`, `−1 mm`, `0 mm`). */
+/** Diferencia en milímetros con signo explícito (`+2 mm`, `-1 mm`, `0 mm`). */
 export const deltaText = (value: number | null): string => {
   if (value === null) return t('comun.sinDato');
   const texto = `${String(value)} mm`;

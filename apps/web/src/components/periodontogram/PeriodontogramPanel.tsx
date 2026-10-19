@@ -48,6 +48,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNotice } from '../../hooks/useNotice';
 import { apiErrorMessage, isApiError } from '../../lib/api';
 import { t } from '../../lib/i18n';
+import { useTheme } from '../../providers/ThemeProvider';
 import {
   periodontogramApi,
   periodontogramExamQueryKey,
@@ -142,6 +143,7 @@ export const PeriodontogramPanel = ({
   printHref,
 }: PeriodontogramPanelProps) => {
   const queryClient = useQueryClient();
+  const { resolved: tema } = useTheme();
   const { notice, mostrar, exito, error, limpiar } = useNotice();
   const controller = usePeriodontalController();
   const { state: controllerState, reset: resetController } = controller;
@@ -1001,6 +1003,7 @@ export const PeriodontogramPanel = ({
                   arch={arch}
                   teeth={teeth}
                   readOnly={!editable}
+                  dark={tema === 'oscuro'}
                   active={sitioActivo}
                   comparison={enComparacion ? comparisonIndex : null}
                   previous={enComparacion ? previousChart : null}

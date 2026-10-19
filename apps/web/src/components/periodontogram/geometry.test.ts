@@ -23,13 +23,16 @@ import {
   comparisonSiteIndex,
   comparisonSiteOf,
   depthY,
+  furcationMarkerPosition,
   nicPolygonPoints,
+  periodontalColors,
   polylinePoints,
   previousPdPoints,
   siteDrawing,
   siteCursorBox,
   siteHitbox,
   siteX,
+  type PeriodontalColors,
 } from './geometry';
 
 /**
@@ -206,5 +209,70 @@ describe('comparación sobre el gráfico', () => {
     const points = previousPdPoints(layout, 0, [{ pd: 3, gm: null }, null, { pd: null, gm: null }]);
     expect(points).toHaveLength(1);
     expect(points[0]?.x).toBe(7);
+  });
+});
+
+describe('posición anatómica de las furcas', () => {
+  /** Fila de triángulos pegada a la banda superior y a la inferior. */
+  const filaArriba = BAND_HEIGHT - 5;
+  const filaAbajo = BAND_HEIGHT + TOOTH_STRIP_HEIGHT + 5;
+  /** Centro de la columna de una pieza (18 → 0, 16 → 2, 14 → 4…). */
+  const centro = (indice: number): number => indice * 40 + 20;
+
+  it('en el maxilar la vestibular va arriba y las palatinas abajo', () => {
+    expect(furcationMarkerPosition('maxilar', 2, 'vestibular')).toEqual({
+      x: centro(2),
+      y: filaArriba,
+    });
+    expect(furcationMarkerPosition('maxilar', 2, 'mesiopalatina')).toEqual({
+      x: centro(2) - 8,
+      y: filaAbajo,
+    });
+    expect(furcationMarkerPosition('maxilar', 2, 'distopalatina')).toEqual({
+      x: centro(2) + 8,
+      y: filaAbajo,
+    });
+  });
+
+  it('en la mandíbula la lingual va arriba y la vestibular abajo', () => {
+    expect(furcationMarkerPosition('mandibula', 2, 'lingual')).toEqual({
+      x: centro(2),
+      y: filaArriba,
+    });
+    expect(furcationMarkerPosition('mandibula', 2, 'vestibular')).toEqual({
+      x: centro(2),
+      y: filaAbajo,
+    });
+  });
+
+  it('14 y 24 llevan sus dos furcas al palatino, no a la cara vestibular', () => {
+    for (const indice of [4, 11]) {
+      const mesial = furcationMarkerPosition('maxilar', indice, 'mesial');
+      const distal = furcationMarkerPosition('maxilar', indice, 'distal');
+      // La cara vestibular del premolar es una raíz única: no tiene furca.
+      expect(mesial.y).toBe(filaAbajo);
+      expect(distal.y).toBe(filaAbajo);
+      // Alineadas con las entradas MP/DP de los molares (±8, nunca fuera de la tarjeta).
+      expect(mesial.x).toBe(centro(indice) - 8);
+      expect(distal.x).toBe(centro(indice) + 8);
+    }
+  });
+});
+
+describe('paleta clínica por tema', () => {
+  it('el tema oscuro aclara los tonos que se perderían sobre una superficie oscura', () => {
+    const claro = periodontalColors(false);
+    const oscuro = periodontalColors(true);
+    expect(oscuro).not.toBe(claro);
+    expect(oscuro.pd).not.toBe(claro.pd);
+    expect(oscuro.mg).not.toBe(claro.mg);
+    expect(oscuro.grid).not.toBe(claro.grid);
+    expect(oscuro.furca).not.toBe(claro.furca);
+    expect(oscuro.furcaHint).not.toBe(claro.furcaHint);
+    // Ningún tono puede quedar indefinido: se pintaría negro sobre negro.
+    for (const clave of Object.keys(claro) as (keyof PeriodontalColors)[]) {
+      expect(claro[clave]).toMatch(/^(#|rgba)/);
+      expect(oscuro[clave]).toMatch(/^(#|rgba)/);
+    }
   });
 });

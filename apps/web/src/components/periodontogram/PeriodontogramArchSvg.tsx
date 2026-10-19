@@ -28,19 +28,22 @@ import {
   comparisonSiteKey,
   comparisonSiteOf,
   depthY,
+  furcationMarkerPosition,
   GRID_MM,
   nicPolygonPoints,
-  PERIODONTAL_COLORS,
+  periodontalColors,
   polylinePoints,
   previousPdPoints,
   siteDrawing,
   siteCursorBox,
   siteHitbox,
   type BandLayout,
+  type PeriodontalColors,
   type SiteDrawing,
 } from './geometry';
 import {
   archName,
+  bandFaceLabel,
   furcationEntranceLabel,
   furcationLabel,
   mobilityLabel,
@@ -63,8 +66,14 @@ import {
  * completo del SVG en cada pulsación del pad se nota en una tablet.
  */
 
-/** Margen izquierdo del lienzo: las etiquetas de milímetros fuera de la cuadrícula. */
-const VIEW_PADDING_LEFT = 18;
+/**
+ * Margen izquierdo del lienzo: las cotas en milímetros y, a su izquierda, la
+ * etiqueta girada de la cara de la rejilla (VESTIBULAR, PALATINO o LINGUAL).
+ */
+const VIEW_PADDING_LEFT = 26;
+
+/** `x` (dentro del grupo trasladado) de la etiqueta girada de la cara. */
+const FACE_LABEL_X = -16;
 
 /** Ancho total del `viewBox`, con el margen de las cotas. */
 const VIEW_WIDTH = ARCH_VIEW_WIDTH + VIEW_PADDING_LEFT;
@@ -104,65 +113,67 @@ type SiteTuple = readonly [PeriodontalSite, PeriodontalSite, PeriodontalSite];
 const sitesOfFace = (tooth: PeriodontalTooth, side: PeriodontalSide): SiteTuple =>
   side === 'vestibular' ? tooth.vestibular : tooth.lingual;
 
-/** Triángulo de furca: hueco (I), medio lleno (II) o lleno (III). */
-const FurcationTriangle = ({
-  x,
-  y,
-  grade,
-  color,
-}: {
+interface FurcationTriangleProps {
   x: number;
   y: number;
+  /** Grado de Hamp; `undefined` es grado 0 (sin lesión). */
   grade: FurcationGrade | undefined;
-  color: string;
-}) => {
-  const points = `${String(x)},${String(y - 5)} ${String(x + 4.2)},${String(y + 2.8)} ${String(x - 4.2)},${String(y + 2.8)}`;
-  const relleno = grade === undefined ? 'none' : color;
+  /** Trazo de la lesión (grados I–III). */
+  tone: string;
+  /** Pista pasiva del grado 0, solo en edición. */
+  hint: string;
+  /** En papel o solo lectura el grado 0 no dibuja nada. */
+  showHint: boolean;
+}
+
+/**
+ * Triángulo de furca con la simbología de Hamp, **sin falsos positivos**:
+ *
+ * - grado 0 (sin lesión): nada en papel/solo lectura; en edición, un triángulo
+ *   punteado gris muy tenue que solo indica dónde se puede tocar;
+ * - grado I: triángulo vacío de trazo continuo;
+ * - grado II: mitad izquierda rellena;
+ * - grado III: triángulo completamente relleno.
+ *
+ * El relleno va **además** del color: en una fotocopia en blanco y negro la forma
+ * sigue distinguiendo los tres grados.
+ */
+const FurcationTriangle = ({ x, y, grade, tone, hint, showHint }: FurcationTriangleProps) => {
+  const base = `${String(x - 4.2)},${String(y + 2.8)}`;
+  const punta = `${String(x)},${String(y - 5)}`;
+  const points = `${punta} ${String(x + 4.2)},${String(y + 2.8)} ${base}`;
+
+  if (grade === undefined) {
+    if (!showHint) return null;
+    return (
+      <polygon
+        points={points}
+        fill="none"
+        stroke={hint}
+        strokeWidth={0.7}
+        strokeDasharray="1.6 1.4"
+        opacity={0.45}
+      />
+    );
+  }
+
   return (
-    <polygon
-      points={points}
-      fill={relleno}
-      fillOpacity={grade === 2 ? 0.45 : undefined}
-      stroke={color}
-      strokeWidth={0.9}
-    />
+    <g>
+      {/* Grado II: la mitad izquierda del triángulo, no un relleno translúcido. */}
+      {grade === 2 && (
+        <polygon points={`${punta} ${base} ${String(x)},${String(y + 2.8)}`} fill={tone} />
+      )}
+      <polygon points={points} fill={grade === 3 ? tone : 'none'} stroke={tone} strokeWidth={0.9} />
+    </g>
   );
 };
 
-/** Posición del triángulo de una entrada de furca dentro de la franja de la pieza. */
-const furcationMarkerPosition = (
-  arch: PeriodontalArch,
-  toothIndex: number,
-  entrance: FurcationEntrance,
-): { x: number; y: number } => {
-  const centerX = toothIndex * (ARCH_VIEW_WIDTH / ARCH_TOOTH_COUNT) + 20;
-  const stripTop = BAND_HEIGHT;
-  const stripBottom = BAND_HEIGHT + TOOTH_STRIP_HEIGHT;
-  const esInterna =
-    entrance === 'lingual' || entrance === 'mesiopalatina' || entrance === 'distopalatina';
-  const esVestibular = entrance === 'vestibular';
-  // Las entradas mesial/distal (primeros premolares superiores) viven entre dos
-  // piezas: se dibujan **fuera de la tarjeta**, en la banda vestibular, para no
-  // pisar el número FDI ni la insignia de movilidad. Dentro de la tarjeta solo
-  // caben dos textos y la insignia.
-  if (!esInterna && !esVestibular) {
-    const y = arch === 'maxilar' ? stripTop - 5 : stripBottom + 5;
-    return { x: centerX + (entrance === 'mesial' ? -13 : 13), y };
-  }
-  const bandaDeArriba = arch === 'maxilar' ? esVestibular : esInterna;
-  const x =
-    entrance === 'mesiopalatina'
-      ? centerX - 8
-      : entrance === 'distopalatina'
-        ? centerX + 8
-        : centerX;
-  return { x, y: bandaDeArriba ? stripTop - 5 : stripBottom + 5 };
-};
-
 interface BandProps {
+  arch: PeriodontalArch;
   layout: BandLayout;
   teeth: readonly PeriodontalTooth[];
   palette: SvgPalette;
+  colors: PeriodontalColors;
   readOnly: boolean;
   active: PeriodontogramArchSvgProps['active'];
   comparison: ReadonlyMap<string, PeriodontalSiteDiff> | null;
@@ -171,9 +182,11 @@ interface BandProps {
 }
 
 const Band = ({
+  arch,
   layout,
   teeth,
   palette,
+  colors,
   readOnly,
   active,
   comparison,
@@ -190,7 +203,7 @@ const Band = ({
         y={Math.min(depthY(layout, 0), depthY(layout, -CORONAL_GUIDE_MM))}
         width={ARCH_VIEW_WIDTH}
         height={Math.abs(depthY(layout, CORONAL_GUIDE_MM) - depthY(layout, 0))}
-        fill={PERIODONTAL_COLORS.coronal}
+        fill={colors.coronal}
       />
       {CORONAL_GRID_MM.map((milimetros) => (
         <line
@@ -199,11 +212,29 @@ const Band = ({
           x2={ARCH_VIEW_WIDTH}
           y1={depthY(layout, -milimetros)}
           y2={depthY(layout, -milimetros)}
-          stroke={PERIODONTAL_COLORS.grid}
+          stroke={colors.grid}
           strokeWidth={0.4}
           strokeDasharray="2 2"
         />
       ))}
+
+      {/* Etiqueta girada de la cara de esta rejilla. Sin ella no se sabe si el
+          triángulo de arriba es vestibular, palatino o lingual: en el maxilar la
+          banda superior es vestibular y la inferior palatina; en la mandíbula, la
+          superior es lingual y la inferior vestibular (la boca se mira desde
+          fuera, ADR-0033). */}
+      <text
+        x={FACE_LABEL_X}
+        y={layout.top + BAND_HEIGHT / 2}
+        textAnchor="middle"
+        fontSize={5.8}
+        fontWeight={600}
+        letterSpacing={0.7}
+        transform={`rotate(-90 ${String(FACE_LABEL_X)} ${String(layout.top + BAND_HEIGHT / 2)})`}
+        style={{ fill: palette.muted }}
+      >
+        {bandFaceLabel(arch, side)}
+      </text>
 
       {/* Rejilla milimetrada: cada 2 mm y la línea de alerta a 4 mm. El LAC (0 mm)
           se dibuja más oscuro y más grueso: es la frontera raíz/corona. */}
@@ -216,10 +247,10 @@ const Band = ({
           y2={depthY(layout, milimetros)}
           stroke={
             milimetros === 0
-              ? PERIODONTAL_COLORS.lac
+              ? colors.lac
               : milimetros === ALERT_DEPTH_MM
-                ? PERIODONTAL_COLORS.alert
-                : PERIODONTAL_COLORS.grid
+                ? colors.alert
+                : colors.grid
           }
           strokeWidth={milimetros === 0 ? 1.5 : 0.5}
           strokeDasharray={milimetros === ALERT_DEPTH_MM ? '5 3' : undefined}
@@ -294,15 +325,13 @@ const Band = ({
         return (
           <g key={`${String(tooth.fdi)}-${side}`}>
             {/* NIC: el área entre la MG y la PS. */}
-            {nicPoints !== null && (
-              <polygon points={nicPoints} fill={PERIODONTAL_COLORS.nic} stroke="none" />
-            )}
+            {nicPoints !== null && <polygon points={nicPoints} fill={colors.nic} stroke="none" />}
             {/* Línea del margen gingival (azul). */}
             {mgPoints.length > 1 && (
               <polyline
                 points={polylinePoints(mgPoints)}
                 fill="none"
-                stroke={PERIODONTAL_COLORS.mg}
+                stroke={colors.mg}
                 strokeWidth={1.1}
                 strokeLinejoin="round"
               />
@@ -312,7 +341,7 @@ const Band = ({
               <polyline
                 points={polylinePoints(pdPoints)}
                 fill="none"
-                stroke={PERIODONTAL_COLORS.pd}
+                stroke={colors.pd}
                 strokeWidth={1.1}
                 strokeLinejoin="round"
               />
@@ -326,7 +355,7 @@ const Band = ({
                 <g key={`marcas-${String(index)}`}>
                   {/* Punto de la PS cuando la bolsa es profunda (≥ 4 mm). */}
                   {site.pd !== null && site.pd >= 4 && drawing.pdY !== null && (
-                    <circle cx={drawing.x} cy={drawing.pdY} r={1.7} fill={PERIODONTAL_COLORS.pd} />
+                    <circle cx={drawing.x} cy={drawing.pdY} r={1.7} fill={colors.pd} />
                   )}
                   {/* BOP: punto lleno en el margen (forma + color, no solo color). */}
                   {site.bop && (
@@ -334,7 +363,7 @@ const Band = ({
                       cx={drawing.x}
                       cy={drawing.mgY ?? drawing.pdY ?? layout.lacY}
                       r={3}
-                      fill={PERIODONTAL_COLORS.bop}
+                      fill={colors.bop}
                       stroke={palette.surface}
                       strokeWidth={0.7}
                     />
@@ -346,7 +375,7 @@ const Band = ({
                       y={(drawing.mgY ?? layout.lacY) + (layout.direction === 'up' ? 4 : -7.6)}
                       width={3.6}
                       height={3.6}
-                      fill={PERIODONTAL_COLORS.plaque}
+                      fill={colors.plaque}
                       stroke={palette.surface}
                       strokeWidth={0.5}
                     />
@@ -355,7 +384,7 @@ const Band = ({
                   {site.suppuration && (
                     <polygon
                       points={`${String(drawing.x)},${String((drawing.pdY ?? layout.lacY) - 2.6)} ${String(drawing.x + 2.6)},${String(drawing.pdY ?? layout.lacY)} ${String(drawing.x)},${String((drawing.pdY ?? layout.lacY) + 2.6)} ${String(drawing.x - 2.6)},${String(drawing.pdY ?? layout.lacY)}`}
-                      fill={PERIODONTAL_COLORS.suppuration}
+                      fill={colors.suppuration}
                       stroke={palette.surface}
                       strokeWidth={0.5}
                     />
@@ -379,7 +408,7 @@ const Band = ({
               <polyline
                 points={polylinePoints(previousPoints)}
                 fill="none"
-                stroke={PERIODONTAL_COLORS.previous}
+                stroke={colors.previous}
                 strokeWidth={1}
                 strokeDasharray="3 2"
                 opacity={0.85}
@@ -400,7 +429,7 @@ const Band = ({
                     width={marco.width}
                     height={marco.height}
                     fill="rgba(124, 58, 237, 0.08)"
-                    stroke={PERIODONTAL_COLORS.selection}
+                    stroke={colors.selection}
                     strokeWidth={1.2}
                     strokeDasharray="3 2"
                   />
@@ -452,6 +481,12 @@ export interface PeriodontogramArchSvgProps {
    * lectura, se usan los tokens del tema (si no, en modo oscuro no se leería).
    */
   paper?: boolean;
+  /**
+   * Tema oscuro de la interfaz: cambia la paleta **clínica** (PS, MG, NIC, rejilla y
+   * furcas). Los tonos de papel (rojo, azul y ámbar oscuros) se pierden sobre una
+   * superficie oscura, así que se aclaran. En papel se ignora: el papel es claro.
+   */
+  dark?: boolean;
   /** Sitio activo que se resalta (solo pantalla). */
   active?: { fdi: number; side: PeriodontalSide; siteIndex: PeriodontalSiteIndex } | null;
   /** Índice de la comparación por sitio, para superponer el examen anterior. */
@@ -483,6 +518,7 @@ const PeriodontogramArchSvgBase = ({
   teeth,
   readOnly = false,
   paper = false,
+  dark = false,
   active = null,
   comparison = null,
   previous = null,
@@ -494,6 +530,11 @@ const PeriodontogramArchSvgBase = ({
   className,
 }: PeriodontogramArchSvgProps) => {
   const palette = paper ? PRINT_PALETTE : SCREEN_PALETTE;
+  // El papel siempre usa la paleta clara, aunque la pantalla esté en oscuro.
+  const colors = periodontalColors(dark && !paper);
+  // En papel las furcas usan tinta de marca (se imprimen igual en blanco y negro);
+  // en pantalla, el ámbar del tema.
+  const furcaTone = paper ? palette.ink : colors.furca;
   const bandas = archBands(arch);
   const stripTopY = BAND_HEIGHT;
 
@@ -519,9 +560,11 @@ const PeriodontogramArchSvgBase = ({
           {bandas.map((layout) => (
             <Band
               key={layout.side}
+              arch={arch}
               layout={layout}
               teeth={teeth}
               palette={palette}
+              colors={colors}
               readOnly={readOnly}
               active={active}
               comparison={comparison}
@@ -559,11 +602,7 @@ const PeriodontogramArchSvgBase = ({
                   rx={3}
                   fill={esActiva ? palette.surfaceMuted : palette.surface}
                   stroke={
-                    esActiva
-                      ? PERIODONTAL_COLORS.selection
-                      : tooth.missing
-                        ? palette.muted
-                        : palette.border
+                    esActiva ? colors.selection : tooth.missing ? palette.muted : palette.border
                   }
                   strokeWidth={esActiva ? 1.4 : 0.8}
                   strokeDasharray={tooth.missing ? '2 1.5' : undefined}
@@ -663,16 +702,23 @@ const PeriodontogramArchSvgBase = ({
                     const etiqueta = t('periodonto.pieza.furcaAria', {
                       pieza: tooth.fdi,
                       entrada: furcationEntranceLabel(entrance).toLowerCase(),
-                      grado: furcationLabel(grado ?? null),
+                      grado:
+                        grado === undefined
+                          ? t('periodonto.furca.sinLesion')
+                          : furcationLabel(grado),
                     });
                     if (readOnly) {
+                      // Grado 0 no dibuja nada: un triángulo vacío significaría
+                      // «lesión grado I» en la simbología de Hamp.
                       return (
                         <FurcationTriangle
                           key={`furca-${entrance}`}
                           x={punto.x}
                           y={punto.y}
                           grade={grado}
-                          color={palette.ink}
+                          tone={furcaTone}
+                          hint={colors.furcaHint}
+                          showHint={false}
                         />
                       );
                     }
@@ -694,7 +740,9 @@ const PeriodontogramArchSvgBase = ({
                           x={punto.x}
                           y={punto.y}
                           grade={grado}
-                          color={palette.ink}
+                          tone={furcaTone}
+                          hint={colors.furcaHint}
+                          showHint
                         />
                         <rect
                           x={punto.x - 7}

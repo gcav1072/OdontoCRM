@@ -129,6 +129,22 @@ El resto de piezas (incisivos, caninos, segundos premolares, terceros molares su
 tiene furca**: el sistema rechaza el dato. Tampoco se admiten furcas ni movilidad en implantes ni
 en piezas ausentes.
 
+**Representación gráfica** (`PeriodontogramArchSvg`):
+
+| Grado | Símbolo |
+| :-: | :--- |
+| 0 | **Nada** en solo lectura o papel; en edición, un triángulo punteado gris muy tenue como pista táctil |
+| I | Triángulo vacío de trazo continuo |
+| II | Triángulo con la mitad izquierda rellena |
+| III | Triángulo completamente relleno |
+
+Cada rejilla lleva su cara rotulada a la izquierda: en el maxilar, **vestibular arriba** (una
+entrada) y **palatino abajo** (mesiopalatina y distopalatina); en la mandíbula, **lingual arriba**
+y **vestibular abajo**. Las entradas `mesial`/`distal` de 14 y 24 se dibujan en la **banda
+palatina**, alineadas con las mesiopalatina/distopalatina de los molares: la cara vestibular de
+esos premolares es una raíz única y no tiene furca. El tema oscuro usa una paleta clínica
+aclarada; el papel siempre imprime la paleta clara.
+
 ### 4.3 Piezas ausentes e implantes
 
 - **Ausente:** no tiene sitios, ni movilidad, ni furca. Se excluye de los denominadores.

@@ -1,5 +1,6 @@
 import {
   PERIODONTAL_CHANGE_COLORS,
+  type FurcationEntrance,
   type PeriodontalArch,
   type PeriodontalComparison,
   type PeriodontalSide,
@@ -76,8 +77,38 @@ export const CORONAL_GRID_MM: readonly number[] = [2, 4];
 /** Profundidad (mm) a la que el gráfico pinta la línea de alerta. */
 export const ALERT_DEPTH_MM = 4;
 
-/** Colores clínicos del gráfico (los toma también la leyenda y el documento). */
-export const PERIODONTAL_COLORS = {
+/**
+ * Colores clínicos del gráfico. Se resuelven a valores concretos (no `var()`) porque
+ * se pintan en atributos SVG (`fill`, `stroke`) y también en el papel, que no debe
+ * heredar el tema oscuro.
+ */
+export interface PeriodontalColors {
+  pd: string;
+  mg: string;
+  nic: string;
+  bop: string;
+  plaque: string;
+  suppuration: string;
+  selection: string;
+  tooth: string;
+  /** Línea del LAC (0 mm): es la frontera entre raíz y corona, no una cota más. */
+  lac: string;
+  /** Zona coronal (MG > 0), sombreada para que no parezca fuera del gráfico. */
+  coronal: string;
+  grid: string;
+  alert: string;
+  previous: string;
+  /** Trazo de una furca con lesión (grados I–III). */
+  furca: string;
+  /** Pista pasiva de una entrada sin lesión: solo se dibuja en modo edición. */
+  furcaHint: string;
+}
+
+/**
+ * Paleta del **papel** y del tema claro. Los tonos están pensados sobre blanco: son
+ * los que usan el documento impreso y la leyenda del informe.
+ */
+export const PERIODONTAL_COLORS: PeriodontalColors = {
   pd: '#dc2626',
   mg: '#2563eb',
   nic: 'rgba(220, 38, 38, 0.18)',
@@ -86,14 +117,43 @@ export const PERIODONTAL_COLORS = {
   suppuration: '#b45309',
   selection: '#7c3aed',
   tooth: '#475569',
-  /** Línea del LAC (0 mm): es la frontera entre raíz y corona, no una cota más. */
   lac: '#475569',
-  /** Zona coronal (MG > 0), sombreada para que no parezca fuera del gráfico. */
   coronal: 'rgba(71, 85, 105, 0.06)',
   grid: '#cbd5e1',
   alert: 'rgba(220, 38, 38, 0.35)',
   previous: '#64748b',
-} as const;
+  furca: '#b45309',
+  furcaHint: '#cbd5e1',
+};
+
+/**
+ * Paleta del **tema oscuro**. Los mismos códigos clínicos, aclarados para que se
+ * lean sobre las superficies oscuras: un rojo o un azul de papel desaparecen en
+ * `#121b2c`. La rejilla y la zona coronal se invierten (más oscuras) para que la
+ * cuadrícula no deslumbre, y la línea del LAC se aclara porque es la referencia
+ * anatómica que hay que ver primero.
+ */
+export const PERIODONTAL_COLORS_DARK: PeriodontalColors = {
+  pd: '#f87171',
+  mg: '#60a5fa',
+  nic: 'rgba(248, 113, 113, 0.22)',
+  bop: '#f87171',
+  plaque: '#2dd4bf',
+  suppuration: '#fbbf24',
+  selection: '#a78bfa',
+  tooth: '#94a3b8',
+  lac: '#cbd5e1',
+  coronal: 'rgba(148, 163, 184, 0.1)',
+  grid: '#334155',
+  alert: 'rgba(248, 113, 113, 0.4)',
+  previous: '#94a3b8',
+  furca: '#fbbf24',
+  furcaHint: '#64748b',
+};
+
+/** Paleta clínica según el tema. El papel siempre usa la clara. */
+export const periodontalColors = (dark: boolean): PeriodontalColors =>
+  dark ? PERIODONTAL_COLORS_DARK : PERIODONTAL_COLORS;
 
 /** Dirección en la que crece la profundidad dentro de una banda. */
 export type BandDirection = 'up' | 'down';
@@ -134,6 +194,41 @@ export const bandLayout = (arch: PeriodontalArch, side: PeriodontalSide): BandLa
   // Las dos caras siempre existen en `archBandOrder`; el respaldo mantiene el tipo
   // sin `!` y sin ramas imposibles.
   return banda ?? { side, direction: 'up', top: 0, lacY: lacYOf(0, 'up') };
+};
+
+/**
+ * Posición del triángulo de una entrada de furca dentro de la franja de la pieza.
+ *
+ * Reglas anatómicas (ADR-0033: la boca se mira desde fuera):
+ * - **Maxilar**: la banda superior es vestibular (una entrada en los molares) y la
+ *   inferior es palatina (mesiopalatina y distopalatina en los molares; mesial y
+ *   distal en 14 y 24, que se abordan desde palatino/interproximal).
+ * - **Mandíbula**: la banda superior es lingual (una entrada lingual en los molares)
+ *   y la inferior es vestibular (una entrada vestibular).
+ *
+ * Las entradas mesial/distal van separadas ±8 unidades, separadas del centro como
+ * las mesiopalatina/distopalatina, **nunca en la cara vestibular**: el primer
+ * premolar superior no tiene furca vestibular.
+ */
+export const furcationMarkerPosition = (
+  arch: PeriodontalArch,
+  toothIndex: number,
+  entrance: FurcationEntrance,
+): { x: number; y: number } => {
+  const centerX = toothIndex * TOOTH_COLUMN_WIDTH + TOOTH_COLUMN_WIDTH / 2;
+  const stripTop = BAND_HEIGHT;
+  const stripBottom = BAND_HEIGHT + TOOTH_STRIP_HEIGHT;
+  // La entrada vestibular vive en la banda que mira fuera de la boca; todas las
+  // demás (lingual, palatina e interproximales) en la que mira al interior.
+  const esVestibular = entrance === 'vestibular';
+  const bandaDeArriba = arch === 'maxilar' ? esVestibular : !esVestibular;
+  const x =
+    entrance === 'mesiopalatina' || entrance === 'mesial'
+      ? centerX - 8
+      : entrance === 'distopalatina' || entrance === 'distal'
+        ? centerX + 8
+        : centerX;
+  return { x, y: bandaDeArriba ? stripTop - 5 : stripBottom + 5 };
 };
 
 /** Franja central donde viven el número de pieza, la movilidad y las furcas. */

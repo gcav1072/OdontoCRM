@@ -3236,12 +3236,12 @@ const DICCIONARIO = {
   'periodonto.grafico.titulo': 'Gráfico de las arcadas',
   'periodonto.grafico.aria': 'Gráfico del periodontograma · {arcada}',
   'periodonto.grafico.pista':
-    'Vestibular hacia fuera de la boca · rejilla de 2 mm · línea de alerta a 4 mm · LAC marcado en 0',
+    'Cada rejilla lleva su cara · rejilla de 2 mm · línea de alerta a 4 mm · LAC marcado en 0',
   'periodonto.grafico.desplazarAria':
     'Gráfico del periodontograma: desplázate en horizontal para ver las 16 piezas',
   'periodonto.grafico.desplazar': 'Desliza en horizontal para recorrer las 16 piezas.',
   'periodonto.grafico.leyenda':
-    'PS en rojo y MG en azul; el área entre ambas es el NIC. La línea 0 (LAC) es el cuello del diente y la franja sombreada bajo ella, la zona coronal (MG positiva). El punto rojo es sangrado (BOP), el cuadrado verde placa y el rombo ámbar supuración; M es movilidad y los triángulos, furca (vacío I, medio II, lleno III).',
+    'PS en rojo y MG en azul; el área entre ambas es el NIC. La línea 0 (LAC) es el cuello del diente y la franja sombreada bajo ella, la zona coronal (MG positiva). El punto rojo es sangrado (BOP), el cuadrado verde placa y el rombo ámbar supuración; M es movilidad. Las furcas se leen por cara: la rejilla superior e inferior llevan su etiqueta (vestibular, palatino o lingual) y el triángulo vacío es grado I, medio relleno grado II y lleno grado III; sin lesión no se dibuja nada (en edición, una pista punteada indica dónde tocar).',
   'periodonto.arcada.maxilar': 'Maxilar',
   'periodonto.arcada.mandibula': 'Mandíbula',
   'periodonto.cara.vestibular': 'Vestibular',
@@ -3253,7 +3253,8 @@ const DICCIONARIO = {
   'periodonto.leyenda.bop': 'BOP: sangrado al sondaje',
   'periodonto.leyenda.placa': 'Placa bacteriana visible',
   'periodonto.leyenda.supuracion': 'Supuración al sondear',
-  'periodonto.leyenda.furca': 'Furca: triángulo vacío I · medio II · lleno III',
+  'periodonto.leyenda.furca':
+    'Furca: sin lesión no se dibuja (pista punteada en edición) · vacío I · medio II · lleno III',
   'periodonto.leyenda.movilidad': 'Movilidad de Miller: M0 a M3',
   'periodonto.leyenda.comparacion': 'Comparación: verde mejoró · rojo empeoró',
   'periodonto.leyenda.sinDato': 'Un sitio sin sondar se muestra «—» y no cuenta en los índices.',
@@ -3276,6 +3277,7 @@ const DICCIONARIO = {
   'periodonto.furca.grado1': 'I',
   'periodonto.furca.grado2': 'II',
   'periodonto.furca.grado3': 'III',
+  'periodonto.furca.sinLesion': 'sin lesión',
   'periodonto.pieza.presente': 'Presente',
   'periodonto.pieza.ausente': 'Ausente',
   'periodonto.pieza.implante': 'Implante',
