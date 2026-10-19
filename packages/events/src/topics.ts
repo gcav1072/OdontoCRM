@@ -66,6 +66,16 @@ export const EVENT_TOPICS = {
   prosthesisRemoved: 'odontogram.prosthesis.removed',
 
   /**
+   * Periodontograma (v1.1): el borrador se guarda y el examen se cierra inmutable.
+   * Cada guardado publica su resumen (KPIs) para la auditoría y los reportes
+   * futuros; el cierre es el hecho clínico que el dossier podrá citar.
+   */
+  periodontalExamSaved: 'odontogram.periodontogram.saved',
+  periodontalExamFinalized: 'odontogram.periodontogram.finalized',
+  /** Dejar constancia de una impresión del periodontograma (imprimir es leer). */
+  periodontalExamPrinted: 'odontogram.periodontogram.printed',
+
+  /**
    * Facturación y pagos (Fase 11, ADR 0044–0048). El **borrador no publica evento**: es un acto
    * interno que se puede descartar, así que el acto de dinero nace al emitir.
    */
