@@ -1,4 +1,5 @@
 import {
+  FURCATION_ENTRANCE_SHORT,
   PERIODONTAL_LOWER_TEETH,
   PERIODONTAL_UPPER_TEETH,
   PERIODONTAL_SITE_INDEXES,
@@ -6,6 +7,7 @@ import {
   buildPeriodontalChart,
   furcationEntrancesFor,
   periodontalArchOf,
+  sitesOfTooth,
   type PeriodontalComparison,
   type PeriodontalExamDetail,
   type PeriodontalPatientSnapshot,
@@ -13,7 +15,7 @@ import {
   type PeriodontalTooth,
 } from '@odontocrm/contracts';
 
-import { formatDateTime } from '../../lib/format';
+import { formatDateTime, formatDecimal } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { MarcaDeAgua } from '../print/MarcaDeAgua';
 import { MembreteDocumento } from '../print/MembreteDocumento';
@@ -26,7 +28,6 @@ import {
   comparisonKpiItems,
   examDateLabel,
   examStatusLabel,
-  furcationEntranceLabel,
   furcationLabel,
   gradeLabel,
   kpiItems,
@@ -79,13 +80,16 @@ const Square = ({ color }: { color: string }) => (
 
 /** Fila de KPIs del informe (la misma lista que el panel). */
 const KpiGrid = ({ items }: { items: readonly KpiItem[] }) => (
-  <dl className="grid grid-cols-3 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-6">
+  <dl className="grid grid-cols-3 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-6 print:grid-cols-6 print:gap-x-2 print:gap-y-1">
     {items.map((item) => (
       <div key={item.key}>
-        <dt className="text-[9px] tracking-wide text-[color:var(--brand-ink-subtle)] uppercase">
+        <dt className="text-[9px] tracking-wide text-[color:var(--brand-ink-subtle)] uppercase print:text-[7px]">
           {item.label}
         </dt>
-        <dd className="font-mono text-sm font-semibold" style={{ color: TONE_COLOR[item.tone] }}>
+        <dd
+          className="font-mono text-sm font-semibold print:text-[10px]"
+          style={{ color: TONE_COLOR[item.tone] }}
+        >
           {item.value}
         </dd>
       </div>
@@ -94,8 +98,27 @@ const KpiGrid = ({ items }: { items: readonly KpiItem[] }) => (
 );
 
 /**
+ * `true` si la pieza tiene algo que contar en el papel: una medición, un hallazgo o
+ * un estado (ausente, implante). Las 32 piezas de una boca en blanco no se listan:
+ * imprimir 64 filas de «—» convertía el informe de dos hojas en cuatro.
+ */
+const toothHasData = (tooth: PeriodontalTooth): boolean =>
+  tooth.missing ||
+  tooth.implant ||
+  tooth.mobility !== null ||
+  Object.keys(tooth.furcation).length > 0 ||
+  sitesOfTooth(tooth).some(
+    ({ site }) =>
+      site.pd !== null || site.gm !== null || site.bop || site.plaque || site.suppuration,
+  );
+
+/**
  * Tabla de los sitios de una arcada: 16 piezas × 2 caras × 3 sitios = 96 entradas.
  * Cada celda enseña la sigla anatómica (MV, P, DL…), PS/MG y el NIC derivado.
+ *
+ * Se imprimen **solo las piezas con datos** y cada pieza va en su propio `<tbody>`:
+ * las dos caras de un mismo diente no se separan nunca entre dos páginas (el motor
+ * de paginación corta entre filas, pero respeta los grupos protegidos).
  */
 const SitesTable = ({
   arch,
@@ -105,174 +128,196 @@ const SitesTable = ({
   arch: 'maxilar' | 'mandibula';
   teeth: readonly PeriodontalTooth[];
   comparisonIndex: ReadonlyMap<string, PeriodontalSiteDiff> | null;
-}) => (
-  <div className="mt-2">
-    <h4 className="text-[10px] font-semibold text-[color:var(--brand-primary)]">
-      {archName(arch)}
-    </h4>
-    <table className="mt-1 w-full border-collapse text-center">
-      <thead>
-        <tr className="text-[7px] tracking-wide text-[color:var(--brand-primary)] uppercase">
-          <th className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-left">
-            {t('periodonto.tabla.pieza')}
-          </th>
-          <th className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-left">
-            {t('periodonto.tabla.cara')}
-          </th>
-          {PERIODONTAL_SITE_INDEXES.map((index) => (
-            <th key={index} className="border border-[color:var(--brand-line)] px-0.5 py-0.5">
-              {t('periodonto.imprimir.sitioColumna', { numero: index + 1 })}
-            </th>
-          ))}
-          <th className="border border-[color:var(--brand-line)] px-0.5 py-0.5">
-            {t('periodonto.tabla.movilidad')}
-          </th>
-          <th className="border border-[color:var(--brand-line)] px-0.5 py-0.5">
-            {t('periodonto.tabla.furca')}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {teeth.map((tooth) => {
-          if (tooth.missing) {
-            return (
-              <tr key={tooth.fdi}>
-                <th
-                  scope="row"
-                  className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-left font-mono text-[9px] font-semibold"
-                >
-                  {tooth.fdi}
+}) => {
+  const evaluadas = teeth.filter(toothHasData);
+  const omitidas = teeth.length - evaluadas.length;
+  return (
+    <div className="break-inside-avoid">
+      <h4 className="text-[10px] font-semibold text-[color:var(--brand-primary)]">
+        {archName(arch)}
+      </h4>
+      {evaluadas.length === 0 ? (
+        <p className="mt-1 text-[8px] text-[color:var(--brand-ink-muted)]">
+          {t('periodonto.imprimir.sitios.sinDatos')}
+        </p>
+      ) : (
+        <table className="mt-1 w-full border-collapse text-center">
+          <thead>
+            <tr className="text-[7px] tracking-wide text-[color:var(--brand-primary)] uppercase">
+              <th className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-left">
+                {t('periodonto.tabla.pieza')}
+              </th>
+              <th className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-left">
+                {t('periodonto.tabla.cara')}
+              </th>
+              {PERIODONTAL_SITE_INDEXES.map((index) => (
+                <th key={index} className="border border-[color:var(--brand-line)] px-0.5 py-0.5">
+                  {t('periodonto.imprimir.sitioColumna', { numero: index + 1 })}
                 </th>
-                <td
-                  className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-left text-[7px] text-[color:var(--brand-ink-muted)]"
-                  colSpan={6}
-                >
-                  {t('periodonto.imprimir.piezaSinSitios', {
-                    estado: toothStateText(tooth).toLowerCase(),
-                  })}
-                </td>
-              </tr>
-            );
-          }
-          return (['vestibular', 'lingual'] as const).map((side, position) => {
-            const sites = side === 'vestibular' ? tooth.vestibular : tooth.lingual;
-            return (
-              <tr
-                key={`${String(tooth.fdi)}-${side}`}
-                className={position === 0 ? 'border-t border-[color:var(--brand-ink-muted)]' : ''}
-              >
-                {position === 0 && (
-                  <th
-                    scope="rowgroup"
-                    rowSpan={2}
-                    className="border border-[color:var(--brand-line)] px-0.5 py-0.5 align-top text-left font-mono text-[9px] font-semibold"
-                  >
-                    {tooth.fdi}
-                    {tooth.implant && (
-                      <span className="block text-[6px] font-normal text-[color:var(--brand-ink-muted)]">
-                        {t('periodonto.pieza.implante')}
-                      </span>
-                    )}
-                  </th>
-                )}
-                <td className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-left text-[7px] text-[color:var(--brand-ink-muted)]">
-                  {side === 'vestibular'
-                    ? t('periodonto.cara.vestibular')
-                    : arch === 'maxilar'
-                      ? t('periodonto.cara.palatina')
-                      : t('periodonto.cara.lingual')}
-                </td>
-                {PERIODONTAL_SITE_INDEXES.map((index) => {
-                  const site = sites[index];
-                  const cambio =
-                    comparisonIndex === null
-                      ? null
-                      : (comparisonIndex.get(`${String(tooth.fdi)}:${side}:${String(index)}`) ??
-                        null);
-                  return (
-                    <td
-                      key={index}
-                      className="border border-[color:var(--brand-line)] px-0.5 py-0.5 align-top"
+              ))}
+              <th className="border border-[color:var(--brand-line)] px-0.5 py-0.5">
+                {t('periodonto.tabla.movilidad')}
+              </th>
+              <th className="border border-[color:var(--brand-line)] px-0.5 py-0.5">
+                {t('periodonto.tabla.furca')}
+              </th>
+            </tr>
+          </thead>
+          {evaluadas.map((tooth) => {
+            if (tooth.missing) {
+              return (
+                <tbody key={tooth.fdi} className="break-inside-avoid">
+                  <tr>
+                    <th
+                      scope="row"
+                      className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-left font-mono text-[9px] font-semibold"
                     >
-                      <span className="block text-[6px] font-semibold text-[color:var(--brand-ink-subtle)] uppercase">
-                        {siteShortName(tooth.fdi, side, index)}
-                      </span>
-                      <span className="block font-mono text-[8px] leading-tight text-[color:var(--brand-ink)]">
-                        {siteFieldText(site, 'pd')} / {siteFieldText(site, 'gm')}
-                      </span>
-                      <span className="block text-[6px] leading-tight text-[color:var(--brand-ink-subtle)]">
-                        {t('periodonto.imprimir.nic', { valor: calText(site) })}
-                      </span>
-                      <span className="flex justify-center gap-1 text-[7px] leading-none font-bold">
-                        {site.bop && (
-                          <span
-                            style={{ color: PERIODONTAL_COLORS.bop }}
-                            title={t('periodonto.tabla.bop')}
-                          >
-                            {t('periodonto.tabla.corta.bop')}
-                          </span>
-                        )}
-                        {site.plaque && (
-                          <span
-                            style={{ color: PERIODONTAL_COLORS.plaque }}
-                            title={t('periodonto.tabla.placa')}
-                          >
-                            {t('periodonto.tabla.corta.placa')}
-                          </span>
-                        )}
-                        {site.suppuration && (
-                          <span
-                            style={{ color: PERIODONTAL_COLORS.suppuration }}
-                            title={t('periodonto.tabla.supuracion')}
-                          >
-                            {t('periodonto.tabla.corta.supuracion')}
-                          </span>
-                        )}
-                      </span>
-                      {cambio !== null &&
-                        cambio.change !== 'sin_dato' &&
-                        cambio.change !== 'estable' && (
-                          <span
-                            className="block text-[6px] font-semibold"
-                            style={{ color: changeColor(cambio.change) }}
-                          >
-                            {changeLabel(cambio.change)}
-                          </span>
-                        )}
+                      {tooth.fdi}
+                    </th>
+                    <td
+                      className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-left text-[7px] text-[color:var(--brand-ink-muted)]"
+                      colSpan={6}
+                    >
+                      {t('periodonto.imprimir.piezaSinSitios', {
+                        estado: toothStateText(tooth).toLowerCase(),
+                      })}
                     </td>
+                  </tr>
+                </tbody>
+              );
+            }
+            return (
+              <tbody key={tooth.fdi} className="break-inside-avoid">
+                {(['vestibular', 'lingual'] as const).map((side, position) => {
+                  const sites = side === 'vestibular' ? tooth.vestibular : tooth.lingual;
+                  return (
+                    <tr
+                      key={`${String(tooth.fdi)}-${side}`}
+                      className={
+                        position === 0 ? 'border-t border-[color:var(--brand-ink-muted)]' : ''
+                      }
+                    >
+                      {position === 0 && (
+                        <th
+                          scope="rowgroup"
+                          rowSpan={2}
+                          className="border border-[color:var(--brand-line)] px-0.5 py-0.5 align-top text-left font-mono text-[9px] font-semibold"
+                        >
+                          {tooth.fdi}
+                          {tooth.implant && (
+                            <span className="block text-[6px] font-normal text-[color:var(--brand-ink-muted)]">
+                              {t('periodonto.pieza.implante')}
+                            </span>
+                          )}
+                        </th>
+                      )}
+                      <td className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-left text-[7px] text-[color:var(--brand-ink-muted)]">
+                        {side === 'vestibular'
+                          ? t('periodonto.cara.vestibular')
+                          : arch === 'maxilar'
+                            ? t('periodonto.cara.palatina')
+                            : t('periodonto.cara.lingual')}
+                      </td>
+                      {PERIODONTAL_SITE_INDEXES.map((index) => {
+                        const site = sites[index];
+                        const cambio =
+                          comparisonIndex === null
+                            ? null
+                            : (comparisonIndex.get(
+                                `${String(tooth.fdi)}:${side}:${String(index)}`,
+                              ) ?? null);
+                        return (
+                          <td
+                            key={index}
+                            className="border border-[color:var(--brand-line)] px-0.5 py-0.5 align-top"
+                          >
+                            <span className="block text-[6px] font-semibold text-[color:var(--brand-ink-subtle)] uppercase">
+                              {siteShortName(tooth.fdi, side, index)}
+                            </span>
+                            <span className="block font-mono text-[8px] leading-tight text-[color:var(--brand-ink)]">
+                              {siteFieldText(site, 'pd')} / {siteFieldText(site, 'gm')}
+                            </span>
+                            <span className="block text-[6px] leading-tight text-[color:var(--brand-ink-subtle)]">
+                              {t('periodonto.imprimir.nic', { valor: calText(site) })}
+                            </span>
+                            <span className="flex justify-center gap-1 text-[7px] leading-none font-bold">
+                              {site.bop && (
+                                <span
+                                  style={{ color: PERIODONTAL_COLORS.bop }}
+                                  title={t('periodonto.tabla.bop')}
+                                >
+                                  {t('periodonto.tabla.corta.bop')}
+                                </span>
+                              )}
+                              {site.plaque && (
+                                <span
+                                  style={{ color: PERIODONTAL_COLORS.plaque }}
+                                  title={t('periodonto.tabla.placa')}
+                                >
+                                  {t('periodonto.tabla.corta.placa')}
+                                </span>
+                              )}
+                              {site.suppuration && (
+                                <span
+                                  style={{ color: PERIODONTAL_COLORS.suppuration }}
+                                  title={t('periodonto.tabla.supuracion')}
+                                >
+                                  {t('periodonto.tabla.corta.supuracion')}
+                                </span>
+                              )}
+                            </span>
+                            {cambio !== null &&
+                              cambio.change !== 'sin_dato' &&
+                              cambio.change !== 'estable' && (
+                                <span
+                                  className="block text-[6px] font-semibold"
+                                  style={{ color: changeColor(cambio.change) }}
+                                >
+                                  {changeLabel(cambio.change)}
+                                </span>
+                              )}
+                          </td>
+                        );
+                      })}
+                      {position === 0 && (
+                        <>
+                          <td
+                            rowSpan={2}
+                            className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-[7px] text-[color:var(--brand-ink-muted)]"
+                          >
+                            {tooth.implant ? '' : mobilityLabel(tooth.mobility)}
+                          </td>
+                          <td
+                            rowSpan={2}
+                            className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-left text-[6px] text-[color:var(--brand-ink-muted)]"
+                          >
+                            {tooth.implant
+                              ? ''
+                              : furcationEntrancesFor(tooth.fdi).map((entrance) => (
+                                  <span key={entrance} className="block whitespace-nowrap">
+                                    {FURCATION_ENTRANCE_SHORT[entrance]}:{' '}
+                                    {furcationLabel(tooth.furcation[entrance] ?? null)}
+                                  </span>
+                                ))}
+                          </td>
+                        </>
+                      )}
+                    </tr>
                   );
                 })}
-                {position === 0 && (
-                  <>
-                    <td
-                      rowSpan={2}
-                      className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-[7px] text-[color:var(--brand-ink-muted)]"
-                    >
-                      {tooth.implant ? '' : mobilityLabel(tooth.mobility)}
-                    </td>
-                    <td
-                      rowSpan={2}
-                      className="border border-[color:var(--brand-line)] px-0.5 py-0.5 text-left text-[6px] text-[color:var(--brand-ink-muted)]"
-                    >
-                      {tooth.implant
-                        ? ''
-                        : furcationEntrancesFor(tooth.fdi).map((entrance) => (
-                            <span key={entrance} className="block whitespace-nowrap">
-                              {furcationEntranceLabel(entrance)}:{' '}
-                              {furcationLabel(tooth.furcation[entrance] ?? null)}
-                            </span>
-                          ))}
-                    </td>
-                  </>
-                )}
-              </tr>
+              </tbody>
             );
-          });
-        })}
-      </tbody>
-    </table>
-  </div>
-);
+          })}
+        </table>
+      )}
+      {omitidas > 0 && (
+        <p className="mt-1 text-[7px] text-[color:var(--brand-ink-subtle)]">
+          {t('periodonto.imprimir.sitios.omitidas', { piezas: omitidas })}
+        </p>
+      )}
+    </div>
+  );
+};
 
 /** Boca sintética del examen anterior, para superponer su línea punteada. */
 const previousChartOf = (comparison: PeriodontalComparison): PeriodontalTooth[] => {
@@ -454,7 +499,10 @@ export const PeriodontogramDocument = ({
       <MarcaDeAgua />
       <div className="relative z-[1]">
         <MembreteDocumento title={t('periodonto.imprimir.documento')} />
-        <header className="mt-3 border-b-2 pb-3" style={{ borderColor: 'var(--brand-ink)' }}>
+        <header
+          className="mt-3 border-b-2 pb-3 print:mt-2 print:pb-2"
+          style={{ borderColor: 'var(--brand-ink)' }}
+        >
           <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
             <div>
               <dt className="text-xs tracking-wide text-[color:var(--brand-ink-subtle)] uppercase">
@@ -499,20 +547,20 @@ export const PeriodontogramDocument = ({
           )}
         </header>
 
-        <section className="mt-4">
+        <section className="mt-4 print:mt-2">
           <h2 className="text-sm font-semibold tracking-wide text-[color:var(--brand-primary)] uppercase">
             {t('periodonto.imprimir.kpis.titulo')}
           </h2>
-          <div className="mt-2">
+          <div className="mt-2 print:mt-1">
             <KpiGrid items={kpiItems(analisis.metrics)} />
           </div>
         </section>
 
-        <section className="mt-4">
-          <h2 className="text-sm font-semibold tracking-wide text-[color:var(--brand-primary)] uppercase">
+        <section className="mt-4 print:mt-2">
+          <h2 className="text-sm font-semibold tracking-wide break-after-avoid text-[color:var(--brand-primary)] uppercase">
             {t('periodonto.imprimir.grafico.titulo')}
           </h2>
-          <div className="mx-auto mt-2 max-w-[19cm] space-y-2">
+          <div className="mx-auto mt-2 max-w-[19cm] space-y-2 print:mt-1 print:space-y-1">
             {archivos.map(({ arch, teeth }) => (
               <PeriodontogramArchSvg
                 key={arch}
@@ -522,23 +570,27 @@ export const PeriodontogramDocument = ({
                 paper
                 comparison={comparisonIndex}
                 previous={previousChart}
+                /* Una arcada entera —título, SVG, franja FDI y furcas— no se parte
+                   entre dos páginas: la mandíbula dejaba su título huérfano al pie
+                   de la página 1. */
+                className="break-inside-avoid"
               />
             ))}
           </div>
-          <p className="mt-1 text-[8px] text-[color:var(--brand-ink-subtle)]">
+          <p className="mt-1 break-before-avoid text-[8px] text-[color:var(--brand-ink-subtle)]">
             {t('periodonto.imprimir.grafico.leyenda')}
           </p>
         </section>
 
-        <section className="mt-4">
+        <section className="mt-4 print:mt-3">
           <h2 className="text-sm font-semibold tracking-wide break-after-avoid text-[color:var(--brand-primary)] uppercase">
             {t('periodonto.imprimir.sitios.titulo')}
           </h2>
-          <p className="mt-1 text-[8px] text-[color:var(--brand-ink-muted)]">
+          <p className="mt-1 break-after-avoid text-[8px] text-[color:var(--brand-ink-muted)]">
             {t('periodonto.imprimir.sitios.texto')}
           </p>
           {comparison === null ? null : (
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[8px]">
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[8px] break-after-avoid">
               {(['mejoro', 'empeoro', 'estable'] as const).map((change) => (
                 <span key={change} className="inline-flex items-center gap-1">
                   <Dot color={changeColor(change)} />
@@ -547,9 +599,13 @@ export const PeriodontogramDocument = ({
               ))}
             </div>
           )}
-          {archivos.map(({ arch, teeth }) => (
-            <SitesTable key={arch} arch={arch} teeth={teeth} comparisonIndex={comparisonIndex} />
-          ))}
+          {/* Dos columnas: el maxilar a la izquierda y la mandíbula a la derecha.
+              Cabe en una hoja y se lee como la boca, con las dos arcadas juntas. */}
+          <div className="mt-2 grid grid-cols-1 gap-x-4 gap-y-2 print:grid-cols-2">
+            {archivos.map(({ arch, teeth }) => (
+              <SitesTable key={arch} arch={arch} teeth={teeth} comparisonIndex={comparisonIndex} />
+            ))}
+          </div>
           <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[8px] text-[color:var(--brand-ink-muted)]">
             <span className="inline-flex items-center gap-1">
               <Square color={PERIODONTAL_COLORS.bop} />
@@ -567,6 +623,7 @@ export const PeriodontogramDocument = ({
               {t('periodonto.leyenda.ps')} / {t('periodonto.leyenda.mg')} ·{' '}
               {t('periodonto.leyenda.nic')}
             </span>
+            <span>{t('periodonto.imprimir.furcaAbrev')}</span>
           </p>
         </section>
 
@@ -597,7 +654,6 @@ export const PeriodontogramDocument = ({
               })}
             </p>
           </section>
-
           <section>
             <h2 className="text-sm font-semibold tracking-wide text-[color:var(--brand-primary)] uppercase">
               {t('periodonto.imprimir.riesgo.titulo')}
@@ -605,7 +661,9 @@ export const PeriodontogramDocument = ({
             <p className="mt-1 text-sm">{riskFactorsText(detail.riskFactors)}</p>
             {detail.riskFactors.hba1c !== null && (
               <p className="text-xs text-[color:var(--brand-ink-muted)]">
-                {t('periodonto.riesgo.hba1cValor', { valor: detail.riskFactors.hba1c })}
+                {t('periodonto.riesgo.hba1cValor', {
+                  valor: formatDecimal(detail.riskFactors.hba1c),
+                })}
               </p>
             )}
             {detail.notes !== null && (

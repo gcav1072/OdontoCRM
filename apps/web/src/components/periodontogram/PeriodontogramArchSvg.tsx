@@ -547,7 +547,10 @@ const PeriodontogramArchSvgBase = ({
             : 'mb-1 text-[11px] text-ink-subtle'
         }
       >
-        {archName(arch)} · {t('periodonto.grafico.pista')}
+        {/* En papel solo va el nombre de la arcada: la explicación de la rejilla
+            ya está en la leyenda del documento, y dos líneas de pista por figura
+            empujaban la mandíbula a la página siguiente. */}
+        {paper ? archName(arch) : `${archName(arch)} · ${t('periodonto.grafico.pista')}`}
       </figcaption>
       <svg
         viewBox={`0 0 ${String(VIEW_WIDTH)} ${String(BAND_HEIGHT * 2 + TOOTH_STRIP_HEIGHT)}`}

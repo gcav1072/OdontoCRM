@@ -3459,10 +3459,16 @@ const DICCIONARIO = {
   'periodonto.imprimir.kpis.titulo': 'Resumen periodontal',
   'periodonto.imprimir.grafico.titulo': 'Gráfico de las arcadas',
   'periodonto.imprimir.grafico.leyenda':
-    'La cara vestibular se dibuja hacia fuera de la boca; la rejilla es de 2 mm y la línea de alerta, de 4 mm. La línea 0 (LAC) es el cuello del diente y la franja sombreada bajo ella, la zona coronal (MG positiva).',
+    'Cada rejilla lleva su cara rotulada: en el maxilar, vestibular arriba y palatino abajo; en la mandíbula, lingual arriba y vestibular abajo. Furca: vacío I · medio II · lleno III; sin lesión no se dibuja. Rejilla de 2 mm, alerta a 4 mm y LAC (línea 0) marcado.',
   'periodonto.imprimir.sitios.titulo': 'Sitios de sondaje',
   'periodonto.imprimir.sitios.texto':
     'Cada celda: PS / MG en milímetros y el NIC derivado (max(0, PS − MG), con MG = 0 si no se registró).',
+  'periodonto.imprimir.furcaAbrev':
+    'Furca por entrada: V vestibular · MP mesiopalatina · DP distopalatina · L lingual · M mesial · D distal.',
+  'periodonto.imprimir.sitios.sinDatos':
+    'Ninguna pieza de esta arcada tiene sitios sondeados ni hallazgos.',
+  'periodonto.imprimir.sitios.omitidas':
+    'No se listan {piezas} piezas sin sondar, sin hallazgos y sin estado que declarar.',
   'periodonto.imprimir.sitioColumna': 'Sitio {numero}',
   'periodonto.imprimir.sitio': 'Sitio',
   'periodonto.imprimir.nic': 'NIC {valor}',
