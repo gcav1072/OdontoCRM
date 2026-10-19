@@ -345,7 +345,7 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 - **Rutas / Componentes:** `NotificationsPage.tsx`, `BotStatusCard.tsx`, `CanalesSection.tsx`, `MessageTemplatesCard.tsx`, `TemplateResetDialog.tsx` (ADR `0008`, `0029`).
 - **Pasos de prueba:**
   - [x] Verificar el estado de conexión del bot en `BotStatusCard.tsx` y los canales activos en `CanalesSection.tsx`.
-  - [ ] Editar el texto de una plantilla en `MessageTemplatesCard.tsx`, guardar y luego restaurarla con `TemplateResetDialog.tsx`.
+  - [x] Editar el texto de una plantilla en `MessageTemplatesCard.tsx`, guardar y luego restaurarla con `TemplateResetDialog.tsx`.
 - **Resultado esperado:** Las plantillas admiten variables dinámicas válidas, no exponen comandos técnicos crudos al paciente (`0002_plantillas_sin_comandos.sql`) y pueden restablecerse a su texto original.
 
 #### `NOT-02` — Flujo Conversacional del Bot y Confirmación por el Paciente
@@ -419,53 +419,53 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 #### `CAJ-05` — Cuadre de los Libros Fiscales (Ventas, Diferencial Cambiario e IGTF)
 - **Rutas / Componentes:** `/caja` → **Libros fiscales** (`LibrosFiscalesPanel.tsx`), `book-service.ts`, `book-routes.ts`, `book-pdf.ts` (ADR `0069`).
 - **Pasos de prueba:**
-  - [ ] Con facturas emitidas, cobros con IGTF y una Nota de Crédito del mes, abrir `/caja` → **Libros fiscales** y comprobar que el período propuesto es el **mes en curso** y que el resumen de la pantalla (ganancias, pérdidas, reversiones, neto; base y arqueo del IGTF) coincide con el de los archivos.
-  - [ ] Descargar los tres libros en **CSV** (`sales.csv`, `exchange-diff.csv`, `igtf.csv`) y comprobar que abren en Excel con los acentos bien y la coma decimal.
-  - [ ] Descargar los tres en **PDF**: tiene que salir el **membrete del consultorio** (nombre, RIF, dirección y teléfono del panel), carta horizontal y el folio «Página X de Y».
+  - [x] Con facturas emitidas, cobros con IGTF y una Nota de Crédito del mes, abrir `/caja` → **Libros fiscales** y comprobar que el período propuesto es el **mes en curso** y que el resumen de la pantalla (ganancias, pérdidas, reversiones, neto; base y arqueo del IGTF) coincide con el de los archivos.
+  - [x] Descargar los tres libros en **CSV** (`sales.csv`, `exchange-diff.csv`, `igtf.csv`) y comprobar que abren en Excel con los acentos bien y la coma decimal.
+  - [x] Descargar los tres en **PDF**: tiene que salir el **membrete del consultorio** (nombre, RIF, dirección y teléfono del panel), carta horizontal y el folio «Página X de Y».
 - **Resultado esperado:** El Libro de Ventas lista cronológicamente cada factura y nota de crédito cuadrando base exenta, base imponible e IVA; el libro cambiario cuadra $\text{neto} = \text{ganancias} - \text{pérdidas} + \text{reversiones}$; y el resumen del IGTF separa el arqueo de **Caja Divisas** del de **Banco/Caja Bs.** El CSV y el PDF del mismo período traen las mismas cifras; un período sin movimientos descarga solo la cabecera y el PDF dice «Sin operaciones en el período seleccionado».
 
 #### `CAJ-06` — Fecha Valor y Validación de Rango
 - **Rutas / Componentes:** `CobroDialog.tsx`, `payment-service.ts`, `rate-service.ts` (ADR `0046`, `0069`).
 - **Pasos de prueba:**
-  - [ ] Con una tasa publicada el viernes, cobrar el lunes una factura declarando la **Fecha Valor** del domingo.
-  - [ ] Intentar declarar una Fecha Valor **anterior a la emisión** de la factura y otra **posterior a hoy**.
+  - [x] Con una tasa publicada el viernes, cobrar el lunes una factura declarando la **Fecha Valor** del domingo.
+  - [x] Intentar declarar una Fecha Valor **anterior a la emisión** de la factura y otra **posterior a hoy**.
 - **Resultado esperado:** El cobro del domingo se valora con la tasa del **viernes** (`rateForDate` arrastra; el BCV no publica fines de semana); una Fecha Valor fuera del rango $\text{emisión} \le \text{Fecha Valor} \le \text{hoy}$ se **rechaza** con un mensaje claro.
 
 #### `CAJ-07` — Descomposición Tripartita del Cobro y Recibo
 - **Rutas / Componentes:** `CobroDialog.tsx`, `DocumentoDetalle.tsx`, `receipt-pdf.ts` (ADR `0069`).
 - **Pasos de prueba:**
-  - [ ] Emitir una factura a la tasa de $1.000{,}00\text{ Bs./US\$}$ y cobrarla con una tasa vigente de $1.020{,}00\text{ Bs./US\$}$ (el caso **CP-01**: US$ 60 → 50.000 Bs. → 10.200 Bs.).
-  - [ ] Abrir el recibo emitido (PDF) y el detalle de la factura en `DocumentoDetalle.tsx`.
+  - [x] Emitir una factura a la tasa de $1.000{,}00\text{ Bs./US\$}$ y cobrarla con una tasa vigente de $1.020{,}00\text{ Bs./US\$}$ (el caso **CP-01**: US$ 60 → 50.000 Bs. → 10.200 Bs.).
+  - [x] Abrir el recibo emitido (PDF) y el detalle de la factura en `DocumentoDetalle.tsx`.
 - **Resultado esperado:** El recibo desglosa **Imputación a factura (tasa de emisión)**, **Ajuste por diferencial cambiario** y **Total recibido**, más el bloque fiscal del IGTF; el detalle muestra el diferencial acumulado ($+200{,}00\text{ Bs.}$) y la **suma de los históricos** cuadra con el total del documento.
 
 #### `CAJ-08` — Absorción de Redondeo (Pago Móvil enteros) y Rechazo de Sobrepago
 - **Rutas / Componentes:** `CobroDialog.tsx`, `payment-service.ts`, `bsPaymentBreakdown` (`packages/contracts`) (ADR `0069`).
 - **Pasos de prueba:**
-  - [ ] Cobrar una deuda de $\$10{,}00$ con un Pago Móvil en bolívares **enteros** cuya conversión deja un residuo de céntimos $\le 5$ céntimos de USD.
-  - [ ] Intentar un sobrepago real superior a $5$ céntimos de USD.
+  - [x] Cobrar una deuda de $\$10{,}00$ con un Pago Móvil en bolívares **enteros** cuya conversión deja un residuo de céntimos $\le 5$ céntimos de USD.
+  - [x] Intentar un sobrepago real superior a $5$ céntimos de USD.
 - **Resultado esperado:** El residuo se **absorbe** en el diferencial y el cobro **salda el 100 %** de la deuda (badge «ajuste de redondeo absorbido» en `CobroDialog.tsx`), sin dejar saldos zombi de $\$0{,}01$; el sobrepago real se **rechaza**.
 
 #### `CAJ-09` — IGTF Configurable con Destino de Caja
 - **Rutas / Componentes:** `CobroDialog.tsx`, `TributarioSection.tsx`, `CajaPage.tsx` (ADR `0045`, `0069`).
 - **Pasos de prueba:**
-  - [ ] Con el consultorio marcado como **SPE**, cobrar una base en divisas declarando el IGTF en **USD** (Caja Divisas).
-  - [ ] Cobrar otra base declarando el IGTF en **VES** (Banco/Caja Bs.), indicando el **medio** y la **referencia** del Pago Móvil.
-  - [ ] Cobrar con **tarjeta en divisas** (el tributo lo debita el banco, Art. 4.5).
+  - [x] Con el consultorio marcado como **SPE**, cobrar una base en divisas declarando el IGTF en **USD** (Caja Divisas).
+  - [x] Cobrar otra base declarando el IGTF en **VES** (Banco/Caja Bs.), indicando el **medio** y la **referencia** del Pago Móvil.
+  - [x] Cobrar con **tarjeta en divisas** (el tributo lo debita el banco, Art. 4.5).
 - **Resultado esperado:** Con destino `USD` el IGTF entra junto a la base a Caja Divisas; con `VES` la base va a Caja Divisas y el IGTF convertido (a la tasa de la Fecha Valor) a Banco/Caja Bs.; con tarjeta en divisas la clínica **no** vuelve a percibir (ADR `0045` se conserva).
 
 #### `CAJ-10` — Anulación Administrativa vs. Reembolso sobre Factura con Diferencial
 - **Rutas / Componentes:** `AnularDialog.tsx`, `credit-note-service.ts` (ADR `0069`).
 - **Pasos de prueba:**
-  - [ ] Sobre una factura con **diferencial ya realizado**, elegir anulación `ADMINISTRATIVE` (refacturación, sin devolución).
-  - [ ] Sobre otra igual, elegir `REFUND` (reembolso real).
+  - [x] Sobre una factura con **diferencial ya realizado**, elegir anulación `ADMINISTRATIVE` (refacturación, sin devolución).
+  - [x] Sobre otra igual, elegir `REFUND` (reembolso real).
 - **Resultado esperado:** La `ADMINISTRATIVE` deja `reversed_exchange_diff = 0` (el diferencial se conserva); la `REFUND` reversa el diferencial acumulado de los cobros vigentes; en **ambos** casos la nota fiscal sale a la **tasa original** de la factura.
 
 #### `CAJ-11` — Libros del Período y Arqueo
 - **Rutas / Componentes:** `/caja` → **Libros fiscales** (`LibrosFiscalesPanel.tsx`), `book-routes.ts`, `book-service.ts`, `book-pdf.ts` (ADR `0069`).
 - **Pasos de prueba:**
-  - [ ] Generar un período con facturas, cobros con diferencial (ganancia y pérdida), IGTF en ambas monedas y una Nota de Crédito de cada tipo.
-  - [ ] Desde **Libros fiscales**, usar los atajos **Este mes** y **Mes anterior**, descargar los tres CSV y los tres PDF, y comprobar el resumen de la pantalla contra los archivos.
-  - [ ] Probar un rango con la fecha inicial posterior a la final: los botones quedan deshabilitados y hay aviso.
+  - [x] Generar un período con facturas, cobros con diferencial (ganancia y pérdida), IGTF en ambas monedas y una Nota de Crédito de cada tipo.
+  - [x] Desde **Libros fiscales**, usar los atajos **Este mes** y **Mes anterior**, descargar los tres CSV y los tres PDF, y comprobar el resumen de la pantalla contra los archivos.
+  - [x] Probar un rango con la fecha inicial posterior a la final: los botones quedan deshabilitados y hay aviso.
 - **Resultado esperado:** El libro cambiario cuadra $\text{neto} = \text{ganancias} - \text{pérdidas} + \text{reversiones}$; el arqueo del IGTF separa Caja Divisas de Banco/Caja Bs.; los cobros anulados **no** cuentan como diferencial realizado; y el PDF y el CSV del mismo período coinciden cifra a cifra.
 
 ---
