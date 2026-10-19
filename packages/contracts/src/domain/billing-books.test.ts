@@ -4,6 +4,8 @@ import { CSV_BOM } from '../common/csv.js';
 import {
   bookFileName,
   igtfBookToCsv,
+  rangoDelMes,
+  rangoDelMesAnterior,
   salesBookToCsv,
   type IgtfBookRow,
   type SalesBookRow,
@@ -103,6 +105,13 @@ describe('el nombre del archivo del libro', () => {
     expect(bookFileName('igtf', {})).toBe('libro-de-igtf-inicio_fin.csv');
   });
 
+  it('el PDF es el mismo nombre con la otra extensión', () => {
+    expect(bookFileName('ventas', { from: '2026-10-01', to: '2026-10-31' }, 'pdf')).toBe(
+      'libro-de-ventas-2026-10-01_2026-10-31.pdf',
+    );
+    expect(bookFileName('cambiario', {}, 'pdf')).toBe('libro-de-cambiario-inicio_fin.pdf');
+  });
+
   it('no deja pasar nada que rompa una cabecera HTTP', () => {
     // El valor viaja a `content-disposition`: comillas o saltos son una inyección de cabeceras.
     const nombre = bookFileName('ventas', {
@@ -114,5 +123,34 @@ describe('el nombre del archivo del libro', () => {
     expect(nombre).not.toContain('\r');
     // Cada carácter prohibido se vuelve un guion: comilla, espacio, retorno y salto son cuatro.
     expect(nombre).toBe('libro-de-ventas-2026-10-01----X-Malicioso--1_2026-10-31.csv');
+  });
+});
+
+/**
+ * El período del libro es una cuenta de **calendario** (`aaaa-mm-dd`), no de instantes: si se
+ * calculara con `new Date('2026-10-01')`, en Caracas caería el 30 de septiembre y el libro saldría
+ * un día corrido. La misma función propone el período en la pantalla y lo resuelve el servidor.
+ */
+describe('el período del libro: el mes y el mes anterior', () => {
+  it('un mes de 31 días', () => {
+    expect(rangoDelMes('2026-10-18')).toEqual({ from: '2026-10-01', to: '2026-10-31' });
+  });
+
+  it('febrero, bisiesto y no bisiesto', () => {
+    expect(rangoDelMes('2028-02-10')).toEqual({ from: '2028-02-01', to: '2028-02-29' });
+    expect(rangoDelMes('2026-02-10')).toEqual({ from: '2026-02-01', to: '2026-02-28' });
+  });
+
+  it('diciembre y enero, que son los bordes de año', () => {
+    expect(rangoDelMesAnterior('2026-12-31')).toEqual({
+      from: '2026-11-01',
+      to: '2026-11-30',
+    });
+    expect(rangoDelMesAnterior('2026-01-05')).toEqual({ from: '2025-12-01', to: '2025-12-31' });
+  });
+
+  it('el mes anterior de marzo es febrero (y de un bisiesto, 29 días)', () => {
+    expect(rangoDelMesAnterior('2026-03-31')).toEqual({ from: '2026-02-01', to: '2026-02-28' });
+    expect(rangoDelMesAnterior('2028-03-01')).toEqual({ from: '2028-02-01', to: '2028-02-29' });
   });
 });

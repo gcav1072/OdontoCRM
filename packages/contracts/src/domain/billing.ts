@@ -1230,6 +1230,28 @@ export const bookQuerySchema = z
 export type BookQuery = z.infer<typeof bookQuerySchema>;
 
 /**
+ * El primer y el último día del **mes** de una fecha `aaaa-mm-dd`.
+ *
+ * Es una cuenta de **calendario**, no de instantes: `Date.UTC(anio, mes, 0)` da el último día del
+ * mes pedido sin que una zona horaria pueda correrlo un día. Lo comparten el servidor (el período
+ * por defecto del libro) y la SPA (el período que propone la pantalla), así que no pueden discrepar.
+ */
+export const rangoDelMes = (fecha: string): { from: string; to: string } => {
+  const mes = fecha.slice(0, 7);
+  const [anio = '1970', numeroMes = '1'] = mes.split('-');
+  const dias = new Date(Date.UTC(Number(anio), Number(numeroMes), 0)).getUTCDate();
+  return { from: `${mes}-01`, to: `${mes}-${String(dias).padStart(2, '0')}` };
+};
+
+/** El **mes anterior** al de una fecha `aaaa-mm-dd`, con su primer y último día. */
+export const rangoDelMesAnterior = (fecha: string): { from: string; to: string } => {
+  const [anio = '1970', numeroMes = '1'] = fecha.slice(0, 7).split('-');
+  // El día 0 de un mes es el último del anterior: así enero salta a diciembre del año previo.
+  const primero = new Date(Date.UTC(Number(anio), Number(numeroMes) - 2, 1));
+  return rangoDelMes(`${primero.toISOString().slice(0, 7)}-01`);
+};
+
+/**
  * Una operación del libro de ventas. La **nota de crédito** entra como una fila más, con el monto en
  * **negativo** y el documento de la factura que deja sin efecto: el libro cuenta lo que pasó, no lo
  * que sobrevivió, y así el total del período cuadra con la realidad.
@@ -1351,18 +1373,33 @@ export interface IgtfSummary {
 }
 
 /**
- * El nombre del archivo: `libro-de-ventas-<desde>_<hasta>.csv`. Se limpia todo lo que no sea
- * `[0-9A-Za-z._-]` porque el valor viaja a una cabecera HTTP (`content-disposition`): comillas o
+ * El nombre del archivo: `libro-de-ventas-<desde>_<hasta>.csv` (o `.pdf`). Se limpia todo lo que no
+ * sea `[0-9A-Za-z._-]` porque el valor viaja a una cabecera HTTP (`content-disposition`): comillas o
  * saltos de línea ahí son una inyección de cabeceras.
+ *
+ * La extensión es el único cambio entre el CSV y el PDF: el servidor y la SPA componen el nombre con
+ * esta misma función, así que lo descargado se llama igual que lo que el servicio declara.
  */
-export const bookFileName = (tipo: 'ventas' | 'igtf' | 'cambiario', query: BookQuery): string => {
+export const bookFileName = (
+  tipo: 'ventas' | 'igtf' | 'cambiario',
+  query: BookQuery,
+  extension: 'csv' | 'pdf' = 'csv',
+): string => {
   const parte = (valor: string | undefined, porDefecto: string): string => {
     if (valor === undefined || valor === '') return porDefecto;
     const limpio = valor.replace(/[^0-9A-Za-z._-]/g, '-');
     return limpio.length > 0 ? limpio : porDefecto;
   };
-  return `libro-de-${tipo}-${parte(query.from, 'inicio')}_${parte(query.to, 'fin')}.csv`;
+  return `libro-de-${tipo}-${parte(query.from, 'inicio')}_${parte(query.to, 'fin')}.${extension}`;
 };
+
+/** Lo que devuelve `GET /books/summary`: el rango efectivo y los dos resúmenes del período. */
+export interface BooksSummary {
+  from: string;
+  to: string;
+  exchangeDiff: ExchangeDiffSummary;
+  igtf: IgtfSummary;
+}
 
 /* ── 16. El historial de la caja (Fase 11) ─────────────────────────────────── */
 
