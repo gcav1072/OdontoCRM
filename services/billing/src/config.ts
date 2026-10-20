@@ -2,7 +2,7 @@ import { baseEnvSchema, loadConfig } from '@odontocrm/kernel';
 import { z } from 'zod';
 
 export const billingEnvSchema = baseEnvSchema.extend({
-  SERVICE_VERSION: z.string().min(1).default('1.0.0'),
+  SERVICE_VERSION: z.string().min(1).default('1.1.0'),
   BILLING_HOST: z.string().min(1).default('127.0.0.1'),
   /** 4009: los puertos 4001–4008 son de los otros ocho servicios. */
   BILLING_PORT: z.coerce.number().int().min(1).max(65_535).default(4009),

@@ -2,7 +2,7 @@ import { baseEnvSchema, loadConfig } from '@odontocrm/kernel';
 import { z } from 'zod';
 
 export const clinicalEnvSchema = baseEnvSchema.extend({
-  SERVICE_VERSION: z.string().min(1).default('1.0.0'),
+  SERVICE_VERSION: z.string().min(1).default('1.1.0'),
   CLINICAL_HOST: z.string().min(1).default('127.0.0.1'),
   CLINICAL_PORT: z.coerce.number().int().min(1).max(65_535).default(4005),
   DATABASE_URL: z.string().min(1),

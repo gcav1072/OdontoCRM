@@ -17,7 +17,7 @@ const optionalUrl = z.preprocess(
 );
 
 export const gatewayEnvSchema = baseEnvSchema.extend({
-  SERVICE_VERSION: z.string().min(1).default('1.0.0'),
+  SERVICE_VERSION: z.string().min(1).default('1.1.0'),
   GATEWAY_HOST: z.string().min(1).default('127.0.0.1'),
   /**
    * Puerto del gateway. Por defecto 8090 y no 8080: en Windows el 8080 queda

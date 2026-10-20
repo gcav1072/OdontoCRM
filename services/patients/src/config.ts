@@ -11,7 +11,7 @@ export const resolveFromRepoRoot = (path: string): string =>
   isAbsolute(path) ? path : resolve(REPO_ROOT, path);
 
 export const patientsEnvSchema = baseEnvSchema.extend({
-  SERVICE_VERSION: z.string().min(1).default('1.0.0'),
+  SERVICE_VERSION: z.string().min(1).default('1.1.0'),
   PATIENTS_HOST: z.string().min(1).default('127.0.0.1'),
   PATIENTS_PORT: z.coerce.number().int().min(1).max(65_535).default(4002),
   DATABASE_URL: z.string().min(1),

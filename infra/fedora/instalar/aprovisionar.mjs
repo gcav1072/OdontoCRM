@@ -497,7 +497,7 @@ const envComun = () => {
     LOG_LEVEL: 'info',
     LOG_PRETTY: 'false',
     TZ: opciones.tz,
-    SERVICE_VERSION: '1.0.0',
+    SERVICE_VERSION: '1.1.0',
     TEST_MODE: 'false',
     ALLOW_TEST_MODE: 'false',
     GATEWAY_HOST: '127.0.0.1',

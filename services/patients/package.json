@@ -1,6 +1,6 @@
 {
   "name": "@odontocrm/patients",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Pacientes: identificación, datos de contacto, representante, archivos y búsqueda",
   "type": "module",

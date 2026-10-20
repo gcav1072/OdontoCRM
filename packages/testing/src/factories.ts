@@ -28,7 +28,7 @@ export const aUserSummary = (overrides: Partial<UserSummary> = {}): UserSummary 
 /** Informe de salud ficticio, útil para probar el tablero de estado. */
 export const aHealthReport = (overrides: Partial<HealthReport> = {}): HealthReport => ({
   service: overrides.service ?? 'identity',
-  version: overrides.version ?? '1.0.0',
+  version: overrides.version ?? '1.1.0',
   status: overrides.status ?? 'ok',
   uptimeSeconds: overrides.uptimeSeconds ?? 42,
   timestamp: overrides.timestamp ?? '2026-10-02T12:00:00.000Z',

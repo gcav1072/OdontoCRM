@@ -3,7 +3,7 @@ import { DEFAULT_NO_SHOW_GRACE_MINUTES, DEFAULT_SLOT_MINUTES } from '@odontocrm/
 import { z } from 'zod';
 
 export const schedulingEnvSchema = baseEnvSchema.extend({
-  SERVICE_VERSION: z.string().min(1).default('1.0.0'),
+  SERVICE_VERSION: z.string().min(1).default('1.1.0'),
   SCHEDULING_HOST: z.string().min(1).default('127.0.0.1'),
   SCHEDULING_PORT: z.coerce.number().int().min(1).max(65_535).default(4003),
   DATABASE_URL: z.string().min(1),

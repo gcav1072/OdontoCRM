@@ -1,6 +1,6 @@
 {
   "name": "@odontocrm/testing",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Utilidades de prueba: generador pseudoaleatorio determinista, fábricas de datos y el mundo del modo test",
   "type": "module",

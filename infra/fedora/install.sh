@@ -606,7 +606,7 @@ NODE_ENV=production
 LOG_LEVEL=info
 LOG_PRETTY=false
 TZ=${TIMEZONE}
-SERVICE_VERSION=1.0.0
+SERVICE_VERSION=1.1.0
 
 # --- Modo test: NUNCA activo en producción (plan §12) ------------------------
 # El plan lo llama ALLOW_TEST_MODE y .env.example (Fase 0) usa TEST_MODE: se
