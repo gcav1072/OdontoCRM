@@ -6,6 +6,7 @@ import type { OdontogramConfig } from './config.js';
 import type { OdontogramDatabaseHandle } from './db/client.js';
 import { registerInternalRoutes } from './routes/internal-routes.js';
 import { registerOdontogramRoutes } from './routes/odontogram-routes.js';
+import { registerPeriodontogramRoutes } from './routes/periodontogram-routes.js';
 import type { OdontogramServices } from './services.js';
 import type { PatientSnapshotLookup } from './shared/patient-client.js';
 
@@ -55,6 +56,7 @@ export const createOdontogramServer = async (
 
   registerInternalRoutes(app, services);
   registerOdontogramRoutes(app, services);
+  registerPeriodontogramRoutes(app, services);
 
   return app;
 };

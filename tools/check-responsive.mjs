@@ -51,7 +51,8 @@ let token = '';
  * revisar también el modal). `scope` es el contenedor a medir: `main` dentro del
  * shell, `#root` en el acceso, que no tiene armazón. `vista` pulsa un botón que cambia
  * de pestaña o de vista en la misma ruta (la caja tiene «Pendientes», «Historial» y
- * «Libros fiscales» sobre el mismo mostrador).
+ * «Libros fiscales» sobre el mismo mostrador). `padTactil` añade la comprobación de
+ * ergonomía del **pad clínico** del periodontograma (botones de ≥ 44×44 px).
  */
 const RUTAS = [
   { path: '/login', scope: '#root' },
@@ -75,6 +76,11 @@ const RUTAS = [
     path: () => `/consultorio?paciente=${pacienteId}`,
     nombre: '/consultorio',
     dialogo: 'Abrir sesión',
+  },
+  {
+    path: () => `/consultorio?paciente=${pacienteId}&vista=periodontograma`,
+    nombre: '/consultorio · periodontograma',
+    padTactil: true,
   },
 ];
 
@@ -311,6 +317,49 @@ const revisar = async (etiqueta, selector) => {
   );
 };
 
+/** Lado mínimo del objetivo táctil que exige el proyecto (dedo con guante incluido). */
+const LADO_TACTIL_MIN = 44;
+
+/**
+ * Comprueba la ergonomía del **pad clínico táctil** del periodontograma.
+ *
+ * En una fila de 16 dientes cada sitio mide ~15 px: imposible de atinar con el dedo
+ * o con el ratón enguantado. Por eso el módulo expone un pad de botones grandes y
+ * el plan v1.1 exige **≥ 44×44 px** en todos sus botones (los números, 56 px). El
+ * panel lo marca con `data-periodontal-pad`; si la pestaña aún no tiene ningún
+ * examen abierto, no hay pad que medir y se anota como omisión, no como fallo.
+ */
+const medirPadTactil = async (etiqueta) => {
+  const pad = page.locator('[data-periodontal-pad]');
+  if ((await pad.count()) === 0) {
+    avisos += 1;
+    console.log(`· ${etiqueta}: el paciente no tiene periodontograma abierto (se omite)`);
+    return;
+  }
+
+  const botones = page.locator('[data-periodontal-pad] button');
+  const total = await botones.count();
+  const pequenos = [];
+  for (let indice = 0; indice < total; indice += 1) {
+    const boton = botones.nth(indice);
+    const caja = await boton.boundingBox();
+    // Un botón oculto o desmontado no es un objetivo táctil que se pueda pulsar.
+    if (caja === null) continue;
+    if (caja.width < LADO_TACTIL_MIN - 0.5 || caja.height < LADO_TACTIL_MIN - 0.5) {
+      const texto = ((await boton.innerText()) ?? '').trim().slice(0, 16);
+      pequenos.push(
+        `«${texto}» ${String(Math.round(caja.width))}×${String(Math.round(caja.height))}`,
+      );
+    }
+  }
+
+  check(
+    `${etiqueta}: botones ≥ ${String(LADO_TACTIL_MIN)}×${String(LADO_TACTIL_MIN)} px`,
+    total > 0 && pequenos.length === 0,
+    total === 0 ? 'sin botones medibles' : pequenos.slice(0, 5).join(' · '),
+  );
+};
+
 /* ── 3) Entrar por la interfaz ─────────────────────────────────────────────── */
 
 try {
@@ -350,6 +399,10 @@ for (const ancho of ANCHOS) {
     }
 
     await revisar(`${nombre}`, scope);
+
+    if (ruta.padTactil === true) {
+      await medirPadTactil(`${nombre} · pad táctil`);
+    }
 
     if (typeof ruta.vista === 'string') {
       const botonVista = page.getByRole('button', { name: ruta.vista }).first();

@@ -212,6 +212,26 @@ o de **arcada completa** (`ProsthesisRecord`, `prosthesisTrack`, migración `000
   PPR; arcada completa en la PRT (el servidor normaliza la PRT a las 16 piezas). El **solape** entre
   prótesis vivas de la misma arcada lo impone el servicio.
 
+## 6 ter. Corona de fondo («Piezas modeladas»)
+
+El esquema de cinco caras es siempre el que manda. Encima se puede encender, **apagado de fábrica**,
+una **imagen de fondo** por pieza con los dibujos del consultorio
+(`apps/web/src/components/tooth-art/pieces/`, los mismos del periodontograma).
+
+- El odontograma es una **vista oclusal** y los dibujos son **frontales** (corona y raíz): el fondo es
+  decorativo, no una vista anatómica. La pieza se encaja **completa, centrada y sin deformar** dentro
+  del cuadro de 100 × 100 (`ToothBackdrop.tsx`); las cinco caras siguen siendo las que reciben el toque.
+- Con el fondo encendido, los rellenos de las caras bajan a `fill-opacity: 0.6` para que el hallazgo
+  no tape el dibujo. Las líneas del esquema, el contorno, el número y los símbolos no cambian.
+- **Piezas temporales**: no hay dibujo (51–85 no están en el juego), así que se quedan con el esquema,
+  sin hueco ni salto.
+- La preferencia se recuerda en el navegador (`odontocrm:odontograma-piezas`), con la misma lógica que
+  el periodontograma pero **clave y valor de fábrica propios** (aquí, apagada).
+- El papel la hereda por `?piezas=0|1` en `/consultorio/:patientId/odontograma/imprimir`, igual que el
+  periodontograma con `?siluetas=`; sin parámetro, la hoja sale con el esquema de siempre.
+- El **dossier** que compone el servidor (`dossier-odontogram.ts`) no lleva el fondo: no ve el
+  interruptor y su dibujo tiene que ser el mismo siempre.
+
 ## 7. Enforcement en tres capas
 
 Ninguna deja pasar un estado imposible:

@@ -209,12 +209,18 @@ export interface OdontogramDocumentProps {
    * historial recortado en silencio se lee como si no hubiera más.
    */
   historyLimit?: number;
+  /**
+   * Corona de fondo de cada pieza. La página de impresión la lee de `?piezas=0|1`,
+   * igual que el periodontograma lee `?siluetas=`; sin parámetro, apagada.
+   */
+  showPieces?: boolean;
 }
 
 export const OdontogramDocument = ({
   detail,
   history = null,
   historyLimit,
+  showPieces = false,
 }: OdontogramDocumentProps) => {
   const piezas = affectedTeeth(detail);
   const pendientes = Object.values(detail.findings)
@@ -284,6 +290,7 @@ export const OdontogramDocument = ({
             detail={detail}
             dentition={detail.dentition}
             showPrimary={hasPrimaryFindings(detail.findings)}
+            showPieces={showPieces}
           />
         </section>
 

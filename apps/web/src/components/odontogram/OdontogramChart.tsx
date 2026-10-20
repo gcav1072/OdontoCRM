@@ -59,6 +59,8 @@ interface ArchProps {
   activeTooth: number | null;
   activeSurfaces: readonly ToothSurface[];
   readOnly: boolean;
+  /** Corona de fondo en cada pieza («Piezas modeladas»). */
+  showPieces: boolean;
   onToothPress?: (toothNumber: number, surface: ToothSurface | null) => void;
   onProsthesisPress?: (prosthesis: ProsthesisRecord) => void;
 }
@@ -75,6 +77,7 @@ const Arch = ({
   activeTooth,
   activeSurfaces,
   readOnly,
+  showPieces,
   onToothPress,
   onProsthesisPress,
 }: ArchProps) => (
@@ -102,6 +105,7 @@ const Arch = ({
                 active={activa}
                 activeSurfaces={activa ? activeSurfaces : []}
                 readOnly={readOnly}
+                showPieces={showPieces}
                 onPress={
                   onToothPress === undefined
                     ? undefined
@@ -273,6 +277,11 @@ export interface OdontogramChartProps {
   readOnly?: boolean;
   /** Dentición a dibujar cuando todavía no hay odontograma. */
   dentition?: Dentition;
+  /**
+   * Corona de fondo de cada pieza. Apagado por defecto: el esquema de cinco caras
+   * es el que manda y el dibujo es una ayuda visual opt-in.
+   */
+  showPieces?: boolean;
 }
 
 export const OdontogramChart = ({
@@ -283,6 +292,7 @@ export const OdontogramChart = ({
   onProsthesisPress,
   readOnly = false,
   dentition,
+  showPieces = false,
 }: OdontogramChartProps) => {
   const layout = archLayout(dentition ?? detail?.dentition ?? 'permanente');
   const prostheses = detail?.prostheses ?? [];
@@ -301,6 +311,7 @@ export const OdontogramChart = ({
         activeTooth={activeTooth}
         activeSurfaces={activeSurfaces}
         readOnly={readOnly}
+        showPieces={showPieces}
         onToothPress={onToothPress}
         onProsthesisPress={onProsthesisPress}
       />
@@ -316,6 +327,7 @@ export const OdontogramChart = ({
         activeTooth={activeTooth}
         activeSurfaces={activeSurfaces}
         readOnly={readOnly}
+        showPieces={showPieces}
         onToothPress={onToothPress}
         onProsthesisPress={onProsthesisPress}
       />
@@ -338,6 +350,7 @@ export const OdontogramChart = ({
           activeTooth={activeTooth}
           activeSurfaces={activeSurfaces}
           readOnly={readOnly}
+          showPieces={showPieces}
           onToothPress={onToothPress}
         />
       )}
@@ -354,6 +367,7 @@ export const OdontogramChart = ({
           activeTooth={activeTooth}
           activeSurfaces={activeSurfaces}
           readOnly={readOnly}
+          showPieces={showPieces}
           onToothPress={onToothPress}
         />
       )}

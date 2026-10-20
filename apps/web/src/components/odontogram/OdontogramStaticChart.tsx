@@ -24,6 +24,7 @@ import { t } from '../../lib/i18n';
 import { findingsForTooth } from '../../lib/odontogram-api';
 import { TOOTH_LABEL_BASELINE, ToothConditionSymbol, markerSlots } from './GeometricTooth';
 import { ProsthesisOverlay } from './ProsthesisOverlay';
+import { ToothBackdrop } from './ToothBackdrop';
 import { toothGroupTransform } from '@odontocrm/contracts';
 
 /**
@@ -62,20 +63,32 @@ interface StaticToothProps {
   flipped: boolean;
   /** Espejo horizontal de la derecha del paciente (mesial hacia la línea media). */
   mirrorX: boolean;
+  /** Corona de fondo del dibujo del consultorio. */
+  showPieces: boolean;
 }
 
-const StaticTooth = ({ toothNumber, findings, size, flipped, mirrorX }: StaticToothProps) => {
+const StaticTooth = ({
+  toothNumber,
+  findings,
+  size,
+  flipped,
+  mirrorX,
+  showPieces,
+}: StaticToothProps) => {
   const marcadores = markerSlots(findings);
   const escala = size / 100;
 
   return (
     <g transform={`scale(${String(escala)})`}>
+      {/* Fuera del grupo volteado: ver el comentario de `GeometricTooth`. */}
+      {showPieces && <ToothBackdrop toothNumber={toothNumber} paper />}
       <g transform={toothGroupTransform({ flipped, mirrorX })}>
         {(Object.keys(SURFACE_POLYGONS) as ToothSurface[]).map((surface) => (
           <polygon
             key={surface}
             points={SURFACE_POLYGONS[surface]}
             fill={fillOf(findings, surface)}
+            fillOpacity={showPieces ? 0.6 : undefined}
             strokeWidth={1}
             style={TRAZO_CARA}
           />
@@ -150,6 +163,7 @@ const Arch = ({
   size,
   width,
   caption,
+  showPieces,
 }: {
   teeth: readonly ToothPlacement[];
   detail: Pick<OdontogramDetail, 'findings'>;
@@ -169,6 +183,8 @@ const Arch = ({
   width: number;
   /** Qué arcada es y hacia dónde mira cada cara: sin esto el papel se malinterpreta. */
   caption: string;
+  /** Corona de fondo en cada pieza. */
+  showPieces: boolean;
 }) => {
   return (
     <figure className="m-0">
@@ -184,6 +200,7 @@ const Arch = ({
               size={size}
               flipped={tooth.flipped}
               mirrorX={tooth.mirrorX}
+              showPieces={showPieces}
             />
           </g>
         ))}
@@ -319,6 +336,12 @@ export interface OdontogramStaticChartProps {
    * temporal: una banda vacía haría dudar de si faltó capturarla.
    */
   showPrimary?: boolean;
+  /**
+   * Corona de fondo de cada pieza. La decide la página de impresión, que la lee de
+   * `?piezas=0|1` igual que el periodontograma lee `?siluetas=`. Sin parámetro,
+   * apagada (es el valor de fábrica del odontograma).
+   */
+  showPieces?: boolean;
 }
 
 /**
@@ -330,6 +353,7 @@ export const OdontogramStaticChart = ({
   dentition,
   toothSize = 100,
   showPrimary = true,
+  showPieces = false,
 }: OdontogramStaticChartProps) => {
   const boca = detail ?? { findings: {}, dentition: 'permanente' as Dentition, prostheses: [] };
   const layout = archLayout(dentition ?? boca.dentition);
@@ -346,6 +370,7 @@ export const OdontogramStaticChart = ({
         size={toothSize}
         width={layout.width}
         caption={t('odonto.arcada.superior.orientacion')}
+        showPieces={showPieces}
       />
       <Arch
         teeth={layout.lower}
@@ -356,6 +381,7 @@ export const OdontogramStaticChart = ({
         size={toothSize}
         width={layout.width}
         caption={t('odonto.arcada.inferior.orientacion')}
+        showPieces={showPieces}
       />
       {/* Dentición mixta (ADR 0051): las piezas de leche, en su banda y en la ranura
           de la que las va a sustituir. Solo existen si `archLayout` las trae y, en el
@@ -371,6 +397,7 @@ export const OdontogramStaticChart = ({
           size={toothSize}
           width={layout.width}
           caption={`${t('odonto.arcada.superior.temporal')} · ${t('odonto.arcada.superior.orientacion')}`}
+          showPieces={showPieces}
         />
       )}
       {showPrimary && layout.lowerPrimary.length > 0 && (
@@ -383,6 +410,7 @@ export const OdontogramStaticChart = ({
           size={toothSize}
           width={layout.width}
           caption={`${t('odonto.arcada.inferior.temporal')} · ${t('odonto.arcada.inferior.orientacion')}`}
+          showPieces={showPieces}
         />
       )}
       <OdontogramLegend />
