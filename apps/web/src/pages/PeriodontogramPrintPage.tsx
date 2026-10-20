@@ -4,7 +4,7 @@ import type {
   PeriodontalPatientSnapshot,
 } from '@odontocrm/contracts';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Alert, Button, Checkbox, Spinner } from '@odontocrm/ui';
+import { Alert, Button, Checkbox, Spinner, Switch } from '@odontocrm/ui';
 import { Printer } from 'lucide-react';
 import { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
@@ -31,21 +31,32 @@ const LIMITE_EXAMENES = 100;
  * - La comparación es **opt-in**: el informe normal se queda corto y legible, y el que
  *   se archiva o se entrega puede llevar la evolución frente al examen anterior.
  *
- * La URL puede pedir un examen concreto (`?examen=<examId>`); sin parámetro se imprime
- * el último. El paciente siempre se toma de `latest`, que es la lectura que lo trae.
+ * La URL puede pedir un examen concreto (`?examen=<examId>`) y el examen anterior
+ * de la comparación (`&comparacion=<examId>`); sin parámetros se imprime el último.
+ * Con `comparacion` la casilla de evolución llega ya marcada y se compara contra ese
+ * examen concreto, que es lo que hace el botón «Imprimir comparación» del panel.
+ * El paciente siempre se toma de `latest`, que es la lectura que lo trae.
  */
 export const PeriodontogramPrintPage = () => {
   const { patientId } = useParams<{ patientId: string }>();
   const [params] = useSearchParams();
   const examIdPedido = params.get('examen');
   const hayExamenPedido = examIdPedido !== null && examIdPedido !== '';
+  // Comparación pedida por URL: se imprime la evolución contra ese examen anterior.
+  const anteriorPedido = params.get('comparacion');
+  const hayAnteriorPedido = anteriorPedido !== null && anteriorPedido !== '';
+  // Siluetas: el panel las manda por `?siluetas=0|1`; sin parámetro, encendidas.
+  const siluetasPedidas = params.get('siluetas');
   const hayPaciente = patientId !== undefined && patientId !== '';
 
   // El papel se imprime con la paleta clara y con el margen elegido en la barra.
   useTemaClaroParaImprimir();
   const [margen, setMargen] = useMargenDeImpresion();
   const [aviso, setAviso] = useState<string | null>(null);
-  const [conComparacion, setConComparacion] = useState(false);
+  // La comparación llega activada cuando el panel la pidió explícitamente.
+  const [conComparacion, setConComparacion] = useState(hayAnteriorPedido);
+  // La URL manda sobre la preferencia guardada: el papel debe salir como se pidió.
+  const [conSiluetas, setConSiluetas] = useState(siluetasPedidas !== '0');
 
   // `latest` resuelve el paciente y, sin `?examen=`, el examen por defecto.
   const ultimoQuery = useQuery({
@@ -59,6 +70,15 @@ export const PeriodontogramPrintPage = () => {
     queryKey: ['periodontograma', 'impresion', 'examen', patientId, examIdPedido],
     queryFn: ({ signal }) => periodontogramApi.detail(patientId ?? '', examIdPedido ?? '', signal),
     enabled: hayPaciente && hayExamenPedido,
+  });
+
+  // El anterior pedido por URL se lee directo: puede ser más antiguo que el tope del
+  // listado y el papel tiene que comparar contra ese, no contra otro parecido.
+  const anteriorPedidoQuery = useQuery({
+    queryKey: ['periodontograma', 'impresion', 'anterior', patientId, anteriorPedido],
+    queryFn: ({ signal }) =>
+      periodontogramApi.detail(patientId ?? '', anteriorPedido ?? '', signal),
+    enabled: hayPaciente && hayAnteriorPedido,
   });
 
   // Para un examen que no es el último hay que buscar su anterior en el listado:
@@ -86,12 +106,15 @@ export const PeriodontogramPrintPage = () => {
   const paciente: PeriodontalPatientSnapshot | null = ultimo?.patient ?? null;
 
   /**
-   * El examen anterior con el que comparar: para el último sirve `previousFinalized`
-   * (ya viene en `latest`); para uno antiguo, el primer finalizado anterior del
-   * listado. Si no hay anterior, la comparación no se ofrece.
+   * El examen anterior con el que comparar. Si la URL lo pidió, manda ese (el que
+   * se veía en el modo comparación); si no, para el último sirve `previousFinalized`
+   * y para uno antiguo, el primer finalizado anterior del listado. Si no hay
+   * anterior, la comparación no se ofrece.
    */
   const anterior: PeriodontalExamSummary | null = (() => {
     if (examen === null) return null;
+    const solicitado = anteriorPedidoQuery.data ?? null;
+    if (solicitado !== null && solicitado.id !== examen.id) return solicitado;
     if (ultimo !== undefined && ultimo.exists && ultimo.exam.id === examen.id) {
       return ultimo.previousFinalized;
     }
@@ -129,9 +152,13 @@ export const PeriodontogramPrintPage = () => {
     return <Alert variant="danger">{t('periodonto.error.sinPaciente')}</Alert>;
   }
 
-  // El examen se pinta en cuanto llega; mientras falte cualquiera de las dos lecturas
+  // El examen se pinta en cuanto llega; mientras falte cualquiera de las lecturas
   // que lo resuelven, se avisa con el mismo indicador que el resto de la aplicación.
-  if (ultimoQuery.isLoading || (hayExamenPedido && examenQuery.isLoading)) {
+  if (
+    ultimoQuery.isLoading ||
+    (hayExamenPedido && examenQuery.isLoading) ||
+    (hayAnteriorPedido && anteriorPedidoQuery.isLoading)
+  ) {
     return (
       <div className="grid min-h-dvh place-items-center">
         <Spinner size="lg" showLabel label={t('comun.cargando')} />
@@ -188,6 +215,13 @@ export const PeriodontogramPrintPage = () => {
               label={t('periodonto.imprimir.conComparacion')}
             />
           )}
+          {/* El papel puede llevar o no las siluetas: se decide antes de imprimir. */}
+          <Switch
+            checked={conSiluetas}
+            onChange={(event) => setConSiluetas(event.target.checked)}
+            label={t('periodonto.grafico.piezasModeladas')}
+            className="w-fit"
+          />
           <Button variant="secondary" onClick={() => window.close()}>
             {t('periodonto.comun.cerrar')}
           </Button>
@@ -220,9 +254,8 @@ export const PeriodontogramPrintPage = () => {
         detail={examen}
         patient={paciente}
         comparison={conComparacion ? (comparacionQuery.data?.comparison ?? null) : null}
-        previousExamDate={
-          conComparacion ? (comparacionQuery.data?.previous.examDate ?? null) : null
-        }
+        previousExam={conComparacion ? anterior : null}
+        showSilhouettes={conSiluetas}
       />
     </div>
   );

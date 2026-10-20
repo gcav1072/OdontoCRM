@@ -27,7 +27,7 @@ import {
   type PeriodontalSiteAnatomy,
 } from '@odontocrm/contracts';
 
-import { formatDate, formatDecimal } from '../../lib/format';
+import { formatDate, formatDecimal, formatTime } from '../../lib/format';
 import { t, type TranslationKey } from '../../lib/i18n';
 
 /**
@@ -286,6 +286,22 @@ export const examDateLabel = (examDate: string | null | undefined): string => {
   const [, anio, mes, dia] = partes;
   return `${dia ?? ''}/${mes ?? ''}/${anio ?? ''}`;
 };
+
+/**
+ * Descripción de un examen para los encabezados de comparación: fecha clínica,
+ * **estado** y hora de registro.
+ *
+ * Dos exámenes del mismo día (el inicial y su reevaluación) tenían el mismo subtítulo
+ * y el papel no decía cuál era cuál; la hora de registro —que es un dato guardado, no
+ * una etiqueta inventada— los distingue y los ordena. Por ejemplo:
+ * `19/10/2026 (Finalizado · 7:46 a. m.)`.
+ */
+export const examDescriptorLabel = (exam: {
+  examDate: string;
+  status: PeriodontalExamStatus;
+  createdAt: string;
+}): string =>
+  `${examDateLabel(exam.examDate)} (${examStatusLabel(exam.status)} · ${formatTime(exam.createdAt)})`;
 
 /** Estadio AAP/EFP legible. */
 export const stageLabel = (stage: PeriodontalStage): string => t(STAGE_KEYS[stage]);

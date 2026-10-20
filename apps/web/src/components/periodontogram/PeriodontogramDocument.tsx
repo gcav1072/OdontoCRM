@@ -10,6 +10,7 @@ import {
   sitesOfTooth,
   type PeriodontalComparison,
   type PeriodontalExamDetail,
+  type PeriodontalExamSummary,
   type PeriodontalPatientSnapshot,
   type PeriodontalSiteDiff,
   type PeriodontalTooth,
@@ -27,6 +28,7 @@ import {
   changeLabel,
   comparisonKpiItems,
   examDateLabel,
+  examDescriptorLabel,
   examStatusLabel,
   furcationLabel,
   gradeLabel,
@@ -48,8 +50,9 @@ import {
  * odontólogo archiva el examen. Enseña **todo** lo capturado —las 192 cifras de
  * PS/MG con su NIC derivado, por diente, cara y sitio—, el estado de las piezas, los
  * KPIs, la clasificación firmada y los factores de riesgo. Si se pide la comparación,
- * la evolución va detrás, en su propia página, para que el informe base siga cabiendo
- * en una hoja.
+ * la evolución se imprime **tras los sitios de sondaje y antes del cierre legal**
+ * (clasificación, leyenda y pie de auditoría), sin forzar un salto de página: una
+ * comparación corta cabe en la hoja del informe base.
  *
  * Reutiliza `MembreteDocumento`, `MarcaDeAgua` y el mismo SVG de la pantalla
  * (`readOnly`): el papel no puede discrepar de lo que se vio al capturar.
@@ -336,15 +339,24 @@ const previousChartOf = (comparison: PeriodontalComparison): PeriodontalTooth[] 
   return chart;
 };
 
-/** Evolución: solo los sitios con cambio real, bolsa nueva o bolsa resuelta. */
+/**
+ * Evolución: solo los sitios con cambio real, bolsa nueva o bolsa resuelta.
+ *
+ * Va **antes** de la clasificación firmada, la leyenda y el pie de auditoría: el cierre
+ * legal del documento tiene que ser lo último que se lee (antes la hoja de evolución
+ * quedaba huérfana y el sello «Documento generado por OdontoCRM…» cerraba la página 2).
+ * Tampoco fuerza un salto de página —protege el encabezado y cada fila por separado—,
+ * así que una comparación corta cabe al pie de la hoja del informe base y el PDF se
+ * queda en dos páginas en vez de tres.
+ */
 const EvolutionSection = ({
   comparison,
-  previousExamDate,
-  currentExamDate,
+  previousExam,
+  currentExam,
 }: {
   comparison: PeriodontalComparison;
-  previousExamDate: string | null;
-  currentExamDate: string;
+  previousExam: PeriodontalExamSummary | null;
+  currentExam: PeriodontalExamSummary;
 }) => {
   const relevantes = comparison.sites.filter(
     (site) =>
@@ -354,19 +366,22 @@ const EvolutionSection = ({
       site.resolvedPocket,
   );
   return (
-    <section className="mt-6 break-before-page">
-      <h2 className="text-sm font-semibold tracking-wide text-[color:var(--brand-primary)] uppercase">
-        {t('periodonto.imprimir.evolucion.titulo')}
-      </h2>
-      <p className="mt-1 text-xs text-[color:var(--brand-ink-muted)]">
-        {t('periodonto.imprimir.evolucion.texto', {
-          anterior:
-            previousExamDate === null ? t('comun.sinDato') : examDateLabel(previousExamDate),
-          actual: examDateLabel(currentExamDate),
-        })}
-      </p>
-      <div className="mt-3">
-        <KpiGrid items={comparisonKpiItems(comparison.summary)} />
+    <section className="mt-4 print:mt-3">
+      {/* Título, subtítulo y KPIs viajan juntos: nunca quedan solos al pie de una hoja. */}
+      <div className="break-inside-avoid">
+        <h2 className="text-sm font-semibold tracking-wide break-after-avoid text-[color:var(--brand-primary)] uppercase">
+          {t('periodonto.imprimir.evolucion.titulo')}
+        </h2>
+        <p className="mt-1 text-xs text-[color:var(--brand-ink-muted)]">
+          {t('periodonto.imprimir.evolucion.texto', {
+            anterior:
+              previousExam === null ? t('comun.sinDato') : examDescriptorLabel(previousExam),
+            actual: examDescriptorLabel(currentExam),
+          })}
+        </p>
+        <div className="mt-3 print:mt-2">
+          <KpiGrid items={comparisonKpiItems(comparison.summary)} />
+        </div>
       </div>
       {relevantes.length === 0 ? (
         <p className="mt-3 text-sm text-[color:var(--brand-ink-muted)]">
@@ -404,7 +419,10 @@ const EvolutionSection = ({
           </thead>
           <tbody>
             {relevantes.map((site) => (
-              <tr key={`${String(site.fdi)}-${site.side}-${String(site.index)}`}>
+              <tr
+                key={`${String(site.fdi)}-${site.side}-${String(site.index)}`}
+                className="break-inside-avoid"
+              >
                 <td className="border border-[color:var(--brand-line)] px-1 py-0.5 text-center font-mono font-semibold">
                   {site.fdi}
                 </td>
@@ -467,17 +485,26 @@ const EvolutionSection = ({
 export interface PeriodontogramDocumentProps {
   detail: PeriodontalExamDetail;
   patient: PeriodontalPatientSnapshot | null;
-  /** Comparación con el examen anterior: añade la sección de evolución. */
+  /** Comparación con el examen anterior: añade la sección de evolución tras el sondaje. */
   comparison?: PeriodontalComparison | null;
-  /** Fecha del examen anterior comparado (para el encabezado de la evolución). */
-  previousExamDate?: string | null;
+  /**
+   * Examen anterior comparado. Aporta fecha, estado y hora de registro al subtítulo
+   * de la evolución: dos exámenes del mismo día se distinguen por la hora.
+   */
+  previousExam?: PeriodontalExamSummary | null;
+  /**
+   * Siluetas anatómicas de fondo en las dos arcadas. La página de impresión la toma
+   * del switch (o de `?siluetas=0`); encendida por defecto, como en pantalla.
+   */
+  showSilhouettes?: boolean;
 }
 
 export const PeriodontogramDocument = ({
   detail,
   patient,
   comparison = null,
-  previousExamDate = null,
+  previousExam = null,
+  showSilhouettes = true,
 }: PeriodontogramDocumentProps) => {
   const analisis = analyzePeriodontalChart(detail.chart, detail.riskFactors);
   const comparisonIndex = comparison === null ? null : comparisonSiteIndex(comparison);
@@ -570,6 +597,7 @@ export const PeriodontogramDocument = ({
                 paper
                 comparison={comparisonIndex}
                 previous={previousChart}
+                showSilhouettes={showSilhouettes}
                 /* Una arcada entera —título, SVG, franja FDI y furcas— no se parte
                    entre dos páginas: la mandíbula dejaba su título huérfano al pie
                    de la página 1. */
@@ -626,6 +654,16 @@ export const PeriodontogramDocument = ({
             <span>{t('periodonto.imprimir.furcaAbrev')}</span>
           </p>
         </section>
+
+        {/* La evolución va antes del cierre legal: diagnóstico, leyenda y sello de
+            auditoría quedan siempre como última página del documento. */}
+        {comparison !== null && (
+          <EvolutionSection
+            comparison={comparison}
+            previousExam={previousExam}
+            currentExam={detail}
+          />
+        )}
 
         <div className="mt-4 grid grid-cols-2 gap-4">
           <section>
@@ -736,14 +774,6 @@ export const PeriodontogramDocument = ({
             })}
           </p>
         </footer>
-
-        {comparison !== null && (
-          <EvolutionSection
-            comparison={comparison}
-            previousExamDate={previousExamDate}
-            currentExamDate={detail.examDate}
-          />
-        )}
       </div>
     </article>
   );

@@ -11,6 +11,8 @@ export const STORAGE_KEYS = {
   tema: 'odontocrm:tema',
   panelInferior: 'odontocrm:panel-inferior',
   menuLateral: 'odontocrm:menu-lateral',
+  /** Siluetas anatómicas del periodontograma («Piezas modeladas»). */
+  siluetasPeriodonto: 'odontocrm:periodontograma-siluetas',
   /** Coronas de fondo del odontograma. Apagado de fábrica; clave propia a propósito. */
   piezasOdontograma: 'odontocrm:odontograma-piezas',
 } as const;

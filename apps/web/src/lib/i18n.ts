@@ -3240,6 +3240,9 @@ const DICCIONARIO = {
   'periodonto.grafico.aria': 'Gráfico del periodontograma · {arcada}',
   'periodonto.grafico.pista':
     'Cada rejilla lleva su cara · rejilla de 2 mm · línea de alerta a 4 mm · LAC marcado en 0',
+  'periodonto.grafico.piezasModeladas': 'Piezas modeladas',
+  'periodonto.grafico.piezasModeladasAyuda':
+    'Silueta anatómica de fondo de cada diente; desactívala para ver solo la rejilla. La elección se recuerda en este navegador y pasa al papel.',
   'periodonto.grafico.desplazarAria':
     'Gráfico del periodontograma: desplázate en horizontal para ver las 16 piezas',
   'periodonto.grafico.desplazar': 'Desliza en horizontal para recorrer las 16 piezas.',
@@ -3430,6 +3433,9 @@ const DICCIONARIO = {
   'periodonto.comparacion.cargando': 'Calculando la comparación…',
   'periodonto.comparacion.cerrar': 'Cerrar comparación',
   'periodonto.comparacion.sinAnterior': 'No hay un examen finalizado anterior con el que comparar.',
+  'periodonto.comparacion.imprimir': 'Imprimir comparación',
+  'periodonto.comparacion.imprimirAyuda':
+    'Abre el informe con la evolución frente al examen anterior elegido.',
   'periodonto.comparacion.sitiosComparados': 'Sitios comparados',
   'periodonto.comparacion.deltaPs': 'Δ PS media',
   'periodonto.comparacion.deltaNic': 'Δ NIC medio',
@@ -3490,7 +3496,7 @@ const DICCIONARIO = {
     '{maxilar} y {mandibula}: la cara vestibular se dibuja hacia fuera de la boca; la rejilla es de 2 mm y la línea de alerta, de 4 mm.',
   'periodonto.imprimir.evolucion.titulo': 'Evolución respecto al examen anterior',
   'periodonto.imprimir.evolucion.texto':
-    'Comparación entre el examen del {anterior} y el actual ({actual}). Solo se listan los sitios con cambio real, bolsa nueva o bolsa resuelta.',
+    'Comparación entre el examen del {anterior} y el actual del {actual}. Solo se listan los sitios con cambio real, bolsa nueva o bolsa resuelta.',
   'periodonto.imprimir.evolucion.anterior': 'Anterior (PS/MG)',
   'periodonto.imprimir.evolucion.actual': 'Actual (PS/MG)',
   'periodonto.imprimir.evolucion.deltaPs': 'Δ PS',

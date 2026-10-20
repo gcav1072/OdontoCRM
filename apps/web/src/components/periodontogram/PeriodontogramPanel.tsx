@@ -31,6 +31,7 @@ import {
   Input,
   Select,
   Spinner,
+  Switch,
   Textarea,
 } from '@odontocrm/ui';
 import {
@@ -55,10 +56,12 @@ import {
   periodontogramListQueryKey,
   periodontogramQueryKey,
 } from '../../lib/periodontogram-api';
+import { readFlag, writeFlag, STORAGE_KEYS } from '../../lib/storage';
 import { NoticeBanner } from '../NoticeBanner';
 import { PeriodontogramArchSvg } from './PeriodontogramArchSvg';
 import { PeriodontogramSitesTable } from './PeriodontogramSitesTable';
 import { ProbingTouchPad } from './ProbingTouchPad';
+import { withSilhouettesParam } from './print-url';
 import { changeColor, comparisonSiteIndex } from './geometry';
 import {
   examDateLabel,
@@ -72,6 +75,7 @@ import {
   suggestionText,
   comparisonKpiItems,
   changeLabel,
+  examDescriptorLabel,
 } from './presentation';
 import {
   initialPeriodontalState,
@@ -113,9 +117,22 @@ const GRAFICO_ANCHO_MINIMO = 1400;
 /** Tope de exámenes que pide la lista (el contrato admite 100). */
 const LIMITE_LISTA = 50;
 
-/** Ruta de impresión por defecto (la integración puede pasarla por prop). */
-const rutaImpresionPorDefecto = (patientId: string, examId: string): string =>
-  `/consultorio/${patientId}/periodontograma/imprimir?examen=${examId}`;
+/**
+ * Ruta de impresión por defecto (la integración puede pasarla por prop).
+ *
+ * Con `previousExamId` la página abre la comparación **ya activada** contra ese
+ * examen: es lo que usa el botón de imprimir del modo comparación, para que el
+ * papel lleve exactamente la evolución que se está viendo en pantalla (y no la
+ * que la página elegiría por su cuenta).
+ */
+const rutaImpresionPorDefecto = (
+  patientId: string,
+  examId: string,
+  previousExamId: string | null = null,
+): string => {
+  const url = `/consultorio/${patientId}/periodontograma/imprimir?examen=${examId}`;
+  return previousExamId === null ? url : `${url}&comparacion=${previousExamId}`;
+};
 
 /** Estado del guardado que enseña la cabecera. */
 type SaveStatus = 'inactivo' | 'pendiente' | 'guardando' | 'guardado' | 'error' | 'conflicto';
@@ -128,9 +145,10 @@ export interface PeriodontogramPanelProps {
   sessionId: string | null;
   /**
    * URL de la página de impresión para un examen. Opcional: por defecto se usa la
-   * ruta del consultorio, que es la que monta la integración.
+   * ruta del consultorio, que es la que monta la integración. El segundo argumento
+   * es el examen anterior cuando se imprime una comparación.
    */
-  printHref?: (examId: string) => string;
+  printHref?: (examId: string, previousExamId?: string | null) => string;
 }
 
 /** Un examen del listado con lo necesario para decidir si se compara. */
@@ -172,6 +190,12 @@ export const PeriodontogramPanel = ({
   /** Comparación activa: el examen actual y el anterior con el que se compara. */
   const [comparison, setComparison] = useState<{ examId: string; previousId: string } | null>(null);
   const [dialogo, setDialogo] = useState<'finalizar' | 'descartar' | 'nuevo' | null>(null);
+  // Las siluetas anatómicas nacen encendidas y la preferencia se recuerda en el
+  // navegador: quien las apaga para trabajar con la rejilla limpia las encuentra
+  // apagadas al volver. El inicializador solo corre en el primer render.
+  const [piezasModeladas, setPiezasModeladas] = useState(
+    () => readFlag(STORAGE_KEYS.siluetasPeriodonto) ?? true,
+  );
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('inactivo');
   const [savedSnapshot, setSavedSnapshot] = useState<PeriodontalSavedSnapshot | null>(null);
   const [revision, setRevision] = useState(0);
@@ -507,8 +531,13 @@ export const PeriodontogramPanel = ({
     setComparison(null);
   };
 
-  const irAImprimir = (examId: string): string =>
-    printHref === undefined ? rutaImpresionPorDefecto(patientId, examId) : printHref(examId);
+  const irAImprimir = (examId: string, previousExamId: string | null = null): string =>
+    withSilhouettesParam(
+      printHref === undefined
+        ? rutaImpresionPorDefecto(patientId, examId, previousExamId)
+        : printHref(examId, previousExamId),
+      piezasModeladas,
+    );
 
   /* ── Datos derivados de la vista ──────────────────────────────────────────── */
 
@@ -868,7 +897,7 @@ export const PeriodontogramPanel = ({
                 {comparisonExam !== null && comparisonPrevious !== null && (
                   <span className="text-xs font-normal text-ink-muted">
                     {t('periodonto.comparar.con', {
-                      fecha: examDateLabel(comparisonPrevious.examDate),
+                      fecha: examDescriptorLabel(comparisonPrevious),
                     })}
                   </span>
                 )}
@@ -892,6 +921,18 @@ export const PeriodontogramPanel = ({
                       ))}
                   </Select>
                 </label>
+                {/* Imprime el mismo par de exámenes que se está comparando: la
+                    evolución elegida viaja en la URL y la impresión la activa. */}
+                <a
+                  className="inline-flex min-h-8 items-center gap-1 rounded-control border border-border bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-muted"
+                  href={irAImprimir(comparison.examId, comparison.previousId)}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={t('periodonto.comparacion.imprimirAyuda')}
+                >
+                  <Printer className="size-4" aria-hidden />
+                  {t('periodonto.comparacion.imprimir')}
+                </a>
                 <Button variant="ghost" size="sm" onClick={() => setComparison(null)}>
                   {t('periodonto.comparacion.cerrar')}
                 </Button>
@@ -988,6 +1029,19 @@ export const PeriodontogramPanel = ({
 
         {/* Las dos arcadas, con el mismo SVG que imprime el documento. */}
         <section aria-label={t('periodonto.grafico.titulo')} className="space-y-3">
+          {/* El switch decide si se ven las siluetas anatómicas; el papel hereda la
+              elección por la URL de impresión. */}
+          <Switch
+            checked={piezasModeladas}
+            onChange={(event) => {
+              const activo = event.target.checked;
+              setPiezasModeladas(activo);
+              writeFlag(STORAGE_KEYS.siluetasPeriodonto, activo);
+            }}
+            label={t('periodonto.grafico.piezasModeladas')}
+            description={t('periodonto.grafico.piezasModeladasAyuda')}
+            className="w-fit"
+          />
           {/* Una sola barra de desplazamiento para las dos arcadas: así se mueven
               juntas y los dientes de arriba y de abajo siguen alineados. */}
           <div
@@ -1011,6 +1065,7 @@ export const PeriodontogramPanel = ({
                   onSelectTooth={controller.selectTooth}
                   onCycleMobility={ciclarMovilidad}
                   onCycleFurcation={ciclarFurca}
+                  showSilhouettes={piezasModeladas}
                   minWidth={GRAFICO_ANCHO_MINIMO}
                 />
               ),

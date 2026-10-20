@@ -1,8 +1,10 @@
 import {
   analyzePeriodontalChart,
   buildPeriodontalChart,
+  comparePeriodontalCharts,
   emptyPeriodontalRiskFactors,
   type PeriodontalExamDetail,
+  type PeriodontalExamSummary,
   type PeriodontalPatientSnapshot,
 } from '@odontocrm/contracts';
 import { createElement } from 'react';
@@ -111,5 +113,82 @@ describe('cifras del informe', () => {
     expect(html).toContain('V: II');
     expect(html).toContain('MP: I');
     expect(html).toContain('Furca por entrada: V vestibular');
+  });
+});
+
+/**
+ * Evolución impresa: la comparación se movió **antes** del cierre legal y dejó de
+ * forzar página nueva, para que el sello de auditoría sea lo último y el PDF no
+ * gaste una hoja en una comparación corta.
+ */
+describe('evolución respecto al examen anterior', () => {
+  const anteriorChart = buildPeriodontalChart();
+  const diente16 = anteriorChart.find((tooth) => tooth.fdi === 16);
+  if (diente16 !== undefined) {
+    diente16.vestibular[0] = { ...diente16.vestibular[0], pd: 3, gm: 0 };
+  }
+  const comparison = comparePeriodontalCharts({
+    previousExamId: 'anterior',
+    previous: anteriorChart,
+    currentExamId: detail.id,
+    current: chart,
+  });
+  const previousExam = {
+    id: 'anterior',
+    patientId: detail.patientId,
+    status: 'finalizado',
+    examDate: '2026-10-19',
+    revision: 1,
+    metrics: analisis.metrics,
+    diagnosis: null,
+    // 11:46 UTC = 7:46 a. m. en America/Caracas.
+    createdAt: '2026-10-19T11:46:00.000Z',
+    updatedAt: '2026-10-19T11:46:00.000Z',
+    finalizedAt: '2026-10-19T11:46:00.000Z',
+    recordedByUsername: 'odonto',
+    finalizedByUsername: 'odonto',
+    printCount: 0,
+    lastPrintedAt: null,
+    notes: null,
+  } satisfies PeriodontalExamSummary;
+
+  const conComparacion = renderToStaticMarkup(
+    createElement(PeriodontogramDocument, { detail, patient, comparison, previousExam }),
+  );
+
+  it('se imprime antes de la clasificación firmada y del pie de auditoría', () => {
+    const evolucion = conComparacion.indexOf('Evolución respecto al examen anterior');
+    expect(evolucion).toBeGreaterThan(-1);
+    expect(evolucion).toBeLessThan(conComparacion.indexOf('Clasificación firmada'));
+    expect(evolucion).toBeLessThan(conComparacion.indexOf('Documento generado por OdontoCRM'));
+  });
+
+  it('no fuerza un salto de página: solo protege sus bloques', () => {
+    expect(conComparacion).not.toContain('break-before-page');
+    expect(conComparacion).toContain('<div class="break-inside-avoid">');
+  });
+
+  it('el subtítulo distingue los dos exámenes por estado y hora', () => {
+    expect(conComparacion).toContain(
+      'Comparación entre el examen del 19/10/2026 (Finalizado · 7:46 a. m.) y el actual del 19/10/2026 (Finalizado · 10:00 a. m.).',
+    );
+  });
+});
+
+describe('siluetas en el papel', () => {
+  it('el informe sale con las piezas modeladas encendidas por defecto', () => {
+    expect(html).toContain('data-silhouette="molar-upper"');
+    expect(html).toContain('data-silhouette="molar-upper-palatal"');
+    expect(html).toContain('data-silhouette="molar-lower"');
+  });
+
+  it('el switch de impresión las apaga sin tocar el resto del documento', () => {
+    const sinSiluetas = renderToStaticMarkup(
+      createElement(PeriodontogramDocument, { detail, patient, showSilhouettes: false }),
+    );
+    expect(sinSiluetas).not.toContain('data-silhouette');
+    // El gráfico, la rejilla y las cifras siguen ahí.
+    expect(sinSiluetas).toContain('Gráfico de las arcadas');
+    expect(sinSiluetas).toContain('PS: profundidad de sondaje');
   });
 });

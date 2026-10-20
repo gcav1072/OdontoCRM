@@ -51,6 +51,7 @@ import {
   sideName,
   siteShortName,
 } from './presentation';
+import { ToothSilhouetteLayer, silhouetteSignature } from './ToothSilhouette';
 
 /**
  * Gráfico SVG de una arcada del periodontograma: rejilla milimetrada, curvas de MG y
@@ -178,6 +179,8 @@ interface BandProps {
   active: PeriodontogramArchSvgProps['active'];
   comparison: ReadonlyMap<string, PeriodontalSiteDiff> | null;
   previous: readonly PeriodontalTooth[] | null;
+  /** Siluetas anatómicas de fondo (el switch «Piezas modeladas»). */
+  showSilhouettes: boolean;
   onSelectSite: PeriodontogramArchSvgProps['onSelectSite'];
 }
 
@@ -510,6 +513,12 @@ export interface PeriodontogramArchSvgProps {
    * En papel se ignora.
    */
   minWidth?: number;
+  /**
+   * Dibuja la silueta anatómica de cada pieza detrás de la rejilla. Lo gobierna el
+   * switch «Piezas modeladas» del panel (y su equivalente en la página de
+   * impresión); encendido por defecto. Las piezas ausentes nunca dibujan silueta.
+   */
+  showSilhouettes?: boolean;
   className?: string;
 }
 
@@ -527,6 +536,7 @@ const PeriodontogramArchSvgBase = ({
   onCycleMobility,
   onCycleFurcation,
   minWidth,
+  showSilhouettes = true,
   className,
 }: PeriodontogramArchSvgProps) => {
   const palette = paper ? PRINT_PALETTE : SCREEN_PALETTE;
@@ -537,6 +547,9 @@ const PeriodontogramArchSvgBase = ({
   const furcaTone = paper ? palette.ink : colors.furca;
   const bandas = archBands(arch);
   const stripTopY = BAND_HEIGHT;
+  // La capa de piezas solo depende de la pieza, su estado y los tonos del soporte:
+  // se memoiza para que sondar no la repinte en cada toque.
+  const firmaPiezas = silhouetteSignature(teeth);
 
   return (
     <figure className={`m-0 ${className ?? ''}`}>
@@ -560,6 +573,16 @@ const PeriodontogramArchSvgBase = ({
         aria-label={t('periodonto.grafico.aria', { arcada: archName(arch) })}
       >
         <g transform={`translate(${String(VIEW_PADDING_LEFT)},0)`}>
+          {/* Piezas ilustradas: debajo de la rejilla, del LAC y de PS/MG. */}
+          {showSilhouettes && (
+            <ToothSilhouetteLayer
+              arch={arch}
+              teeth={teeth}
+              signature={firmaPiezas}
+              paper={paper}
+              dark={dark && !paper}
+            />
+          )}
           {bandas.map((layout) => (
             <Band
               key={layout.side}
@@ -572,6 +595,7 @@ const PeriodontogramArchSvgBase = ({
               active={active}
               comparison={comparison}
               previous={previous}
+              showSilhouettes={showSilhouettes}
               onSelectSite={onSelectSite}
             />
           ))}
