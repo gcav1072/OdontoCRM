@@ -558,9 +558,10 @@ clínica en [`docs/PERIODONTOGRAMA_BASES_CLINICAS.md`](docs/PERIODONTOGRAMA_BASE
 - **La interfaz** es una pestaña más de `/consultorio` (`?vista=periodontograma`): dos arcadas SVG
   interactivas, tabla de los 192 sitios, **pad clínico táctil** (PS/MG, signo ±, BOP/placa/
   supuración, auto-avance y deshacer; botones ≥ 44 px y sin `<input>` numéricos), KPIs en vivo,
-  modo comparación y lista de exámenes. El informe se imprime desde
-  `/consultorio/:patientId/periodontograma/imprimir` (carta, con membrete, las 192 cifras y una
-  hoja de evolución si se pide).
+  modo comparación (con su botón para imprimir la evolución elegida) y lista de exámenes. El
+  informe se imprime desde `/consultorio/:patientId/periodontograma/imprimir` (carta, con
+  membrete, las 192 cifras y la evolución tras el sondaje —sin forzar página nueva— cuando se
+  pide).
 - **Cada guardado, cierre, impresión y descarte publica su evento** por el outbox
   (`odontogram.periodontogram.*`, `entityType: periodontogram`) con los KPIs y un diff legible; el
   dossier y `reporting` quedan para la v1.2, con el resumen interno ya servido.

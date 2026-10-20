@@ -145,6 +145,27 @@ palatina**, alineadas con las mesiopalatina/distopalatina de los molares: la car
 esos premolares es una raíz única y no tiene furca. El tema oscuro usa una paleta clínica
 aclarada; el papel siempre imprime la paleta clara.
 
+**Piezas ilustradas de fondo** (`ToothSilhouette`): detrás de la rejilla se dibuja la pieza que
+corresponde a cada columna —16 piezas × 2 caras × 2 arcadas, **64 SVG** en
+`apps/web/src/components/tooth-art/pieces/` —la misma que usa el odontograma— con la misma escala que las cotas: una bolsa de
+8 mm sombrea dos tercios de la raíz. Los dibujos siguen el aspecto de los periodontogramas clínicos
+de referencia (grises con volumen e sombreado lateral) y vienen orientados por cara: en
+`maxilar-vestibular` y `mandibula-lingual` la corona está abajo; en `maxilar-palatino` y
+`mandibula-vestibular`, arriba. Siempre miran a la franja central.
+
+Los archivos **no comparten escala** (un canino mide 151 unidades de alto y un tercer molar 78), así
+que cada uno se calibra con su propia caja vectorial (`pieceArt.ts`, medida con `getBBox()`): el
+borde de la corona se lleva al borde coronal del arquetipo y el ápice a su cota radicular; el ancho,
+al anatómico de la pieza. Si se sustituye un dibujo, hay que volver a medirlo. El implante no tiene
+ilustración: se dibuja como tornillo roscado de 10 mm, sin corona protésica.
+
+La pieza **ausente** no dibuja nada: la columna vacía ya dice que falta el diente. Las piezas son
+decorativas (`aria-hidden`, sin eventos) y quedan **debajo** de la rejilla, del LAC y de las curvas
+de PS/MG. La capa está memoizada por pieza y estado (no por medición): sondar un sitio no repinta
+las 640 rutas de las dos arcadas. El interruptor **«Piezas modeladas»** del panel las enciende o
+apaga (encendido de fábrica, preferencia recordada en el navegador) y su elección viaja al papel por
+`?siluetas=0|1`; la página de impresión tiene el mismo interruptor.
+
 ### 4.3 Piezas ausentes e implantes
 
 - **Ausente:** no tiene sitios, ni movilidad, ni furca. Se excluye de los denominadores.
