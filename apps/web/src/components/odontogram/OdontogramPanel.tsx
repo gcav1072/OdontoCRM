@@ -36,6 +36,7 @@ import {
   CardTitle,
   Checkbox,
   Spinner,
+  Switch,
   buttonClasses,
 } from '@odontocrm/ui';
 import { Hand, History, Keyboard, Layers, Printer, Undo2 } from 'lucide-react';
@@ -47,6 +48,8 @@ import { apiErrorMessage } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { dentitionLabel, findingsForTooth, odontogramApi } from '../../lib/odontogram-api';
+import { withQueryFlag } from '../../lib/print-url';
+import { readFlag, writeFlag, STORAGE_KEYS } from '../../lib/storage';
 import { NoticeBanner } from '../NoticeBanner';
 import { OdontogramChart } from './OdontogramChart';
 import { pressIntent } from './press-intent';
@@ -163,6 +166,14 @@ export const OdontogramPanel = ({
    * cambiar de paciente vuelve al automático.
    */
   const [temporalManual, setTemporalManual] = useState<boolean | null>(null);
+  /**
+   * Corona de fondo de cada pieza («Piezas modeladas»). A diferencia del
+   * periodontograma, aquí nace **apagada**: el esquema de cinco caras es el que manda
+   * y el dibujo es una ayuda opt-in. La preferencia sí se recuerda en el navegador.
+   */
+  const [piezasModeladas, setPiezasModeladas] = useState(
+    () => readFlag(STORAGE_KEYS.piezasOdontograma) ?? false,
+  );
 
   const queryKey = odontogramQueryKey(patientId);
 
@@ -653,7 +664,11 @@ export const OdontogramPanel = ({
           </Link>
           <a
             className={buttonClasses({ variant: 'secondary', size: 'sm' })}
-            href={`/consultorio/${patientId}/odontograma/imprimir`}
+            href={withQueryFlag(
+              `/consultorio/${patientId}/odontograma/imprimir`,
+              'piezas',
+              piezasModeladas,
+            )}
             target="_blank"
             rel="noreferrer"
           >
@@ -688,16 +703,27 @@ export const OdontogramPanel = ({
             secretaría: consultar la boca mixta es leer. No aparece si la boca **ya**
             es temporal, donde no habría nada que alternar.
           */}
-          {denticionBoca !== 'temporal' && (
-            <div className="ml-auto">
+          <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+            {/* Corona de fondo: apagada de fábrica y recordada en el navegador. */}
+            <Switch
+              checked={piezasModeladas}
+              onChange={(event) => {
+                const activo = event.target.checked;
+                setPiezasModeladas(activo);
+                writeFlag(STORAGE_KEYS.piezasOdontograma, activo);
+              }}
+              label={t('odonto.piezas.activar')}
+              className="w-fit"
+            />
+            {denticionBoca !== 'temporal' && (
               <Checkbox
                 checked={mostrarTemporal}
                 onChange={(event) => alternarTemporal(event.target.checked)}
                 label={t('odonto.temporal.activar')}
                 description={t('odonto.temporal.ayuda')}
               />
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {canWrite ? (
@@ -712,6 +738,7 @@ export const OdontogramPanel = ({
               onToothPress={alPulsarPieza}
               onProsthesisPress={alPulsarProtesis}
               readOnly={false}
+              showPieces={piezasModeladas}
             />
 
             {modoPpr && (
@@ -763,7 +790,12 @@ export const OdontogramPanel = ({
           </>
         ) : (
           <>
-            <OdontogramChart detail={detail} dentition={denticionGrafico} readOnly />
+            <OdontogramChart
+              detail={detail}
+              dentition={denticionGrafico}
+              readOnly
+              showPieces={piezasModeladas}
+            />
             <p className="rounded-control border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink-muted">
               {t('odonto.soloLectura')}
             </p>

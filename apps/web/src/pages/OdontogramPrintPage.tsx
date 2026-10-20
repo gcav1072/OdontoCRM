@@ -1,8 +1,8 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Alert, Button, Checkbox, Spinner } from '@odontocrm/ui';
+import { Alert, Button, Checkbox, Spinner, Switch } from '@odontocrm/ui';
 import { Printer } from 'lucide-react';
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 
 import { OdontogramDocument } from '../components/odontogram/OdontogramDocument';
 import { MargenDeImpresion } from '../components/print/MargenDeImpresion';
@@ -10,6 +10,7 @@ import { apiErrorMessage } from '../lib/api';
 import { esperarFuentes, useMargenDeImpresion, useTemaClaroParaImprimir } from '../lib/impresion';
 import { t } from '../lib/i18n';
 import { odontogramApi } from '../lib/odontogram-api';
+import { queryFlag } from '../lib/print-url';
 
 /** Tope del histórico en el informe: el máximo que admite el servicio (500). */
 const LIMITE_HISTORIAL = 500;
@@ -27,6 +28,10 @@ const LIMITE_HISTORIAL = 500;
  */
 export const OdontogramPrintPage = () => {
   const { patientId } = useParams<{ patientId: string }>();
+  const [params] = useSearchParams();
+  // El panel manda su elección por `?piezas=0|1`; sin parámetro, apagada (el valor
+  // de fábrica del odontograma), de modo que un enlace viejo sigue funcionando.
+  const [conPiezas, setConPiezas] = useState(() => queryFlag(params.get('piezas')) ?? false);
   // El informe se imprime con la paleta clara aunque la pantalla esté en modo
   // oscuro: el papel es blanco (ver lib/impresion.ts).
   useTemaClaroParaImprimir();
@@ -118,6 +123,13 @@ export const OdontogramPrintPage = () => {
             onChange={(event) => setConHistorial(event.target.checked)}
             label={t('odonto.imprimir.conHistorial')}
           />
+          {/* El papel puede llevar o no la corona de fondo de cada pieza. */}
+          <Switch
+            checked={conPiezas}
+            onChange={(event) => setConPiezas(event.target.checked)}
+            label={t('odonto.piezas.activar')}
+            className="w-fit"
+          />
           <Button variant="secondary" onClick={() => window.close()}>
             {t('comun.cerrar')}
           </Button>
@@ -150,6 +162,7 @@ export const OdontogramPrintPage = () => {
         detail={resultado.odontogram}
         history={conHistorial ? (historialQuery.data?.entries ?? []) : null}
         historyLimit={LIMITE_HISTORIAL}
+        showPieces={conPiezas}
       />
     </div>
   );

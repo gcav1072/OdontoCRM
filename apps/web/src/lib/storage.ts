@@ -11,6 +11,8 @@ export const STORAGE_KEYS = {
   tema: 'odontocrm:tema',
   panelInferior: 'odontocrm:panel-inferior',
   menuLateral: 'odontocrm:menu-lateral',
+  /** Coronas de fondo del odontograma. Apagado de fábrica; clave propia a propósito. */
+  piezasOdontograma: 'odontocrm:odontograma-piezas',
 } as const;
 
 export const readStorage = (key: string): string | null => {
@@ -32,8 +34,11 @@ export const writeStorage = (key: string, value: string): void => {
 
 export const readFlag = (key: string): boolean | null => {
   const valor = readStorage(key);
-  if (valor === null) return null;
-  return valor === 'true';
+  // Un valor que no sea exactamente `true`/`false` se trata como ausente: así una
+  // preferencia corrupta cae al valor de fábrica en vez de apagar la función.
+  if (valor === 'true') return true;
+  if (valor === 'false') return false;
+  return null;
 };
 
 export const writeFlag = (key: string, value: boolean): void => {

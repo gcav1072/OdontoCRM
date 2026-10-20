@@ -28,6 +28,7 @@ import type { KeyboardEvent, MouseEvent } from 'react';
 
 import { findingFill } from '../../lib/odontogram-api';
 import { t } from '../../lib/i18n';
+import { ToothBackdrop } from './ToothBackdrop';
 
 /**
  * La pieza del odontograma, dibujada con los polígonos del contrato (doc §7.1).
@@ -243,7 +244,7 @@ export interface GeometricToothProps {
   findings: readonly ToothFindingRecord[];
   /** Volteo vertical de la mandíbula y espejo horizontal de la derecha. */
   flipped: boolean;
-  /** 	rue en los cuadrantes de la derecha del paciente (1, 4, 5 y 8). */
+  /** `true` en los cuadrantes de la derecha del paciente (1, 4, 5 y 8). */
   mirrorX?: boolean;
   /** `true` si es la pieza activa de la carga rápida. */
   active?: boolean;
@@ -251,6 +252,14 @@ export interface GeometricToothProps {
   activeSurfaces?: readonly ToothSurface[];
   /** Sin interacción: la vista impresa no lleva foco ni manejadores. */
   readOnly?: boolean;
+  /**
+   * Dibuja la **corona** del dibujo del consultorio como fondo del cuadro (el
+   * interruptor «Piezas modeladas», apagado de fábrica). Las caras bajan su relleno
+   * para que el volumen se vea por debajo de los hallazgos.
+   */
+  showPieces?: boolean;
+  /** En papel la corona sube de opacidad: lo que se imprime pierde contraste. */
+  paper?: boolean;
   /**
    * Un **toque o clic** en la pieza. Llega la **cara** que hay bajo el punto, o
    * `null` si se pulsó fuera de las caras (el contorno, el número o el hueco).
@@ -270,6 +279,8 @@ export const GeometricTooth = ({
   active = false,
   activeSurfaces = [],
   readOnly = false,
+  showPieces = false,
+  paper = false,
   onPress,
 }: GeometricToothProps) => {
   // El rectángulo invisible es la referencia de coordenadas: su caja es
@@ -315,6 +326,12 @@ export const GeometricTooth = ({
           : undefined
       }
     >
+      {/* La corona de fondo, si el interruptor está encendido. Va **fuera** del
+          grupo volteado/espejado a propósito: es un dibujo frontal y la corona, vista
+          de frente, es la misma en los dos lados de la boca. Dentro del grupo, la
+          mandíbula la pondría cabeza abajo. */}
+      {showPieces && <ToothBackdrop toothNumber={toothNumber} paper={paper} />}
+
       {active && (
         <rect
           x={-4}
@@ -337,6 +354,9 @@ export const GeometricTooth = ({
             // cara sigue recibiendo el clic (con `none` el interior no es
             // «painted» y el navegador no lo considera pulsable).
             fill={findingFill(findings, surface) ?? 'transparent'}
+            // Con la corona de fondo, el hallazgo deja pasar el dibujo: si el
+            // relleno fuera opaco, la pieza volvería a ser un cuadro de color.
+            fillOpacity={showPieces ? 0.6 : undefined}
             className="stroke-border-strong"
             strokeWidth={1}
           />
