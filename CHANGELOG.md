@@ -4,7 +4,7 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
-## [1.1.0] — en desarrollo (periodontograma)
+## [1.1.0] — 2026-10-19
 
 La v1.1 añade la **sección de periodontogramas** sin tocar el odontograma de la v1: un examen
 fechado con las 32 piezas permanentes y sus 6 sitios (192 mediciones), un pad clínico táctil para
@@ -35,6 +35,8 @@ semillas y E2E transversales) queda declarada para la v1.2; la auditoría sí en
 | `apps/web/src/components/clinical/PatientWorkspace.tsx` · `App.tsx` · `ConsultorioPage.tsx` | Pestaña «Periodontograma», ruta de impresión y `?vista=periodontograma`; el resto del expediente queda igual |
 | `tools/smoke-periodontogram.mjs` · `tools/check-responsive.mjs` | Humo contra el gateway y comprobación de anchos/targets táctiles del módulo |
 | `docs/adr/0071-periodontograma-integrado.md` · `docs/PERIODONTOGRAMA_BASES_CLINICAS.md` | La decisión de arquitectura y las bases clínicas implementadas (convención de signos, NIC, índices, furcas, límites de la clasificación) |
+| `package.json` · `packages/*/package.json` · `services/*/package.json` · `apps/*/package.json` | Versión `1.1.0` en la raíz y los dieciocho workspaces |
+| `apps/gateway/src/config.ts` · `services/*/src/config.ts` · `.env.example` · `infra/fedora/{install.sh,instalar/aprovisionar.mjs,INSTALL.md}` | `SERVICE_VERSION` por defecto `1.1.0` y ejemplos y aprovisionamiento alineados |
 
 ## [1.0.0] — 2026-10-18
 

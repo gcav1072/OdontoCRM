@@ -5,9 +5,9 @@ odontograma, récipes, reportes y auditoría — construido como **microservicio
 TypeScript** sobre **PostgreSQL**, pensado para correr en la red local de la clínica y,
 más adelante, fuera de ella por VPN.
 
-> **Estado: versión `1.0.0` — Fases 10, 11 y 12 completadas, con las mejoras de resiliencia ya
-> dentro y la batería de pruebas manuales E2E pasada completa; el sistema está listo para la
-> clínica.** Las diez fases del plan están implementadas y validadas:
+> **Estado: versión `1.1.0` — Fases 10, 11 y 12 completadas, las mejoras de resiliencia dentro, la
+> batería de pruebas manuales E2E pasada completa y el periodontograma de la v1.1 en su sitio; el
+> sistema está listo para la clínica.** Las diez fases del plan están implementadas y validadas:
 > identidad y sesiones, pacientes, agenda, bot de Telegram, secretaría y pantallas kiosko,
 > historia clínica, odontograma FDI, sesiones y récipes con QR, reportes y auditoría, con el
 > **modo test**, el **seed determinista**, la **observabilidad** (`npm run estado`) y el
