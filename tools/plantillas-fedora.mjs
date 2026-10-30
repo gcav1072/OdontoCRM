@@ -1180,16 +1180,22 @@ const exigir = (condicion, bien, mal) => {
       err('no encontré la orden que pone pg_hba.conf en scram-sha-256');
     } else {
       const r = spawnSync('sed', ['-i', '-E', orden[1], temporal], { encoding: 'utf8' });
-      const resultado = readFileSync(temporal, 'utf8');
-      const okTcp = (resultado.match(/scram-sha-256/g) ?? []).length === 3;
-      const peerIntacto = /^local\s+all\s+all\s+peer$/m.test(resultado);
-      if (r.status !== 0 || !okTcp || !peerIntacto) {
-        err('la orden de pg_hba.conf no deja el archivo como debe:');
-        console.error(
-          `      sed salió ${r.status}; TCP con contraseña: ${okTcp}; peer conservado: ${peerIntacto}`,
-        );
+      if (r.error?.code === 'ENOENT') {
+        // En Windows (sin GNU sed) no se puede probar la orden; el despliegue
+        // de verdad es Fedora, donde sí existe. No se inventa un fallo.
+        console.log('  · no se prueba: sed no está instalado en este equipo');
       } else {
-        ok('TCP pasa a scram-sha-256 y el socket conserva peer');
+        const resultado = readFileSync(temporal, 'utf8');
+        const okTcp = (resultado.match(/scram-sha-256/g) ?? []).length === 3;
+        const peerIntacto = /^local\s+all\s+all\s+peer$/m.test(resultado);
+        if (r.status !== 0 || !okTcp || !peerIntacto) {
+          err('la orden de pg_hba.conf no deja el archivo como debe:');
+          console.error(
+            `      sed salió ${r.status}; TCP con contraseña: ${okTcp}; peer conservado: ${peerIntacto}`,
+          );
+        } else {
+          ok('TCP pasa a scram-sha-256 y el socket conserva peer');
+        }
       }
     }
   }
