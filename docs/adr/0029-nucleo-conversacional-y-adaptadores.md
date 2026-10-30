@@ -1,6 +1,10 @@
 # ADR 0029 — Núcleo conversacional y adaptadores de canal
 
 - **Fecha:** 2026-10-03 · **Estado:** aceptada (decisión del usuario) · **Implementada:** fase 4.1 (2026-10-03)
+- **Enmendada por** [ADR 0072](0072-whatsapp-por-baileys.md): WhatsApp tiene dos proveedores
+  detrás del mismo adaptador. Donde este ADR decía que Baileys quedaba descartado y que
+  Cloud API era la única vía, hoy manda el ADR 0072; la regla 5 (plantillas aprobadas) sigue
+  aplicando solo a Cloud API.
 
 ## Contexto
 

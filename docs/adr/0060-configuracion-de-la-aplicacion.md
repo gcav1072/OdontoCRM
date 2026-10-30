@@ -1,6 +1,9 @@
 # ADR 0060 — La configuración de la aplicación vive en la base y se edita desde un panel solo del admin
 
 - **Fecha:** 2026-10-09 · **Estado:** aceptada
+- **Nota (ADR 0072/0073):** las credenciales de WhatsApp dejan de ser la única configuración
+  del canal. El panel guarda el interruptor, el proveedor (Baileys por defecto o Cloud API)
+  y el ritmo; la sesión Signal vive cifrada en la base de notificaciones.
 - **Relacionada:** [ADR 0054](0054-membrete-unico-en-los-imprimibles.md) (membrete único),
   [ADR 0055](0055-dos-tipografias-en-los-imprimibles.md) (dos tipografías),
   [ADR 0056](0056-la-identidad-del-consultorio-vive-en-la-base.md) (identidad en la base),

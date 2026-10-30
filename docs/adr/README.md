@@ -21,7 +21,10 @@ de las pantallas kiosko, la partida escrita a mano en la caja y lo que hace `res
 Fecha Valor y el **IGTF configurable** con destino de caja, y la **0070** mide el **cupo del día
 en franjas ocupadas** (supera el ADR 0009). La **0071** incorpora el **periodontograma de la v1.1**
 como examen JSONB versionado del servicio de odontograma (mediciones sin valores por defecto,
-revisión optimista, cierre inmutable y clasificación AAP/EFP sugerida, no automática).
+revisión optimista, cierre inmutable y clasificación AAP/EFP sugerida, no automática). Las
+**0072–0074** cambian WhatsApp: Baileys como proveedor por defecto (Cloud API se conserva),
+la sesión Signal cifrada en la base con vinculación por QR/código y la vinculación del
+paciente por `wa.me` con intenciones que aceptan argumento.
 
 > **Numeración de la Fase 11:** el plan de facturación
 > ([`../feat_billing.md`](../feat_billing.md)) numeraba sus cinco ADRs **0043–0047** porque daba por hecho
@@ -59,7 +62,7 @@ revisión optimista, cierre inmutable y clasificación AAP/EFP sugerida, no auto
 | [0026](0026-cola-de-eventos-compartida.md) | Cola de eventos compartida en la base `odonto_events` | aceptada (corrige el ADR 0003) |
 | [0027](0027-borrado-logico-de-pacientes.md) | Borrado lógico de pacientes, solo para el administrador | aceptada |
 | [0028](0028-cancelar-devuelve-el-ticket.md) | Cancelar una cita devuelve el ticket a la cola | aceptada |
-| [0029](0029-nucleo-conversacional-y-adaptadores.md) | Núcleo conversacional y adaptadores de canal (Telegram, WhatsApp) | aceptada (fase 4.1) |
+| [0029](0029-nucleo-conversacional-y-adaptadores.md) | Núcleo conversacional y adaptadores de canal (Telegram, WhatsApp) | aceptada (fase 4.1), **enmendada por [0072](0072-whatsapp-por-baileys.md)** |
 | [0030](0030-pantallas-kiosko-y-sse.md) | Pantallas kiosko con token de dispositivo y SSE | aceptada (fase 5) |
 | [0031](0031-odontograma-pieza-completa-sobre-caras.md) | La pieza completa manda sobre las caras del odontograma | **corregida por la 0032** |
 | [0032](0032-convivencia-de-tratamientos-con-las-caras.md) | Los tratamientos conviven con las caras; solo `ausente` las supera | aceptada (fase 6B) |
@@ -102,3 +105,6 @@ revisión optimista, cierre inmutable y clasificación AAP/EFP sugerida, no auto
 | [0069](0069-diferencial-cambiario-escuela-a-e-igtf-configurable.md) | Diferencial cambiario por **Fecha Valor** (Escuela A: recibo + reporte contable, sin Nota de Débito), absorción de redondeo ±0,05 USD, IGTF configurable con destino de caja y Notas de Crédito ADMINISTRATIVE vs REFUND | aceptada (fase 12) |
 | [0070](0070-el-cupo-se-mide-en-franjas.md) | El **cupo del día se mide en franjas ocupadas**: sale del horario de atención, una cita larga gasta varias franjas, sin turnos el día está cerrado y se elimina el cupo explícito por fecha | aceptada |
 | [0071](0071-periodontograma-integrado.md) | El **periodontograma** es un examen JSONB versionado del servicio de odontograma: mediciones sin valores por defecto, snapshot del odontograma, revisión optimista, cierre inmutable, comparación longitudinal y clasificación AAP/EFP **sugerida** (la firma el odontólogo) | aceptada (v1.1) |
+| [0072](0072-whatsapp-por-baileys.md) | WhatsApp pasa a **Baileys** por defecto (socket saliente, sin webhook); Cloud API se conserva como alternativa. Opt-in, sin botones, ritmo y tope diario, número dedicado | propuesta |
+| [0073](0073-sesion-de-whatsapp-cifrada-y-vinculada-por-qr.md) | La **sesión Signal** de WhatsApp vive cifrada en `odonto_notifications` y se vincula por QR o código desde el panel; máquina de estados, alertas y auditoría | propuesta |
+| [0074](0074-vinculacion-por-wa-me-e-intenciones-con-argumento.md) | Vinculación del paciente por **`wa.me`** e intenciones con argumento en canales sin comandos (`vincular ABC123`, `estado #000123`); desvincular por canal | propuesta |

@@ -1,6 +1,8 @@
 # ADR 0020 — Modo test con seed determinista y cédulas ficticias
 
 - **Fecha:** 2026-10-02 · **Estado:** aceptada
+- **Nota (ADR 0072):** en modo test el **socket de WhatsApp no se abre** aunque el
+  interruptor del canal esté encendido; el envío queda simulado y registrado.
 
 ## Contexto
 
