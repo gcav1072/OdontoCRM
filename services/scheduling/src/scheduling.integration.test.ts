@@ -241,7 +241,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     await schedulingHandle.db
       .delete(appointments)
       .where(
-        sql`${appointments.notes} like ${'%' + MARK + '%'} or ${appointments.appointmentDate} in (${day}, ${otherDay})`,
+        sql`${appointments.notes} like ${'%' + MARK + '%'} or ${appointments.appointmentDate} in (${day}, ${otherDay}, ${closedSunday})`,
       );
     await schedulingHandle.db
       .delete(appointmentRequests)
@@ -300,6 +300,15 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
   }, 30_000);
 
   it('un día sin turnos está cerrado y solo el admin autoriza el sobrecupo', async () => {
+    // La prueba afirma un conteo exacto: limpia lo que haya dejado una corrida
+    // anterior en ese domingo antes de empezar (el `afterAll` ya lo borra, pero
+    // una corrida interrumpida pudo no llegar).
+    await schedulingHandle.db
+      .delete(appointments)
+      .where(
+        and(eq(appointments.appointmentDate, closedSunday), eq(appointments.chairId, chairId)),
+      );
+
     const cerrado = await capacityFor(schedulingHandle.db, closedSunday, chairId);
     expect(cerrado.capacity).toBe(0);
     expect(cerrado.source).toBe('sin_turnos');
