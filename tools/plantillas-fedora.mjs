@@ -948,6 +948,14 @@ const exigir = (condicion, bien, mal) => {
     'LOGIN_LOCK_MINUTES',
     'REFRESH_TOKEN_TTL_DAYS',
     'TELEGRAM_TEST_CHAT_ID',
+    // Cloud API ya no se pregunta en el instalador (se configura en el panel,
+    // como alternativa); si vuelven a la plantilla, el canal Baileys queda
+    // tapado por credenciales que nadie usa.
+    'WHATSAPP_TOKEN',
+    'WHATSAPP_PHONE_ID',
+    'WHATSAPP_VERIFY_TOKEN',
+    'WHATSAPP_APP_SECRET',
+    'WHATSAPP_API_BASE',
   ];
   const reaparecidas = muertas.filter((v) => new RegExp(`^${v}=`, 'm').test(installSh));
   exigir(

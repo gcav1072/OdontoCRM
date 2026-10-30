@@ -149,12 +149,36 @@ check(
   (status.body?.canales ?? []).map((canal) => canal.canal).join(', ') || '—',
 );
 
-// El webhook de un canal que empuja es **público**: Meta no manda JWT y la
+// **Sesión de WhatsApp por Baileys** (ADR 0073): solo existe con ese proveedor.
+// Con Cloud API (alternativa conservada) el endpoint responde 404 y el webhook
+// sigue siendo público para Meta; con Baileys no hay webhook activo.
+const sesionWhatsApp = await call('/api/v1/notifications/whatsapp/session');
+if (sesionWhatsApp.status === 200) {
+  const estados = [
+    'desactivado',
+    'sin_vincular',
+    'esperando_qr',
+    'conectando',
+    'conectado',
+    'reconectando',
+    'sesion_cerrada',
+    'reemplazada',
+  ];
+  check(
+    'la sesión de WhatsApp responde con un estado válido',
+    estados.includes(sesionWhatsApp.body?.estado),
+    `estado ${String(sesionWhatsApp.body?.estado ?? '—')}`,
+  );
+} else {
+  omitir('la sesión de WhatsApp por Baileys', 'el proveedor activo es Cloud API o está apagado');
+}
+
+// El webhook de Cloud API (alternativa) es **público**: Meta no manda JWT y la
 // seguridad la da la firma. Que responda 404/403 y no 401 demuestra la excepción
-// del gateway y que la ruta está enrutada al servicio.
+// del gateway; con Baileys la ruta existe pero no hay adaptador que la atienda.
 const webhook = await call('/api/v1/notifications/webhook/whatsapp');
 check(
-  'el webhook del canal es público (no exige JWT)',
+  'el webhook de Cloud API sigue siendo público (no exige JWT)',
   webhook.status !== 401,
   `status ${webhook.status}`,
 );

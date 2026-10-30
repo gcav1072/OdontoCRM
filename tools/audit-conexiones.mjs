@@ -55,10 +55,15 @@ const GENERADAS = new Set([
   'INTERNAL_SERVICE_SECRET',
   'COOKIE_SECRET',
   'TELEGRAM_BOT_TOKEN',
+  'WHATSAPP_ENABLED',
+  'WHATSAPP_PROVIDER',
+  'WHATSAPP_SESSION_ID',
+  // Cloud API se conserva como alternativa configurable (ADR 0072).
   'WHATSAPP_TOKEN',
   'WHATSAPP_PHONE_ID',
   'WHATSAPP_VERIFY_TOKEN',
   'WHATSAPP_APP_SECRET',
+  'STORAGE_ENCRYPTION_KEY',
 ]);
 
 const estructurables = [];
