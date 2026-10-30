@@ -78,6 +78,22 @@ pm2 restart odontocrm-notifications
 Sin token, `TELEGRAM_MODE=auto` usa el bot simulado: los avisos quedan como pendientes
 manuales y la clínica sigue funcionando.
 
+**WhatsApp por Baileys** no usa token: se enciende en **Configuración → Canales** y se vincula
+con un QR o un código desde el teléfono del consultorio. La sesión Signal se cifra en
+`odonto_notifications` con `STORAGE_ENCRYPTION_KEY`. Para operarlo:
+
+```powershell
+odontocrm whatsapp estado
+odontocrm whatsapp vincular
+odontocrm whatsapp reconectar
+odontocrm whatsapp cerrar
+```
+
+Si la sesión se cierra (el teléfono la desvinculó), vuelve a vincular. Si aparece **reemplazada**,
+hay otra instancia usando el mismo número: nunca compartas el número entre desarrollo y producción.
+Cloud API sigue disponible como proveedor alternativo en el panel; solo entonces se usan sus
+cuatro variables y el webhook.
+
 ## 7. Respaldos
 
 ```powershell

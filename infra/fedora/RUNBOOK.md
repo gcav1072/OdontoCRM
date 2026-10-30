@@ -383,12 +383,37 @@ vez; a mano, se saca de `https://api.telegram.org/bot<TOKEN>/getUpdates` (el cam
 `chat.id`; un grupo lo lleva negativo). Sin estas dos claves, los avisos se quedan en el
 registro (`journalctl -u odontocrm@notifications`) y el resto del sistema sigue igual.
 
-**WhatsApp** va en el mismo archivo (`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`,
-`WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`); la instalación también los pregunta.
-Sin los cuatro, ese canal no se activa y el resto sigue igual.
+### WhatsApp por Baileys
 
-> **Un solo poller.** Si algún día se levanta una segunda copia del servicio de
-> notificaciones, Telegram responde `409 Conflict` y ninguno de los dos funciona.
+WhatsApp **no se configura por token**: se enciende en **Configuración → Canales** y se vincula
+con un QR (o un código) desde el teléfono del consultorio. La sesión Signal queda cifrada en
+`odonto_notifications` con `STORAGE_ENCRYPTION_KEY` (la misma clave del almacén) y se respalda con
+la base. Para diagnosticalo:
+
+```bash
+sudo odontocrm whatsapp estado
+sudo odontocrm whatsapp vincular          # QR en la terminal
+sudo odontocrm whatsapp reconectar
+sudo odontocrm whatsapp cerrar
+```
+
+- **Sesión cerrada / el teléfono la desvinculó:** vuelve a vincular. La alerta llega al bot de
+  administración.
+- **Reemplazada:** hay otra instancia con el mismo número (por ejemplo, desarrollo y producción).
+  Nunca uses el mismo número en dos instalaciones; cierra la otra y pulsa **Reconectar**.
+- **El teléfono lleva días apagado:** WhatsApp desvincula dispositivos. Deja el teléfono del
+  consultorio encendido y con datos o wifi.
+- **Número bloqueado:** el aviso cae a «pendiente manual». Consigue un número nuevo, cámbialo en
+  el teléfono y vuelve a vincular; no escribas en frío.
+- **Actualizar Baileys:** cambia la versión exacta en `package.json`, ejecuta `npm ci`, compila y
+  haz la prueba de humo (`npm run smoke:notifications`) con un número de prueba.
+- **Cloud API** sigue disponible como proveedor alternativo: sus cuatro variables
+  (`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`) se
+  configuran en el panel/archivo y solo entonces se usa el webhook.
+
+> **Un solo poller y una sola sesión.** Si algún día se levanta una segunda copia del servicio de
+> notificaciones, Telegram responde `409 Conflict` y WhatsApp `connectionReplaced` (440); ninguno
+> de los dos funciona. El servicio es instancia única (PM2 `fork`).
 
 ---
 

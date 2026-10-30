@@ -124,7 +124,7 @@ Banderas útiles:
 | `--nombre-mdns=NOMBRE` | El nombre del servidor (va al certificado y a `WEB_ORIGIN`). Por defecto `odontocrm`. |
 | `--solo=preparar\|aprovisionar\|desplegar\|verificar` | Ejecuta **una** pieza. |
 | `--sin-preguntas` | No pregunta nada (clave del admin al azar, bot simulado). |
-| `--clave-admin=…` `--token-telegram=…` `--whatsapp-token=…` | Dan los valores por bandera. |
+| `--clave-admin=…` `--token-telegram=…` `--whatsapp` | Dan los valores por bandera; `--whatsapp` deja el canal encendido para vincularlo por QR. |
 
 ## 4. Las cuatro piezas
 
@@ -158,7 +158,7 @@ para no tener que pelearse después con los archivos de `C:\ProgramData\OdontoCR
 | **Contraseña de `postgres` de PostgreSQL** | es la llave del *motor*: sin ella no se pueden crear las bases (en Windows no hay socket «peer») ni el rol de respaldo | si lo instala la pieza 1, con Enter se **genera una al azar y se imprime UNA vez** (esa contraseña nace con el motor); si el motor ya estaba instalado, la instalación se detiene antes de crear las bases —o repite con `--recuperar-postgres`— |
 | **Token del bot de Telegram** | los avisos salen de verdad | el bot queda en **modo simulado** y los avisos esperan en la bandeja. El token se **comprueba contra Telegram** y su nombre (`@usuario`) se guarda solo |
 | **Token del bot de administración** | avisa al dueño de los fallos del sistema | no hay avisos de infraestructura. El **chat se detecta solo**: se te pide escribirle «/start» al bot |
-| **WhatsApp Cloud API** | activa ese canal | el canal no se activa; lo demás funciona igual |
+| **WhatsApp** | se activa y se vincula después por QR o código en **Configuración → Canales** | el canal queda apagado; lo demás funciona igual. Cloud API sigue disponible como proveedor alternativo |
 
 Se crea **una sola cuenta: `admin`**. El resto del personal se da de alta desde `/usuarios`.
 Los tokens van a `C:\ProgramData\OdontoCRM\env` (solo Administradores y el servicio, en

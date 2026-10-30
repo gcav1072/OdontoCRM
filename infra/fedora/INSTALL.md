@@ -267,7 +267,7 @@ cosa— para que no haya que pelearse después con los archivos de `/etc/odontoc
 | :--- | :--- | :--- |
 | **Contraseña del administrador** | es la cuenta con la que se entra la primera vez | se genera una temporal y se imprime UNA vez (queda en `/root/odontocrm-contrasena-inicial.txt`, 0600) |
 | **Token del bot de Telegram** (+ usuario) | los avisos salen de verdad; el token se comprueba contra Telegram antes de guardarlo | el bot queda en **modo simulado** y los avisos esperan en la bandeja |
-| **WhatsApp Cloud API** (4 datos) | activa ese canal | el canal no se activa; lo demás funciona igual |
+| **WhatsApp** | no se pregunta en el instalador: se activa y se vincula después por QR o código en **Configuración → Canales** | el canal queda apagado; lo demás funciona igual. Cloud API sigue disponible en el panel como proveedor alternativo |
 
 Se crea **una sola cuenta: `admin`** (con `--con-todas-las-cuentas` se siembran también
 `recepcion` y los odontólogos de `clinic.ts`). Los tokens van a `/etc/odontocrm` (0600
@@ -275,7 +275,7 @@ root:root), no se imprimen y no quedan en registros. `odontocrm actualizar` **no
 por las preguntas —las piezas siguen siendo desatendidas— y conserva lo que ya esté escrito.
 
 Para desatenderlo del todo: `--sin-preguntas`, o dar los valores por bandera
-(`--clave-admin=…`, `--token-telegram=…`, `--whatsapp-token=…`, …). Sin terminal no
+(`--clave-admin=…`, `--token-telegram=…`, `--whatsapp`, …). Sin terminal no
 pregunta nada.
 
 ### Desinstalar (banco de pruebas)
