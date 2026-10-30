@@ -8,7 +8,7 @@ más adelante, fuera de ella por VPN.
 > **Estado: versión `1.1.0` — Fases 10, 11 y 12 completadas, las mejoras de resiliencia dentro, la
 > batería de pruebas manuales E2E pasada completa y el periodontograma de la v1.1 en su sitio; el
 > sistema está listo para la clínica.** Las diez fases del plan están implementadas y validadas:
-> identidad y sesiones, pacientes, agenda, bot de Telegram, secretaría y pantallas kiosko,
+> identidad y sesiones, pacientes, agenda, bot de Telegram y WhatsApp, secretaría y pantallas kiosko,
 > historia clínica, odontograma FDI, sesiones y récipes con QR, reportes y auditoría, con el
 > **modo test**, el **seed determinista**, la **observabilidad** (`npm run estado`) y el
 > **despliegue probado de punta a punta** en Fedora (systemd) y Windows (PM2). La **Fase 11**
@@ -225,7 +225,7 @@ logo de respaldo y marca de agua) y las vías de producción— está en
 | identity | 4001 | ✅ Fase 0 (salud) · Fase 1 (usuarios y auth) |
 | patients | 4002 | ✅ Fase 2 |
 | scheduling | 4003 | ✅ Fase 3 |
-| notifications | 4004 | ✅ Fase 4 (Telegram) · Fase 4.1 (multicanal + webhook) |
+| notifications | 4004 | ✅ Fase 4 (Telegram) · Fase 4.1 (multicanal) · WhatsApp por Baileys (ADR 0072) |
 | clinical | 4005 | ✅ Fase 6 (historia clínica) · Fase 7 (sesiones, adjuntos y récipes) |
 | odontogram | 4006 | ✅ Fase 6, sesión B (odontograma FDI) · v1.1 (periodontograma) |
 | screens | 4007 | ✅ Fase 5 (secretaría y pantallas con SSE) |
@@ -346,7 +346,7 @@ Reglas que aplica el servidor (no solo la interfaz):
 
 ---
 
-## API de la Fase 4.1 (avisos, canales y webhook)
+## API de la Fase 4.1 (avisos, canales y sesión de WhatsApp)
 
 El servicio de notificaciones ya no habla «Telegram»: habla **intenciones** y
 **canales** ([ADR 0029](docs/adr/0029-nucleo-conversacional-y-adaptadores.md)). El asistente
@@ -364,7 +364,8 @@ de 7 pasos, la cola de envíos, las plantillas y el `.ics` son los mismos para t
 | `DELETE /api/v1/notifications/channels/:patientId` | Desvincula al paciente | `scheduling:notify` |
 | `GET/PATCH /api/v1/notifications/settings` | **Política de cancelación del paciente**: días de antelación para cancelar una cita ya confirmada (ADR 0057) | `scheduling:cancel_policy` |
 | `GET /api/v1/notifications/ics/:appointmentId` | Descarga el `.ics` archivado | `scheduling:read` |
-| `GET/POST /api/v1/notifications/webhook/:canal` | **Webhook público** de los canales que empujan (WhatsApp Cloud API) | **público** (lo valida la firma) |
+| `GET/POST /api/v1/notifications/webhook/:canal` | **Webhook público** de Cloud API (proveedor alternativo); con Baileys no hay adaptador que lo atienda | **público** (lo valida la firma) |
+| `GET/POST /api/v1/notifications/whatsapp/session[/pair\|restart\|logout]` | **Sesión de WhatsApp por Baileys**: estado, QR/código, reconexión y cierre | `settings:manage` |
 | `POST /internal/v1/notifications/process` | Fuerza un ciclo de la cola (operación y pruebas) | secreto interno |
 | `POST /internal/v1/notifications/admin-alert` · `GET …/admin-alert/status` | **Aviso al administrador** por el bot de administración: por aquí cuenta cualquier servicio que algo se rompió (un evento perdido, el respaldo que no restaura). Sin bot configurado responde `enviado: false` con el motivo | secreto interno |
 
@@ -380,13 +381,19 @@ de 7 pasos, la cola de envíos, las plantillas y el `.ics` son los mismos para t
   texto y se guardan en la conversación, así que responder «2» vale como pulsar el botón.
 - **La identidad es `(canal, dirección)`**, no un `chat_id`: la misma persona puede hablar por
   Telegram y por WhatsApp sin pisarse las conversaciones.
-- **Idempotencia por `eventoId`** (`update_id` de Telegram o `wamid` de WhatsApp) en
-  `processed_updates`.
-- **El webhook es público porque Meta no manda JWT**: la seguridad la da
-  `x-hub-signature-256` (HMAC del cuerpo crudo con el `app_secret`), que el adaptador verifica
-  **antes** de procesar nada. El gateway lo deja pasar sin token a propósito.
+- **Idempotencia por `eventoId`** (`update_id` de Telegram, `key.id` de Baileys o `wamid` de
+  Cloud API) en `processed_updates`.
+- **WhatsApp por Baileys** (ADR 0072): el servicio abre un socket saliente y la sesión se
+  vincula por QR o código desde **Configuración → Canales**; no hay webhook ni túnel para ese
+  proveedor. La sesión Signal se guarda cifrada en `odonto_notifications` (ADR 0073).
+  Si el paciente tiene los dos canales, el aviso prefiere **WhatsApp** (decisión D16).
+- **Cloud API se conserva** como alternativa configurable (`whatsappProvider = cloud_api`).
+  Solo en ese caso el webhook es público: Meta no manda JWT y la seguridad la da
+  `x-hub-signature-256` (HMAC del cuerpo crudo con el `app_secret`). El gateway lo deja pasar
+  sin token a propósito.
 - **Kit de conformidad**: `services/notifications/src/canales/conformidad.test.ts` corre el mismo
-  juego de pruebas contra Telegram, WhatsApp y el adaptador simulado; un canal que no lo pase no entra.
+  juego de pruebas contra Telegram, WhatsApp por Baileys, WhatsApp Cloud API y el adaptador
+  simulado; un canal que no lo pase no entra.
 
 ---
 

@@ -4,6 +4,34 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Sin publicar] — WhatsApp por Baileys
+
+### Cambiado
+- WhatsApp pasa a usar **Baileys** por defecto: socket saliente, vinculación por QR o código y sin
+  túnel ni webhook. **Cloud API se conserva** como proveedor alternativo configurable.
+- Los avisos prefieren **WhatsApp** sobre Telegram (D16).
+- La espera entre envíos se sortea entre 2 y 4 s (configurable) y hay un tope diario de 150
+  mensajes por defecto; si no hay conexión o se agota el tope, el aviso se difiere sin gastar
+  intentos.
+
+### Añadido
+- Sesión Signal **cifrada** en `odonto_notifications` (`whatsapp_auth` y `whatsapp_session`) con
+  `STORAGE_ENCRYPTION_KEY`.
+- Vinculación desde **Configuración → Canales** (QR, código de emparejamiento, reconectar y cerrar),
+  CLI `npm run whatsapp:*` y enlace de paciente por `wa.me`.
+- Alertas al bot de administración cuando la sesión se cierra, se reemplaza o lleva demasiado
+  tiempo caída; auditoría `whatsapp_session_paired/logged_out/lost`.
+- Intenciones con argumento en canales sin comandos (`vincular ABC123`, `estado #000123`) y
+  desvinculación por canal (`?channel=telegram|whatsapp`).
+
+### Eliminado
+- Para el flujo normal desaparecen el túnel y la ruta pública de WhatsApp. La ruta de webhook se
+  conserva **solo** para Cloud API.
+
+### Seguridad
+- Una ruta pública menos cuando se usa Baileys; la sesión de WhatsApp se trata como credencial
+  maestra y queda cifrada en reposo.
+
 ## [1.1.0] — 2026-10-19
 
 La v1.1 añade la **sección de periodontogramas** sin tocar el odontograma de la v1: un examen
