@@ -328,7 +328,7 @@ const DICCIONARIO = {
 
   'config.canales.titulo': 'Canales de mensajería',
   'config.canales.descripcion':
-    'Tokens del bot de pacientes y del bot de administración, y credenciales de WhatsApp. Los secretos se guardan cifrados y no se vuelven a mostrar.',
+    'Tokens del bot de pacientes y del bot de administración, y la sesión de WhatsApp. Los secretos se guardan cifrados y no se vuelven a mostrar.',
   'config.canales.telegram': 'Bot de pacientes (Telegram)',
   'config.canales.token': 'Token',
   'config.canales.usuario': 'Usuario del bot (sin @)',
@@ -336,12 +336,60 @@ const DICCIONARIO = {
   'config.canales.adminChat': 'Chat del administrador',
   'config.canales.adminAviso':
     'El bot de administración toma estos cambios en ~1 minuto, sin reiniciar el servidor.',
-  'config.canales.whatsapp': 'WhatsApp (Meta Cloud API)',
-  'config.canales.whatsappToken': 'Token',
-  'config.canales.whatsappPhone': 'Phone ID',
-  'config.canales.whatsappVerify': 'Verify token',
-  'config.canales.whatsappSecret': 'App secret',
-  'config.canales.whatsappBase': 'Base de la API',
+  'config.canales.whatsapp': 'WhatsApp (vinculado por QR)',
+  'config.canales.whatsappToken': 'Token (Cloud API)',
+  'config.canales.whatsappPhone': 'Phone ID (Cloud API)',
+  'config.canales.whatsappVerify': 'Verify token (Cloud API)',
+  'config.canales.whatsappSecret': 'App secret (Cloud API)',
+  'config.canales.whatsappBase': 'Base de la API (Cloud API)',
+  'config.canales.whatsapp.proveedor': 'Proveedor',
+  'config.canales.whatsapp.proveedorAyuda':
+    'Baileys es el valor por defecto: escanea un QR desde el teléfono. Cloud API se conserva como alternativa oficial de Meta.',
+  'config.canales.whatsapp.activar': 'Activar WhatsApp',
+  'config.canales.whatsapp.activarAyuda':
+    'Encendido y sin sesión, el canal queda «sin vincular» hasta que escanees el QR.',
+  'config.canales.whatsapp.riesgoTitulo': 'Usa un número dedicado al bot',
+  'config.canales.whatsapp.riesgo':
+    'Mantén el teléfono encendido y con conexión. WhatsApp puede bloquear números que envían mensajes masivos; este canal está pensado para volumen bajo y solo escribe a quien te escribió antes o se vinculó con un código.',
+  'config.canales.whatsapp.estado.desactivado': 'Desactivado',
+  'config.canales.whatsapp.estado.sin_vincular': 'Sin vincular',
+  'config.canales.whatsapp.estado.esperando_qr': 'Esperando QR',
+  'config.canales.whatsapp.estado.conectando': 'Conectando',
+  'config.canales.whatsapp.estado.conectado': 'Conectado',
+  'config.canales.whatsapp.estado.reconectando': 'Reconectando',
+  'config.canales.whatsapp.estado.sesion_cerrada': 'Sesión cerrada',
+  'config.canales.whatsapp.estado.reemplazada': 'Reemplazada por otra instancia',
+  'config.canales.whatsapp.estado.cloud_api': 'Cloud API (Meta)',
+  'config.canales.whatsapp.sesionNoActiva':
+    'La sesión de Baileys no está activa. Guarda primero el interruptor y el proveedor.',
+  'config.canales.whatsapp.sinNumero': 'Número sin identificar',
+  'config.canales.whatsapp.vincularQr': 'Vincular (QR)',
+  'config.canales.whatsapp.vincularCodigo': 'Vincular con código',
+  'config.canales.whatsapp.reconectar': 'Reconectar',
+  'config.canales.whatsapp.cerrarSesion': 'Cerrar sesión',
+  'config.canales.whatsapp.cerrarTitulo': 'Cerrar la sesión de WhatsApp',
+  'config.canales.whatsapp.cerrarTexto':
+    'El teléfono dejará de estar vinculado y los avisos de WhatsApp quedarán a la espera de un nuevo QR. Telegram no se toca.',
+  'config.canales.whatsapp.vinculado': 'WhatsApp quedó vinculado y conectado',
+  'config.canales.whatsapp.reconectado': 'Se pidió la reconexión de WhatsApp',
+  'config.canales.whatsapp.sesionCerrada': 'Sesión de WhatsApp cerrada',
+  'config.canales.whatsapp.instruccion':
+    'Abre WhatsApp en el teléfono del consultorio, entra en Dispositivos vinculados y escanea el QR (o pide el código y escríbelo en el teléfono).',
+  'config.canales.whatsapp.telefonoConsultorio': 'Número del consultorio',
+  'config.canales.whatsapp.telefonoAyuda':
+    'Escríbelo como lo marcas: 0412-1234567. Se normaliza al código del país.',
+  'config.canales.whatsapp.pedirCodigo': 'Pedir código',
+  'config.canales.whatsapp.preparando': 'Preparando la vinculación…',
+  'config.canales.whatsapp.qrAlt': 'Código QR para vincular WhatsApp',
+  'config.canales.whatsapp.qrCaduca': 'El QR caduca en menos de un minuto; se renueva solo.',
+  'config.canales.whatsapp.codigoEmparejamiento': 'Escribe este código en el teléfono:',
+  'config.canales.whatsapp.esperando': 'Esperando a que el teléfono termine de vincular…',
+  'config.canales.whatsapp.esperaMin': 'Espera mínima entre envíos (s)',
+  'config.canales.whatsapp.esperaMax': 'Espera máxima entre envíos (s)',
+  'config.canales.whatsapp.topeDiario': 'Tope diario de mensajes',
+  'config.canales.whatsapp.ritmoAyuda':
+    'La espera se sortea entre el mínimo y el máximo (por defecto {min}–{max} s). Al superar el tope, los avisos se difieren al día siguiente sin gastar intentos.',
+  'config.canales.testWhatsApp': 'Probar WhatsApp',
   'config.canales.secretoGuardado': 'Configurado',
   'config.canales.secretoVacio': 'Sin configurar',
   'config.canales.secretoAyuda': 'Déjalo vacío para no cambiarlo; escribe «-» para borrarlo.',
@@ -1265,9 +1313,13 @@ const DICCIONARIO = {
   'auditoria.brand_updated': 'Marca de los imprimibles actualizada',
   'auditoria.app_settings_updated': 'Configuración de la aplicación actualizada',
   'auditoria.channel_settings_updated': 'Canales de mensajería actualizados',
+  'auditoria.whatsapp_session_paired': 'WhatsApp vinculado',
+  'auditoria.whatsapp_session_logged_out': 'Sesión de WhatsApp cerrada',
+  'auditoria.whatsapp_session_lost': 'Sesión de WhatsApp perdida',
   // Identidad del consultorio: entidades y campos del diff
   'auditoria.entidad.dentist_profile': 'Perfil del odontólogo',
   'auditoria.entidad.clinic_profile': 'Identidad del consultorio',
+  'auditoria.entidad.whatsapp_session': 'Sesión de WhatsApp',
   'auditoria.campo.mpps': 'MPPS',
   'auditoria.campo.specialty': 'Especialidad',
   'auditoria.campo.licenseNumber': 'Colegiatura',
@@ -1840,6 +1892,9 @@ const DICCIONARIO = {
     'Si el detalle de abajo dice «Unauthorized» (no autorizado), Telegram está rechazando el token: revisa TELEGRAM_BOT_TOKEN en el archivo de configuración del servidor —el marcador de la plantilla no sirve— y reinicia el servicio de notificaciones.',
   'notificaciones.bot.simulado.texto':
     'No hay token configurado: los mensajes quedan registrados en la bandeja, pero no se envían. Configura el token del bot para activar los envíos reales.',
+  'notificaciones.bot.whatsappConectado.titulo': 'WhatsApp está conectado',
+  'notificaciones.bot.whatsappConectado.texto':
+    'El bot de Telegram está en modo simulado, pero la sesión de WhatsApp sí está conectada: los pacientes vinculados por WhatsApp reciben sus avisos reales.',
   'notificaciones.bot.modoTest.titulo': 'MODO TEST: los envíos están bloqueados',
   'notificaciones.bot.modoTest.texto':
     'Aunque el bot tenga token, en modo test ningún mensaje sale a un paciente: se registran como simulados en la bandeja.',
@@ -2086,13 +2141,15 @@ const DICCIONARIO = {
   'notificaciones.canales.generando': 'Generando el enlace…',
   'notificaciones.canales.codigo': 'Código de vinculación',
   'notificaciones.canales.enlace': 'Enlace para el paciente',
+  'notificaciones.canales.enlaceWhatsApp': 'Enlace de WhatsApp',
+  'notificaciones.canales.qrWhatsAppAlt': 'Código QR para vincular a {paciente} por WhatsApp.',
   'notificaciones.canales.copiar': 'Copiar el enlace',
   'notificaciones.canales.copiado': 'Enlace copiado al portapapeles.',
   'notificaciones.canales.copiarError': 'No se pudo copiar: selecciona el enlace y cópialo a mano.',
   'notificaciones.canales.caduca': 'Caduca el {fecha}',
   'notificaciones.canales.expirado': 'Este enlace ya caducó: genera uno nuevo.',
   'notificaciones.canales.instruccion':
-    'El paciente abre este enlace o escanea el QR y su Telegram queda vinculado.',
+    'El paciente abre uno de los enlaces o escanea su QR y queda vinculado por ese canal.',
   'notificaciones.canales.qrAlt':
     'Código QR del enlace de vinculación de {paciente} con el bot de Telegram.',
   'notificaciones.canales.sinQr': 'El servicio no devolvió la imagen del QR: usa el enlace.',
@@ -3603,6 +3660,9 @@ const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   brand_updated: t('auditoria.brand_updated'),
   app_settings_updated: t('auditoria.app_settings_updated'),
   channel_settings_updated: t('auditoria.channel_settings_updated'),
+  whatsapp_session_paired: t('auditoria.whatsapp_session_paired'),
+  whatsapp_session_logged_out: t('auditoria.whatsapp_session_logged_out'),
+  whatsapp_session_lost: t('auditoria.whatsapp_session_lost'),
   device_token_created: t('auditoria.device_token_created'),
   device_token_revoked: t('auditoria.device_token_revoked'),
   medical_record_created: t('auditoria.medical_record_created'),
@@ -3668,6 +3728,24 @@ const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
 
 /** Etiqueta de una acción de auditoría; si el servidor añade una nueva, se muestra tal cual. */
 export const auditActionLabel = (action: string): string => AUDIT_ACTION_LABELS[action] ?? action;
+
+/** Estados de la sesión de WhatsApp (ADR 0073), para insignias y avisos. */
+const WHATSAPP_SESSION_LABELS: Readonly<Record<string, TranslationKey>> = {
+  desactivado: 'config.canales.whatsapp.estado.desactivado',
+  sin_vincular: 'config.canales.whatsapp.estado.sin_vincular',
+  esperando_qr: 'config.canales.whatsapp.estado.esperando_qr',
+  conectando: 'config.canales.whatsapp.estado.conectando',
+  conectado: 'config.canales.whatsapp.estado.conectado',
+  reconectando: 'config.canales.whatsapp.estado.reconectando',
+  sesion_cerrada: 'config.canales.whatsapp.estado.sesion_cerrada',
+  reemplazada: 'config.canales.whatsapp.estado.reemplazada',
+  cloud_api: 'config.canales.whatsapp.estado.cloud_api',
+};
+
+export const whatsappSessionStateLabel = (estado: string): string => {
+  const key = WHATSAPP_SESSION_LABELS[estado];
+  return key === undefined ? estado : t(key);
+};
 
 /** Comprueba en tiempo de ejecución que un texto del servidor es un rol conocido. */
 export const isRole = (value: string): value is Role =>

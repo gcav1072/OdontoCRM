@@ -21,6 +21,9 @@ import {
   type ChangePasswordInput,
   type ChangePatientStatusInput,
   type Channel,
+  type ChannelSettingsView,
+  type WhatsAppPairInput,
+  type WhatsAppSessionView,
   type ClinicIdentityView,
   type ClinicProfile,
   type ClinicalAttachment,
@@ -126,7 +129,6 @@ import {
   type BrandSettings,
   type BrandSettingsInput,
   type ChannelSettingsInput,
-  type ChannelSettingsView,
   type ChannelTestInput,
   type ChannelTestResult,
   type EffectiveBrand,
@@ -354,6 +356,24 @@ export const settingsApi = {
   /** Prueba un canal mandando un mensaje de diagnóstico. */
   testChannel: (input: ChannelTestInput): Promise<ChannelTestResult> =>
     api.post<ChannelTestResult>('/settings/channels/test', input),
+};
+
+/**
+ * **Sesión de WhatsApp por Baileys** (ADR 0073). Solo el `admin` (`settings:manage`):
+ * un QR es el control de la cuenta de WhatsApp del consultorio.
+ */
+export const whatsappApi = {
+  session: (signal?: AbortSignal): Promise<WhatsAppSessionView> =>
+    api.get<WhatsAppSessionView>('/notifications/whatsapp/session', { signal }),
+
+  pair: (input: WhatsAppPairInput): Promise<WhatsAppSessionView> =>
+    api.post<WhatsAppSessionView>('/notifications/whatsapp/session/pair', input),
+
+  restart: (): Promise<WhatsAppSessionView> =>
+    api.post<WhatsAppSessionView>('/notifications/whatsapp/session/restart', {}),
+
+  logout: (): Promise<WhatsAppSessionView> =>
+    api.post<WhatsAppSessionView>('/notifications/whatsapp/session/logout', {}),
 };
 
 /**
@@ -1005,8 +1025,10 @@ export const notificationsApi = {
   linkCode: (patientId: string): Promise<LinkCodeResponse> =>
     api.post<LinkCodeResponse>('/notifications/channels/link-code', { patientId }),
 
-  unlinkChannel: (patientId: string): Promise<void> =>
-    api.delete<void>(`/notifications/channels/${patientId}`),
+  unlinkChannel: (patientId: string, channel?: Channel): Promise<void> =>
+    api.delete<void>(`/notifications/channels/${patientId}`, {
+      query: channel === undefined ? undefined : { channel },
+    }),
 };
 
 /** Constancia de impresión de una historia clínica. */

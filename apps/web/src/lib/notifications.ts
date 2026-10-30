@@ -33,6 +33,8 @@ export const notificationKeys = {
   linkCode: (patientId: string) => ['notificaciones', 'enlace', patientId] as const,
   /** Política de cancelación del paciente (ADR 0057). */
   settings: ['notificaciones', 'politica'] as const,
+  /** Sesión de WhatsApp por Baileys (ADR 0073): se refresca mientras se vincula. */
+  whatsappSession: ['notificaciones', 'whatsapp-sesion'] as const,
 };
 
 /** Refresco de la cabecera de estado: el bot recibe mensajes a cada rato. */
