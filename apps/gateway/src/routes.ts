@@ -64,7 +64,11 @@ export const buildProxyRoutes = (config: GatewayConfig): ProxyRoute[] => {
   add('/api/v1/agenda', config.SCHEDULING_URL, 'Cupos, franjas y programación de la jornada');
   add('/api/v1/appointments', config.SCHEDULING_URL, 'Citas y su ciclo de vida');
 
-  add('/api/v1/notifications', config.NOTIFICATIONS_URL, 'Envíos, plantillas y bot de Telegram');
+  add(
+    '/api/v1/notifications',
+    config.NOTIFICATIONS_URL,
+    'Envíos, plantillas, bot de Telegram y sesión de WhatsApp',
+  );
   add('/api/v1/clinical', config.CLINICAL_URL, 'Historia clínica, sesiones y récipes');
   add('/api/v1/odontogram', config.ODONTOGRAM_URL, 'Odontograma');
   add('/api/v1/screens', config.SCREENS_URL, 'Pantallas de sala y consultorio (SSE)');

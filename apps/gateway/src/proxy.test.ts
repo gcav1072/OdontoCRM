@@ -65,7 +65,7 @@ describe('mapa de rutas del gateway', () => {
     expect(auth?.rewritePrefix).toBeUndefined();
   });
 
-  it('clasifica las rutas públicas (salud, ciclo de autenticación, webhooks y verificación)', () => {
+  it('clasifica las rutas públicas (salud, autenticación, webhook de Cloud API y verificación)', () => {
     expect(isPublicPath('/health')).toBe(true);
     // El estado del sistema lo pide la SPA antes de iniciar sesión (banner MODO TEST).
     expect(isPublicPath('/api/v1/meta')).toBe(true);
@@ -80,6 +80,9 @@ describe('mapa de rutas del gateway', () => {
     expect(isPublicPath('/api/v1/users')).toBe(false);
     expect(isPublicPath('/api/v1/auth/me')).toBe(false);
     expect(isPublicPath('/api/v1/notifications')).toBe(false);
+    // La sesión de Baileys se vincula desde el panel: siempre con JWT.
+    expect(isPublicPath('/api/v1/notifications/whatsapp/session')).toBe(false);
+    expect(isPublicPath('/api/v1/notifications/whatsapp/session/pair')).toBe(false);
     // Los récipes del paciente y sus adjuntos sí exigen sesión.
     expect(isPublicPath('/api/v1/clinical/prescriptions/abc')).toBe(false);
     expect(isPublicPath('/api/v1/clinical/sessions/abc/attachments')).toBe(false);

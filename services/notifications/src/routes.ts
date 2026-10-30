@@ -8,6 +8,8 @@ import {
   notificationFiltersSchema,
   notificationSettingsInputSchema,
   retryNotificationSchema,
+  toE164Digits,
+  whatsappPairInputSchema,
   type ChannelStatus,
 } from '@odontocrm/contracts';
 import {
@@ -49,6 +51,7 @@ const keyParamsSchema = z.object({ key: z.string().trim().min(1).max(60) });
 const patientParamsSchema = z.object({ patientId: z.uuid() });
 const linkCodeSchema = z.object({ patientId: z.uuid() });
 const channelsQuerySchema = z.object({ patientId: z.uuid().optional() });
+const unlinkQuerySchema = z.object({ channel: z.enum(CHANNEL_IDS).optional() });
 const icsParamsSchema = z.object({ appointmentId: z.uuid() });
 const webhookParamsSchema = z.object({ canal: z.enum(CHANNEL_IDS) });
 
@@ -94,6 +97,8 @@ export const registerNotificationRoutes = (
   const { db, config, canales } = services;
   const read = requirePermission('scheduling:read');
   const notify = requirePermission('scheduling:notify');
+  /** Sesión de WhatsApp (QR/cierre): solo el admin, igual que los canales. */
+  const manage = requirePermission('settings:manage');
   /** Política de cancelación (ADR 0057): solo `admin` y odontólogo. */
   const policy = requirePermission('scheduling:cancel_policy');
 
@@ -123,11 +128,20 @@ export const registerNotificationRoutes = (
             usuario: null,
             conectado: false,
           }));
+          const detalle =
+            adapter.id === 'whatsapp'
+              ? canales.whatsapp !== null
+                ? (await canales.whatsapp.vista()).estado
+                : canales.modoWhatsApp === 'cloud_api'
+                  ? 'cloud_api'
+                  : null
+              : null;
           return {
             canal: adapter.id,
             nombre: identidad.nombre,
             usuario: identidad.usuario,
             conectado: identidad.conectado,
+            detalle,
             capacidades: adapter.capacidades,
           };
         }),
@@ -259,6 +273,26 @@ export const registerNotificationRoutes = (
           ? null
           : await QRCode.toDataURL(deepLink, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
 
+      // Enlace de WhatsApp (D13): el paciente abre wa.me y el texto ya lleva
+      // «VINCULAR <código>», que el asistente entiende sin comandos con barra.
+      let whatsappLink: string | null = null;
+      let whatsappQrDataUrl: string | null = null;
+      const vistaWhatsApp = canales.whatsapp === null ? null : await canales.whatsapp.vista();
+      if (
+        vistaWhatsApp !== null &&
+        vistaWhatsApp.estado === 'conectado' &&
+        vistaWhatsApp.numero !== null
+      ) {
+        whatsappLink = `https://wa.me/${vistaWhatsApp.numero}?text=${encodeURIComponent(
+          `VINCULAR ${code}`,
+        )}`;
+        whatsappQrDataUrl = await QRCode.toDataURL(whatsappLink, {
+          margin: 1,
+          width: 320,
+          errorCorrectionLevel: 'M',
+        });
+      }
+
       return reply.status(200).send({
         patientId: input.patientId,
         code,
@@ -266,6 +300,8 @@ export const registerNotificationRoutes = (
         deepLink,
         botUsername,
         ...(qrDataUrl === null ? {} : { qrDataUrl }),
+        whatsappLink,
+        whatsappQrDataUrl,
       });
     },
   );
@@ -275,8 +311,64 @@ export const registerNotificationRoutes = (
     { preHandler: notify },
     async (request, reply) => {
       const { patientId } = parseOrThrow(patientParamsSchema, request.params);
-      await unlinkPatient(db, patientId);
+      const { channel } = parseQuery(unlinkQuerySchema, request.query);
+      await unlinkPatient(db, patientId, channel);
       return reply.status(204).send();
+    },
+  );
+
+  /** La sesión de Baileys, o un 404 claro si el proveedor activo es otro. */
+  const sesionWhatsApp = () => {
+    if (canales.whatsapp === null) {
+      throw new NotFoundError(
+        'La sesión de WhatsApp por Baileys no está activa en esta instalación',
+      );
+    }
+    return canales.whatsapp;
+  };
+
+  const actorDe = (request: FastifyRequest) => {
+    const id = request.headers['x-user-id'];
+    const username = request.headers['x-user-username'];
+    return {
+      id: typeof id === 'string' ? id : null,
+      username: typeof username === 'string' ? username : null,
+    };
+  };
+
+  /**
+   * **Sesión de WhatsApp** (ADR 0073): vincular con QR o código, ver el estado,
+   * reconectar y cerrar sesión. Exige `settings:manage`, igual que el resto del
+   * panel de canales: un QR concede el control de la cuenta de WhatsApp.
+   */
+  app.get(
+    '/api/v1/notifications/whatsapp/session',
+    { preHandler: manage },
+    async (_request, reply) => reply.status(200).send(await sesionWhatsApp().vista()),
+  );
+
+  app.post(
+    '/api/v1/notifications/whatsapp/session/pair',
+    { preHandler: manage },
+    async (request, reply) => {
+      const input = parseOrThrow(whatsappPairInputSchema, request.body ?? {});
+      return reply.status(200).send(await sesionWhatsApp().pair(input, actorDe(request)));
+    },
+  );
+
+  app.post(
+    '/api/v1/notifications/whatsapp/session/restart',
+    { preHandler: manage },
+    async (_request, reply) => reply.status(200).send(await sesionWhatsApp().restart()),
+  );
+
+  app.post(
+    '/api/v1/notifications/whatsapp/session/logout',
+    { preHandler: manage },
+    async (request, reply) => {
+      const sesion = sesionWhatsApp();
+      await sesion.logout(actorDe(request));
+      return reply.status(200).send(await sesion.vista());
     },
   );
 
@@ -350,6 +442,26 @@ export const registerNotificationRoutes = (
     }
   });
 
+  // Gemelas internas de la sesión de WhatsApp: las usa la CLI `whatsapp`.
+  app.get('/internal/v1/notifications/whatsapp/session', async (_request, reply) =>
+    reply.status(200).send(await sesionWhatsApp().vista()),
+  );
+
+  app.post('/internal/v1/notifications/whatsapp/session/pair', async (request, reply) => {
+    const input = parseOrThrow(whatsappPairInputSchema, request.body ?? {});
+    return reply.status(200).send(await sesionWhatsApp().pair(input, actorDe(request)));
+  });
+
+  app.post('/internal/v1/notifications/whatsapp/session/restart', async (_request, reply) =>
+    reply.status(200).send(await sesionWhatsApp().restart()),
+  );
+
+  app.post('/internal/v1/notifications/whatsapp/session/logout', async (request, reply) => {
+    const sesion = sesionWhatsApp();
+    await sesion.logout(actorDe(request));
+    return reply.status(200).send(await sesion.vista());
+  });
+
   /** Fuerza un ciclo de la cola de envíos (pruebas y operación). */
   app.post('/internal/v1/notifications/process', async (_request, reply) => {
     const result = await processQueue(db, canales.registry, config, {
@@ -419,8 +531,18 @@ export const registerNotificationRoutes = (
         .send({ ok: false, detalle: 'Indica un destino (chat o número) para la prueba' });
     }
 
+    const destino =
+      input.canal === 'whatsapp'
+        ? toE164Digits(input.destino, config.WHATSAPP_DEFAULT_COUNTRY_CODE)
+        : input.destino;
+    if (destino === '') {
+      return reply
+        .status(200)
+        .send({ ok: false, detalle: 'El número de destino de WhatsApp no es válido' });
+    }
+
     try {
-      await adaptador.enviar({ direccion: input.destino, texto });
+      await adaptador.enviar({ direccion: destino, texto });
       return reply
         .status(200)
         .send({ ok: true, detalle: `Mensaje de prueba enviado por ${input.canal}` });

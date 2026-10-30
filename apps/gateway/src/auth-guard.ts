@@ -32,10 +32,12 @@ export const PUBLIC_PATHS: readonly string[] = [
 ];
 
 /**
- * Prefijos públicos. El **webhook de los canales** que empujan (WhatsApp Cloud
- * API) es público porque Meta no manda JWT: la seguridad la da la firma
+ * Prefijos públicos. El **webhook de Cloud API** (proveedor alternativo de
+ * WhatsApp) es público porque Meta no manda JWT: la seguridad la da la firma
  * (`x-hub-signature-256` con el `app_secret`), que el adaptador verifica antes de
- * procesar nada. El canal va en la ruta (`/webhook/whatsapp`).
+ * procesar nada. El canal va en la ruta (`/webhook/whatsapp`). Con Baileys no
+ * hay webhook: su sesión se vincula desde el panel con JWT.
+ *
  *
  * La **verificación del récipe** (`/api/v1/clinical/verify/<código>`) también lo es:
  * la abre quien tiene el papel en la mano —el paciente, una farmacia— y no tiene
