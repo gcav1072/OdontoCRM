@@ -38,6 +38,12 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   salida.
 - El paso **«Sexo»** del alta acepta `M`, `F` u `O` escritos (también «masculino», «femenino» y
   «otro», sin importar mayúsculas ni tildes), además del número de la opción.
+- **Cancelar una cita desde la agenda ya no deja al bot con la fecha vieja**: el resumen de la
+  solicitud solo toma la cita vigente (no la cancelada o reprogramada) y, si el paciente pregunta
+  por su estado, el asistente le dice que esa cita quedó cancelada y que sigue en la cola.
+- **Desvincular un chat en Notificaciones ahora borra el vínculo y la conversación**: antes solo
+  lo marcaba como bloqueado y el bot retomaba la ficha anterior; al volver a escribir empieza un
+  alta nueva y puede registrarse como otro paciente.
 - La solicitud creada desde WhatsApp ya se audita con su canal real, no como si fuera Telegram.
 
 ### Eliminado

@@ -36,6 +36,7 @@ import type { NotificationsConfig } from './config.js';
 import { retryDelays } from './config.js';
 import type { NotificationsDb } from './db/client.js';
 import {
+  botConversations,
   icsArtifacts,
   messageTemplates,
   notifications,
@@ -211,19 +212,25 @@ export const findChannel = async (
   return { canal: preferred.channel as ChannelId, direccion: preferred.direccion };
 };
 
-/** Canal vinculado a una dirección concreta (para avisos y pruebas). */
+/**
+ * Canal vinculado a una dirección concreta (para avisos y pruebas).
+ *
+ * Una fila `is_blocked` **no** cuenta como vínculo: es el estado que dejaban las
+ * desvinculaciones antiguas y el cambio de número del bot. Si se devolviera, el
+ * asistente seguiría confirmando o cancelando citas de la ficha anterior.
+ */
 export const channelByDireccion = async (
   db: NotificationsDb,
   canal: ChannelId,
   direccion: string,
-): Promise<{ patientId: string; isBlocked: boolean } | null> => {
+): Promise<{ patientId: string } | null> => {
   const rows = await db
     .select()
     .from(patientChannels)
     .where(and(eq(patientChannels.channel, canal), eq(patientChannels.direccion, direccion)))
     .limit(1);
   const row = rows[0];
-  return row === undefined ? null : { patientId: row.patientId, isBlocked: row.isBlocked };
+  return row === undefined || row.isBlocked ? null : { patientId: row.patientId };
 };
 
 /**
@@ -327,23 +334,44 @@ export const linkChat = async (
 };
 
 /**
- * Desvincula a un paciente. Con `canal` se bloquea **solo** esa fila: un
+ * Desvincula a un paciente. Con `canal` se quita **solo** ese vínculo: un
  * paciente con Telegram y WhatsApp puede perder uno sin perder el otro.
+ *
+ * No basta con marcar `is_blocked` (lo que hacía antes): el chat seguía ligado
+ * al paciente en `patient_channels` y la conversación guardada en
+ * `bot_conversations` conservaba `patientId`, `state` y `lastTicket`. Al
+ * escribir otra vez, el bot retomaba la ficha anterior en vez de empezar de
+ * cero. Aquí se borran las dos cosas: la próxima vez que ese chat escriba se
+ * crea una conversación nueva y puede registrarse como otro paciente.
  */
 export const unlinkPatient = async (
   db: NotificationsDb,
   patientId: string,
   canal?: Channel,
 ): Promise<void> => {
-  await db
-    .update(patientChannels)
-    .set({ isBlocked: true, updatedAt: new Date() })
-    .where(
-      and(
-        eq(patientChannels.patientId, patientId),
-        ...(canal === undefined ? [] : [eq(patientChannels.channel, canal)]),
-      ),
-    );
+  const where = and(
+    eq(patientChannels.patientId, patientId),
+    ...(canal === undefined ? [] : [eq(patientChannels.channel, canal)]),
+  );
+  const rows = await db
+    .select({ channel: patientChannels.channel, direccion: patientChannels.direccion })
+    .from(patientChannels)
+    .where(where);
+
+  await db.transaction(async (tx) => {
+    await tx.delete(patientChannels).where(where);
+    for (const row of rows) {
+      if (row.direccion === null) continue;
+      await tx
+        .delete(botConversations)
+        .where(
+          and(
+            eq(botConversations.canal, row.channel),
+            eq(botConversations.direccion, row.direccion),
+          ),
+        );
+    }
+  });
 };
 
 /* ── Cola de envíos ────────────────────────────────────────────────────────── */

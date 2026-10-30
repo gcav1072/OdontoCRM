@@ -417,6 +417,59 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
   }, 60_000);
 
+  it('el estado de la solicitud cuenta la cita que se canceló desde la agenda', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}Z`;
+    await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
+
+    const ticket = formatTicket(2100).value;
+    const solicitud: RequestSummary = {
+      id: globalThis.crypto.randomUUID(),
+      ticket,
+      ticketNumber: 2100,
+      channel: 'telegram',
+      patientId,
+      patientName: 'María Pérez',
+      patientDocument: 'V-12345678',
+      patientPhone: '+584121234567',
+      reason: 'control',
+      status: 'en_espera_cita',
+      priority: 0,
+      requestedAt: new Date().toISOString(),
+      notes: null,
+      waitingDays: 1,
+      appointmentId: null,
+      appointmentDate: null,
+      appointmentTime: null,
+      createdAt: new Date().toISOString(),
+    };
+    clients.requests.push(solicitud);
+
+    // La secretaría canceló la cita en la agenda: la solicitud volvió a la cola.
+    const fecha = enDias(5);
+    clients.citas.push(
+      unaCita({
+        patientId,
+        requestId: solicitud.id,
+        date: fecha,
+        startTime: '11:00',
+        status: 'cancelada',
+        cancelledAt: new Date().toISOString(),
+        cancelledChannel: null,
+      }),
+    );
+
+    const resultado = await enviar(telegram, { direccion, texto: ticket });
+    expect(resultado.action).toBe('estado_por_texto');
+    const respuesta = telegram.sent.at(-1)?.texto ?? '';
+    expect(respuesta).toContain('quedó cancelada');
+    expect(respuesta).toContain('EN ESPERA DE CITA');
+    expect(respuesta).not.toContain('Tu cita es el');
+
+    await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 60_000);
+
   it('el corte de cancelación frena al paciente que ya confirmó (ADR 0057)', async () => {
     const patientId = globalThis.crypto.randomUUID();
     const direccion = `${direccionBase}K`;
@@ -650,6 +703,46 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     expect(created?.channel).toBe('whatsapp');
     const linked = await findChannel(handle.db, created?.patientId ?? '');
     expect(linked).toEqual({ canal: 'whatsapp', direccion });
+  }, 60_000);
+
+  it('el alta de un documento duplicado conserva la ficha elegida hasta el final', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}Y`;
+    const original = clients.findPatientByDocument;
+    clients.findPatientByDocument = async () => ({
+      id: patientId,
+      fullName: 'María Pérez',
+      docType: 'V',
+      docNumber: '87654321',
+      document: 'V-87654321',
+      phone: '+584121234567',
+      birthDate: '1990-05-15',
+      sex: 'F',
+    });
+
+    try {
+      await enviar(whatsapp, { direccion, texto: 'cita' });
+      await enviar(whatsapp, { direccion, texto: 'María Pérez' });
+      await enviar(whatsapp, { direccion, accion: 'doc:V' });
+      await enviar(whatsapp, { direccion, texto: '87654321' });
+
+      let conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
+      expect(conversation.state).toBe('confirmacion');
+      expect(conversation.patientId).toBe(patientId);
+
+      await enviar(whatsapp, { direccion, accion: 'duplicado:si' });
+      conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
+      expect(conversation.state).toBe('motivo');
+      // La conversación no se reinicia: el `patientId` elegido sigue ahí.
+      expect(conversation.patientId).toBe(patientId);
+
+      await enviar(whatsapp, { direccion, texto: `Limpieza dental ${MARK}` });
+      await enviar(whatsapp, { direccion, texto: '1' });
+      expect(clients.requests.at(-1)?.patientId).toBe(patientId);
+    } finally {
+      clients.findPatientByDocument = original;
+      await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+    }
   }, 60_000);
 
   it('la misma persona por dos canales no se pisa: una conversación por (canal, dirección)', async () => {
@@ -1335,10 +1428,72 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
 
     await unlinkPatient(handle.db, patientId, 'telegram');
     const canales = await listChannels(handle.db, patientId);
-    expect(canales).toHaveLength(2);
-    expect(canales.find((canal) => canal.canal === 'telegram')?.isBlocked).toBe(true);
-    expect(canales.find((canal) => canal.canal === 'whatsapp')?.isBlocked).toBe(false);
+    expect(canales).toHaveLength(1);
+    expect(canales[0]).toMatchObject({ canal: 'whatsapp', isBlocked: false });
 
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 30_000);
+
+  it('al desvincular el chat, la próxima conversación empieza de cero', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}U`;
+    await linkChat(handle.db, { patientId, canal: 'whatsapp', direccion });
+
+    // Una conversación a medias que todavía recuerda al paciente anterior.
+    await handle.db.insert(botConversations).values({
+      canal: 'whatsapp',
+      direccion,
+      state: 'motivo',
+      draft: { fullName: 'Paciente anterior' },
+      patientId,
+      lastTicket: 4321,
+    });
+
+    await unlinkPatient(handle.db, patientId, 'whatsapp');
+
+    const conversaciones = await handle.db
+      .select()
+      .from(botConversations)
+      .where(eq(botConversations.direccion, direccion));
+    expect(conversaciones).toHaveLength(0);
+
+    // Al volver a escribir no retoma el motivo ni el ticket viejo: empieza el alta.
+    await enviar(whatsapp, { direccion, texto: 'cita' });
+    const nueva = await loadConversation(handle.db, 'whatsapp', direccion, null);
+    expect(nueva.state).toBe('nombre');
+    expect(nueva.patientId).toBeNull();
+    expect(nueva.lastTicket).toBeNull();
+
+    await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+  }, 30_000);
+
+  it('un vínculo bloqueado de una versión anterior tampoco retoma la ficha', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}V`;
+    await linkChat(handle.db, { patientId, canal: 'whatsapp', direccion });
+    await handle.db.insert(botConversations).values({
+      canal: 'whatsapp',
+      direccion,
+      state: 'motivo',
+      draft: { fullName: 'Paciente anterior' },
+      patientId,
+      lastTicket: 4322,
+    });
+    // Lo que dejaba la desvinculación antigua: fila presente pero bloqueada.
+    await handle.db
+      .update(patientChannels)
+      .set({ isBlocked: true })
+      .where(
+        and(eq(patientChannels.channel, 'whatsapp'), eq(patientChannels.direccion, direccion)),
+      );
+
+    await enviar(whatsapp, { direccion, texto: 'cita' });
+    const nueva = await loadConversation(handle.db, 'whatsapp', direccion, null);
+    expect(nueva.state).toBe('nombre');
+    expect(nueva.patientId).toBeNull();
+    expect(nueva.lastTicket).toBeNull();
+
+    await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
   }, 30_000);
 

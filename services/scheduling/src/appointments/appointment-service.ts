@@ -415,7 +415,16 @@ export const latestAppointmentsByRequest = async (
   const rows = await db
     .select()
     .from(appointments)
-    .where(and(inArray(appointments.requestId, [...requestIds]), isNotNull(appointments.requestId)))
+    .where(
+      and(
+        inArray(appointments.requestId, [...requestIds]),
+        isNotNull(appointments.requestId),
+        // Solo la cita **vigente**. Una cancelada o reprogramada ya no es «la cita
+        // de la solicitud»: si se colara, la cola y el bot seguirían mostrando la
+        // fecha vieja aunque la secretaría la hubiera cancelado en la agenda.
+        inArray(appointments.status, [...OCCUPYING_STATUSES]),
+      ),
+    )
     .orderBy(desc(appointments.createdAt));
 
   const map = new Map<string, AppointmentRow>();

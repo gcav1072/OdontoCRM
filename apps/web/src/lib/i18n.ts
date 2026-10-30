@@ -2182,7 +2182,7 @@ const DICCIONARIO = {
   'notificaciones.canales.desvincular': 'Desvincular',
   'notificaciones.canales.desvincularTitulo': 'Desvincular a {paciente}',
   'notificaciones.canales.desvincularTexto':
-    'El chat queda bloqueado y el paciente no vuelve a recibir mensajes del bot. Podrá vincularse otra vez con un enlace nuevo.',
+    'El chat se separa de esta ficha: no volverá a recibir sus avisos y, si escribe otra vez, empezará una conversación nueva y podrá registrarse como otro paciente.',
   'notificaciones.canales.desvinculado': 'Paciente desvinculado.',
   'notificaciones.canales.generado': 'Enlace de vinculación generado para {paciente}.',
   'notificaciones.canales.errorGenerar': 'No se pudo generar el enlace de vinculación.',

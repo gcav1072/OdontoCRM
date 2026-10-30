@@ -43,6 +43,7 @@ import { getDayView } from './agenda/day-view-service.js';
 import { notifyBatch, notifyPreview } from './agenda/notify-service.js';
 import {
   createRequest,
+  getRequest,
   getRequestRow,
   listRequests,
   waitingQueue,
@@ -744,6 +745,13 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
 
     const after = await getRequestRow(schedulingHandle.db, request.id);
     expect(after.status).toBe('en_espera_cita');
+
+    // La solicitud ya no debe mostrar la cita cancelada como si siguiera en pie:
+    // es lo que hacía que la cola y el bot hablaran de una fecha vieja.
+    const resumen = await getRequest(schedulingHandle.db, request.id);
+    expect(resumen.appointmentId).toBeNull();
+    expect(resumen.appointmentDate).toBeNull();
+    expect(resumen.appointmentTime).toBeNull();
   }, 60_000);
 
   it('la vista del día arma franjas, citas, cola y contadores', async () => {
@@ -950,8 +958,12 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
       'Telegram',
     );
 
-    // El ticket vuelve a la cola: la solicitud queda «en espera de cita».
+    // El ticket vuelve a la cola: la solicitud queda «en espera de cita» y deja
+    // de mostrar la cita cancelada como cita vigente.
     expect((await getRequestRow(schedulingHandle.db, request.id)).status).toBe('en_espera_cita');
+    const resumen = await getRequest(schedulingHandle.db, request.id);
+    expect(resumen.appointmentDate).toBeNull();
+    expect(resumen.appointmentTime).toBeNull();
 
     // La tarjeta ve las cancelaciones **del paciente** por su canal.
     const hoy = todayInClinic();

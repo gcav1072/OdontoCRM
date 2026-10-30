@@ -328,10 +328,54 @@ const estadoDe = (status: AppointmentStatus): string => {
   return labels[status] ?? status;
 };
 
+/** Fecha `AAAA-MM-DD` como `dd/mm/aaaa`, que es como se lee y se dicta aquí. */
+const fechaVe = (date: string): string => date.split('-').reverse().join('/');
+
+/**
+ * Ventana de citas que el asistente mira para confirmar o cancelar: de hoy a 60 días
+ * (`BOT_CONFIRM_WINDOW_DAYS`). Sin tope, un paciente con muchas citas recibiría una
+ * lista interminable de opciones.
+ */
+const ventanaDeCitas = (now: Date = new Date()): { from: string; to: string } => {
+  const from = todayInClinic(now);
+  const tope = new Date(
+    new Date(`${from}T00:00:00Z`).getTime() + BOT_CONFIRM_WINDOW_DAYS * 86_400_000,
+  );
+  return { from, to: tope.toISOString().slice(0, 10) };
+};
+
 const describeRequest = (request: RequestSummary): string =>
   request.appointmentDate === null
     ? 'Todavía estamos buscándole fecha y hora; te avisaremos por aquí.'
-    : `Tu cita es el ${request.appointmentDate.split('-').reverse().join('/')} a las ${request.appointmentTime ?? ''}.`;
+    : `Tu cita es el ${fechaVe(request.appointmentDate)} a las ${request.appointmentTime ?? ''}.`;
+
+/**
+ * La **última cita cancelada** de una solicitud que volvió a la cola. Es lo que
+ * permite que el bot no siga hablando de una cita que la secretaría canceló en la
+ * agenda: el resumen de la solicitud ya no la muestra como cita vigente, pero el
+ * paciente merece saber qué pasó con ella.
+ */
+const citaCanceladaDeLaSolicitud = async (
+  services: AsistenteServices,
+  patientId: string,
+  requestId: string,
+): Promise<AppointmentSummary | null> => {
+  const { from, to } = ventanaDeCitas();
+  const pagina = await services.clients.listAppointments({
+    patientId,
+    from,
+    to,
+    pageSize: 50,
+  });
+  const canceladas = pagina.items.filter(
+    (cita) => cita.requestId === requestId && cita.status === 'cancelada',
+  );
+  return (
+    canceladas.sort((a, b) =>
+      (b.cancelledAt ?? b.updatedAt).localeCompare(a.cancelledAt ?? a.updatedAt),
+    )[0] ?? null
+  );
+};
 
 const showStatus = async (
   services: AsistenteServices,
@@ -350,10 +394,20 @@ const showStatus = async (
     return;
   }
 
+  let cita = describeRequest(found);
+  if (found.status === 'en_espera_cita') {
+    const cancelada = await citaCanceladaDeLaSolicitud(services, found.patientId, found.id);
+    if (cancelada !== null) {
+      cita = `La cita del ${fechaVe(cancelada.date)} a las ${formatTime12h(
+        cancelada.startTime,
+      )} quedó cancelada. ${cita}`;
+    }
+  }
+
   await reply(services, conversacion, 'estado_solicitud', {
     ticket: found.ticket,
     estado: estadoDe(found.status),
-    cita: describeRequest(found),
+    cita,
   });
 };
 
@@ -403,22 +457,6 @@ const cancelRequest = async (
 /* ── Pasos del asistente ───────────────────────────────────────────────────── */
 
 /* ── Confirmar la cita (ADR 0052) ──────────────────────────────────────────── */
-
-/** Fecha `AAAA-MM-DD` como `dd/mm/aaaa`, que es como se lee y se dicta aquí. */
-const fechaVe = (date: string): string => date.split('-').reverse().join('/');
-
-/**
- * Ventana de citas que el asistente mira para confirmar o cancelar: de hoy a 60 días
- * (`BOT_CONFIRM_WINDOW_DAYS`). Sin tope, un paciente con muchas citas recibiría una
- * lista interminable de opciones.
- */
-const ventanaDeCitas = (now: Date = new Date()): { from: string; to: string } => {
-  const from = todayInClinic(now);
-  const tope = new Date(
-    new Date(`${from}T00:00:00Z`).getTime() + BOT_CONFIRM_WINDOW_DAYS * 86_400_000,
-  );
-  return { from, to: tope.toISOString().slice(0, 10) };
-};
 
 const responderConfirmada = async (
   services: AsistenteServices,
@@ -1062,7 +1100,7 @@ export const handleInbound = async (
     return { ...conversacion, handled: false, action: 'duplicado' };
   }
 
-  const conversation = await loadConversation(
+  let conversation = await loadConversation(
     services.db,
     entrante.canal,
     entrante.direccion,
@@ -1070,6 +1108,41 @@ export const handleInbound = async (
   );
   if (await isFlooding(services, conversation)) {
     return { ...conversacion, handled: false, action: 'anti_flood' };
+  }
+
+  /**
+   * Si la conversación recuerda a un paciente pero el chat ya no está vinculado
+   * (desvinculación de una versión anterior o cambio de número del bot), se
+   * empieza de cero. Sin esto, el `lastTicket` y el `patientId` viejos seguían
+   * bloqueando el alta como «ya tienes una solicitud en curso».
+   *
+   * No se dispara en el caso «documento duplicado»: ahí el `patientId` se guarda
+   * **antes** de existir el vínculo (se confirma al final); resetearlo borraría
+   * el alta a mitad de camino. Por eso solo cuenta un ticket ya emitido o una
+   * conversación en `inicio` que venía de un vínculo por código.
+   */
+  const recuerdaPaciente =
+    conversation.lastTicket !== null ||
+    (conversation.patientId !== null && conversation.state === 'inicio');
+  if (recuerdaPaciente) {
+    const vinculado = await channelByDireccion(services.db, entrante.canal, entrante.direccion);
+    if (vinculado === null) {
+      await saveConversation(services.db, conversacion, {
+        state: 'inicio',
+        draft: emptyDraft(),
+        patientId: null,
+        lastTicket: null,
+        opciones: {},
+      });
+      conversation = {
+        ...conversation,
+        state: 'inicio',
+        draft: {},
+        patientId: null,
+        lastTicket: null,
+        opciones: {},
+      };
+    }
   }
 
   const adapter = services.canales.get(entrante.canal);
