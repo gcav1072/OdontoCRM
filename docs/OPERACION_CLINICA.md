@@ -304,7 +304,23 @@ responder «confirmar». Da igual cómo lo haga:
 **La cita no viaja sola por confirmar.** Aunque el paciente no haya respondido, si llega
 se registra su llegada como siempre: «Confirmada» es un dato más, no un requisito.
 
-### 8.2 La sección «Citas próximas»
+### 8.2 WhatsApp: vincular un paciente
+
+El consultorio puede avisar por WhatsApp, pero **solo a quien escribió antes** al número o se
+vinculó con un código. Para vincular a un paciente:
+
+1. En `/notificaciones`, busca al paciente y pulsa **Generar enlace de vinculación**.
+2. Aparecen dos QR: el de Telegram y el de **WhatsApp**. El paciente escanea el de WhatsApp (o abre
+   el enlace `wa.me`) y su WhatsApp queda asociado a la ficha.
+3. Si el canal de WhatsApp está caído (`reconectando`, `sesión cerrada`), se ve en la cabecera y en
+   **Configuración → Canales**. Avisa a quien administra; mientras tanto, el aviso queda para
+   llamada manual.
+
+No se escribe nunca en frío al teléfono de la ficha: si un paciente quiere recibir avisos por
+WhatsApp, **él escribe primero** o usa el enlace de vinculación. Usa un número dedicado al bot y
+mantén el teléfono del consultorio encendido y con conexión.
+
+### 8.3 La sección «Citas próximas»
 
 Arriba de la bandeja está la sección **Citas próximas**: las citas de los próximos días
 con el canal por el que se le puede escribir a cada paciente (o «sin canal vinculado», que

@@ -711,3 +711,20 @@ escritos como casos nuevos (`CAJ-12`, `CAJ-13`) y que se firman en esta misma co
   anulación sobre una factura con diferencial. Se apoyan en `CAJ-01` a `CAJ-04`, que ya pasaron.
 - **`CAJ-12` y `CAJ-13`.** Re-probar el historial de `/caja` sin filtros y el monto propuesto al
   cambiar de medio de pago, según los apartados $5.0$.
+
+---
+
+## 6. WhatsApp por Baileys (ADR 0072–0074)
+
+Estos casos se ejecutan con un **número de prueba** y un teléfono real; no usan el número de producción.
+
+- [ ] **WA-01 · Vincular por QR.** Configuración → Canales → Activar WhatsApp → proveedor Baileys → Vincular (QR). Escanear desde el teléfono del consultorio (Dispositivos vinculados). La insignia pasa a `conectado` y aparece el número.
+- [ ] **WA-02 · Vincular por código.** Cerrar sesión y volver a vincular con código; escribir el código en el teléfono. La sesión queda `conectado`.
+- [ ] **WA-03 · Conversación completa.** Escribir «cita» desde otro teléfono, recorrer los 7 pasos y recibir el ticket. Comprobar que las opciones llegan numeradas (sin botones).
+- [ ] **WA-04 · Aviso con .ics.** Programar una cita y recibir el texto con la invitación a confirmar y el archivo `cita-<ticket>.ics`; abrirlo en Android e iOS.
+- [ ] **WA-05 · Confirmar y cancelar escribiendo.** Responder «confirmar» y luego «cancelar»; la cita cambia de estado y la bandeja lo refleja.
+- [ ] **WA-06 · Vinculación por wa.me.** Generar el enlace de WhatsApp de un paciente y abrirlo desde su teléfono; el código `VINCULAR ...` queda asociado a su ficha.
+- [ ] **WA-07 · Desvincular desde el teléfono.** Cerrar la sesión en WhatsApp (Dispositivos vinculados). El panel pasa a `sesión cerrada`, llega la alerta al bot de administración y el aviso de cita cae a manual.
+- [ ] **WA-08 · Reconexión.** Cortar la red del servidor 30 s y restaurarla; el estado pasa por `reconectando` y vuelve a `conectado` sin reiniciar el servicio.
+- [ ] **WA-09 · Dos instancias.** Levantar una segunda copia con el mismo número: la primera pasa a `reemplazada` y **no** reconecta sola; el aviso llega al administrador.
+- [ ] **WA-10 · Modo test.** Con `TEST_MODE=true`, el socket no se abre (sin QR, sin envíos) y los avisos quedan simulados.

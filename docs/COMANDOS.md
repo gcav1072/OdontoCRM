@@ -504,6 +504,7 @@ base de datos). Necesitan los servicios arrancados y datos sembrados.
 | Comando | Qué recorre | Comprobaciones |
 | :--- | :--- | :--- |
 | `npm run telegram:menu` | El **menú de comandos** que Telegram tiene registrado para el bot, comparado con el catálogo del contrato | 1 (con `-- --set` lo vuelve a registrar) |
+| `npm run whatsapp:estado` · `whatsapp:vincular` · `whatsapp:reconectar` · `whatsapp:cerrar` | La **sesión de WhatsApp por Baileys** desde la terminal: estado, QR/código, reconexión y cierre | — (consulta la sesión real) |
 | `npm run smoke:auth` | Ciclo de sesión: login, refresco, permisos, cierre | 17 |
 | `npm run smoke:patients` | Registro, duplicado, edición con motivo, borrado y auditoría · **subida, listado y descarga de un adjunto** | 29 |
 | `npm run smoke:agenda` | Ticket, cupo, franja, sobrecupo, reprogramación y aviso en lote | 41 |
@@ -642,7 +643,7 @@ workspace y las rutas siguen siendo correctas.
 | Ver por qué un aviso no se envió | `npm run smoke:notifications`, la bandeja `/notificaciones` y `logs/notifications.*.log` |
 | Ver por qué un llamado no llega al lobby | `npm run smoke:screens`, `logs/screens.out.log` y `logs/scheduling.out.log` |
 | Probar con Telegram real | token en `services/notifications/.env` + `TELEGRAM_MODE=auto` y `npm run smoke:notifications` |
-| Probar WhatsApp | credenciales `WHATSAPP_*` en `services/notifications/.env`; el webhook es `/api/v1/notifications/webhook/whatsapp` |
+| Probar WhatsApp | `npm run whatsapp:estado` / `npm run whatsapp:vincular` (QR en la terminal) o Configuración → Canales; con Cloud API, credenciales `WHATSAPP_*` y webhook `/api/v1/notifications/webhook/whatsapp` |
 | Registrar una pantalla kiosko | módulo `/pantallas` → «Nueva pantalla» → abrir el enlace con el token en el televisor |
 | Revisar la auditoría de un cambio | módulo `/auditoria` o `GET /api/v1/audit/events` |
 | Un paciente con cita sigue como «en espera de cita» | `node tools/reparar-estados-pacientes.mjs` (informa) y `--apply` para repararlo · requiere `npm run build:node` |
@@ -666,8 +667,8 @@ workspace y las rutas siguen siendo correctas.
 | `verify:backup` | raíz (`PG_ADMIN_URL`) y, para el aviso, las claves del bot de administración |
 
 Secretos que van **solo** en los `.env` (nunca al repositorio): `PG_ADMIN_URL`,
-`INTERNAL_SERVICE_SECRET`, `COOKIE_SECRET`, `TELEGRAM_BOT_TOKEN`, `WHATSAPP_*`,
-`STORAGE_ENCRYPTION_KEY`, `ADMIN_TELEGRAM_BOT_TOKEN` y las
+`INTERNAL_SERVICE_SECRET`, `COOKIE_SECRET`, `TELEGRAM_BOT_TOKEN`, `WHATSAPP_*` (Cloud API),
+`STORAGE_ENCRYPTION_KEY` (almacén **y** sesión de WhatsApp), `ADMIN_TELEGRAM_BOT_TOKEN` y las
 claves de `services/identity/.keys/`. Detalle en
 [`SEGURIDAD_SECRETOS.md`](SEGURIDAD_SECRETOS.md).
 
