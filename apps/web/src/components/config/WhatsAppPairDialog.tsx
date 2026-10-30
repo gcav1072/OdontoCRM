@@ -78,6 +78,15 @@ export const WhatsAppPairDialog = ({
 
   const vista: WhatsAppSessionView | undefined = sesion.data;
   const qr = notificationQrImage(vista?.qrDataUrl);
+  const esperando =
+    vista?.estado === 'esperando_qr' ||
+    vista?.estado === 'conectando' ||
+    vista?.estado === 'reconectando';
+  const pedirOtraVez = (): void => {
+    pedir.mutate(
+      metodo === 'qr' ? { metodo: 'qr' } : { metodo: 'codigo', telefono: telefono.trim() },
+    );
+  };
 
   return (
     <Dialog
@@ -135,6 +144,15 @@ export const WhatsAppPairDialog = ({
               className="rounded-control border border-border bg-surface p-2"
             />
             <p className="text-xs text-ink-subtle">{t('config.canales.whatsapp.qrCaduca')}</p>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={pedir.isPending}
+              loadingLabel={t('config.canales.whatsapp.preparando')}
+              onClick={pedirOtraVez}
+            >
+              {t('config.canales.whatsapp.regenerarQr')}
+            </Button>
           </div>
         ) : vista?.pairingCode !== null && vista?.pairingCode !== undefined ? (
           <div className="space-y-2 text-center">
@@ -147,8 +165,44 @@ export const WhatsAppPairDialog = ({
           </div>
         ) : vista === undefined || sesion.isPending ? (
           <Spinner label={t('comun.cargando')} showLabel />
+        ) : esperando ? (
+          <div className="space-y-3 text-center">
+            <Alert variant="warning">{t('config.canales.whatsapp.esperando')}</Alert>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={pedir.isPending}
+              loadingLabel={t('config.canales.whatsapp.preparando')}
+              onClick={pedirOtraVez}
+            >
+              {metodo === 'qr'
+                ? t('config.canales.whatsapp.regenerarQr')
+                : t('config.canales.whatsapp.pedirCodigo')}
+            </Button>
+          </div>
         ) : (
-          <Alert variant="warning">{t('config.canales.whatsapp.esperando')}</Alert>
+          <div className="space-y-3">
+            <Alert variant="info" title={t('config.canales.whatsapp.sinSesionTitulo')}>
+              {t('config.canales.whatsapp.sinSesionTexto')}
+            </Alert>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={pedir.isPending}
+              loadingLabel={t('config.canales.whatsapp.preparando')}
+              onClick={pedirOtraVez}
+            >
+              {metodo === 'qr'
+                ? t('config.canales.whatsapp.regenerarQr')
+                : t('config.canales.whatsapp.pedirCodigo')}
+            </Button>
+          </div>
+        )}
+
+        {pedir.isError && (
+          <Alert variant="danger" title={t('config.canales.whatsapp.errorSesion')}>
+            {apiErrorMessage(pedir.error)}
+          </Alert>
         )}
 
         {sesion.isError && (

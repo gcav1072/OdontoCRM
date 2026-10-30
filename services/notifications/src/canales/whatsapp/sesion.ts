@@ -570,6 +570,9 @@ export const createWhatsAppSesion = (options: WhatsAppSesionOptions): WhatsAppSe
       estadoActual = 'sin_vincular';
       qrCrudo = null;
       qrExpiraEn = null;
+      pairingCode = null;
+      pairingPorCodigo = false;
+      motivo = 'El QR caducó antes de escanearse; genera uno nuevo';
       // Si el QR caducó sin escanear, el socket ya no sirve para vincular: se
       // cierra para que un nuevo «Vincular» abra otro limpio.
       await cerrarSocket();

@@ -126,6 +126,24 @@ describe('sesión de WhatsApp por Baileys', () => {
     expect(vista.qrExpiraEn).not.toBeNull();
   });
 
+  it('cuando el QR caduca deja de esperar y pide generar otro', async () => {
+    vi.useFakeTimers();
+    const { sesion } = crear({ linked: false, autoQr: true });
+    await sesion.iniciar(async () => undefined);
+
+    const peticion = sesion.pair({ metodo: 'qr' });
+    await vi.advanceTimersByTimeAsync(200);
+    const vista = await peticion;
+    expect(vista.estado).toBe('esperando_qr');
+    expect(vista.qrDataUrl).toMatch(/^data:image\/png;base64,/);
+
+    await vi.advanceTimersByTimeAsync(61_000);
+    const vencida = await sesion.vista();
+    expect(vencida.estado).toBe('sin_vincular');
+    expect(vencida.qrDataUrl).toBeNull();
+    expect(vencida.motivo).toContain('caducó');
+  });
+
   it('reconecta con backoff tras un 515 y vuelve a conectar', async () => {
     vi.useFakeTimers();
     const { sesion, sockets } = crear({ linked: true });

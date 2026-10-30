@@ -60,7 +60,7 @@ export interface InternalClients {
   }) => Promise<RequestSummary>;
 
   findRequestByTicket: (ticket: string) => Promise<RequestSummary | null>;
-  cancelRequest: (id: string, reason: string) => Promise<RequestSummary>;
+  cancelRequest: (id: string, reason: string, channel?: Channel) => Promise<RequestSummary>;
   getAppointment: (id: string) => Promise<AppointmentSummary | null>;
 
   /**
@@ -259,7 +259,9 @@ export const createInternalClients = (config: NotificationsConfig): InternalClie
       () =>
         request<RequestSummary>(config, config.SCHEDULING_URL, '/internal/v1/requests', {
           method: 'POST',
-          body: { ...input, source: 'telegram' },
+          // El origen es el canal real: en WhatsApp la auditoría no debe decir
+          // «servicio:telegram» (antes estaba fijo y confundía el rastro).
+          body: { ...input, source: input.channel },
         }),
       ESCRITURA,
     ),
@@ -315,14 +317,14 @@ export const createInternalClients = (config: NotificationsConfig): InternalClie
       }
     }, LECTURA),
 
-  cancelRequest: async (id, reason) =>
+  cancelRequest: async (id, reason, channel) =>
     conReintentos(
       () =>
         request<RequestSummary>(
           config,
           config.SCHEDULING_URL,
           `/internal/v1/requests/${id}/cancel`,
-          { method: 'POST', body: { reason } },
+          { method: 'POST', body: { reason, ...(channel === undefined ? {} : { channel }) } },
         ),
       ESCRITURA,
     ),

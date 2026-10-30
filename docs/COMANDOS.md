@@ -643,7 +643,7 @@ workspace y las rutas siguen siendo correctas.
 | Ver por qué un aviso no se envió | `npm run smoke:notifications`, la bandeja `/notificaciones` y `logs/notifications.*.log` |
 | Ver por qué un llamado no llega al lobby | `npm run smoke:screens`, `logs/screens.out.log` y `logs/scheduling.out.log` |
 | Probar con Telegram real | token en `services/notifications/.env` + `TELEGRAM_MODE=auto` y `npm run smoke:notifications` |
-| Probar WhatsApp | `npm run whatsapp:estado` / `npm run whatsapp:vincular` (QR en la terminal) o Configuración → Canales; con Cloud API, credenciales `WHATSAPP_*` y webhook `/api/v1/notifications/webhook/whatsapp` |
+| Probar WhatsApp | **Configuración → Canales → WhatsApp → Vincular (QR)** (se escanea desde el teléfono del consultorio) o `npm run whatsapp:estado` / `npm run whatsapp:vincular` (QR en la terminal). Cloud API queda como proveedor alternativo |
 | Registrar una pantalla kiosko | módulo `/pantallas` → «Nueva pantalla» → abrir el enlace con el token en el televisor |
 | Revisar la auditoría de un cambio | módulo `/auditoria` o `GET /api/v1/audit/events` |
 | Un paciente con cita sigue como «en espera de cita» | `node tools/reparar-estados-pacientes.mjs` (informa) y `--apply` para repararlo · requiere `npm run build:node` |

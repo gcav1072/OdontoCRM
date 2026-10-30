@@ -306,6 +306,12 @@ se registra su llegada como siempre: «Confirmada» es un dato más, no un requi
 
 ### 8.2 WhatsApp: vincular un paciente
 
+Antes de vincular pacientes, el **número del consultorio** tiene que estar conectado: en
+**Configuración → Canales → WhatsApp**, activa el interruptor y pulsa **Vincular (QR)**. El panel
+guarda Baileys y abre el QR en un solo paso; se escanea desde el **teléfono del consultorio**
+(WhatsApp → Ajustes → Dispositivos vinculados → *Vincular un dispositivo*), no desde el teléfono
+del paciente. Si el QR caduca, genera otro desde el mismo diálogo.
+
 El consultorio puede avisar por WhatsApp, pero **solo a quien escribió antes** al número o se
 vinculó con un código. Para vincular a un paciente:
 

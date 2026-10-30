@@ -387,6 +387,11 @@ de 7 pasos, la cola de envíos, las plantillas y el `.ics` son los mismos para t
   vincula por QR o código desde **Configuración → Canales**; no hay webhook ni túnel para ese
   proveedor. La sesión Signal se guarda cifrada en `odonto_notifications` (ADR 0073).
   Si el paciente tiene los dos canales, el aviso prefiere **WhatsApp** (decisión D16).
+- **Cómo vincular el número del consultorio**: `Configuración → Canales → WhatsApp` → activar el
+  interruptor → **Vincular (QR)**. Si el interruptor o el proveedor aún no estaban guardados, el
+  propio botón guarda Baileys y abre el QR. Se escanea **desde el teléfono del consultorio**
+  (WhatsApp → Ajustes → **Dispositivos vinculados** → *Vincular un dispositivo*), no desde el
+  teléfono del paciente. El QR caduca; si eso pasa, el panel permite generar otro sin salir.
 - **Cloud API se conserva** como alternativa configurable (`whatsappProvider = cloud_api`).
   Solo en ese caso el webhook es público: Meta no manda JWT y la seguridad la da
   `x-hub-signature-256` (HMAC del cuerpo crudo con el `app_secret`). El gateway lo deja pasar

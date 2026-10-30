@@ -24,6 +24,20 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 - Intenciones con argumento en canales sin comandos (`vincular ABC123`, `estado #000123`) y
   desvinculación por canal (`?channel=telegram|whatsapp`).
 
+### Corregido
+- **El alta por WhatsApp llegaba al último paso y fallaba**: el borde interno de pacientes tenía
+  una lista de canales copiada a mano sin `whatsapp`, así que el «Confirmar» respondía 400 y el
+  paciente solo veía «ahora mismo no puedo consultar el sistema». Ahora usa el catálogo compartido
+  `CHANNELS` y el alta se guarda con su ticket.
+- **El QR no se veía al guardar el interruptor**: notifications recarga los canales al instante
+  cuando se pide la sesión de WhatsApp, en vez de esperar hasta dos minutos (caché + sondeo). El
+  panel además guarda Baileys y abre el QR en un solo paso desde «Vincular».
+- Si el guardado final falla por un servicio caído, el bot vuelve a mostrar el **resumen y los
+  botones de confirmar** en vez de dejar al paciente a mitad de la conversación.
+- El QR caducado lo dice y ofrece **generar otro**; antes la pantalla se quedaba «esperando» sin
+  salida.
+- La solicitud creada desde WhatsApp ya se audita con su canal real, no como si fuera Telegram.
+
 ### Eliminado
 - Para el flujo normal desaparecen el túnel y la ruta pública de WhatsApp. La ruta de webhook se
   conserva **solo** para Cloud API.

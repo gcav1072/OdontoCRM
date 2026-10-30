@@ -390,6 +390,7 @@ const cancelRequest = async (
   const cancelled = await services.clients.cancelRequest(
     found.id,
     `el paciente la anuló por ${CHANNEL_LABELS[conversacion.canal]}`,
+    conversacion.canal,
   );
   await reply(services, conversacion, 'estado_solicitud', {
     ticket: cancelled.ticket,
@@ -1364,6 +1365,17 @@ export const avisarFalloAlPaciente = async (
   );
 
   await reply(services, conversacion, 'servicio_no_disponible');
+
+  if (conversation.state === 'confirmacion') {
+    // El fallo pudo ser justo al guardar (pacientes o agenda). Se le vuelve a
+    // enseñar el resumen y los botones: no tiene que repetir los siete pasos.
+    const draft = toDraft(conversation);
+    await reply(services, conversacion, 'confirmar', { resumen: summaryOf(draft) }, [
+      { etiqueta: 'Confirmar', accion: 'confirmar:si' },
+      { etiqueta: 'Corregir', accion: 'confirmar:no' },
+    ]);
+    return;
+  }
 
   // Si estaba rellenando un paso, se le vuelve a pedir para que sepa qué escribir.
   if (PASOS_REPETIBLES.has(conversation.state)) {

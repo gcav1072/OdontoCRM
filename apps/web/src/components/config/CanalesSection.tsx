@@ -26,7 +26,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link2, MessageSquare, PlugZap, RefreshCw, Send, ShieldAlert, Unplug } from 'lucide-react';
 import { useEffect, useState, type ReactElement } from 'react';
 
-import { apiErrorMessageConCampos } from '../../lib/api';
+import { apiErrorMessage, apiErrorMessageConCampos } from '../../lib/api';
 import { settingsApi, whatsappApi } from '../../lib/endpoints';
 import { t, type TranslationKey } from '../../lib/i18n';
 import { notificationKeys } from '../../lib/notifications';
@@ -109,6 +109,7 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
   const [probando, setProbando] = useState<string | null>(null);
   const [dialogo, setDialogo] = useState<{ metodo: 'qr' | 'codigo' } | null>(null);
   const [cerrando, setCerrando] = useState(false);
+  const [preparandoVinculacion, setPreparandoVinculacion] = useState<'qr' | 'codigo' | null>(null);
 
   useEffect(() => {
     setNoSecretos({
@@ -137,14 +138,19 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
   const sesion = useQuery({
     queryKey: notificationKeys.whatsappSession,
     queryFn: ({ signal }) => whatsappApi.session(signal),
-    enabled: canales.whatsappEnabled && canales.whatsappProvider === 'baileys',
+    // Se consulta también antes de guardar: la ruta responde `desactivado` y
+    // así la sección puede explicar el paso que falta en vez de mostrar un error.
+    enabled: proveedor === 'baileys',
     refetchInterval: (consulta) => {
       const estado = consulta.state.data?.estado;
       return estado === 'esperando_qr' || estado === 'conectando' || estado === 'reconectando'
         ? 5_000
         : false;
     },
-    retry: false,
+    // Tras guardar, notificaciones recarga los canales al instante; este margen
+    // cubre el breve instante en que el proceso todavía está reconstruyéndolos.
+    retry: 2,
+    retryDelay: 1_000,
   });
 
   const construirEntrada = (): ChannelSettingsInput => {
@@ -168,7 +174,8 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
   };
 
   const guardar = useMutation({
-    mutationFn: () => settingsApi.updateChannels(construirEntrada()),
+    mutationFn: (entrada?: ChannelSettingsInput) =>
+      settingsApi.updateChannels(entrada ?? construirEntrada()),
     onSuccess: () => {
       void consultas.invalidateQueries({ queryKey: APP_SETTINGS_QUERY_KEY });
       void consultas.invalidateQueries({ queryKey: notificationKeys.whatsappSession });
@@ -208,6 +215,38 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
       onNotice('danger', apiErrorMessageConCampos(fallo));
     },
   });
+
+  /**
+   * Abre la vinculación **guardando antes** si hace falta. En una instalación
+   * nueva el interruptor está apagado y el proveedor puede ser Cloud API: el
+   * socket de Baileys no existe hasta que notifications lee esa configuración,
+   * así que el QR nunca aparecería. Así el botón «Vincular (QR)» funciona en un
+   * solo paso y deja claro dónde se escanea.
+   */
+  const abrirVinculacion = async (metodo: 'qr' | 'codigo'): Promise<void> => {
+    setPreparandoVinculacion(metodo);
+    try {
+      const requiereGuardar =
+        !habilitado ||
+        proveedor !== 'baileys' ||
+        !canales.whatsappEnabled ||
+        canales.whatsappProvider !== 'baileys';
+      if (requiereGuardar) {
+        setHabilitado(true);
+        setProveedor('baileys');
+        await guardar.mutateAsync({
+          ...construirEntrada(),
+          whatsappEnabled: true,
+          whatsappProvider: 'baileys',
+        });
+      }
+      setDialogo({ metodo });
+    } catch {
+      // `guardar` ya mostró el error de validación o del servicio.
+    } finally {
+      setPreparandoVinculacion(null);
+    }
+  };
 
   const probar = async (canal: 'telegram' | 'admin' | 'whatsapp'): Promise<void> => {
     setProbando(canal);
@@ -251,8 +290,11 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
   };
 
   const vistaSesion = sesion.data;
-  const estadoSesion = vistaSesion?.estado ?? 'sin_vincular';
   const sesionDisponible = canales.whatsappEnabled && canales.whatsappProvider === 'baileys';
+  const baileysElegido = proveedor === 'baileys';
+  const estadoSesion = vistaSesion?.estado ?? 'sin_vincular';
+  const conectado = estadoSesion === 'conectado';
+  const sinSesion = estadoSesion === 'sin_vincular' || estadoSesion === 'desactivado';
 
   return (
     <Card>
@@ -307,9 +349,9 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
             <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
               {t('config.canales.whatsapp')}
             </h3>
-            {canales.whatsappEnabled && canales.whatsappProvider === 'baileys' && (
-              <Badge variant={estadoSesion === 'conectado' ? 'success' : 'neutral'} dot>
-                {t(ESTADO_WHATSAPP[estadoSesion])}
+            {baileysElegido && (
+              <Badge variant={conectado ? 'success' : 'neutral'} dot>
+                {t(ESTADO_WHATSAPP[sesionDisponible ? estadoSesion : 'desactivado'])}
               </Badge>
             )}
           </div>
@@ -341,41 +383,62 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
             </div>
           </div>
 
-          {proveedor === 'baileys' ? (
+          {baileysElegido ? (
             <div className="space-y-4 rounded-control border border-border bg-surface-muted/40 p-4">
-              {!sesionDisponible ? (
-                <Alert variant="info">{t('config.canales.whatsapp.sesionNoActiva')}</Alert>
-              ) : sesion.isPending ? (
+              <Alert variant="info" title={t('config.canales.whatsapp.dondeTitulo')}>
+                {t('config.canales.whatsapp.dondeTexto')}
+              </Alert>
+
+              {!sesionDisponible && (
+                <Alert variant="info">{t('config.canales.whatsapp.guardarParaVincular')}</Alert>
+              )}
+
+              {sesion.isError ? (
+                <Alert variant="danger" title={t('config.canales.whatsapp.errorSesion')}>
+                  {apiErrorMessage(sesion.error)}
+                  <span className="block pt-2">
+                    <Button variant="secondary" size="sm" onClick={() => void sesion.refetch()}>
+                      {t('comun.reintentar')}
+                    </Button>
+                  </span>
+                </Alert>
+              ) : sesion.isPending && sesionDisponible ? (
                 <Spinner label={t('comun.cargando')} showLabel />
-              ) : sesion.isError ? (
-                <Alert variant="info">{t('config.canales.whatsapp.sesionNoActiva')}</Alert>
               ) : (
                 <>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                    <span className="font-medium text-ink">
-                      {vistaSesion?.numero ?? t('config.canales.whatsapp.sinNumero')}
-                    </span>
-                    {vistaSesion?.nombre !== null && vistaSesion?.nombre !== undefined && (
-                      <span className="text-ink-muted">{vistaSesion.nombre}</span>
-                    )}
-                  </div>
-                  {vistaSesion?.motivo !== null && vistaSesion?.motivo !== undefined && (
-                    <p className="text-xs text-ink-subtle">{vistaSesion.motivo}</p>
+                  {sinSesion ? (
+                    <Alert variant="info" title={t('config.canales.whatsapp.sinSesionTitulo')}>
+                      {t('config.canales.whatsapp.sinSesionTexto')}
+                    </Alert>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                      <span className="font-medium text-ink">
+                        {vistaSesion?.numero ?? t('config.canales.whatsapp.sinNumero')}
+                      </span>
+                      {vistaSesion?.nombre !== null && vistaSesion?.nombre !== undefined && (
+                        <span className="text-ink-muted">{vistaSesion.nombre}</span>
+                      )}
+                    </div>
                   )}
+
                   <div className="flex flex-wrap gap-2">
                     <Button
                       variant="secondary"
+                      loading={preparandoVinculacion === 'qr'}
+                      loadingLabel={t('config.canales.whatsapp.preparando')}
                       leadingIcon={<Link2 className="size-4" aria-hidden="true" />}
-                      onClick={() => setDialogo({ metodo: 'qr' })}
-                      disabled={!sesionDisponible || estadoSesion === 'conectado'}
+                      onClick={() => void abrirVinculacion('qr')}
+                      disabled={conectado || preparandoVinculacion !== null}
                     >
                       {t('config.canales.whatsapp.vincularQr')}
                     </Button>
                     <Button
                       variant="secondary"
+                      loading={preparandoVinculacion === 'codigo'}
+                      loadingLabel={t('config.canales.whatsapp.preparando')}
                       leadingIcon={<ShieldAlert className="size-4" aria-hidden="true" />}
-                      onClick={() => setDialogo({ metodo: 'codigo' })}
-                      disabled={!sesionDisponible || estadoSesion === 'conectado'}
+                      onClick={() => void abrirVinculacion('codigo')}
+                      disabled={conectado || preparandoVinculacion !== null}
                     >
                       {t('config.canales.whatsapp.vincularCodigo')}
                     </Button>
@@ -385,7 +448,7 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
                       loadingLabel={t('comun.cargando')}
                       leadingIcon={<RefreshCw className="size-4" aria-hidden="true" />}
                       onClick={() => reiniciar.mutate()}
-                      disabled={!sesionDisponible}
+                      disabled={!sesionDisponible || preparandoVinculacion !== null}
                     >
                       {t('config.canales.whatsapp.reconectar')}
                     </Button>
@@ -393,12 +456,16 @@ export const CanalesSection = ({ vista, onNotice }: CanalesSectionProps) => {
                       variant="danger"
                       leadingIcon={<Unplug className="size-4" aria-hidden="true" />}
                       onClick={() => setCerrando(true)}
-                      disabled={!sesionDisponible || estadoSesion === 'sin_vincular'}
+                      disabled={!sesionDisponible || sinSesion || preparandoVinculacion !== null}
                     >
                       {t('config.canales.whatsapp.cerrarSesion')}
                     </Button>
                   </div>
                 </>
+              )}
+
+              {vistaSesion?.motivo !== null && vistaSesion?.motivo !== undefined && (
+                <p className="text-xs text-ink-subtle">{vistaSesion.motivo}</p>
               )}
 
               <div className="grid gap-4 @2xl:grid-cols-3">

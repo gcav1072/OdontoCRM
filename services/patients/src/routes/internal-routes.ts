@@ -1,4 +1,4 @@
-import { upsertPatientSchema } from '@odontocrm/contracts';
+import { CHANNELS, upsertPatientSchema } from '@odontocrm/contracts';
 import { ForbiddenError, NotFoundError, parseOrThrow } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
@@ -12,8 +12,19 @@ import {
 } from '../patients/patient-service.js';
 import type { PatientsServices } from '../services.js';
 
-const channelSchema = z.object({
-  channel: z.enum(['telegram', 'registro', 'telefono', 'presencial']).default('registro'),
+/**
+ * Canal con el que se da de alta o actualiza al paciente desde otro servicio.
+ * Se exporta para que la prueba fije el catálogo completo: el día que exista un
+ * canal nuevo, el borde del alta no puede volver a quedarse atrás.
+ */
+export const internalPatientChannelSchema = z.object({
+  /**
+   * El canal del alta. Se toma del catálogo compartido: antes era una lista
+   * copiada a mano y **no incluía `whatsapp`**, así que el último paso del alta
+   * por WhatsApp fallaba con un 400 que el paciente veía como «no puedo consultar
+   * el sistema». Si mañana entra otro canal, este borde lo acepta sin tocar nada.
+   */
+  channel: z.enum(CHANNELS).default('registro'),
   reason: z.string().trim().max(200).optional(),
 });
 
@@ -105,7 +116,10 @@ export const registerInternalRoutes = (app: FastifyInstance, services: PatientsS
    */
   app.post('/internal/v1/patients/upsert-by-cedula', async (request, reply) => {
     const input = parseOrThrow(upsertPatientSchema, request.body);
-    const extra = parseOrThrow(channelSchema, (request.body as Record<string, unknown>) ?? {});
+    const extra = parseOrThrow(
+      internalPatientChannelSchema,
+      (request.body as Record<string, unknown>) ?? {},
+    );
     const userAgent = request.headers['user-agent'];
 
     const result = await upsertPatientByDocument(db, input, {

@@ -1,6 +1,7 @@
 import {
   appointmentFiltersSchema,
   cancelAppointmentBotSchema,
+  CHANNELS,
   confirmAppointmentSchema,
   createRequestSchema,
 } from '@odontocrm/contracts';
@@ -27,7 +28,11 @@ const internalRequestSchema = createRequestSchema.extend({
 
 const idParamsSchema = z.object({ id: z.uuid() });
 const ticketParamsSchema = z.object({ ticket: z.string().trim().min(1).max(20) });
-const reasonSchema = z.object({ reason: z.string().trim().max(300).optional() });
+const reasonSchema = z.object({
+  reason: z.string().trim().max(300).optional(),
+  /** Canal por el que el paciente anuló la solicitud (para la auditoría). */
+  channel: z.enum(CHANNELS).optional(),
+});
 
 const safeEquals = (left: string, right: string): boolean => {
   const a = Buffer.from(left);
@@ -85,11 +90,12 @@ export const registerInternalRoutes = (
   app.post('/internal/v1/requests/:id/cancel', async (request, reply) => {
     const { id } = parseOrThrow(idParamsSchema, request.params);
     const input = parseOrThrow(reasonSchema, request.body ?? {});
+    const canal = input.channel ?? 'telegram';
     const summary = await cancelRequest(
       db,
       id,
-      input.reason ?? 'anulada por el paciente por Telegram',
-      systemActor('servicio:telegram'),
+      input.reason ?? `anulada por el paciente por ${canal}`,
+      systemActor(`servicio:${canal}`),
     );
     return reply.status(200).send(summary);
   });

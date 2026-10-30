@@ -14,7 +14,15 @@ import type { NotificationsConfig } from './config.js';
  * Sin secreto compartido (o si identity no responde) devuelve `null`: el servicio sigue con
  * su `.env`, que es el respaldo de siempre.
  */
-export type ChannelCredentialsLookup = () => Promise<ChannelCredentials | null>;
+export interface ChannelCredentialsLookup {
+  (): Promise<ChannelCredentials | null>;
+  /**
+   * Tira la caché para que la próxima lectura pregunte a identity. Lo usa la
+   * recarga **forzada**: cuando el admin acaba de guardar el interruptor de
+   * WhatsApp, no se puede esperar al minuto de caché + el minuto del sondeo.
+   */
+  invalidar: () => void;
+}
 
 export const createChannelCredentialsLookup = (
   config: NotificationsConfig,
@@ -24,6 +32,8 @@ export const createChannelCredentialsLookup = (
 
   let cache: { creds: ChannelCredentials; expiresAt: number } | null = null;
   let inFlight: Promise<ChannelCredentials | null> | null = null;
+  /** Generación de la caché: una lectura vieja no puede repoblarla tras invalidar. */
+  let generacion = 0;
 
   const fetchOnce = async (): Promise<ChannelCredentials | null> => {
     if (secret === undefined) return null;
@@ -40,14 +50,30 @@ export const createChannelCredentialsLookup = (
     }
   };
 
-  return async () => {
+  const lookup = (async () => {
     if (cache !== null && cache.expiresAt > Date.now()) return cache.creds;
 
-    inFlight ??= fetchOnce().finally(() => {
-      inFlight = null;
-    });
+    const lectura = generacion;
+    if (inFlight === null) {
+      inFlight = fetchOnce().finally(() => {
+        // Si mientras tanto se invalidó, la promesa nueva es otra: no la pisa.
+        if (lectura === generacion) inFlight = null;
+      });
+    }
     const creds = await inFlight;
-    if (creds !== null) cache = { creds, expiresAt: Date.now() + 60_000 };
+    if (creds !== null && lectura === generacion) {
+      cache = { creds, expiresAt: Date.now() + 60_000 };
+    }
     return creds;
+  }) as ChannelCredentialsLookup;
+
+  lookup.invalidar = () => {
+    generacion += 1;
+    cache = null;
+    // La lectura en vuelo pertenece a la generación anterior: la próxima
+    // llamada debe empezar una nueva.
+    inFlight = null;
   };
+
+  return lookup;
 };

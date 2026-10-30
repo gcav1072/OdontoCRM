@@ -112,6 +112,52 @@ describe('escrituras internas', () => {
     expect(fetchFalso).toHaveBeenCalledTimes(1);
   });
 
+  it('el alta del paciente conserva el canal real, también WhatsApp', async () => {
+    const fetchFalso = espia().mockResolvedValue(
+      respuesta(200, {
+        created: true,
+        patient: { id: 'pac-1', fullName: 'María Pérez', document: 'V-12345678' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchFalso);
+
+    const clients = createInternalClients(config);
+    await clients.upsertPatient({
+      docType: 'V',
+      docNumber: '12345678',
+      fullName: 'María Pérez',
+      birthDate: '1990-05-15',
+      sex: 'F',
+      phone: '+584121234567',
+      channel: 'whatsapp',
+      reason: 'alta desde el asistente de WhatsApp',
+    });
+
+    const [, init] = fetchFalso.mock.calls[0] ?? [];
+    expect(JSON.parse(String(init?.body))).toMatchObject({ channel: 'whatsapp' });
+  });
+
+  it('la solicitud interna identifica el canal como origen, no siempre Telegram', async () => {
+    const fetchFalso = espia().mockResolvedValue(
+      respuesta(201, { id: 'req-1', ticket: '#000001', status: 'en_espera_cita' }),
+    );
+    vi.stubGlobal('fetch', fetchFalso);
+
+    const clients = createInternalClients(config);
+    await clients.createRequest({
+      patientId: 'pac-1',
+      patientName: 'María Pérez',
+      channel: 'whatsapp',
+      reason: 'control',
+    });
+
+    const [, init] = fetchFalso.mock.calls[0] ?? [];
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      channel: 'whatsapp',
+      source: 'whatsapp',
+    });
+  });
+
   it('un rechazo de conexión sí se repite: la petición no llegó a salir', async () => {
     const fetchFalso = espia()
       .mockRejectedValueOnce(rechazoDeConexion())

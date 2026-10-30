@@ -375,13 +375,24 @@ const DICCIONARIO = {
   'config.canales.whatsapp.sesionCerrada': 'Sesión de WhatsApp cerrada',
   'config.canales.whatsapp.instruccion':
     'Abre WhatsApp en el teléfono del consultorio, entra en Dispositivos vinculados y escanea el QR (o pide el código y escríbelo en el teléfono).',
+  'config.canales.whatsapp.dondeTitulo': 'Dónde se vincula',
+  'config.canales.whatsapp.dondeTexto':
+    'Se vincula aquí mismo: pulsa «Vincular (QR)» y escanea desde el WhatsApp del consultorio, en Ajustes → Dispositivos vinculados → Vincular un dispositivo. No hace falta túnel ni token de Meta.',
+  'config.canales.whatsapp.guardarParaVincular':
+    'El interruptor o el proveedor todavía no están guardados. Al pulsar «Vincular» se guarda Baileys y se abre el QR en un solo paso.',
+  'config.canales.whatsapp.sinSesionTitulo': 'Todavía no hay una sesión vinculada',
+  'config.canales.whatsapp.sinSesionTexto':
+    'Pulsa «Vincular (QR)» para generar el código. Si caduca antes de escanearlo, puedes generar otro sin salir de esta pantalla.',
+  'config.canales.whatsapp.regenerarQr': 'Generar otro QR',
+  'config.canales.whatsapp.errorSesion': 'No se pudo leer la sesión de WhatsApp',
   'config.canales.whatsapp.telefonoConsultorio': 'Número del consultorio',
   'config.canales.whatsapp.telefonoAyuda':
     'Escríbelo como lo marcas: 0412-1234567. Se normaliza al código del país.',
   'config.canales.whatsapp.pedirCodigo': 'Pedir código',
   'config.canales.whatsapp.preparando': 'Preparando la vinculación…',
   'config.canales.whatsapp.qrAlt': 'Código QR para vincular WhatsApp',
-  'config.canales.whatsapp.qrCaduca': 'El QR caduca en menos de un minuto; se renueva solo.',
+  'config.canales.whatsapp.qrCaduca':
+    'El QR caduca en menos de un minuto. Si no aparece uno nuevo, genera otro.',
   'config.canales.whatsapp.codigoEmparejamiento': 'Escribe este código en el teléfono:',
   'config.canales.whatsapp.esperando': 'Esperando a que el teléfono termine de vincular…',
   'config.canales.whatsapp.esperaMin': 'Espera mínima entre envíos (s)',

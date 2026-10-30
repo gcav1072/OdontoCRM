@@ -24,6 +24,7 @@
  * puerta de `npm run dev`: la regla es **una sola pila a la vez**.
  */
 import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import pg from 'pg';
 
@@ -41,7 +42,34 @@ const { Client } = pg;
 const ROOT = resolve(process.cwd());
 const soloInformar = process.argv.includes('--all');
 
-/** Las mismas bases que crea `db:bootstrap` (`infra/db/bootstrap.mjs`). */
+/* ── 0. Dependencias que el código importa al arrancar ─────────────────────── */
+
+/**
+ * `@whiskeysockets/baileys` se importa desde el arranque del servicio de
+ * notificaciones, aunque WhatsApp esté apagado. Si falta (un `npm install`
+ * olvidado después de actualizar), el servicio muere con «Cannot find package»
+ * y desde el panel parece que «WhatsApp no está instalado». Mejor decirlo aquí.
+ */
+const require = createRequire(import.meta.url);
+const faltanDependencias = ['@whiskeysockets/baileys'].filter((dependencia) => {
+  try {
+    require.resolve(dependencia);
+    return false;
+  } catch {
+    return true;
+  }
+});
+
+if (faltanDependencias.length > 0) {
+  console.error(
+    'dev:check: faltan dependencias que el código necesita al arrancar:\n' +
+      faltanDependencias.map((dependencia) => `  ✖ ${dependencia}`).join('\n') +
+      '\n\n  Instálalas con:  npm install\n' +
+      '  (si acabas de actualizar el repositorio, el `package-lock.json` ya las trae).\n',
+  );
+  process.exit(soloInformar ? 0 : 1);
+}
+
 /** Las mismas bases que crea `db:bootstrap` (derivadas de `services/` + la cola). */
 const BASES = [...SERVICIOS.map((s) => s.database), 'odonto_events'];
 

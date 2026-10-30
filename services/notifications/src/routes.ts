@@ -11,6 +11,7 @@ import {
   toE164Digits,
   whatsappPairInputSchema,
   type ChannelStatus,
+  type WhatsAppSessionView,
 } from '@odontocrm/contracts';
 import {
   ForbiddenError,
@@ -317,14 +318,41 @@ export const registerNotificationRoutes = (
     },
   );
 
-  /** La sesión de Baileys, o un 404 claro si el proveedor activo es otro. */
-  const sesionWhatsApp = () => {
+  /**
+   * La sesión de Baileys. Si el canal todavía no está construido, se fuerza una
+   * recarga de los canales antes de rendirse: el admin pudo acabar de guardar el
+   * interruptor en el panel y el sondeo periódico aún no lo ha visto.
+   */
+  const sesionWhatsApp = async () => {
+    if (canales.whatsapp === null) {
+      await services.recargarCanales?.({ forzar: true }).catch(() => undefined);
+    }
     if (canales.whatsapp === null) {
       throw new NotFoundError(
-        'La sesión de WhatsApp por Baileys no está activa en esta instalación',
+        'El canal WhatsApp no está activo. Enciéndelo en Configuración → Canales y guarda los cambios para vincularlo.',
       );
     }
     return canales.whatsapp;
+  };
+
+  /** La vista de la sesión; `desactivado` cuando el proveedor Baileys no está en marcha. */
+  const vistaWhatsApp = async (): Promise<WhatsAppSessionView> => {
+    if (canales.whatsapp === null) {
+      await services.recargarCanales?.({ forzar: true }).catch(() => undefined);
+    }
+    if (canales.whatsapp !== null) return canales.whatsapp.vista();
+    return {
+      estado: 'desactivado',
+      numero: null,
+      nombre: null,
+      qrDataUrl: null,
+      qrRaw: null,
+      qrExpiraEn: null,
+      pairingCode: null,
+      conectadoDesde: null,
+      ultimaDesconexion: null,
+      motivo: 'El canal WhatsApp no está activo en este momento',
+    };
   };
 
   const actorDe = (request: FastifyRequest) => {
@@ -344,7 +372,7 @@ export const registerNotificationRoutes = (
   app.get(
     '/api/v1/notifications/whatsapp/session',
     { preHandler: manage },
-    async (_request, reply) => reply.status(200).send(await sesionWhatsApp().vista()),
+    async (_request, reply) => reply.status(200).send(await vistaWhatsApp()),
   );
 
   app.post(
@@ -352,21 +380,25 @@ export const registerNotificationRoutes = (
     { preHandler: manage },
     async (request, reply) => {
       const input = parseOrThrow(whatsappPairInputSchema, request.body ?? {});
-      return reply.status(200).send(await sesionWhatsApp().pair(input, actorDe(request)));
+      const sesion = await sesionWhatsApp();
+      return reply.status(200).send(await sesion.pair(input, actorDe(request)));
     },
   );
 
   app.post(
     '/api/v1/notifications/whatsapp/session/restart',
     { preHandler: manage },
-    async (_request, reply) => reply.status(200).send(await sesionWhatsApp().restart()),
+    async (_request, reply) => {
+      const sesion = await sesionWhatsApp();
+      return reply.status(200).send(await sesion.restart());
+    },
   );
 
   app.post(
     '/api/v1/notifications/whatsapp/session/logout',
     { preHandler: manage },
     async (request, reply) => {
-      const sesion = sesionWhatsApp();
+      const sesion = await sesionWhatsApp();
       await sesion.logout(actorDe(request));
       return reply.status(200).send(await sesion.vista());
     },
@@ -444,20 +476,22 @@ export const registerNotificationRoutes = (
 
   // Gemelas internas de la sesión de WhatsApp: las usa la CLI `whatsapp`.
   app.get('/internal/v1/notifications/whatsapp/session', async (_request, reply) =>
-    reply.status(200).send(await sesionWhatsApp().vista()),
+    reply.status(200).send(await vistaWhatsApp()),
   );
 
   app.post('/internal/v1/notifications/whatsapp/session/pair', async (request, reply) => {
     const input = parseOrThrow(whatsappPairInputSchema, request.body ?? {});
-    return reply.status(200).send(await sesionWhatsApp().pair(input, actorDe(request)));
+    const sesion = await sesionWhatsApp();
+    return reply.status(200).send(await sesion.pair(input, actorDe(request)));
   });
 
-  app.post('/internal/v1/notifications/whatsapp/session/restart', async (_request, reply) =>
-    reply.status(200).send(await sesionWhatsApp().restart()),
-  );
+  app.post('/internal/v1/notifications/whatsapp/session/restart', async (_request, reply) => {
+    const sesion = await sesionWhatsApp();
+    return reply.status(200).send(await sesion.restart());
+  });
 
   app.post('/internal/v1/notifications/whatsapp/session/logout', async (request, reply) => {
-    const sesion = sesionWhatsApp();
+    const sesion = await sesionWhatsApp();
     await sesion.logout(actorDe(request));
     return reply.status(200).send(await sesion.vista());
   });

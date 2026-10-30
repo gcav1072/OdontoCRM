@@ -34,6 +34,7 @@ import { createNotificationsDatabase } from './db/client.js';
 import { createInternalClients } from './internal-client.js';
 import { ensureDefaultTemplates, processQueue } from './messaging.js';
 import { createNotificationsServer } from './server.js';
+import type { NotificationsServices } from './services.js';
 
 const main = async (): Promise<void> => {
   const config = loadNotificationsConfig();
@@ -66,7 +67,8 @@ const main = async (): Promise<void> => {
    */
   const configBase: NotificationsConfig = { ...config };
   const canalesLookup = createChannelCredentialsLookup(config);
-  const resolverCanales = async (): Promise<NotificationsConfig> => {
+  const resolverCanales = async (forzar = false): Promise<NotificationsConfig> => {
+    if (forzar) canalesLookup.invalidar();
     const creds = await canalesLookup();
     const efectivo = applyChannelCredentials(configBase, creds);
     syncChannelFields(config, efectivo);
@@ -107,7 +109,7 @@ const main = async (): Promise<void> => {
     },
   });
 
-  const services = {
+  const services: NotificationsServices = {
     config,
     db: database.db,
     pool: database.pool,
@@ -311,11 +313,22 @@ const main = async (): Promise<void> => {
    * emisor de avisos se reapuntan igual.
    */
   let firmaCanales = channelSignature(configCanales);
-  const recargarCanales = async (): Promise<void> => {
+  type ResultadoRecarga = {
+    recargado: boolean;
+    canales: string[];
+    modoWhatsApp: 'desactivado' | 'baileys' | 'cloud_api';
+  };
+  const ejecutarRecarga = async (forzar: boolean): Promise<ResultadoRecarga> => {
     try {
-      const efectivo = await resolverCanales();
+      const efectivo = await resolverCanales(forzar);
       const firma = channelSignature(efectivo);
-      if (firma === firmaCanales) return;
+      if (firma === firmaCanales) {
+        return {
+          recargado: false,
+          canales: canales.registry.all.map((adapter) => adapter.id),
+          modoWhatsApp: canales.modoWhatsApp,
+        };
+      }
       firmaCanales = firma;
 
       const nuevoAlerter = createAdminAlerter({
@@ -365,10 +378,40 @@ const main = async (): Promise<void> => {
         { modo: canales.modoTelegram, canales: canales.registry.all.map((a) => a.id) },
         'Canales reconstruidos tras un cambio en la configuración',
       );
+      return {
+        recargado: true,
+        canales: canales.registry.all.map((adapter) => adapter.id),
+        modoWhatsApp: canales.modoWhatsApp,
+      };
     } catch (error) {
       app.log.error({ err: error }, 'No se pudieron recargar los canales');
+      return {
+        recargado: false,
+        canales: canales.registry.all.map((adapter) => adapter.id),
+        modoWhatsApp: canales.modoWhatsApp,
+      };
     }
   };
+
+  /**
+   * Una sola recarga a la vez. Si mientras corre una lectura normal llega una
+   * **forzada** (el admin acaba de guardar en el panel), se repite al terminar
+   * para no devolver la configuración vieja.
+   */
+  let recargaEnCurso: { forzar: boolean; promesa: Promise<ResultadoRecarga> } | null = null;
+  const recargarCanales = (opciones?: { forzar?: boolean }): Promise<ResultadoRecarga> => {
+    const forzar = opciones?.forzar === true;
+    if (recargaEnCurso !== null) {
+      if (!forzar || recargaEnCurso.forzar) return recargaEnCurso.promesa;
+      return recargaEnCurso.promesa.then(() => recargarCanales({ forzar: true }));
+    }
+    const promesa = ejecutarRecarga(forzar).finally(() => {
+      if (recargaEnCurso?.promesa === promesa) recargaEnCurso = null;
+    });
+    recargaEnCurso = { forzar, promesa };
+    return promesa;
+  };
+  services.recargarCanales = recargarCanales;
 
   const canalesTimer = setInterval(() => void recargarCanales(), 60_000);
   canalesTimer.unref?.();

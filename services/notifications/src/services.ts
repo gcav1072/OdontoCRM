@@ -17,4 +17,12 @@ export interface NotificationsServices {
   adminAlerter: AdminAlerter;
   /** Último error del asistente o de la cola, para mostrarlo en la bandeja. */
   lastError: string | null;
+  /**
+   * Relee la configuración de canales y reconstruye los adaptadores **ahora**.
+   * La usa la sesión de WhatsApp: si el admin acaba de encender el canal en el
+   * panel, la primera visita al QR no puede esperar al sondeo de cada minuto.
+   */
+  recargarCanales?: (opciones?: {
+    forzar?: boolean;
+  }) => Promise<{ recargado: boolean; canales: string[]; modoWhatsApp: string }>;
 }
