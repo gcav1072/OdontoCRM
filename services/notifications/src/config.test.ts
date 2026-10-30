@@ -5,10 +5,11 @@ import {
   channelSignature,
   loadNotificationsConfig,
   telegramMode,
+  whatsappMode,
 } from './config.js';
 
 /** La configuración base de las pruebas: una cadena válida y sin canales configurados. */
-const base = (extra: Record<string, string> = {}) =>
+const base = (extra: Record<string, string | undefined> = {}) =>
   loadNotificationsConfig({ DATABASE_URL: 'postgres://odonto/x', ...extra });
 
 /**
@@ -72,11 +73,16 @@ describe('modo test: los envíos reales quedan bloqueados', () => {
  * queda de respaldo y un campo vacío en la base **no** borra el del archivo.
  */
 describe('credenciales de canal desde el panel', () => {
-  const credenciales = (overrides: Record<string, string | null> = {}) => ({
+  const credenciales = (overrides: Record<string, string | boolean | null> = {}) => ({
     telegramBotToken: null,
     telegramBotUsername: null,
     adminTelegramBotToken: null,
     adminTelegramChatId: null,
+    whatsappEnabled: null,
+    whatsappProvider: null,
+    whatsappSendMinIntervalMs: null,
+    whatsappSendMaxIntervalMs: null,
+    whatsappDailySendCap: null,
     whatsappToken: null,
     whatsappPhoneId: null,
     whatsappVerifyToken: null,
@@ -123,5 +129,53 @@ describe('credenciales de canal desde el panel', () => {
     );
     expect(channelSignature(sinToken)).not.toBe(channelSignature(conToken));
     expect(channelSignature(conToken)).toBe(channelSignature(conToken));
+  });
+
+  it('la base manda en el interruptor y el proveedor de WhatsApp', () => {
+    const config = base({ WHATSAPP_ENABLED: 'true', WHATSAPP_PROVIDER: 'baileys' });
+    const efectivo = applyChannelCredentials(
+      config,
+      credenciales({ whatsappEnabled: false, whatsappProvider: 'cloud_api' }),
+    );
+    expect(efectivo.WHATSAPP_ENABLED).toBe(false);
+    expect(efectivo.WHATSAPP_PROVIDER).toBe('cloud_api');
+  });
+});
+
+describe('proveedor de WhatsApp', () => {
+  it('Baileys se enciende con el interruptor y queda a la espera de sesión', () => {
+    expect(whatsappMode(base())).toBe('desactivado');
+    expect(whatsappMode(base({ WHATSAPP_ENABLED: 'true' }))).toBe('baileys');
+  });
+
+  it('Cloud API exige sus cuatro credenciales y el interruptor', () => {
+    const conCredenciales = {
+      WHATSAPP_ENABLED: 'true',
+      WHATSAPP_PROVIDER: 'cloud_api',
+      WHATSAPP_TOKEN: 'token-de-prueba-suficientemente-largo',
+      WHATSAPP_PHONE_ID: '1234567890',
+      WHATSAPP_VERIFY_TOKEN: 'verificacion-de-prueba',
+      WHATSAPP_APP_SECRET: 'secreto-de-prueba',
+    };
+    expect(whatsappMode(base(conCredenciales))).toBe('cloud_api');
+    expect(whatsappMode(base({ ...conCredenciales, WHATSAPP_APP_SECRET: undefined }))).toBe(
+      'desactivado',
+    );
+  });
+
+  it('en modo test no se abre ningún proveedor real', () => {
+    const config = base({
+      WHATSAPP_ENABLED: 'true',
+      TEST_MODE: 'true',
+      ALLOW_TEST_MODE: 'true',
+    });
+    expect(whatsappMode(config)).toBe('desactivado');
+  });
+
+  it('el ritmo por defecto es 2–4 s y 150 al día', () => {
+    const config = base();
+    expect(config.WHATSAPP_SEND_MIN_INTERVAL_MS).toBe(2000);
+    expect(config.WHATSAPP_SEND_MAX_INTERVAL_MS).toBe(4000);
+    expect(config.WHATSAPP_DAILY_SEND_CAP).toBe(150);
   });
 });
