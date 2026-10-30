@@ -59,15 +59,23 @@ Este documento responde a la pregunta «¿cómo te paso el token del bot con la 
 | `STORAGE_ENCRYPTION_KEY` (cifrado en reposo del almacén) | `.env` de `patients`, `clinical` y `billing` (la **misma** en los tres) | `/etc/odontocrm/{patients,clinical,billing}.env` | bootstrap (**opcional**: sin ella se escribe en claro). **Debe ser la misma del respaldo** si se quiere leer un almacén cifrado: al recuperar, `odontocrm` la **reconcilia** sola (copia solo esa línea a los `.env`); el aprovisionador admite `--clave-almacen=<base64url>` para imponerla sin tocar el resto del `.env` |
 | `COOKIE_SECRET` | `.env` de identity | `/etc/odontocrm/identity.env` | bootstrap |
 | Token de dispositivo de cada pantalla | se genera desde el panel `/pantallas` y se guarda **hasheado** en la BD | igual | el sistema (Fase 5) |
-| `WHATSAPP_TOKEN` (Cloud API) | `services/notifications/.env` | `/etc/odontocrm/notifications.env` | tú, en Meta for Developers |
-| `WHATSAPP_VERIFY_TOKEN` | `services/notifications/.env` | igual | tú, al dar de alta el webhook |
-| `WHATSAPP_APP_SECRET` | `services/notifications/.env` | igual | Meta (app → configuración básica) |
+| `WHATSAPP_TOKEN` (solo Cloud API) | `services/notifications/.env` | `/etc/odontocrm/notifications.env` | tú, en Meta for Developers |
+| `WHATSAPP_VERIFY_TOKEN` (solo Cloud API) | `services/notifications/.env` | igual | tú, al dar de alta el webhook |
+| `WHATSAPP_APP_SECRET` (solo Cloud API) | `services/notifications/.env` | igual | Meta (app → configuración básica) |
+| `STORAGE_ENCRYPTION_KEY` de la sesión de WhatsApp | `services/notifications/.env` | igual | la misma clave del almacén |
 
-**El webhook de WhatsApp es la única ruta pública además de la salud y el login.** Meta no manda
-JWT, así que la autenticación es la **firma** `x-hub-signature-256`: HMAC-SHA256 del **cuerpo crudo**
-con el `app_secret`. El adaptador la verifica en tiempo constante **antes** de procesar nada y
-rechaza con 401 lo que no la traiga; el `app_secret` y el `verify_token` no salen del `.env`. Si el
-webhook se expone a internet por el túnel, el resto de la API sigue cerrada tras el gateway y el JWT.
+**Baileys no tiene webhook.** El servicio abre un socket saliente y la sesión se vincula por QR o
+código desde **Configuración → Canales** (solo `settings:manage`); no hay ruta pública nueva. La
+sesión Signal se guarda cifrada en `odonto_notifications.whatsapp_auth` con
+`STORAGE_ENCRYPTION_KEY`; quien la robe puede leer y enviar como el consultorio, así que se trata
+como una credencial maestra: no se muestra, no sale por la API y se cierra desde el teléfono
+(*Dispositivos vinculados*) si se sospecha una filtración.
+
+**Cloud API se conserva como alternativa.** Solo cuando el proveedor activo es `cloud_api` el
+webhook sigue siendo público: Meta no manda JWT y la autenticación es la **firma**
+`x-hub-signature-256` (HMAC-SHA256 del **cuerpo crudo** con el `app_secret`). El adaptador la
+verifica en tiempo constante **antes** de procesar nada y rechaza con 401 lo que no la traiga; el
+`app_secret` y el `verify_token` no salen del `.env`.
 
 **Nunca son secretos configurables por el usuario** (van en `.env.example` sin valor): puertos, URLs internas, zona horaria, nombre de la clínica. Eso no es sensible y ayuda a desplegar.
 

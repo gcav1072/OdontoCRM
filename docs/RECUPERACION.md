@@ -308,11 +308,17 @@ genera el instalador.
 (`STORAGE_ENCRYPTION_KEY`), esa clave tiene que ser **la misma** con la que se cifraron los archivos;
 si no, el almacén restaurado queda **ilegible**. Eso ya **no hay que hacerlo a mano**: `recuperar`
 y `odontocrm restaurar --all` **reconcilian la clave solos** —copian **solo** esa línea del respaldo a
-`patients.env`, `clinical.env` y `billing.env`, sin tocar el resto del archivo— y **comprueban en el
-acto** que un documento se descifra. Si se prefiere hacerlo a mano (o imponer otra clave sin reponer
-nada más), el aprovisionador tiene `--clave-almacen=<base64url>`, que reemplaza únicamente esa línea y
-deja una copia `.antes-de-<sello>` junto al `.env`. La alternativa de reponer la configuración entera
-es `--con-config`, **y después revisar las rutas y las contraseñas** de cada `.env`.
+`patients.env`, `clinical.env`, `billing.env` y **`notifications.env`** (la sesión Signal de WhatsApp
+también va cifrada con ella), sin tocar el resto del archivo— y **comprueban en el acto** que un
+documento se descifra. Si se prefiere hacerlo a mano (o imponer otra clave sin reponer nada más), el
+aprovisionador tiene `--clave-almacen=<base64url>`, que reemplaza únicamente esa línea y deja una
+copia `.antes-de-<sello>` junto al `.env`. La alternativa de reponer la configuración entera es
+`--con-config`, **y después revisar las rutas y las contraseñas** de cada `.env`.
+
+**Sesión de WhatsApp.** La sesión Signal viaja en `odonto_notifications` y se restaura con las
+bases. Si el respaldo es antiguo y las claves Signal quedaron desfasadas, WhatsApp no conecta: entra
+en **Configuración → Canales**, pulsa **Cerrar sesión** y vuelve a vincular con el QR (un minuto).
+No hay que tocar el respaldo ni la clave del almacén.
 
 ---
 
