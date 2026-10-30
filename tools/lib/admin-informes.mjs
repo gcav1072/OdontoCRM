@@ -134,6 +134,12 @@ export const formatearEstado = (foto, problemas) => {
     lineas.push(
       `Envíos: ${foto.envios.enCola} en cola · ${foto.envios.fallidos} fallidos · ${foto.envios.sinCanal} sin canal`,
     );
+    if (foto.envios.whatsapp !== null && foto.envios.whatsapp !== undefined) {
+      lineas.push(
+        `WhatsApp: ${foto.envios.whatsapp.estado}` +
+          (foto.envios.whatsapp.numero === null ? '' : ` · ${foto.envios.whatsapp.numero}`),
+      );
+    }
   }
 
   if (foto.cartasMuertas?.error === undefined && foto.cartasMuertas !== undefined) {

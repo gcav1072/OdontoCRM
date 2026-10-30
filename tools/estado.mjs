@@ -342,12 +342,31 @@ const revisarEnvios = async (entornoLegible) => {
          from notifications`,
     );
     const fila = rows[0] ?? {};
+    const whatsapp = await client
+      .query(
+        `select estado, numero, motivo, updated_at
+           from whatsapp_session
+          order by updated_at desc
+          limit 1`,
+      )
+      .then((resultado) => resultado.rows[0] ?? null)
+      .catch(() => null);
     return {
       enCola: fila.en_cola ?? 0,
       fallidos: fila.fallidos ?? 0,
       sinCanal: fila.sin_canal ?? 0,
       proximoIntento:
         fila.proximo_intento === null ? null : new Date(fila.proximo_intento).toISOString(),
+      whatsapp:
+        whatsapp === null
+          ? null
+          : {
+              estado: whatsapp.estado,
+              numero: whatsapp.numero,
+              motivo: whatsapp.motivo,
+              actualizadoEn:
+                whatsapp.updated_at === null ? null : new Date(whatsapp.updated_at).toISOString(),
+            },
     };
   } catch (fallo) {
     return { error: fallo instanceof Error ? fallo.message : String(fallo) };
@@ -776,6 +795,12 @@ const tablero = (foto) => {
     lineas.push(
       `  ${color.ok('✔')} envíos: ${String(foto.envios.enCola)} en cola · ${String(foto.envios.fallidos)} fallidos · ${String(foto.envios.sinCanal)} sin canal`,
     );
+    if (foto.envios.whatsapp !== null && foto.envios.whatsapp !== undefined) {
+      lineas.push(
+        `  ${color.ok('✔')} WhatsApp: ${foto.envios.whatsapp.estado}` +
+          (foto.envios.whatsapp.numero === null ? '' : ` · ${foto.envios.whatsapp.numero}`),
+      );
+    }
   }
   if (!sinPermisos && foto.reportes?.error === undefined && foto.reportes !== undefined) {
     lineas.push(

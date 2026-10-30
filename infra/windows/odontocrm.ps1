@@ -89,6 +89,8 @@ function Ayuda {
   Write-Host '  odontocrm verificar       Los procesos, HTTPS, la CA y el firewall.'
   Write-Host '  odontocrm servicios       Estado de los procesos con PM2.'
   Write-Host '  odontocrm logs <servicio|gateway|caddy|postgres> [líneas]'
+  Write-Host '  odontocrm whatsapp [estado|vincular|reconectar|cerrar]'
+  Write-Host '                            Sesión de WhatsApp por Baileys: QR en la terminal.'
   Write-Host '  odontocrm actualizar      Trae el código nuevo, compila, migra y reinicia.'
   Write-Host '  odontocrm certificado     Muestra el certificado y la CA, y cómo instalarla'
   Write-Host '                            en tablets, móviles y TVs.'
@@ -430,6 +432,17 @@ switch ($Orden) {
       default { & (Get-Pm2) logs "odontocrm-$que" --lines $lineas --nostream }
     }
     exit 0
+  }
+
+  'whatsapp' {
+    Afirmar-Administrador
+    Push-Location $OdontoCode
+    try {
+      Invocar-Node (@((Join-Path $OdontoCode 'tools\con-entorno.mjs'), $OdontoEnv, 'notifications', '--',
+        'node', (Join-Path $OdontoCode 'tools\whatsapp.mjs')) + $Resto)
+      exit $script:CodigoDeSalida
+    }
+    finally { Pop-Location }
   }
 
   'actualizar' {

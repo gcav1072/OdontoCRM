@@ -155,6 +155,9 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
   sudo odontocrm servicios         Estado de las $(( ${#SERVICIOS[@]} + 1 )) unidades de systemd.
   sudo odontocrm logs <servicio|gateway|nginx|postgres> [líneas]
                                    Últimos registros.
+  sudo odontocrm whatsapp [estado|vincular|reconectar|cerrar]
+                                   Sesión de WhatsApp por Baileys: QR en la terminal,
+                                   estado, reconexión y cierre.
   sudo odontocrm actualizar [--rama=<nombre>]
                                    Actualización de rutina: trae el código, pone al día
                                    unidades y plantillas, compila, migra, reinicia y
@@ -243,6 +246,13 @@ case "$ORDEN" in
     necesita_root
     cd "$CODE_DIR" || morir "no existe $CODE_DIR"
     ODONTOCRM_ENV_DIR="$ETC_DIR" exec node tools/estado.mjs --alertas "$@"
+    ;;
+
+  whatsapp)
+    necesita_root
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    exec node tools/con-entorno.mjs "$ETC_DIR" notifications -- \
+      node tools/whatsapp.mjs "$@"
     ;;
 
   respaldar|respaldo)
