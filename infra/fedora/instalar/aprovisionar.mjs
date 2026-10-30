@@ -246,7 +246,7 @@ const reponerClaveAlmacen = (clave) => {
       '--clave-almacen no decodifica a 32 bytes (base64url): no la escribo, dejaría el almacén ilegible',
     );
   }
-  const servicios = ['patients', 'clinical', 'billing', 'identity'].filter((s) =>
+  const servicios = ['patients', 'clinical', 'billing', 'identity', 'notifications'].filter((s) =>
     existsSync(join(ETC, `${s}.env`)),
   );
   if (servicios.length === 0) {
@@ -427,10 +427,10 @@ const secretoCookie = opciones.rotate ? undefined : envIdentity.COOKIE_SECRET ||
 /**
  * Clave de **cifrado en reposo** del almacén de archivos (mejora 4.B del plan post-Fase 11).
  *
- * Se **genera** aquí —como los demás secretos— y se escribe en los tres servicios que
- * guardan binarios. Es la misma en los tres a propósito: el almacén del consultorio es una
- * sola carpeta compartida, así que una clave distinta por servicio dejaría los archivos de
- * un servicio ilegibles desde los otros.
+ * Se **genera** aquí —como los demás secretos— y se escribe en los servicios que
+ * guardan binarios y en notifications (la sesión de WhatsApp). Es la misma a propósito:
+ * el almacén del consultorio es una sola carpeta compartida y la sesión se cifra con
+ * ella, así que una clave distinta por servicio dejaría datos ilegibles desde los otros.
  *
  * Se conserva lo que ya hubiera: rotarla dejaría ilegible todo lo guardado hasta ahora
  * (`--rotate` **no** la rota, y eso es deliberado: rotar el cifrado exige re-cifrar el
@@ -441,6 +441,7 @@ const claveAlmacen =
   leerEnv(join(ETC, 'patients.env')).STORAGE_ENCRYPTION_KEY ||
   leerEnv(join(ETC, 'clinical.env')).STORAGE_ENCRYPTION_KEY ||
   leerEnv(join(ETC, 'billing.env')).STORAGE_ENCRYPTION_KEY ||
+  leerEnv(join(ETC, 'notifications.env')).STORAGE_ENCRYPTION_KEY ||
   undefined;
 
 const claves = {
@@ -592,10 +593,18 @@ const extrasDe = (nombre) => {
         TELEGRAM_MODE: 'auto',
         TELEGRAM_BOT_TOKEN: enEntorno('TELEGRAM_BOT_TOKEN'),
         TELEGRAM_BOT_USERNAME: enEntorno('TELEGRAM_BOT_USERNAME'),
+        // WhatsApp por Baileys (ADR 0072): el canal se vincula después desde el
+        // panel con un QR. Se deja apagado de arranque salvo que el instalador
+        // pida `--whatsapp`; Cloud API sigue disponible como alternativa.
+        WHATSAPP_ENABLED: enEntorno('WHATSAPP_ENABLED'),
+        WHATSAPP_PROVIDER: enEntorno('WHATSAPP_PROVIDER') ?? 'baileys',
         WHATSAPP_TOKEN: enEntorno('WHATSAPP_TOKEN'),
         WHATSAPP_PHONE_ID: enEntorno('WHATSAPP_PHONE_ID'),
         WHATSAPP_VERIFY_TOKEN: enEntorno('WHATSAPP_VERIFY_TOKEN'),
         WHATSAPP_APP_SECRET: enEntorno('WHATSAPP_APP_SECRET'),
+        // La sesión Signal se cifra en la base de notificaciones con la misma
+        // clave del almacén. Sin esto, la sesión quedaría en claro.
+        STORAGE_ENCRYPTION_KEY: claves.almacen,
         // El bot de ADMINISTRACIÓN (mejora 1 del plan post-Fase 11): el que avisa al dueño
         // del consultorio de los fallos de infraestructura. Es un bot aparte del de los
         // pacientes a propósito —el de los pacientes lo ven las familias— y sus dos claves
@@ -616,7 +625,7 @@ const comentarioDe = (clave) =>
     INTERNAL_SERVICE_SECRET: 'Secreto de las rutas internas: el MISMO en los 9 servicios.',
     COOKIE_SECRET: 'Firma la cookie de refresco de la sesión.',
     STORAGE_ENCRYPTION_KEY:
-      'Cifra en reposo los archivos del consultorio (radiografías, PDF). La MISMA en patients, clinical y billing.',
+      'Cifra en reposo los archivos del consultorio (radiografías, PDF) y la sesión de WhatsApp. La MISMA en patients, clinical, billing y notifications.',
     JWT_PRIVATE_KEY_PATH: 'Clave EdDSA que firma los JWT (clave privada, 0640 root:odontocrm).',
     JWT_PUBLIC_KEY_PATH: 'Clave pública con la que el gateway valida los JWT.',
     WEB_ORIGIN: 'Orígenes que el navegador puede usar (CORS). El nombre y la IP de la LAN.',
@@ -627,10 +636,12 @@ const comentarioDe = (clave) =>
       'Token del BOT DE ADMINISTRACIÓN (BotFather). Recibe los avisos de fallos del sistema.',
     ADMIN_TELEGRAM_CHAT_ID:
       'Chat del administrador (o grupo) al que llegan esos avisos. Sin él no hay a quién avisar.',
-    WHATSAPP_TOKEN: 'Token de la WhatsApp Cloud API. Sin él ese canal no se activa.',
-    WHATSAPP_PHONE_ID: 'Identificador del número de WhatsApp Business.',
-    WHATSAPP_VERIFY_TOKEN: 'Lo inventa la clínica: Meta lo repite al verificar el webhook.',
-    WHATSAPP_APP_SECRET: 'Firma los webhooks de Meta (App settings → Basic).',
+    WHATSAPP_ENABLED: 'Interruptor del canal WhatsApp (la base del panel manda sobre este valor).',
+    WHATSAPP_PROVIDER: 'baileys (QR, por defecto) o cloud_api (alternativa de Meta).',
+    WHATSAPP_TOKEN: 'Solo Cloud API: token permanente del número (Meta for Developers).',
+    WHATSAPP_PHONE_ID: 'Solo Cloud API: identificador del número de WhatsApp Business.',
+    WHATSAPP_VERIFY_TOKEN: 'Solo Cloud API: lo inventa la clínica y Meta lo repite al verificar.',
+    WHATSAPP_APP_SECRET: 'Solo Cloud API: firma los webhooks de Meta (App settings → Basic).',
   })[clave];
 
 const escribirArchivos = () => {

@@ -32,7 +32,7 @@
 #   --clave-admin=CLAVE   contraseña del administrador
 #   --token-telegram=…    token de BotFather    · --usuario-telegram=…
 #   --token-bot-admin=…   bot de administración (avisos) · --chat-bot-admin=…
-#   --whatsapp-token=…    cuatro datos de la WhatsApp Cloud API
+#   --whatsapp            deja WHATSAPP_ENABLED=true (se vincula por QR después)
 #   --sin-preguntas       no pregunta nada (clave del admin al azar, bot simulado)
 #   --reconfigurar        vuelve a preguntar aunque ya haya valores
 #
@@ -62,7 +62,7 @@ DATOS
   --clave-admin=CLAVE    --sin-preguntas            --reconfigurar
   --token-telegram=…   --usuario-telegram=…
   --token-bot-admin=…  --chat-bot-admin=…   (avisos de fallos del sistema)
-  --whatsapp-token=…   --whatsapp-phone-id=…   --whatsapp-verify-token=…   --whatsapp-app-secret=…
+  --whatsapp            Deja WhatsApp encendido; se vincula por QR en el panel.
 
 CANALES
   · Los tokens de Telegram se COMPRUEBAN contra la API: si el token vale, se enseña el nombre
@@ -93,10 +93,7 @@ $TokenTelegram = Get-Argumento $args 'token-telegram'
 $UsuarioTelegram = Get-Argumento $args 'usuario-telegram'
 $TokenBotAdmin = Get-Argumento $args 'token-bot-admin'
 $ChatBotAdmin = Get-Argumento $args 'chat-bot-admin'
-$WaToken = Get-Argumento $args 'whatsapp-token'
-$WaPhone = Get-Argumento $args 'whatsapp-phone-id'
-$WaVerify = Get-Argumento $args 'whatsapp-verify-token'
-$WaAppSecret = Get-Argumento $args 'whatsapp-app-secret'
+$WhatsApp = Test-Bandera $args 'whatsapp'
 
 if ((Test-Bandera $args 'ayuda') -or (Test-Bandera $args 'help')) { Write-Host $Ayuda; exit 0 }
 if (-not $Usuarios) { $Usuarios = 'admin' }
@@ -224,10 +221,7 @@ if (-not $DryRun -and -not $SinPreguntas -and $hayTerminal -and $Solo -notin @('
     }
   }
 
-  if (-not $WaToken) {
-    $r = Read-Host '      Token de la WhatsApp Cloud API (Enter para omitir)'
-    if ($r) { $WaToken = $r.Trim() }
-  }
+  # WhatsApp no se pregunta: se enciende y se vincula después por QR en el panel.
 }
 elseif ($DryRun) { Escribir-Detalle '[dry-run] no se pregunta nada' }
 elseif ($SinPreguntas) { Escribir-Detalle '--sin-preguntas: clave del admin al azar y bot en modo simulado' }
@@ -240,10 +234,7 @@ if ($TokenTelegram) { $env:TELEGRAM_BOT_TOKEN = $TokenTelegram }
 if ($TokenBotAdmin) { $env:ADMIN_TELEGRAM_BOT_TOKEN = $TokenBotAdmin }
 if ($ChatBotAdmin) { $env:ADMIN_TELEGRAM_CHAT_ID = $ChatBotAdmin }
 if ($UsuarioTelegram) { $env:TELEGRAM_BOT_USERNAME = $UsuarioTelegram }
-if ($WaToken) { $env:WHATSAPP_TOKEN = $WaToken }
-if ($WaPhone) { $env:WHATSAPP_PHONE_ID = $WaPhone }
-if ($WaVerify) { $env:WHATSAPP_VERIFY_TOKEN = $WaVerify }
-if ($WaAppSecret) { $env:WHATSAPP_APP_SECRET = $WaAppSecret }
+if ($WhatsApp) { $env:WHATSAPP_ENABLED = 'true' }
 if ($AdminUrl) { $env:PG_ADMIN_URL = $AdminUrl }
 
 # ── Las cuatro piezas ───────────────────────────────────────────────────────
@@ -288,7 +279,7 @@ $argsDesplegar = @($comunes)
 # terminar (que es justo lo que pasaba con `--solo=desplegar`). Ese modo no toca la base ni las
 # claves de firma; reescribe los `.env` conservando lo que ya había.
 $hayCanales = [bool]($TokenTelegram -or $UsuarioTelegram -or $TokenBotAdmin -or $ChatBotAdmin -or
-  $WaToken -or $WaPhone -or $WaVerify -or $WaAppSecret)
+  $WhatsApp)
 if ($hayCanales -and -not $DryRun -and -not ($Solo -in @('', 'aprovisionar'))) {
   Write-Host ''
   Escribir-Paso 'Guardando las credenciales de los canales'

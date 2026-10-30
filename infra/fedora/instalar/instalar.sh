@@ -29,7 +29,8 @@
 #   --dry-run               enseña lo que haría, sin hacerlo
 #
 # Preguntas (una instalación nueva): la contraseña del administrador y, si se quieren
-# ya, el token del bot de Telegram y las credenciales de WhatsApp. Se guardan en
+# ya, el token del bot de Telegram. WhatsApp **no se pregunta aquí**: se enciende y
+# se vincula después desde Configuración → Canales con un QR. Se guarda en
 # /etc/odontocrm (0600) y en la clave del admin; con Enter se omite cada una. Sin
 # terminal, con `--sin-preguntas` o en `odontocrm actualizar` no se pregunta nada:
 # la clave del admin se genera temporal y el bot queda en modo simulado.
@@ -41,10 +42,7 @@
 #   --clave-admin=CLAVE          contraseña del administrador
 #   --token-telegram=…           token de BotFather
 #   --usuario-telegram=…         usuario del bot, sin @
-#   --whatsapp-token=…           token de la WhatsApp Cloud API
-#   --whatsapp-phone-id=…        identificador del número
-#   --whatsapp-verify-token=…    el que inventa la clínica para el webhook
-#   --whatsapp-app-secret=…      el App Secret de Meta
+#   --whatsapp                   deja WHATSAPP_ENABLED=true (se vincula por QR después)
 #   --sin-preguntas              no pregunta nada
 #   --reconfigurar               vuelve a preguntar aunque ya haya valores
 #
@@ -77,10 +75,7 @@ TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 TELEGRAM_BOT_USERNAME="${TELEGRAM_BOT_USERNAME:-}"
 ADMIN_TELEGRAM_BOT_TOKEN="${ADMIN_TELEGRAM_BOT_TOKEN:-}"
 ADMIN_TELEGRAM_CHAT_ID="${ADMIN_TELEGRAM_CHAT_ID:-}"
-WHATSAPP_TOKEN="${WHATSAPP_TOKEN:-}"
-WHATSAPP_PHONE_ID="${WHATSAPP_PHONE_ID:-}"
-WHATSAPP_VERIFY_TOKEN="${WHATSAPP_VERIFY_TOKEN:-}"
-WHATSAPP_APP_SECRET="${WHATSAPP_APP_SECRET:-}"
+WHATSAPP_ENABLED="${WHATSAPP_ENABLED:-false}"
 for arg in "$@"; do
   case "$arg" in
     --nombre-mdns=*) NOMBRE_MDNS="${arg#*=}" ;;
@@ -101,10 +96,7 @@ for arg in "$@"; do
     --usuario-telegram=*) TELEGRAM_BOT_USERNAME="${arg#*=}" ;;
     --token-bot-admin=*) ADMIN_TELEGRAM_BOT_TOKEN="${arg#*=}" ;;
     --chat-bot-admin=*) ADMIN_TELEGRAM_CHAT_ID="${arg#*=}" ;;
-    --whatsapp-token=*) WHATSAPP_TOKEN="${arg#*=}" ;;
-    --whatsapp-phone-id=*) WHATSAPP_PHONE_ID="${arg#*=}" ;;
-    --whatsapp-verify-token=*) WHATSAPP_VERIFY_TOKEN="${arg#*=}" ;;
-    --whatsapp-app-secret=*) WHATSAPP_APP_SECRET="${arg#*=}" ;;
+    --whatsapp) WHATSAPP_ENABLED=1 ;;
     -h | --help) sed -n '2,51p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) morir "opción no reconocida: $arg" ;;
   esac
@@ -327,30 +319,8 @@ else
     fi
   fi
 
-  # 4) WhatsApp (Cloud API): cuatro datos, y los tres últimos solo se tienen al crear la
-  #    app en Meta. Se pueden dejar para después; el canal simplemente no se activa.
-  if [[ -z "$WHATSAPP_TOKEN" ]] && ! ya_configurado "$ETC_DIR/notifications.env" 'WHATSAPP_TOKEN'; then
-    if preguntar_si '¿Configurar WhatsApp ahora (Cloud API de Meta)?'; then
-      if valor="$(preguntar_secreto 'Token de la WhatsApp Cloud API')" && (( ${#valor} >= 20 )); then
-        WHATSAPP_TOKEN="$valor"
-      else
-        av 'sin un token de 20 caracteres o más no configuro WhatsApp: se omite'
-      fi
-    fi
-  fi
-  if [[ -n "$WHATSAPP_TOKEN" ]]; then
-    if [[ -z "$WHATSAPP_PHONE_ID" ]]; then
-      valor="$(preguntar_texto 'Identificador del número (phone number ID)')" && WHATSAPP_PHONE_ID="$valor"
-    fi
-    if [[ -z "$WHATSAPP_VERIFY_TOKEN" ]]; then
-      valor="$(preguntar_texto 'Verify token del webhook' 'Lo inventa la clínica: Meta lo repite al verificar. Mínimo 8 caracteres.')" &&
-        WHATSAPP_VERIFY_TOKEN="$valor"
-    fi
-    if [[ -z "$WHATSAPP_APP_SECRET" ]]; then
-      valor="$(preguntar_secreto 'App Secret de Meta' 'Firma los webhooks (App settings → Basic).')" &&
-        WHATSAPP_APP_SECRET="$valor"
-    fi
-  fi
+  # WhatsApp ya no se pregunta: se enciende y se vincula después desde el panel.
+  # Las credenciales de Cloud API (alternativa) se editan en Configuración → Canales.
 
   # Resumen sin secretos: lo que va a quedar configurado. Se mira TAMBIÉN lo que ya esté
   # en /etc/odontocrm: en una instalación repetida el token sigue ahí y decir «sin token»
@@ -373,11 +343,11 @@ else
   elif ya_configurado "$ETC_DIR/notifications.env" 'ADMIN_TELEGRAM_BOT_TOKEN'; then
     resumen_admin_bot='ya configurado en el servidor (se conserva)'
   fi
-  resumen_wa='no configurado'
-  if [[ -n "$WHATSAPP_TOKEN" ]]; then
-    resumen_wa='configurado ahora'
-  elif ya_configurado "$ETC_DIR/notifications.env" 'WHATSAPP_TOKEN'; then
-    resumen_wa='ya configurado en el servidor (se conserva)'
+  resumen_wa='apagado; se vincula por QR desde Configuración → Canales'
+  if [[ "$WHATSAPP_ENABLED" == "1" || "$WHATSAPP_ENABLED" == "true" ]]; then
+    resumen_wa='encendido; se vincula por QR desde Configuración → Canales'
+  elif ya_configurado "$ETC_DIR/notifications.env" 'WHATSAPP_ENABLED=true'; then
+    resumen_wa='ya encendido en el servidor (se conserva)'
   fi
   printf '\n'
   if [[ "${USUARIOS_SEED:-admin}" == "all" ]]; then
@@ -398,20 +368,17 @@ fi
 # **Solo se exporta lo que TIENE valor.** Una variable exportada y VACÍA no es «ausente»
 # para los esquemas de los servicios (son `.min(20).optional()`, y `''` no pasa el
 # mínimo), y `con-entorno` pasa a las migraciones y a los servicios el entorno del
-# proceso tal cual: exportar `WHATSAPP_TOKEN=''` desde aquí tumbaba las migraciones de
+# proceso tal cual: exportar una credencial vacía desde aquí tumbaba las migraciones de
 # notifications con «Configuración inválida … el valor es más corto o menor de lo
-# permitido». Pasó en la primera instalación de verdad (el WhatsApp se dejó sin
-# configurar), y era el propio instalador quien envenenaba el entorno.
+# permitido». Pasó en la primera instalación de verdad, y era el propio instalador
+# quien envenenaba el entorno.
 export USUARIOS_SEED
 [[ -n "$CLAVE_ADMIN" ]] && export SEED_PASSWORD_ADMIN="$CLAVE_ADMIN"
 [[ -n "$TELEGRAM_BOT_TOKEN" ]] && export TELEGRAM_BOT_TOKEN
 [[ -n "$TELEGRAM_BOT_USERNAME" ]] && export TELEGRAM_BOT_USERNAME
 [[ -n "$ADMIN_TELEGRAM_BOT_TOKEN" ]] && export ADMIN_TELEGRAM_BOT_TOKEN
 [[ -n "$ADMIN_TELEGRAM_CHAT_ID" ]] && export ADMIN_TELEGRAM_CHAT_ID
-[[ -n "$WHATSAPP_TOKEN" ]] && export WHATSAPP_TOKEN
-[[ -n "$WHATSAPP_PHONE_ID" ]] && export WHATSAPP_PHONE_ID
-[[ -n "$WHATSAPP_VERIFY_TOKEN" ]] && export WHATSAPP_VERIFY_TOKEN
-[[ -n "$WHATSAPP_APP_SECRET" ]] && export WHATSAPP_APP_SECRET
+[[ "$WHATSAPP_ENABLED" == "1" ]] && export WHATSAPP_ENABLED=true
 
 NOMBRE_MDNS="$(resolver_nombre "$NOMBRE_MDNS")"
 FQDN="$(nombre_fqdn "$NOMBRE_MDNS")"
