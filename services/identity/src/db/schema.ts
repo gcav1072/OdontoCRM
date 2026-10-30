@@ -305,17 +305,41 @@ export const channelSettings = pgTable(
     id: integer('id').primaryKey().default(1),
     telegramBotUsername: text('telegram_bot_username'),
     adminTelegramChatId: text('admin_telegram_chat_id'),
+    /** Interruptor del canal WhatsApp (Baileys o Cloud API, ADR 0072). */
+    whatsappEnabled: boolean('whatsapp_enabled').notNull().default(false),
+    /** `baileys` (por defecto) o `cloud_api` (alternativa conservada). */
+    whatsappProvider: text('whatsapp_provider').notNull().default('baileys'),
+    /** Ritmo aleatorio entre envíos de Baileys, en milisegundos. */
+    whatsappSendMinIntervalMs: integer('whatsapp_send_min_interval_ms').notNull().default(2000),
+    whatsappSendMaxIntervalMs: integer('whatsapp_send_max_interval_ms').notNull().default(4000),
+    /** Tope diario de mensajes salientes de Baileys. */
+    whatsappDailySendCap: integer('whatsapp_daily_send_cap').notNull().default(150),
+    /** @deprecated Cloud API: se conserva mientras el proveedor siga disponible. */
     whatsappPhoneId: text('whatsapp_phone_id'),
+    /** @deprecated Cloud API: se conserva mientras el proveedor siga disponible. */
     whatsappApiBase: text('whatsapp_api_base'),
     telegramBotTokenEnc: text('telegram_bot_token_enc'),
     adminTelegramBotTokenEnc: text('admin_telegram_bot_token_enc'),
+    /** @deprecated Cloud API: token de Meta. */
     whatsappTokenEnc: text('whatsapp_token_enc'),
+    /** @deprecated Cloud API: token de verificación del webhook. */
     whatsappVerifyTokenEnc: text('whatsapp_verify_token_enc'),
+    /** @deprecated Cloud API: secreto de firma del webhook. */
     whatsappAppSecretEnc: text('whatsapp_app_secret_enc'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     updatedBy: uuid('updated_by'),
   },
-  (table) => [check('chk_channel_settings_singleton', sql`${table.id} = 1`)],
+  (table) => [
+    check('chk_channel_settings_singleton', sql`${table.id} = 1`),
+    check(
+      'chk_channel_settings_whatsapp_provider',
+      sql`${table.whatsappProvider} in ('baileys', 'cloud_api')`,
+    ),
+    check(
+      'chk_channel_settings_whatsapp_rate',
+      sql`${table.whatsappSendMinIntervalMs} between 1000 and 60000 and ${table.whatsappSendMaxIntervalMs} between 1000 and 60000 and ${table.whatsappSendMaxIntervalMs} >= ${table.whatsappSendMinIntervalMs} and ${table.whatsappDailySendCap} between 1 and 1000`,
+    ),
+  ],
 );
 
 /**

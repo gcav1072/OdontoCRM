@@ -59,6 +59,12 @@ const CAMPOS_CANAL = [
   'telegramBotUsername',
   'adminTelegramBotToken',
   'adminTelegramChatId',
+  'whatsappEnabled',
+  'whatsappProvider',
+  'whatsappSendMinIntervalMs',
+  'whatsappSendMaxIntervalMs',
+  'whatsappDailySendCap',
+  // Cloud API: se conserva como alternativa configurable (ADR 0072).
   'whatsappToken',
   'whatsappPhoneId',
   'whatsappVerifyToken',

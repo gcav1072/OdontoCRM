@@ -1,10 +1,14 @@
 import {
   DEFAULT_WHATSAPP_API_BASE,
+  DEFAULT_WHATSAPP_PROVIDER,
+  WHATSAPP_RATE_DEFAULTS,
   type ChannelCredentials,
   type ChannelSecretView,
   type ChannelSettingsInput,
   type ChannelSettingsView,
+  type WhatsAppProvider,
 } from '@odontocrm/contracts';
+import { ValidationError } from '@odontocrm/kernel';
 import { decryptBlob, encryptBlob, parseEncryptionKey } from '@odontocrm/storage';
 import { eq } from 'drizzle-orm';
 
@@ -84,6 +88,12 @@ export const readChannelCredentials = async (
       telegramBotUsername: null,
       adminTelegramBotToken: null,
       adminTelegramChatId: null,
+      // `null` = la base no manda; el `.env` de notifications queda de respaldo.
+      whatsappEnabled: null,
+      whatsappProvider: null,
+      whatsappSendMinIntervalMs: null,
+      whatsappSendMaxIntervalMs: null,
+      whatsappDailySendCap: null,
       whatsappToken: null,
       whatsappPhoneId: null,
       whatsappVerifyToken: null,
@@ -98,6 +108,11 @@ export const readChannelCredentials = async (
     telegramBotUsername: row.telegramBotUsername,
     adminTelegramBotToken: open(row.adminTelegramBotTokenEnc, key),
     adminTelegramChatId: row.adminTelegramChatId,
+    whatsappEnabled: row.whatsappEnabled,
+    whatsappProvider: row.whatsappProvider as WhatsAppProvider,
+    whatsappSendMinIntervalMs: row.whatsappSendMinIntervalMs,
+    whatsappSendMaxIntervalMs: row.whatsappSendMaxIntervalMs,
+    whatsappDailySendCap: row.whatsappDailySendCap,
     whatsappToken: open(row.whatsappTokenEnc, key),
     whatsappPhoneId: row.whatsappPhoneId,
     whatsappVerifyToken: open(row.whatsappVerifyTokenEnc, key),
@@ -118,6 +133,11 @@ export const readChannelView = async (
     return {
       telegramBotUsername: null,
       adminTelegramChatId: null,
+      whatsappEnabled: false,
+      whatsappProvider: DEFAULT_WHATSAPP_PROVIDER,
+      whatsappSendMinIntervalMs: WHATSAPP_RATE_DEFAULTS.minSendIntervalMs,
+      whatsappSendMaxIntervalMs: WHATSAPP_RATE_DEFAULTS.maxSendIntervalMs,
+      whatsappDailySendCap: WHATSAPP_RATE_DEFAULTS.dailySendCap,
       whatsappPhoneId: null,
       whatsappApiBase: DEFAULT_WHATSAPP_API_BASE,
       telegramBotToken: mask(null),
@@ -134,6 +154,11 @@ export const readChannelView = async (
   return {
     telegramBotUsername: row.telegramBotUsername,
     adminTelegramChatId: row.adminTelegramChatId,
+    whatsappEnabled: row.whatsappEnabled,
+    whatsappProvider: row.whatsappProvider as WhatsAppProvider,
+    whatsappSendMinIntervalMs: row.whatsappSendMinIntervalMs,
+    whatsappSendMaxIntervalMs: row.whatsappSendMaxIntervalMs,
+    whatsappDailySendCap: row.whatsappDailySendCap,
     whatsappPhoneId: row.whatsappPhoneId,
     whatsappApiBase: row.whatsappApiBase ?? DEFAULT_WHATSAPP_API_BASE,
     telegramBotToken: mask(open(row.telegramBotTokenEnc, key)),
@@ -173,6 +198,17 @@ export const updateChannelSettings = async (
   const key = keyOf(config);
   const existing = row;
 
+  const minSend = input.whatsappSendMinIntervalMs ?? existing?.whatsappSendMinIntervalMs;
+  const maxSend = input.whatsappSendMaxIntervalMs ?? existing?.whatsappSendMaxIntervalMs;
+  if (minSend !== undefined && maxSend !== undefined && minSend > maxSend) {
+    throw new ValidationError('El intervalo máximo de WhatsApp no puede ser menor que el mínimo', [
+      {
+        path: 'whatsappSendMaxIntervalMs',
+        message: 'El intervalo máximo no puede ser menor que el mínimo',
+      },
+    ]);
+  }
+
   const valores = {
     telegramBotUsername:
       input.telegramBotUsername === undefined
@@ -186,6 +222,21 @@ export const updateChannelSettings = async (
         : input.adminTelegramChatId === ''
           ? null
           : input.adminTelegramChatId,
+    whatsappEnabled: input.whatsappEnabled ?? existing?.whatsappEnabled ?? false,
+    whatsappProvider:
+      input.whatsappProvider ?? existing?.whatsappProvider ?? DEFAULT_WHATSAPP_PROVIDER,
+    whatsappSendMinIntervalMs:
+      input.whatsappSendMinIntervalMs ??
+      existing?.whatsappSendMinIntervalMs ??
+      WHATSAPP_RATE_DEFAULTS.minSendIntervalMs,
+    whatsappSendMaxIntervalMs:
+      input.whatsappSendMaxIntervalMs ??
+      existing?.whatsappSendMaxIntervalMs ??
+      WHATSAPP_RATE_DEFAULTS.maxSendIntervalMs,
+    whatsappDailySendCap:
+      input.whatsappDailySendCap ??
+      existing?.whatsappDailySendCap ??
+      WHATSAPP_RATE_DEFAULTS.dailySendCap,
     whatsappPhoneId:
       input.whatsappPhoneId === undefined
         ? (existing?.whatsappPhoneId ?? null)

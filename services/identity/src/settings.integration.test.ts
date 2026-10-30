@@ -312,4 +312,40 @@ describeWithDatabase('configuración de la aplicación (PostgreSQL real)', () =>
     );
     expect(fila.rows[0]?.telegram_bot_token_enc ?? '').not.toContain(TOKEN);
   });
+
+  it('guarda el interruptor, el proveedor y el ritmo de WhatsApp', async () => {
+    const guardado = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/settings/channels',
+      headers: comoAdmin(),
+      payload: {
+        whatsappEnabled: true,
+        whatsappProvider: 'baileys',
+        whatsappSendMinIntervalMs: 2500,
+        whatsappSendMaxIntervalMs: 3500,
+        whatsappDailySendCap: 120,
+      },
+    });
+    expect(guardado.statusCode).toBe(200);
+    expect(guardado.json()).toMatchObject({
+      whatsappEnabled: true,
+      whatsappProvider: 'baileys',
+      whatsappSendMinIntervalMs: 2500,
+      whatsappSendMaxIntervalMs: 3500,
+      whatsappDailySendCap: 120,
+    });
+
+    const interna = await app.inject({
+      method: 'GET',
+      url: '/internal/v1/identity/channels',
+      headers: { 'x-internal-token': INTERNAL },
+    });
+    expect(interna.json()).toMatchObject({
+      whatsappEnabled: true,
+      whatsappProvider: 'baileys',
+      whatsappSendMinIntervalMs: 2500,
+      whatsappSendMaxIntervalMs: 3500,
+      whatsappDailySendCap: 120,
+    });
+  });
 });
