@@ -2,7 +2,7 @@
   "name": "@odontocrm/notifications",
   "version": "1.1.0",
   "private": true,
-  "description": "Bot de Telegram, plantillas, cola de envíos con reintentos y archivos .ics",
+  "description": "Bot de Telegram y WhatsApp, plantillas, cola de envíos con reintentos y archivos .ics",
   "type": "module",
   "main": "./dist/index.js",
   "scripts": {
@@ -11,11 +11,15 @@
     "db:migrate": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/db/migrate.js"
   },
   "dependencies": {
+    "@hapi/boom": "9.1.4",
     "@odontocrm/contracts": "*",
     "@odontocrm/db": "*",
     "@odontocrm/events": "*",
     "@odontocrm/kernel": "*",
+    "@odontocrm/storage": "*",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
     "fastify": "^5.12.5",
+    "pino": "^10.4.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
