@@ -985,7 +985,7 @@ const finalize = async (
  *
  * Todo el guion del plan §7 está aquí: intenciones, vinculación por código, pasos
  * con validación, confirmación final y anti-flood. Es **idempotente** por
- * `(canal, eventoId)`: el mismo `update_id` o `wamid` no crea dos tickets. La
+ * `(canal, eventoId)`: el mismo `update_id`, `key.id` o `wamid` no crea dos tickets. La
  * conversación se puede retomar en cualquier momento porque el estado vive en la
  * base, y las respuestas salen por el adaptador del canal (con las opciones
  * numeradas guardadas cuando el canal no tiene botones).
@@ -1001,9 +1001,6 @@ export const handleInbound = async (
 
   const texto = (entrante.texto ?? '').trim();
   const accion = (entrante.accion ?? '').trim();
-  if (texto === '' && accion === '') {
-    return { ...conversacion, handled: false };
-  }
 
   // Idempotencia por evento del canal, antes de tocar nada más.
   const claimed = await services.db
@@ -1034,6 +1031,39 @@ export const handleInbound = async (
     plantillasAprobadas: false,
   };
   const draft = toDraft(conversation);
+
+  /**
+   * **Mensaje sin texto** (D11): un audio, una foto sin pie o un sticker. No se
+   * inventa una transcripción: si el paciente está a mitad de un paso se le
+   * repite el paso para que sepa qué escribir. En `confirmacion` se repite el
+   * resumen; en el resto no se contesta nada (un sticker suelto no merece una
+   * respuesta).
+   */
+  if (texto === '' && accion === '') {
+    if (PASOS_REPETIBLES.has(conversation.state)) {
+      await askStep(
+        services,
+        conversacion,
+        conversation.state as
+          'nombre' | 'documento' | 'telefono' | 'nacimiento' | 'sexo' | 'motivo',
+      );
+      return { ...conversacion, handled: true, action: 'sin_texto_paso' };
+    }
+    if (conversation.state === 'representante') {
+      await reply(services, conversacion, 'pedir_representante', {
+        paciente: draft.fullName,
+      });
+      return { ...conversacion, handled: true, action: 'sin_texto_representante' };
+    }
+    if (conversation.state === 'confirmacion') {
+      await reply(services, conversacion, 'confirmar', { resumen: summaryOf(draft) }, [
+        { etiqueta: 'Confirmar', accion: 'confirmar:si' },
+        { etiqueta: 'Corregir', accion: 'confirmar:no' },
+      ]);
+      return { ...conversacion, handled: true, action: 'sin_texto_confirmacion' };
+    }
+    return { ...conversacion, handled: false, action: 'sin_texto' };
+  }
 
   // Botón pulsado o número que responde a las opciones numeradas del último paso.
   const elegida =
@@ -1244,7 +1274,12 @@ export const handleInbound = async (
     return found.ticket;
   };
 
-/** Vinculación por código: `t.me/<bot>?start=<código>` en Telegram. */
+/**
+ * Vinculación por código: sirve para el deep link de Telegram
+ * (`t.me/<bot>?start=<código>`) y para el enlace de WhatsApp
+ * (`wa.me/<número>?text=VINCULAR%20<código>`). El paciente escribe
+ * «vincular <código>» o «start <código>» (D13).
+ */
 const linkByCode = async (
   services: AsistenteServices,
   conversacion: Conversacion,

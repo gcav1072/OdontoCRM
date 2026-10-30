@@ -11,8 +11,15 @@ import {
   type TelegramTransport,
   type TelegramUpdate,
 } from './telegram-api.js';
-import { createWhatsAppAdapter, type WhatsAppCredentials } from './whatsapp.js';
+import { initAuthCreds } from '@whiskeysockets/baileys';
+
 import { loadNotificationsConfig } from '../config.js';
+import type { NotificationsDb } from '../db/client.js';
+import { createWhatsAppAdapter, type WhatsAppCredentials } from './whatsapp-cloud.js';
+import { createWhatsAppChannel } from './whatsapp/index.js';
+import type { WhatsAppAuthHandle } from './whatsapp/auth-store.js';
+import type { WhatsAppSessionStore } from './whatsapp/estado-store.js';
+import { FakeWhatsAppSocket } from './whatsapp/socket-falso.js';
 
 /**
  * **Kit de conformidad de canales** (ADR 0029).
@@ -39,6 +46,8 @@ export interface CasoListo {
   adapter: ChannelAdapter;
   /** Mensajes que recibió el núcleo (los llena el `iniciar` del adaptador). */
   entregados: InboundMessage[];
+  /** Deja el canal listo tras `iniciar` (por ejemplo, emitir `connection.open`). */
+  abrir?: () => Promise<void>;
   /** Inyecta un mensaje como lo haría el canal (texto o botón pulsado). */
   inyectar: (entrada: {
     direccion: string;
@@ -102,6 +111,7 @@ export const runChannelConformance = (caso: CasoConformidad): void => {
       await actual.adapter.iniciar(async (entrante) => {
         actual.entregados.push(entrante);
       });
+      await actual.abrir?.();
     });
 
     afterEach(async () => {
@@ -325,9 +335,85 @@ export const casoTelegram = (): CasoConformidad => ({
   },
 });
 
-/** WhatsApp Cloud API: empuja por webhook y firma con el `app_secret`. */
+/** WhatsApp por Baileys: socket saliente, sin webhook y sin botones. */
 export const casoWhatsApp = (): CasoConformidad => ({
   nombre: 'whatsapp',
+  preparar: async () => {
+    const config = loadNotificationsConfig({
+      ...baseEnv,
+      WHATSAPP_ENABLED: 'true',
+      WHATSAPP_PROVIDER: 'baileys',
+    });
+    const sockets: FakeWhatsAppSocket[] = [];
+    const auth: WhatsAppAuthHandle = {
+      state: {
+        creds: initAuthCreds(),
+        keys: { get: async () => ({}), set: async () => undefined },
+      },
+      saveCreds: async () => undefined,
+      clear: async () => undefined,
+      hasCreds: async () => true,
+    };
+    const store: WhatsAppSessionStore = {
+      load: async () => null,
+      save: async () => undefined,
+      reservarEnvio: async () => true,
+    };
+    const { adapter } = createWhatsAppChannel({
+      config,
+      db: {} as NotificationsDb,
+      auth,
+      store,
+      onAuditoria: async () => undefined,
+      makeSocket: () => {
+        const socket = new FakeWhatsAppSocket();
+        socket.user = { id: '584141234567:1@s.whatsapp.net', name: 'Consultorio de prueba' };
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    const actual = (): FakeWhatsAppSocket | undefined => sockets[0];
+    const entregados: InboundMessage[] = [];
+    return {
+      adapter,
+      entregados,
+      abrir: async () => {
+        actual()?.emit('connection.update', { connection: 'open' });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      },
+      eventoEsperado: (base) => base,
+      inyectar: async ({ direccion, eventoId, texto, accion }) => {
+        const socket = actual();
+        if (socket === undefined) throw new Error('Baileys no abrió el socket de prueba');
+        socket.emit('messages.upsert', {
+          type: 'notify',
+          messages: [
+            {
+              key: { remoteJid: `${direccion}@s.whatsapp.net`, fromMe: false, id: eventoId },
+              message:
+                accion === null || accion === undefined
+                  ? { conversation: texto ?? '' }
+                  : {
+                      buttonsResponseMessage: {
+                        selectedButtonId: accion,
+                        selectedDisplayText: 'opción',
+                      },
+                    },
+              pushName: 'Paciente de prueba',
+              messageTimestamp: Math.floor(Date.now() / 1000),
+            },
+          ],
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      },
+    };
+  },
+});
+
+/** WhatsApp Cloud API: empuja por webhook y firma con el `app_secret`. */
+export const casoWhatsAppCloudApi = (): CasoConformidad => ({
+  nombre: 'whatsapp-cloud-api',
   preparar: async () => {
     const config = loadNotificationsConfig({ ...baseEnv });
     const credentials: WhatsAppCredentials = {

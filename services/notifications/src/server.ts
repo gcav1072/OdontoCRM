@@ -43,9 +43,10 @@ export const createNotificationsServer = async (
   });
 
   /**
-   * El webhook de WhatsApp se firma sobre los **bytes exactos** del cuerpo: si se
-   * re-serializara el JSON, la firma no cuadraría. Se conserva el texto crudo en
-   * la petición y se parsea igual que antes (el resto de rutas no cambia).
+   * El webhook de **Cloud API** (la alternativa oficial de WhatsApp) se firma
+   * sobre los **bytes exactos** del cuerpo: si se re-serializara el JSON, la
+   * firma no cuadraría. Se conserva el texto crudo en la petición y se parsea
+   * igual que antes (el resto de rutas no cambia). Baileys no usa webhook.
    */
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (request, body, done) => {
     const raw = typeof body === 'string' ? body : String(body);

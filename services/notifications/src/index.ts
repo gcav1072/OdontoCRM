@@ -74,23 +74,35 @@ const main = async (): Promise<void> => {
   };
 
   const configCanales = await resolverCanales();
+
+  /**
+   * Emisor de los avisos de **infraestructura** (bot de administración). Se crea antes que
+   * los canales para que la sesión de WhatsApp pueda avisar de una caída. El logger todavía
+   * no existe, así que el fallo se guarda y se registra en cuanto el servidor está en pie.
+   */
+  let adminAlerterActual = createAdminAlerter({
+    config: configCanales,
+    onError: (error, contexto) => {
+      logAviso(error, contexto);
+    },
+  });
+  /**
+   * Envoltorio estable: la sesión de Baileys conserva esta referencia entre recargas
+   * (D15), pero los avisos salen siempre por el emisor vigente.
+   */
+  const alertasCanales = {
+    enviar: (alerta: Parameters<typeof adminAlerterActual.enviar>[0]) =>
+      adminAlerterActual.enviar(alerta),
+    estado: () => adminAlerterActual.estado(),
+  };
+
   const canales = createChannelAdapters(configCanales, {
+    db: database.db,
+    alertas: alertasCanales,
     onError: (error) => {
       logError(error);
     },
     onAviso: (error, contexto) => {
-      logAviso(error, contexto);
-    },
-  });
-
-  /**
-   * Emisor de los avisos de **infraestructura** (bot de administración). Se crea antes que
-   * el logger por la misma razón que los canales: el logger todavía no existe, así que el
-   * fallo se guarda y se registra en cuanto el servidor está en pie.
-   */
-  const adminAlerter = createAdminAlerter({
-    config: configCanales,
-    onError: (error, contexto) => {
       logAviso(error, contexto);
     },
   });
@@ -102,7 +114,7 @@ const main = async (): Promise<void> => {
     canales,
     clients,
     // El emisor de avisos de infraestructura: este servicio es el único que tiene el bot.
-    adminAlerter,
+    adminAlerter: adminAlerterActual,
     lastError: null as string | null,
   };
 
@@ -197,8 +209,17 @@ const main = async (): Promise<void> => {
     },
   });
 
-  /** Cycle de la cola de envíos: manda lo que toca y programa los reintentos. */
+  /**
+   * Cycle de la cola de envíos: manda lo que toca y programa los reintentos.
+   *
+   * Con el limitador de Baileys un ciclo puede durar más que `QUEUE_INTERVAL_MS`
+   * (espera + «escribiendo…»); la guarda de reentrada evita que dos ciclos se
+   * pisen y dupliquen envíos.
+   */
+  let queueRunning = false;
   const runQueue = async (): Promise<void> => {
+    if (queueRunning) return;
+    queueRunning = true;
     try {
       const result = await processQueue(database.db, canales.registry, config, {
         appointmentLoader: (id) => clients.getAppointment(id),
@@ -228,6 +249,8 @@ const main = async (): Promise<void> => {
     } catch (error) {
       services.lastError = error instanceof Error ? error.message : String(error);
       app.log.error({ err: error }, 'Falló un ciclo de la cola de envíos');
+    } finally {
+      queueRunning = false;
     }
   };
 
@@ -238,8 +261,9 @@ const main = async (): Promise<void> => {
 
   /**
    * Los adaptadores empujan los mensajes al **mismo núcleo**: Telegram sondea por
-   * dentro y WhatsApp los recibe por webhook, así que aquí no hay bucle propio.
-   * La idempotencia por `(canal, eventoId)` la garantiza el asistente.
+   * dentro; WhatsApp entra por el socket de Baileys (o por webhook si se elige
+   * Cloud API). Aquí no hay bucle propio. La idempotencia por `(canal, eventoId)`
+   * la garantiza el asistente.
    */
   const asistente = {
     db: database.db,
@@ -294,7 +318,16 @@ const main = async (): Promise<void> => {
       if (firma === firmaCanales) return;
       firmaCanales = firma;
 
+      const nuevoAlerter = createAdminAlerter({
+        config: efectivo,
+        onError: (error, contexto) => {
+          logAviso(error, contexto);
+        },
+      });
       const nuevo = createChannelAdapters(efectivo, {
+        previous: canales,
+        db: database.db,
+        alertas: alertasCanales,
         onError: (error) => {
           logError(error);
         },
@@ -303,19 +336,29 @@ const main = async (): Promise<void> => {
         },
       });
 
-      await canales.registry.stop().catch(() => undefined);
+      // D15: si WhatsApp no cambió, la sesión de Baileys se conserva. Solo se
+      // detiene el adaptador de Telegram anterior; el socket sigue vivo.
+      const whatsappReutilizada = nuevo.whatsapp !== null && nuevo.whatsapp === canales.whatsapp;
+      if (whatsappReutilizada) {
+        await canales.registry
+          .get('telegram')
+          ?.detener()
+          .catch(() => undefined);
+      } else {
+        await canales.registry.stop().catch(() => undefined);
+      }
+
       canales.registry = nuevo.registry;
       canales.transport = nuevo.transport;
       canales.modoTelegram = nuevo.modoTelegram;
       canales.modoTest = nuevo.modoTest;
+      canales.modoWhatsApp = nuevo.modoWhatsApp;
+      canales.whatsappFirma = nuevo.whatsappFirma;
+      canales.whatsapp = nuevo.whatsapp;
       canales.webhooks = nuevo.webhooks;
       asistente.canales = canales.registry;
-      services.adminAlerter = createAdminAlerter({
-        config: efectivo,
-        onError: (error, contexto) => {
-          logAviso(error, contexto);
-        },
-      });
+      adminAlerterActual = nuevoAlerter;
+      services.adminAlerter = nuevoAlerter;
       await canales.registry.start(entregar);
 
       app.log.info(
@@ -345,7 +388,14 @@ const main = async (): Promise<void> => {
   for (const adapter of canales.webhooks) {
     app.log.info(
       { canal: adapter.id },
-      'Canal con webhook activo: la ruta pública valida la firma del proveedor',
+      'Canal con webhook activo (Cloud API): la ruta valida la firma del proveedor',
+    );
+  }
+  if (canales.whatsapp !== null) {
+    const vistaWhatsApp = await canales.whatsapp.vista();
+    app.log.info(
+      { estado: vistaWhatsApp.estado, numero: vistaWhatsApp.numero },
+      'WhatsApp (Baileys): estado de la sesión al arrancar',
     );
   }
 

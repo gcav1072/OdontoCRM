@@ -25,10 +25,10 @@ import { maskDireccion, todayInClinic } from './messaging.js';
  * (el servicio ya habla con ella para los avisos) y el resto sale de la base propia.
  */
 
-/** Orden de preferencia para escribirle a un paciente: Telegram y luego WhatsApp. */
+/** Orden de preferencia para escribirle a un paciente: WhatsApp y luego Telegram (D16). */
 const rangoDeCanal = (canal: string): number => {
-  if (canal === 'telegram') return 0;
-  if (canal === 'whatsapp') return 1;
+  if (canal === 'whatsapp') return 0;
+  if (canal === 'telegram') return 1;
   return 2;
 };
 
@@ -119,7 +119,7 @@ export const appointmentsInInbox = async (
   ]);
 
   // Un canal por paciente, con la misma preferencia que usa el envío real: si tiene
-  // los dos vinculados se mira Telegram, que es donde el paciente ya conversa.
+  // los dos vinculados se mira WhatsApp, que es el canal principal (D16).
   const canalPorPaciente = new Map<string, { canal: ChannelId; direccion: string }>();
   for (const fila of canales) {
     if (fila.direccion === null || !canalAtendido(fila.channel)) continue;

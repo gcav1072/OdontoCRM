@@ -31,6 +31,7 @@ import {
 } from 'drizzle-orm';
 
 import type { AdapterRegistry } from './canales/adaptador.js';
+import { CanalNoDisponibleError, CanalSaturadoError } from './canales/whatsapp/limitador.js';
 import type { NotificationsConfig } from './config.js';
 import { retryDelays } from './config.js';
 import type { NotificationsDb } from './db/client.js';
@@ -178,8 +179,8 @@ export interface LinkedChannel {
 
 /**
  * Canal por el que se le escribe a un paciente. Si se pide un canal concreto se
- * respeta; si no (o si no está vinculado por ese), se prefiere Telegram —donde el
- * paciente ya conversa— y después WhatsApp.
+ * respeta; si no (o si no está vinculado por ese), se prefiere **WhatsApp**
+ * —decisión D16: es el canal principal— y después Telegram.
  */
 export const findChannel = async (
   db: NotificationsDb,
@@ -203,8 +204,8 @@ export const findChannel = async (
     (row): row is typeof row & { direccion: string } =>
       row.direccion !== null && isAttended(row.channel),
   );
-  const preferred =
-    usable.find((row) => row.channel === (canal ?? 'telegram')) ?? usable[0] ?? null;
+  const preferido = canal ?? 'whatsapp';
+  const preferred = usable.find((row) => row.channel === preferido) ?? usable[0] ?? null;
   if (preferred === null) return null;
 
   return { canal: preferred.channel as ChannelId, direccion: preferred.direccion };
@@ -325,11 +326,24 @@ export const linkChat = async (
     });
 };
 
-export const unlinkPatient = async (db: NotificationsDb, patientId: string): Promise<void> => {
+/**
+ * Desvincula a un paciente. Con `canal` se bloquea **solo** esa fila: un
+ * paciente con Telegram y WhatsApp puede perder uno sin perder el otro.
+ */
+export const unlinkPatient = async (
+  db: NotificationsDb,
+  patientId: string,
+  canal?: Channel,
+): Promise<void> => {
   await db
     .update(patientChannels)
     .set({ isBlocked: true, updatedAt: new Date() })
-    .where(eq(patientChannels.patientId, patientId));
+    .where(
+      and(
+        eq(patientChannels.patientId, patientId),
+        ...(canal === undefined ? [] : [eq(patientChannels.channel, canal)]),
+      ),
+    );
 };
 
 /* ── Cola de envíos ────────────────────────────────────────────────────────── */
@@ -853,8 +867,9 @@ export const processQueue = async (
          * el archivo con el texto como **pie de foto** y **descarta los botones**; el
          * `.ics` viaja así desde la Fase 4. Para que el paciente pueda confirmar con
          * un toque, el texto y su botón van primero y el calendario después —con un
-         * pie corto, para que las dos burbujas se entiendan—. Los canales sin botones
-         * reciben el mismo texto, que ya invita a escribir «confirmar».
+         * pie corto, para que las dos burbujas se entiendan—. Los canales sin
+         * botones (Baileys) reciben el mismo texto, que ya invita a escribir
+         * «confirmar».
          */
         if (adapter.capacidades.botones) {
           await adapter.enviar({
@@ -862,8 +877,9 @@ export const processQueue = async (
             texto: text,
             // Dos botones: confirmar o cancelar la cita (ADR 0052/0053). Van en el
             // **código** y no en la plantilla a propósito: el consultorio puede editar
-            // el texto sin quedarse sin los botones. WhatsApp admite hasta tres, así
-            // que dos caben.
+            // el texto sin quedarse sin los botones. Solo llegan a los canales que
+            // declaran `botones: true` (Telegram y Cloud API); Baileys usa el texto
+            // con las opciones numeradas del núcleo.
             botones: [
               { etiqueta: 'Confirmar', accion: `confirmar_cita:${appointment.id}` },
               { etiqueta: 'Cancelar', accion: `cancelar_cita:${appointment.id}` },
@@ -921,6 +937,26 @@ export const processQueue = async (
         providerMessageId: messageId,
       });
     } catch (error) {
+      /**
+       * **Diferimiento sin gastar intentos** (D9, igual que «consultorio sin
+       * configurar»): si WhatsApp no está conectado o se alcanzó el tope diario,
+       * el aviso vuelve a la cola para cuando el canal esté disponible. No es un
+       * fallo del aviso y no debe agotar sus reintentos.
+       */
+      if (error instanceof CanalNoDisponibleError || error instanceof CanalSaturadoError) {
+        await db
+          .update(notifications)
+          .set({
+            status: 'queued',
+            lastError: error.message.slice(0, 300),
+            nextAttemptAt: error.reintentarEn,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(notifications.id, row.id), eq(notifications.status, 'sending')));
+        deferred += 1;
+        continue;
+      }
+
       const attempts = row.attempts + 1;
       const delays = retryDelays(config);
       const exhausted = attempts >= row.maxAttempts;

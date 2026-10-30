@@ -20,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createAdapterRegistry, type AdapterRegistry } from './canales/adaptador.js';
 import { createSimulatedAdapter, type SimulatedAdapter } from './canales/simulado.js';
+import { CanalNoDisponibleError } from './canales/whatsapp/limitador.js';
 import { channelsInInbox } from './channels.js';
 import { avisarFalloAlPaciente, handleInbound, loadConversation } from './core/asistente.js';
 import { handleDomainEvent } from './consumer.js';
@@ -46,6 +47,7 @@ import {
   processQueue,
   renderMessageFor,
   retryNotification,
+  unlinkPatient,
 } from './messaging.js';
 import { updateNotificationSettings } from './settings.js';
 
@@ -1057,6 +1059,48 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
   }, 60_000);
 
+  it('un canal no disponible se difiere sin gastar intentos (D9)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}D`;
+    await linkChat(handle.db, { patientId, canal: 'whatsapp', direccion });
+    const record = await enqueue(handle.db, {
+      patientId,
+      patientName: `Diferido ${MARK}`,
+      templateKey: 'cita_confirmada',
+      payload: { text: 'Aviso que espera', variables: {} },
+      dedupeKey: `diferido:${patientId}:${suffix}`,
+    });
+    expect(record?.status).toBe('queued');
+
+    const reintentarEn = new Date(Date.now() + 5 * 60_000);
+    const caido = createSimulatedAdapter('whatsapp', { botones: false });
+    await caido.iniciar(async () => undefined);
+    const caidoRegistry = createAdapterRegistry([
+      {
+        ...caido,
+        enviar: async () => {
+          throw new CanalNoDisponibleError('sin conexión', reintentarEn);
+        },
+      },
+    ]);
+
+    const result = await processQueue(handle.db, caidoRegistry, config, { limit: 1 });
+    expect(result.deferred).toBe(1);
+    expect(result.failed).toBe(0);
+
+    const rows = await handle.db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.id, record?.id ?? ''));
+    const after = rows[0];
+    expect(after?.status).toBe('queued');
+    expect(after?.attempts).toBe(0);
+    expect(after?.nextAttemptAt.getTime()).toBe(reintentarEn.getTime());
+
+    await handle.db.delete(notifications).where(eq(notifications.patientId, patientId));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 60_000);
+
   it('el aviso a mano del botón «Notificar» también sale al paciente', async () => {
     const patientId = globalThis.crypto.randomUUID();
     const appointmentId = globalThis.crypto.randomUUID();
@@ -1253,6 +1297,47 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     const items = await listChannels(handle.db, patientId);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ canal: 'whatsapp', direccion, usuario: 'María' });
+
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 30_000);
+
+  it('con los dos canales vinculados, el aviso prefiere WhatsApp (D16)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    await linkChat(handle.db, {
+      patientId,
+      canal: 'telegram',
+      direccion: `${direccionBase}Q`,
+    });
+    await linkChat(handle.db, {
+      patientId,
+      canal: 'whatsapp',
+      direccion: `${direccionBase}R`,
+    });
+
+    const canal = await findChannel(handle.db, patientId);
+    expect(canal).toEqual({ canal: 'whatsapp', direccion: `${direccionBase}R` });
+
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 30_000);
+
+  it('desvincular un canal no bloquea el otro (D13)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    await linkChat(handle.db, {
+      patientId,
+      canal: 'telegram',
+      direccion: `${direccionBase}T`,
+    });
+    await linkChat(handle.db, {
+      patientId,
+      canal: 'whatsapp',
+      direccion: `${direccionBase}W`,
+    });
+
+    await unlinkPatient(handle.db, patientId, 'telegram');
+    const canales = await listChannels(handle.db, patientId);
+    expect(canales).toHaveLength(2);
+    expect(canales.find((canal) => canal.canal === 'telegram')?.isBlocked).toBe(true);
+    expect(canales.find((canal) => canal.canal === 'whatsapp')?.isBlocked).toBe(false);
 
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
   }, 30_000);

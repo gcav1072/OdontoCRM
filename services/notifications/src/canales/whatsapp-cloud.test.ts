@@ -3,7 +3,7 @@ import type { InboundMessage } from '@odontocrm/contracts';
 import { describe, expect, it } from 'vitest';
 
 import { loadNotificationsConfig } from '../config.js';
-import { createWhatsAppAdapter, toInboundMessages, validateSignature } from './whatsapp.js';
+import { createWhatsAppAdapter, toInboundMessages, validateSignature } from './whatsapp-cloud.js';
 
 /**
  * Detalles del adaptador de WhatsApp que el kit de conformidad no cubre: la

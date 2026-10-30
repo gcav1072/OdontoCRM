@@ -12,15 +12,16 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { NotificationsConfig } from '../config.js';
 
 /**
- * Adaptador de **WhatsApp Cloud API** (ADR 0029).
+ * Adaptador de **WhatsApp Cloud API** (ADR 0029), conservado como **alternativa**
+ * al proveedor por defecto, Baileys (ADR 0072).
  *
- * A diferencia de Telegram, WhatsApp **empuja**: Meta llama a un webhook HTTPS
+ * A diferencia de Telegram, Cloud API **empuja**: Meta llama a un webhook HTTPS
  * (por eso el túnel de Cloudflare). Aquí se valida la firma, se normaliza el
  * mensaje y se responde rápido; el núcleo conversacional no cambia nada.
  *
- * Faltan las credenciales para activarlo (`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`,
- * `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`): sin ellas el adaptador no se
- * registra y el servicio sigue con Telegram. Cuando estén, se enciende solo.
+ * Solo se registra con `WHATSAPP_PROVIDER=cloud_api`, el interruptor encendido
+ * y las cuatro credenciales (`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`,
+ * `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`). Con Baileys no se crea.
  */
 const WHATSAPP_CAPABILITIES: ChannelCapabilities = {
   botones: true,
