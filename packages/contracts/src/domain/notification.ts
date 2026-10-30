@@ -279,7 +279,9 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     key: 'pedir_sexo',
     channel: 'telegram',
     subject: null,
-    body: 'Paso 5 de 7 · ¿Sexo? Elige una opción.',
+    body:
+      'Paso 5 de 7 · ¿Sexo? Responde M (masculino), F (femenino) u O (otro), ' +
+      'o elige una opción.',
     placeholders: [],
   },
   {

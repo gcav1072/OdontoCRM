@@ -11,6 +11,7 @@ import {
   isMinor,
   maskDocument,
   normalizeBotName,
+  normalizePhrase,
   normalizeDocNumber,
   normalizePhone,
   parseBotDate,
@@ -874,6 +875,53 @@ const handleGuardian = async (
   await askStep(services, conversacion, 'sexo');
 };
 
+/**
+ * El paso del sexo se puede responder con la **letra** (M/F/O), no solo con el
+ * número de la opción. En WhatsApp las opciones llegan numeradas y mucha gente
+ * escribe la letra que ve en el botón de Telegram o en la ficha del paciente.
+ *
+ * Se aceptan las palabras completas para que no haya que adivinar: «masculino»,
+ * «femenino», «otro». La comparación ignora mayúsculas, tildes y puntuación.
+ */
+const SEXO_POR_TEXTO: Readonly<Record<string, 'M' | 'F' | 'O'>> = {
+  m: 'M',
+  masculino: 'M',
+  hombre: 'M',
+  f: 'F',
+  femenino: 'F',
+  mujer: 'F',
+  o: 'O',
+  otro: 'O',
+  otra: 'O',
+};
+
+export const sexoDesdeTexto = (texto: string): 'M' | 'F' | 'O' | null =>
+  SEXO_POR_TEXTO[normalizePhrase(texto)] ?? null;
+
+const handleSex = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  draft: BotDraft,
+  text: string,
+): Promise<void> => {
+  const sex = sexoDesdeTexto(text);
+  if (sex === null) {
+    await enviar(
+      services,
+      conversacion,
+      'Escribe M (masculino), F (femenino) u O (otro); también puedes responder el número de la opción.',
+    );
+    await askStep(services, conversacion, 'sexo');
+    return;
+  }
+
+  await saveConversation(services.db, conversacion, {
+    state: 'motivo',
+    draft: { ...draft, sex },
+  });
+  await askStep(services, conversacion, 'motivo');
+};
+
 const handleReason = async (
   services: AsistenteServices,
   conversacion: Conversacion,
@@ -1249,6 +1297,9 @@ export const handleInbound = async (
     case 'representante':
       await handleGuardian(services, conversacion, draft, texto);
       return { ...conversacion, handled: true, action: 'paso_representante' };
+    case 'sexo':
+      await handleSex(services, conversacion, draft, texto);
+      return { ...conversacion, handled: true, action: 'paso_sexo' };
     case 'motivo':
       await handleReason(services, conversacion, draft, texto);
       return { ...conversacion, handled: true, action: 'paso_motivo' };

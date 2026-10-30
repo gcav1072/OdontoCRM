@@ -36,6 +36,8 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   botones de confirmar** en vez de dejar al paciente a mitad de la conversación.
 - El QR caducado lo dice y ofrece **generar otro**; antes la pantalla se quedaba «esperando» sin
   salida.
+- El paso **«Sexo»** del alta acepta `M`, `F` u `O` escritos (también «masculino», «femenino» y
+  «otro», sin importar mayúsculas ni tildes), además del número de la opción.
 - La solicitud creada desde WhatsApp ya se audita con su canal real, no como si fuera Telegram.
 
 ### Eliminado
