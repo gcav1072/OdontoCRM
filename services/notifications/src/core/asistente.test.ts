@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { sexoDesdeTexto } from './asistente.js';
+import { confirmacionDesdeTexto, sexoDesdeTexto } from './asistente.js';
 
 /**
  * El paso «Sexo» acepta la letra además del número de la opción.
@@ -31,5 +31,33 @@ describe('sexo escrito por el paciente', () => {
     expect(sexoDesdeTexto('María')).toBeNull();
     expect(sexoDesdeTexto('no sé')).toBeNull();
     expect(sexoDesdeTexto('')).toBeNull();
+  });
+});
+
+/**
+ * El resumen final del alta también acepta palabras: escribir «confirmar» no
+ * debe confundirse con la intención de confirmar una cita ya agendada.
+ */
+describe('confirmación final por texto', () => {
+  it.each([
+    ['confirmar', 'si'],
+    ['Confirmo', 'si'],
+    ['sí', 'si'],
+    ['Sí, todo bien', 'si'],
+    ['1', 'si'],
+    ['correcto', 'si'],
+    ['corregir', 'no'],
+    ['Corrijo', 'no'],
+    ['no', 'no'],
+    ['2', 'no'],
+    ['incorrecto', 'no'],
+  ])('«%s» se interpreta como %s', (texto, esperado) => {
+    expect(confirmacionDesdeTexto(texto)).toBe(esperado);
+  });
+
+  it('otras frases no deciden por el paciente', () => {
+    expect(confirmacionDesdeTexto('María Pérez')).toBeNull();
+    expect(confirmacionDesdeTexto('quiero una cita')).toBeNull();
+    expect(confirmacionDesdeTexto('')).toBeNull();
   });
 });

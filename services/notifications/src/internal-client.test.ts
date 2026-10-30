@@ -158,6 +158,20 @@ describe('escrituras internas', () => {
     });
   });
 
+  it('actualiza el motivo de la solicitud en cola sin crear otro ticket', async () => {
+    const fetchFalso = espia().mockResolvedValue(
+      respuesta(200, { id: 'req-1', ticket: '#000001', status: 'en_espera_cita' }),
+    );
+    vi.stubGlobal('fetch', fetchFalso);
+
+    const clients = createInternalClients(config);
+    await clients.updateRequestReason('req-1', 'control de rutina');
+
+    const [url, init] = fetchFalso.mock.calls[0] ?? [];
+    expect(String(url)).toContain('/internal/v1/requests/req-1/reason');
+    expect(JSON.parse(String(init?.body))).toEqual({ reason: 'control de rutina' });
+  });
+
   it('un rechazo de conexión sí se repite: la petición no llegó a salir', async () => {
     const fetchFalso = espia()
       .mockRejectedValueOnce(rechazoDeConexion())

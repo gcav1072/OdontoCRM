@@ -936,6 +936,45 @@ const SEXO_POR_TEXTO: Readonly<Record<string, 'M' | 'F' | 'O'>> = {
 export const sexoDesdeTexto = (texto: string): 'M' | 'F' | 'O' | null =>
   SEXO_POR_TEXTO[normalizePhrase(texto)] ?? null;
 
+/**
+ * El paso final del alta se puede responder con palabras, no solo con el
+ * número de la opción: «confirmar» / «sí» o «corregir» / «no». Se resuelve
+ * **antes** de `detectIntent` porque «confirmar» también es la intención de
+ * confirmar una cita ya agendada (ADR 0052): en el estado `confirmacion` manda
+ * el alta.
+ */
+const CONFIRMAR_POR_TEXTO: ReadonlySet<string> = new Set([
+  'confirmar',
+  'confirmo',
+  'confirmado',
+  'si',
+  '1',
+  'correcto',
+  'todo bien',
+  'si todo bien',
+  'esta bien',
+  'estan bien',
+  'ok',
+]);
+
+const CORREGIR_POR_TEXTO: ReadonlySet<string> = new Set([
+  'corregir',
+  'corrijo',
+  'corrige',
+  'no',
+  '2',
+  'incorrecto',
+  'mal',
+  'cambiar',
+]);
+
+export const confirmacionDesdeTexto = (texto: string): 'si' | 'no' | null => {
+  const clave = normalizePhrase(texto);
+  if (CONFIRMAR_POR_TEXTO.has(clave)) return 'si';
+  if (CORREGIR_POR_TEXTO.has(clave)) return 'no';
+  return null;
+};
+
 const handleSex = async (
   services: AsistenteServices,
   conversacion: Conversacion,
@@ -991,6 +1030,7 @@ const finalize = async (
   conversacion: Conversacion,
   draft: BotDraft,
   patientId: string | null,
+  lastTicket: number | null,
 ): Promise<void> => {
   if (
     draft.fullName === null ||
@@ -1035,15 +1075,36 @@ const finalize = async (
           },
         };
 
-  const summary = await services.clients.createRequest({
-    patientId: patient.patient.id,
-    patientName: draft.fullName,
-    patientDocument: `${draft.docType}-${draft.docNumber}`,
-    patientPhone: draft.phone,
-    channel: canal,
-    reason: draft.reason,
-    notes: `Solicitud tomada por el asistente (${canal})`,
-  });
+  /**
+   * Si esta conversación venía de una solicitud **en espera sin cita vigente**
+   * (el caso típico: el paciente canceló la cita y volvió a la cola), se
+   * reutiliza su ticket y solo se actualiza el motivo. Crear otra solicitud
+   * dejaría dos tickets para la misma persona y perdería la antigüedad.
+   */
+  const anterior =
+    lastTicket === null
+      ? null
+      : await services.clients.findRequestByTicket(formatTicket(lastTicket).value);
+
+  let summary: RequestSummary;
+  if (
+    anterior !== null &&
+    anterior.status === 'en_espera_cita' &&
+    anterior.appointmentDate === null &&
+    anterior.patientId === patient.patient.id
+  ) {
+    summary = await services.clients.updateRequestReason(anterior.id, draft.reason);
+  } else {
+    summary = await services.clients.createRequest({
+      patientId: patient.patient.id,
+      patientName: draft.fullName,
+      patientDocument: `${draft.docType}-${draft.docNumber}`,
+      patientPhone: draft.phone,
+      channel: canal,
+      reason: draft.reason,
+      notes: `Solicitud tomada por el asistente (${canal})`,
+    });
+  }
 
   await saveConversation(services.db, conversacion, {
     state: 'inicio',
@@ -1188,10 +1249,20 @@ export const handleInbound = async (
   }
 
   // Botón pulsado o número que responde a las opciones numeradas del último paso.
-  const elegida =
+  let elegida =
     accion !== ''
       ? accion
       : resolveNumberedOption(texto, new Map(Object.entries(conversation.opciones)));
+
+  // «confirmar» / «corregir» en el resumen final (o «sí» / «no» en el paso de
+  // documento duplicado, que comparte el estado `confirmacion`). Se traduce a la
+  // misma acción que el botón o el número para no duplicar el flujo.
+  if (elegida === null && conversation.state === 'confirmacion') {
+    const decision = confirmacionDesdeTexto(texto);
+    if (decision !== null) {
+      elegida = draft.reason === null ? `duplicado:${decision}` : `confirmar:${decision}`;
+    }
+  }
 
   if (elegida !== null) {
     const [kind = '', value = ''] = elegida.split(':');
@@ -1247,10 +1318,22 @@ export const handleInbound = async (
 
     if (kind === 'confirmar') {
       if (value === 'si') {
-        await finalize(services, conversacion, draft, conversation.patientId);
+        await finalize(
+          services,
+          conversacion,
+          draft,
+          conversation.patientId,
+          conversation.lastTicket,
+        );
         return { ...conversacion, handled: true, action: 'solicitud_creada' };
       }
-      await saveConversation(services.db, conversacion, { state: 'nombre', draft: emptyDraft() });
+      // Al corregir se empieza de cero, también la ficha elegida: si venía del
+      // caso «documento duplicado», no debe reutilizarse el paciente anterior.
+      await saveConversation(services.db, conversacion, {
+        state: 'nombre',
+        draft: emptyDraft(),
+        patientId: null,
+      });
       await askStep(services, conversacion, 'nombre');
       return { ...conversacion, handled: true, action: 'corregir' };
     }
@@ -1329,11 +1412,47 @@ export const handleInbound = async (
         return { ...conversacion, handled: true, action: `confirmar_${resultado}` };
       }
       case 'nueva': {
-        const blocked = await hasActiveRequest(services, conversation);
-        if (blocked !== null) {
-          await reply(services, conversacion, 'solicitud_en_curso', { ticket: blocked });
+        const activa = await solicitudActiva(services, conversation);
+        // Una solicitud «en espera» sin cita vigente se reutiliza: el paciente
+        // canceló su cita y vuelve a la cola (ADR 0028), así que no se crea otro
+        // ticket. Solo se bloquea si la solicitud ya tiene una cita en pie.
+        const reutilizable =
+          activa !== null && activa.status === 'en_espera_cita' && activa.appointmentDate === null;
+
+        // Si el chat está vinculado, sus datos ya están en la ficha: se salta
+        // directo al paso 6 (motivo) en vez de preguntar nombre, documento,
+        // teléfono, nacimiento y sexo otra vez.
+        const vinculado = await channelByDireccion(
+          services.db,
+          conversacion.canal,
+          conversacion.direccion,
+        );
+        const paciente =
+          vinculado === null
+            ? null
+            : ((
+                await services.clients.listPatientSummaries([vinculado.patientId]).catch(() => [])
+              )[0] ?? null);
+
+        if (activa !== null && (!reutilizable || paciente === null)) {
+          await reply(services, conversacion, 'solicitud_en_curso', {
+            ticket: activa.ticket,
+          });
           return { ...conversacion, handled: true, action: 'solicitud_en_curso' };
         }
+
+        if (paciente !== null) {
+          await saveConversation(services.db, conversacion, {
+            state: 'motivo',
+            draft: draftFromPatient(paciente),
+            patientId: paciente.id,
+            lastTicket:
+              reutilizable && activa !== null ? activa.ticketNumber : conversation.lastTicket,
+          });
+          await askStep(services, conversacion, 'motivo');
+          return { ...conversacion, handled: true, action: 'nueva' };
+        }
+
         await saveConversation(services.db, conversacion, { state: 'nombre', draft: emptyDraft() });
         await askStep(services, conversacion, 'nombre');
         return { ...conversacion, handled: true, action: 'nueva' };
@@ -1383,21 +1502,24 @@ export const handleInbound = async (
   }
 };
 
-/** ¿Tiene ya una solicitud en curso? Devuelve el ticket si la tiene. */ const hasActiveRequest =
-  async (services: AsistenteServices, conversation: BotConversationRow): Promise<string | null> => {
-    if (conversation.lastTicket === null) return null;
-    const ticket = formatTicket(conversation.lastTicket).value;
-    const found = await services.clients.findRequestByTicket(ticket);
-    if (found === null) return null;
-    if (
-      found.status === 'cancelada' ||
-      found.status === 'atendido' ||
-      found.status === 'no_asistio'
-    ) {
-      return null;
-    }
-    return found.ticket;
-  };
+/** ¿Tiene ya una solicitud en curso? Devuelve la solicitud para poder reutilizarla. */
+const solicitudActiva = async (
+  services: AsistenteServices,
+  conversation: BotConversationRow,
+): Promise<RequestSummary | null> => {
+  if (conversation.lastTicket === null) return null;
+  const ticket = formatTicket(conversation.lastTicket).value;
+  const found = await services.clients.findRequestByTicket(ticket);
+  if (found === null) return null;
+  if (
+    found.status === 'cancelada' ||
+    found.status === 'atendido' ||
+    found.status === 'no_asistio'
+  ) {
+    return null;
+  }
+  return found;
+};
 
 /**
  * Vinculación por código: sirve para el deep link de Telegram

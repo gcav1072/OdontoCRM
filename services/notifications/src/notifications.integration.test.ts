@@ -120,6 +120,12 @@ const fakeClients = (): InternalClients & {
     },
     findRequestByTicket: async (ticket) =>
       requests.find((request) => request.ticket === ticket) ?? null,
+    updateRequestReason: async (id, reason) => {
+      const found = requests.find((request) => request.id === id);
+      if (found === undefined) throw new Error('no existe');
+      found.reason = reason;
+      return found;
+    },
     cancelRequest: async (id) => {
       const found = requests.find((request) => request.id === id);
       if (found === undefined) throw new Error('no existe');
@@ -730,18 +736,82 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
       expect(conversation.state).toBe('confirmacion');
       expect(conversation.patientId).toBe(patientId);
 
-      await enviar(whatsapp, { direccion, accion: 'duplicado:si' });
+      // «sí» escrito vale lo mismo que el número 1 de la opción.
+      await enviar(whatsapp, { direccion, texto: 'sí' });
       conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
       expect(conversation.state).toBe('motivo');
       // La conversación no se reinicia: el `patientId` elegido sigue ahí.
       expect(conversation.patientId).toBe(patientId);
 
       await enviar(whatsapp, { direccion, texto: `Limpieza dental ${MARK}` });
-      await enviar(whatsapp, { direccion, texto: '1' });
+      // Y «confirmar» escrito vale lo mismo que el número 1 del resumen final.
+      await enviar(whatsapp, { direccion, texto: 'confirmar' });
       expect(clients.requests.at(-1)?.patientId).toBe(patientId);
     } finally {
       clients.findPatientByDocument = original;
       await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+    }
+  }, 60_000);
+
+  it('un paciente vinculado va directo al motivo y reutiliza su solicitud en espera', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}P`;
+    await linkChat(handle.db, { patientId, canal: 'whatsapp', direccion });
+
+    const solicitud: RequestSummary = {
+      id: globalThis.crypto.randomUUID(),
+      ticket: formatTicket(2200).value,
+      ticketNumber: 2200,
+      channel: 'whatsapp',
+      patientId,
+      patientName: 'María Pérez',
+      patientDocument: 'V-87654321',
+      patientPhone: '+584121234567',
+      reason: 'motivo anterior',
+      status: 'en_espera_cita',
+      priority: 0,
+      requestedAt: new Date().toISOString(),
+      notes: null,
+      waitingDays: 2,
+      appointmentId: null,
+      appointmentDate: null,
+      appointmentTime: null,
+      createdAt: new Date().toISOString(),
+    };
+    clients.requests.push(solicitud);
+    await handle.db.insert(botConversations).values({
+      canal: 'whatsapp',
+      direccion,
+      state: 'inicio',
+      patientId,
+      lastTicket: solicitud.ticketNumber,
+    });
+
+    const original = clients.listPatientSummaries;
+    clients.listPatientSummaries = async (ids) =>
+      ids.includes(patientId) ? [unPaciente(patientId, 'María Pérez')] : [];
+
+    try {
+      const inicio = await enviar(whatsapp, { direccion, texto: 'cita' });
+      expect(inicio.action).toBe('nueva');
+      const conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
+      expect(conversation.state).toBe('motivo');
+      expect(conversation.draft['fullName']).toBe('María Pérez');
+      expect(conversation.patientId).toBe(patientId);
+
+      const antes = clients.requests.length;
+      await enviar(whatsapp, { direccion, texto: `Control de rutina ${MARK}` });
+      await enviar(whatsapp, { direccion, texto: 'confirmar' });
+
+      // No se creó otro ticket: se actualizó el motivo del que ya estaba en cola.
+      expect(clients.requests).toHaveLength(antes);
+      expect(clients.requests.at(-1)?.id).toBe(solicitud.id);
+      expect(clients.requests.at(-1)?.reason).toBe(`Control de rutina ${MARK}`);
+    } finally {
+      clients.listPatientSummaries = original;
+      clients.requests.splice(clients.requests.indexOf(solicitud), 1);
+      await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+      await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
     }
   }, 60_000);
 

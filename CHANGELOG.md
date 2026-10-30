@@ -38,6 +38,11 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   salida.
 - El paso **«Sexo»** del alta acepta `M`, `F` u `O` escritos (también «masculino», «femenino» y
   «otro», sin importar mayúsculas ni tildes), además del número de la opción.
+- El **resumen final** del alta acepta «confirmar» / «corregir» (y «sí» / «no») además de `1` / `2`;
+  el paso de documento duplicado también entiende «sí» y «no» escritos.
+- Un paciente **vinculado** que pide otra cita va directo al **paso 6 de 7 (motivo)**: sus datos ya
+  están en la ficha. Si tenía una solicitud en espera —por ejemplo, después de cancelar su cita— se
+  reutiliza el mismo ticket y solo se actualiza el motivo, sin duplicar la cola.
 - **Cancelar una cita desde la agenda ya no deja al bot con la fecha vieja**: el resumen de la
   solicitud solo toma la cita vigente (no la cancelada o reprogramada) y, si el paciente pregunta
   por su estado, el asistente le dice que esa cita quedó cancelada y que sigue en la cola.

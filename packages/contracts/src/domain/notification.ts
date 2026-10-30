@@ -295,7 +295,9 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     key: 'confirmar',
     channel: 'telegram',
     subject: null,
-    body: 'Paso 7 de 7 · Revisa tus datos:\n\n{resumen}\n\n¿Está todo bien?',
+    body:
+      'Paso 7 de 7 · Revisa tus datos:\n\n{resumen}\n\n' +
+      '¿Está todo bien? Responde «confirmar» o «corregir», o elige una opción.',
     placeholders: ['resumen'],
   },
   {
@@ -304,7 +306,8 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     subject: null,
     body:
       'Ya te tenemos registrado, {paciente} ({documento}).\n' +
-      '¿Confirmas que estos datos son tuyos y quieres pedir una cita?',
+      '¿Confirmas que estos datos son tuyos y quieres pedir una cita? ' +
+      'Responde «sí» o «no».',
     placeholders: ['paciente', 'documento'],
   },
   {

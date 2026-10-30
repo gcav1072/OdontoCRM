@@ -209,6 +209,35 @@ export const waitingQueue = async (db: SchedulingDb): Promise<RequestSummary[]> 
   return toSummaries(db, rows);
 };
 
+/**
+ * Cambia el **motivo** de una solicitud que sigue en la cola.
+ *
+ * Lo usa el bot cuando un paciente vinculado pide otra cita y ya tiene el ticket
+ * en espera: en vez de crear una solicitud duplicada (dos tickets para la misma
+ * persona), se conserva la antigüedad y se actualiza el motivo que acaba de
+ * escribir en el paso 6. No cambia de estado ni toca las citas.
+ */
+export const updateRequestReason = async (
+  db: SchedulingDb,
+  id: string,
+  reason: string,
+): Promise<RequestSummary> => {
+  const current = await getRequestRow(db, id);
+  if (current.status !== 'en_espera_cita') {
+    throw new ConflictError(
+      `Solo se puede cambiar el motivo de una solicitud en espera (esta está en «${current.status}»).`,
+      { extensions: { status: current.status } },
+    );
+  }
+
+  await db
+    .update(appointmentRequests)
+    .set({ reason, updatedAt: new Date() })
+    .where(eq(appointmentRequests.id, id));
+
+  return getRequest(db, id);
+};
+
 /** Cancela una solicitud que aún no tiene cita (el ticket queda trazado). */
 export const cancelRequest = async (
   db: SchedulingDb,

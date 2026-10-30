@@ -17,7 +17,12 @@ import {
   listAppointments,
 } from '../appointments/appointment-service.js';
 import { listChairs } from '../agenda/chair-service.js';
-import { cancelRequest, createRequest, findRequestByTicket } from '../requests/request-service.js';
+import {
+  cancelRequest,
+  createRequest,
+  findRequestByTicket,
+  updateRequestReason,
+} from '../requests/request-service.js';
 import type { SchedulingServices } from '../services.js';
 import { systemActor } from '../shared/context.js';
 
@@ -33,6 +38,9 @@ const reasonSchema = z.object({
   /** Canal por el que el paciente anuló la solicitud (para la auditoría). */
   channel: z.enum(CHANNELS).optional(),
 });
+
+/** Motivo nuevo de una solicitud que sigue en la cola (el bot reutiliza el ticket). */
+const updateReasonSchema = z.object({ reason: z.string().trim().min(5).max(500) });
 
 const safeEquals = (left: string, right: string): boolean => {
   const a = Buffer.from(left);
@@ -84,6 +92,17 @@ export const registerInternalRoutes = (
     const request_ = await findRequestByTicket(db, ticket);
     if (request_ === null) throw new NotFoundError('No hay ninguna solicitud con ese ticket');
     return reply.status(200).send(request_);
+  });
+
+  /**
+   * El bot cambia el motivo de una solicitud que ya está en la cola. Es lo que
+   * permite que un paciente vinculado pida otra cita sin crear un ticket
+   * duplicado: conserva su antigüedad y solo actualiza lo que escribió.
+   */
+  app.post('/internal/v1/requests/:id/reason', async (request, reply) => {
+    const { id } = parseOrThrow(idParamsSchema, request.params);
+    const input = parseOrThrow(updateReasonSchema, request.body ?? {});
+    return reply.status(200).send(await updateRequestReason(db, id, input.reason));
   });
 
   /** El bot anula la solicitud del paciente cuando él mismo lo pide. */

@@ -46,6 +46,7 @@ import {
   getRequest,
   getRequestRow,
   listRequests,
+  updateRequestReason,
   waitingQueue,
 } from './requests/request-service.js';
 import { todayInClinic, type ActorContext } from './shared/context.js';
@@ -752,6 +753,17 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     expect(resumen.appointmentId).toBeNull();
     expect(resumen.appointmentDate).toBeNull();
     expect(resumen.appointmentTime).toBeNull();
+
+    // El bot reutiliza el ticket y solo cambia el motivo cuando el paciente
+    // vinculado pide otra cita: no debe crear una solicitud nueva.
+    const conMotivoNuevo = await updateRequestReason(
+      schedulingHandle.db,
+      request.id,
+      'control de rutina',
+    );
+    expect(conMotivoNuevo.id).toBe(request.id);
+    expect(conMotivoNuevo.reason).toBe('control de rutina');
+    expect(conMotivoNuevo.status).toBe('en_espera_cita');
   }, 60_000);
 
   it('la vista del día arma franjas, citas, cola y contadores', async () => {

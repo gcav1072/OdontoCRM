@@ -60,6 +60,8 @@ export interface InternalClients {
   }) => Promise<RequestSummary>;
 
   findRequestByTicket: (ticket: string) => Promise<RequestSummary | null>;
+  /** Cambia el motivo de una solicitud en cola (reutiliza su ticket, sin duplicarlo). */
+  updateRequestReason: (id: string, reason: string) => Promise<RequestSummary>;
   cancelRequest: (id: string, reason: string, channel?: Channel) => Promise<RequestSummary>;
   getAppointment: (id: string) => Promise<AppointmentSummary | null>;
 
@@ -316,6 +318,18 @@ export const createInternalClients = (config: NotificationsConfig): InternalClie
         throw error;
       }
     }, LECTURA),
+
+  updateRequestReason: async (id, reason) =>
+    conReintentos(
+      () =>
+        request<RequestSummary>(
+          config,
+          config.SCHEDULING_URL,
+          `/internal/v1/requests/${id}/reason`,
+          { method: 'POST', body: { reason } },
+        ),
+      ESCRITURA,
+    ),
 
   cancelRequest: async (id, reason, channel) =>
     conReintentos(
