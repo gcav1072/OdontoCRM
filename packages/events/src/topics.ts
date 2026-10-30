@@ -39,6 +39,14 @@ export const EVENT_TOPICS = {
   messageSent: 'notifications.message.sent',
   messageFailed: 'notifications.message.failed',
   patientChannelLinked: 'notifications.patient_channel.linked',
+  /**
+   * Sesión de WhatsApp por Baileys (ADR 0072/0073): vinculada, cerrada desde el
+   * teléfono o perdida por una caída prolongada. La auditoría de identity las
+   * consume igual que el resto de eventos del outbox.
+   */
+  whatsappSessionPaired: 'notifications.whatsapp_session.paired',
+  whatsappSessionLoggedOut: 'notifications.whatsapp_session.logged_out',
+  whatsappSessionLost: 'notifications.whatsapp_session.lost',
 
   recordCreated: 'clinical.record.created',
   recordUpdated: 'clinical.record.updated',
