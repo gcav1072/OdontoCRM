@@ -969,7 +969,8 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
    * hallazgo de origen en el de destino, en una sola transacción.
    */
   it('los procedimientos mutan el hallazgo: extraer → extraída, obturar → restauración, rehabilitar → corona', async () => {
-    // Extraer: la extracción indicada cumplida deja la pieza **ausente**.
+    // Extraer: la extracción indicada cumplida deja la pieza **extraída** (la
+    // exodoncia documentada), distinta de la agenesia `ausente`.
     await recordFinding(
       handle.db,
       pacienteProcedimientos,
@@ -983,7 +984,7 @@ describeWithDatabases('odontograma FDI: patrón por excepción, histórico y aud
       actor,
     );
     expect(extraida.odontogram.findings['33']?.map((row) => [row.condition, row.state])).toEqual([
-      ['ausente', 'completado'],
+      ['extraida', 'completado'],
     ]);
     // El odontograma del paciente de procedimientos (distinto del de la boca por lotes).
     const odontogramProcedimientos = extraida.odontogram.id;
