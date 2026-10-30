@@ -13,7 +13,7 @@ import { Bot, RefreshCw } from 'lucide-react';
 
 import { apiErrorMessage } from '../../lib/api';
 import { formatDateTime, formatRelative, formatNumber } from '../../lib/format';
-import { CHANNEL_LABELS, t } from '../../lib/i18n';
+import { CHANNEL_LABELS, t, whatsappSessionStateLabel } from '../../lib/i18n';
 import { BOT_STATUS_REFRESH_MS } from '../../lib/notifications';
 import { useNow } from '../../hooks/useNow';
 
@@ -91,6 +91,10 @@ export const BotStatusCard = ({
 
   const esReal = status.mode === 'real';
   const titulo = t('notificaciones.bot.titulo');
+  const whatsapp = status.canales.find((canal) => canal.canal === 'whatsapp');
+  const whatsappConectado = whatsapp?.conectado === true;
+  /** La cabecera habla del asistente completo, no solo del bot de Telegram. */
+  const conectado = status.connected || whatsappConectado;
 
   return (
     <Card>
@@ -112,12 +116,8 @@ export const BotStatusCard = ({
               <Badge variant={esReal ? 'success' : 'warning'} dot>
                 {t(esReal ? 'notificaciones.bot.modo.real' : 'notificaciones.bot.modo.simulado')}
               </Badge>
-              <Badge variant={status.connected ? 'success' : 'neutral'} dot>
-                {t(
-                  status.connected
-                    ? 'notificaciones.bot.conectado'
-                    : 'notificaciones.bot.desconectado',
-                )}
+              <Badge variant={conectado ? 'success' : 'neutral'} dot>
+                {t(conectado ? 'notificaciones.bot.conectado' : 'notificaciones.bot.desconectado')}
               </Badge>
             </CardTitle>
 
@@ -181,6 +181,10 @@ export const BotStatusCard = ({
               <span className="block pt-1">{t('notificaciones.bot.real.revisarToken')}</span>
             )}
           </Alert>
+        ) : whatsappConectado ? (
+          <Alert variant="info" title={t('notificaciones.bot.whatsappConectado.titulo')}>
+            {t('notificaciones.bot.whatsappConectado.texto')}
+          </Alert>
         ) : (
           <Alert variant="warning" title={t('notificaciones.bot.modo.simulado')}>
             {t('notificaciones.bot.simulado.texto')}
@@ -211,6 +215,12 @@ export const BotStatusCard = ({
                 {CHANNEL_LABELS[canal.canal]}
                 {' · '}
                 {canal.usuario ?? t('notificaciones.bot.canal.sinConfigurar')}
+                {canal.detalle !== null && canal.detalle !== undefined && (
+                  <span className="text-ink-subtle">
+                    {' '}
+                    ({whatsappSessionStateLabel(canal.detalle)})
+                  </span>
+                )}
               </Badge>
             ))}
           </div>

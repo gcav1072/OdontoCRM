@@ -96,14 +96,17 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
   });
 
   const desvincular = useMutation({
-    mutationFn: (patientId: string) => notificationsApi.unlinkChannel(patientId),
-    onSuccess: (_resultado, patientId) => {
+    mutationFn: (canal: PatientChannel) =>
+      notificationsApi.unlinkChannel(canal.patientId, canal.channel),
+    onSuccess: (_resultado, canal) => {
       setDesvinculando(null);
       cliente.setQueryData<PatientChannelList>(notificationKeys.channels(null), (actual) =>
         actual === undefined
           ? actual
           : {
-              items: actual.items.filter((canal) => canal.patientId !== patientId),
+              items: actual.items.filter(
+                (fila) => !(fila.patientId === canal.patientId && fila.channel === canal.channel),
+              ),
               total: Math.max(0, actual.total - 1),
             },
       );
@@ -134,8 +137,14 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
   };
 
   const qr = notificationQrImage(enlace?.qrDataUrl);
+  const qrWhatsApp = notificationQrImage(enlace?.whatsappQrDataUrl);
   const caducado = enlace !== null && linkCodeExpired(enlace.expiresAt);
-  const sinToken = bot !== undefined && (bot.mode === 'simulado' || bot.botUsername === null);
+  const whatsappConectado =
+    bot?.canales.some((canal) => canal.canal === 'whatsapp' && canal.conectado) ?? false;
+  const sinToken =
+    bot !== undefined &&
+    !whatsappConectado &&
+    (bot.mode === 'simulado' || bot.botUsername === null);
   const canales = canalesQuery.data?.items ?? [];
 
   return (
@@ -242,18 +251,45 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
             {enlace !== null && (
               <div className="grid gap-4 rounded-control border border-border bg-surface-muted/50 p-4 @2xl:grid-cols-[auto_minmax(0,1fr)]">
                 <div className="flex flex-col items-center gap-2">
-                  {qr === null ? (
+                  {qr === null && qrWhatsApp === null ? (
                     <Alert variant="info" className="max-w-xs">
                       {t('notificaciones.canales.sinQr')}
                     </Alert>
                   ) : (
-                    <img
-                      src={qr}
-                      alt={t('notificaciones.canales.qrAlt', { paciente: paciente.fullName })}
-                      width={180}
-                      height={180}
-                      className="rounded-control border border-border bg-surface p-2"
-                    />
+                    <div className="flex flex-wrap justify-center gap-3">
+                      {qr !== null && (
+                        <div className="flex flex-col items-center gap-1">
+                          <img
+                            src={qr}
+                            alt={t('notificaciones.canales.qrAlt', {
+                              paciente: paciente.fullName,
+                            })}
+                            width={160}
+                            height={160}
+                            className="rounded-control border border-border bg-surface p-2"
+                          />
+                          <span className="text-xs text-ink-subtle">
+                            {t('comun.canal.telegram')}
+                          </span>
+                        </div>
+                      )}
+                      {qrWhatsApp !== null && (
+                        <div className="flex flex-col items-center gap-1">
+                          <img
+                            src={qrWhatsApp}
+                            alt={t('notificaciones.canales.qrWhatsAppAlt', {
+                              paciente: paciente.fullName,
+                            })}
+                            width={160}
+                            height={160}
+                            className="rounded-control border border-border bg-surface p-2"
+                          />
+                          <span className="text-xs text-ink-subtle">
+                            {t('comun.canal.whatsapp')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   )}
                   <span className="font-mono text-xs text-ink-subtle">{enlace.code}</span>
                 </div>
@@ -286,6 +322,26 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
                             {copiado ? t('comun.copiado') : t('notificaciones.canales.copiar')}
                           </Button>
                         </span>,
+                      ],
+                      [
+                        t('notificaciones.canales.enlaceWhatsApp'),
+                        enlace.whatsappLink === null || enlace.whatsappLink === undefined ? (
+                          t('comun.sinDato')
+                        ) : (
+                          <span className="flex flex-wrap items-center gap-2">
+                            <code className="min-w-0 flex-1 truncate font-mono text-xs text-ink-muted">
+                              {enlace.whatsappLink}
+                            </code>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              leadingIcon={<Copy className="size-3.5" aria-hidden="true" />}
+                              onClick={() => void copiar(enlace.whatsappLink ?? '')}
+                            >
+                              {t('notificaciones.canales.copiar')}
+                            </Button>
+                          </span>
+                        ),
                       ],
                       [
                         t('notificaciones.canales.codigo'),
@@ -355,7 +411,7 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
               </TableHeader>
               <TableBody>
                 {canales.map((canal) => (
-                  <TableRow key={canal.patientId}>
+                  <TableRow key={`${canal.patientId}:${canal.channel}`}>
                     <TableCell className="text-sm text-ink">
                       {canal.patientName ?? t('comun.desconocido')}
                       {canal.isBlocked && (
@@ -371,7 +427,11 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
                       </span>
                     </TableCell>
                     <TableCell className="text-sm text-ink-muted">
-                      {canal.usuario === null ? t('comun.sinDato') : `@${canal.usuario}`}
+                      {canal.usuario === null
+                        ? t('comun.sinDato')
+                        : canal.channel === 'telegram'
+                          ? `@${canal.usuario}`
+                          : canal.usuario}
                     </TableCell>
                     <TableCell className="text-sm text-ink-muted">
                       {canal.linkedAt === null
@@ -420,7 +480,7 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
               <Button
                 variant="danger"
                 loading={desvincular.isPending}
-                onClick={() => desvincular.mutate(desvinculando.patientId)}
+                onClick={() => desvincular.mutate(desvinculando)}
               >
                 {t('notificaciones.canales.desvincular')}
               </Button>
