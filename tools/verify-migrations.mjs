@@ -40,7 +40,13 @@ const SERVICES = [
   {
     name: 'notifications',
     migrations: 'services/notifications/migrations',
-    tables: ['bot_conversations', 'notifications', 'ics_artifacts'],
+    tables: [
+      'bot_conversations',
+      'notifications',
+      'ics_artifacts',
+      'whatsapp_auth',
+      'whatsapp_session',
+    ],
   },
   {
     name: 'screens',

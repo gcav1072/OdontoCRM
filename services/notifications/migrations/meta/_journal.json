@@ -50,6 +50,13 @@
       "when": 1791564019727,
       "tag": "0006_politica_cancelacion",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793326837962,
+      "tag": "0007_sesion_whatsapp",
+      "breakpoints": true
     }
   ]
 }

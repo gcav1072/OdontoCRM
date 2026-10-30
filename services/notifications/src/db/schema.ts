@@ -8,6 +8,7 @@ import {
   bigint,
   boolean,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -169,7 +170,7 @@ export const icsArtifacts = pgTable(
 
 /**
  * Eventos entrantes ya procesados: la clave es `(canal, evento_id)` — el
- * `update_id` de Telegram o el `wamid` de WhatsApp—, así que un reenvío del canal
+ * `update_id` de Telegram, la `key.id` de Baileys o el `wamid` de Cloud API—, así que un reenvío del canal
  * no crea dos tickets.
  */
 export const processedUpdates = pgTable(
@@ -182,6 +183,50 @@ export const processedUpdates = pgTable(
   },
   (table) => [primaryKey({ columns: [table.canal, table.eventoId] })],
 );
+
+/**
+ * **Sesión de WhatsApp por Baileys** (ADR 0073). No es una credencial de canal:
+ * es el estado Signal del dispositivo vinculado, que equivale a la cuenta de
+ * WhatsApp del consultorio. Se guarda cifrado con `STORAGE_ENCRYPTION_KEY` y
+ * entra en el respaldo nocturno de la base de notificaciones.
+ *
+ * `categoria` es el tipo que pide Baileys (`creds`, `pre-key`, `session`,
+ * `sender-key`, `app-state-sync-key`, `lid-mapping`, `device-list`, `tctoken`…)
+ * y `clave` el identificador dentro de ese tipo (`''` para `creds`).
+ */
+export const whatsappAuth = pgTable(
+  'whatsapp_auth',
+  {
+    sessionId: text('session_id').notNull(),
+    categoria: text('categoria').notNull(),
+    clave: text('clave').notNull(),
+    /** `enc:<base64>` o `plain:<json>` (solo desarrollo, sin clave de almacén). */
+    valor: text('valor').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.sessionId, table.categoria, table.clave] })],
+);
+
+/**
+ * Estado y contadores de la sesión de WhatsApp (ADR 0073). La máquina de estados
+ * vive en `canales/whatsapp/sesion.ts`; aquí solo se persiste lo que el panel, la
+ * bandeja y el limitador necesitan después de un reinicio.
+ */
+export const whatsappSession = pgTable('whatsapp_session', {
+  sessionId: text('session_id').primaryKey(),
+  estado: text('estado').notNull().default('desactivado'),
+  /** Número del consultorio en dígitos E.164 sin `+`, si se conoce. */
+  numero: text('numero'),
+  nombre: text('nombre'),
+  vinculadoEn: timestamp('vinculado_en', { withTimezone: true }),
+  conectadoDesde: timestamp('conectado_desde', { withTimezone: true }),
+  ultimaDesconexion: timestamp('ultima_desconexion', { withTimezone: true }),
+  motivo: text('motivo'),
+  /** Tope diario (D9): se reinicia al cambiar el día del consultorio. */
+  enviosHoy: integer('envios_hoy').notNull().default(0),
+  enviosDia: date('envios_dia'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 /**
  * Configuración editable de la clínica para el bot (ADR 0057), en **una sola fila**
@@ -215,4 +260,8 @@ export type BotConversationRow = typeof botConversations.$inferSelect;
 export type MessageTemplateRow = typeof messageTemplates.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
 export type IcsArtifactRow = typeof icsArtifacts.$inferSelect;
+export type WhatsAppAuthRow = typeof whatsappAuth.$inferSelect;
+export type NewWhatsAppAuthRow = typeof whatsappAuth.$inferInsert;
+export type WhatsAppSessionRow = typeof whatsappSession.$inferSelect;
+export type NewWhatsAppSessionRow = typeof whatsappSession.$inferInsert;
 export type NotificationSettingsRow = typeof notificationSettings.$inferSelect;
