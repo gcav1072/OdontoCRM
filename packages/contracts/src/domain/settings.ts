@@ -587,6 +587,34 @@ export const resolveScreenText = (
 export const DEFAULT_WHATSAPP_API_BASE = 'https://graph.facebook.com/v21.0';
 
 /**
+ * Proveedores de WhatsApp (ADR 0072). El **id de canal** sigue siendo
+ * `whatsapp`: el proveedor es un detalle detrás del mismo `ChannelAdapter`.
+ *
+ * - `baileys`: socket saliente, sesión vinculada por QR/código. Es el valor por
+ *   defecto para instalaciones nuevas.
+ * - `cloud_api`: la integración oficial de Meta (webhook, plantillas y ventana
+ *   de 24 h). Se conserva como alternativa configurable.
+ */
+export const WHATSAPP_PROVIDERS = ['baileys', 'cloud_api'] as const;
+export type WhatsAppProvider = (typeof WHATSAPP_PROVIDERS)[number];
+
+export const DEFAULT_WHATSAPP_PROVIDER: WhatsAppProvider = 'baileys';
+
+/** Ritmo y tope de fábrica del adaptador Baileys (D9). */
+export const WHATSAPP_RATE_DEFAULTS = {
+  minSendIntervalMs: 2000,
+  maxSendIntervalMs: 4000,
+  dailySendCap: 150,
+} as const;
+
+/** Límites que acepta el panel para el ritmo de Baileys. */
+export const WHATSAPP_RATE_LIMITS = {
+  minSendIntervalMs: { min: 1000, max: 60_000 },
+  maxSendIntervalMs: { min: 1000, max: 60_000 },
+  dailySendCap: { min: 1, max: 1000 },
+} as const;
+
+/**
  * Un campo de texto de los canales. La semántica es la de la entrada: `undefined` = no
  * tocar, `''` = borrar. Se acepta además `null` porque es la forma en que la **vista**
  * devuelve un campo sin valor: así reenviar lo leído (o un formulario que solo copia la
@@ -628,17 +656,56 @@ const channelApiBaseInput = z
  * = fijarlo. Así el panel puede cambiar solo el teléfono de WhatsApp sin reescribir
  * el token.
  */
-export const channelSettingsInputSchema = z.object({
-  telegramBotToken: channelTextInput(200),
-  telegramBotUsername: channelTextInput(80),
-  adminTelegramBotToken: channelTextInput(200),
-  adminTelegramChatId: channelTextInput(80),
-  whatsappToken: channelTextInput(1000),
-  whatsappPhoneId: channelTextInput(60),
-  whatsappVerifyToken: channelTextInput(200),
-  whatsappAppSecret: channelTextInput(200),
-  whatsappApiBase: channelApiBaseInput,
-});
+export const channelSettingsInputSchema = z
+  .object({
+    telegramBotToken: channelTextInput(200),
+    telegramBotUsername: channelTextInput(80),
+    adminTelegramBotToken: channelTextInput(200),
+    adminTelegramChatId: channelTextInput(80),
+    /** Interruptor del canal (D5). La base manda sobre `WHATSAPP_ENABLED`. */
+    whatsappEnabled: z.boolean().optional(),
+    /** `baileys` (por defecto) o la alternativa oficial `cloud_api` (D2). */
+    whatsappProvider: z.enum(WHATSAPP_PROVIDERS).optional(),
+    /** Ritmo mínimo/máximo entre envíos de Baileys, con aleatoriedad (D9). */
+    whatsappSendMinIntervalMs: z
+      .number()
+      .int()
+      .min(WHATSAPP_RATE_LIMITS.minSendIntervalMs.min)
+      .max(WHATSAPP_RATE_LIMITS.minSendIntervalMs.max)
+      .optional(),
+    whatsappSendMaxIntervalMs: z
+      .number()
+      .int()
+      .min(WHATSAPP_RATE_LIMITS.maxSendIntervalMs.min)
+      .max(WHATSAPP_RATE_LIMITS.maxSendIntervalMs.max)
+      .optional(),
+    /** Tope diario de mensajes salientes; al superarlo el aviso se difiere. */
+    whatsappDailySendCap: z
+      .number()
+      .int()
+      .min(WHATSAPP_RATE_LIMITS.dailySendCap.min)
+      .max(WHATSAPP_RATE_LIMITS.dailySendCap.max)
+      .optional(),
+    // Cloud API (alternativa que se conserva, ADR 0072).
+    whatsappToken: channelTextInput(1000),
+    whatsappPhoneId: channelTextInput(60),
+    whatsappVerifyToken: channelTextInput(200),
+    whatsappAppSecret: channelTextInput(200),
+    whatsappApiBase: channelApiBaseInput,
+  })
+  .superRefine((valor, ctx) => {
+    if (
+      valor.whatsappSendMinIntervalMs !== undefined &&
+      valor.whatsappSendMaxIntervalMs !== undefined &&
+      valor.whatsappSendMinIntervalMs > valor.whatsappSendMaxIntervalMs
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['whatsappSendMaxIntervalMs'],
+        message: 'El intervalo máximo no puede ser menor que el mínimo',
+      });
+    }
+  });
 
 export type ChannelSettingsInput = z.infer<typeof channelSettingsInputSchema>;
 
@@ -655,6 +722,11 @@ export type ChannelSecretView = z.infer<typeof channelSecretViewSchema>;
 export const channelSettingsViewSchema = z.object({
   telegramBotUsername: z.string().nullable(),
   adminTelegramChatId: z.string().nullable(),
+  whatsappEnabled: z.boolean(),
+  whatsappProvider: z.enum(WHATSAPP_PROVIDERS),
+  whatsappSendMinIntervalMs: z.number().int(),
+  whatsappSendMaxIntervalMs: z.number().int(),
+  whatsappDailySendCap: z.number().int(),
   whatsappPhoneId: z.string().nullable(),
   whatsappApiBase: z.string(),
   telegramBotToken: channelSecretViewSchema,
@@ -680,6 +752,12 @@ export const channelCredentialsSchema = z.object({
   telegramBotUsername: z.string().nullable(),
   adminTelegramBotToken: z.string().nullable(),
   adminTelegramChatId: z.string().nullable(),
+  /** `null` = la base no tiene fila y manda el `.env` (respaldo). */
+  whatsappEnabled: z.boolean().nullable(),
+  whatsappProvider: z.enum(WHATSAPP_PROVIDERS).nullable(),
+  whatsappSendMinIntervalMs: z.number().int().nullable(),
+  whatsappSendMaxIntervalMs: z.number().int().nullable(),
+  whatsappDailySendCap: z.number().int().nullable(),
   whatsappToken: z.string().nullable(),
   whatsappPhoneId: z.string().nullable(),
   whatsappVerifyToken: z.string().nullable(),

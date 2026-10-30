@@ -33,6 +33,10 @@ export const AUDIT_ACTIONS = [
   'app_settings_updated',
   /** Cambio de las credenciales o los datos de los canales (Telegram, WhatsApp). */
   'channel_settings_updated',
+  // Sesión de WhatsApp por Baileys (ADR 0072/0073): vincular, cerrar y caídas.
+  'whatsapp_session_paired',
+  'whatsapp_session_logged_out',
+  'whatsapp_session_lost',
   // Pantallas kiosko
   'device_token_created',
   'device_token_revoked',

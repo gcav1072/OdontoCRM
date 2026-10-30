@@ -80,6 +80,34 @@ describe('intenciones del asistente', () => {
     expect(detectIntent('Menú', sinComandos).intencion).toBe('ayuda');
   });
 
+  it('en canales sin comandos acepta «frase + argumento» solo en las que lo admiten', () => {
+    expect(detectIntent('vincular ABC123', sinComandos)).toMatchObject({
+      intencion: 'start',
+      argumento: 'ABC123',
+      comando: false,
+    });
+    expect(detectIntent('start ABC123', sinComandos)).toMatchObject({
+      intencion: 'start',
+      argumento: 'ABC123',
+    });
+    expect(detectIntent('estado #000123', sinComandos)).toMatchObject({
+      intencion: 'estado',
+      argumento: '#000123',
+    });
+    expect(detectIntent('cancelar #000123', sinComandos)).toMatchObject({
+      intencion: 'cancelar',
+      argumento: '#000123',
+    });
+    // La coincidencia exacta gana: no se parte «cancelar mi cita» en frase + argumento.
+    expect(detectIntent('cancelar mi cita', sinComandos)).toEqual({
+      intencion: 'cancelar',
+      argumento: '',
+      comando: false,
+    });
+    // «nueva» no admite argumento: no se inventa una intención con la cola.
+    expect(detectIntent('nueva cita para mañana', sinComandos).intencion).toBeNull();
+  });
+
   it('no inventa intenciones donde no las hay', () => {
     expect(detectIntent('María Pérez', sinComandos).intencion).toBeNull();
     expect(detectIntent('0412-1234567', sinComandos).intencion).toBeNull();

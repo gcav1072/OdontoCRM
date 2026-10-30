@@ -178,6 +178,16 @@ describe('validación de la configuración', () => {
     expect(channelSettingsInputSchema.safeParse({ whatsappApiBase: 'no-es-url' }).success).toBe(
       false,
     );
+    // El ritmo de Baileys (D9) no puede quedar invertido ni fuera de rango.
+    expect(
+      channelSettingsInputSchema.safeParse({
+        whatsappSendMinIntervalMs: 5000,
+        whatsappSendMaxIntervalMs: 2000,
+      }).success,
+    ).toBe(false);
+    expect(channelSettingsInputSchema.safeParse({ whatsappProvider: 'baileys' }).success).toBe(
+      true,
+    );
   });
 
   it('la entrada de canales acepta la forma que devuelve la vista (null) y la base vacía', () => {

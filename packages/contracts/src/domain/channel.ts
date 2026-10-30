@@ -3,6 +3,11 @@ import { z } from 'zod';
 /**
  * Contrato de canal (ADR 0029): lo que el núcleo conversacional necesita de
  * Telegram, WhatsApp o cualquier canal futuro, sin saber nada de sus detalles.
+ *
+ * WhatsApp tiene **dos proveedores** detrás del mismo identificador `whatsapp`
+ * (ADR 0072): Baileys —socket saliente, sin webhook, sin botones— y Cloud API
+ * —webhook HTTPS y plantillas—. El núcleo no distingue entre ellos: solo ve las
+ * capacidades que declara el adaptador activo.
  */
 
 export const CHANNEL_IDS = ['telegram', 'whatsapp'] as const;
@@ -15,15 +20,19 @@ export const CHANNEL_LABELS: Readonly<Record<ChannelId, string>> = {
 
 /** Qué sabe hacer un canal: el núcleo se adapta a esto. */
 export interface ChannelCapabilities {
-  /** Botones interactivos (Telegram: teclado en línea; WhatsApp: interactivo). */
+  /**
+   * Botones interactivos (Telegram: teclado en línea; WhatsApp Cloud API:
+   * respuesta interactiva). **Baileys declara `false`**: los botones no son
+   * fiables en clientes no oficiales y el núcleo ya numera las opciones.
+   */
   botones: boolean;
   /** Adjuntos (el `.ics` de la cita). */
   documentos: boolean;
   /** Comandos con barra (`/nueva`); WhatsApp no los tiene. */
   comandos: boolean;
   /**
-   * El canal exige **plantillas aprobadas** fuera de la ventana de atención
-   * (WhatsApp Cloud API): el adaptador decide cuándo usar plantilla y cuándo texto.
+   * El canal exige **plantillas aprobadas** fuera de la ventana de atención.
+   * Hoy solo lo usa WhatsApp Cloud API; Baileys no tiene ventana ni plantillas.
    */
   plantillasAprobadas: boolean;
 }
@@ -31,7 +40,11 @@ export interface ChannelCapabilities {
 /** Mensaje entrante ya normalizado, venga de donde venga. */
 export interface InboundMessage {
   canal: ChannelId;
-  /** Dirección del interlocutor: id de chat (Telegram) o número (WhatsApp). */
+  /**
+   * Dirección del interlocutor: id de chat (Telegram) o número (WhatsApp).
+   * En WhatsApp es el número en **dígitos E.164 sin `+`** cuando se conoce; si
+   * el proveedor solo entrega un LID, viaja el JID completo (`123…@lid`).
+   */
   direccion: string;
   /** Nombre de usuario del canal, si lo hay. */
   usuario: string | null;
@@ -71,7 +84,10 @@ export interface OutboundMessage {
   texto: string;
   botones?: readonly OutboundButton[];
   documento?: OutboundDocument;
-  /** Plantilla del catálogo que originó el mensaje (para WhatsApp aprobado). */
+  /**
+   * Plantilla del catálogo que originó el mensaje. Solo la usa Cloud API cuando
+   * el proveedor exige una plantilla aprobada; Baileys manda el texto tal cual.
+   */
   plantilla?: string;
 }
 
@@ -97,8 +113,8 @@ export interface WebhookResponse {
 
 /**
  * Adaptador de canal. El núcleo **no** sondea ni escucha: cada adaptador entrega
- * los mensajes con `entregar()` (Telegram los saca por long polling; WhatsApp los
- * recibe por webhook) y sabe enviar lo que el núcleo decide.
+ * los mensajes con `entregar()` (Telegram por long polling, WhatsApp por webhook
+ * o por el socket saliente de Baileys) y sabe enviar lo que el núcleo decide.
  */
 export interface ChannelAdapter {
   readonly id: ChannelId;
@@ -107,7 +123,11 @@ export interface ChannelAdapter {
   iniciar: (entregar: (entrante: InboundMessage) => Promise<void>) => Promise<void>;
   detener: () => Promise<void>;
   enviar: (saliente: OutboundMessage) => Promise<SendResult>;
-  /** Solo los canales con webhook (WhatsApp) lo implementan. */
+  /**
+   * Solo los canales que **empujan** por webhook lo implementan (hoy, WhatsApp
+   * Cloud API). Se conserva como interfaz genérica para proveedores futuros;
+   * Baileys no lo define porque su socket es saliente.
+   */
   webhook?: (peticion: WebhookRequest) => Promise<WebhookResponse>;
   /** Identidad visible del canal, para la pantalla de estado. */
   identidad: () => Promise<{ nombre: string | null; usuario: string | null; conectado: boolean }>;
@@ -221,8 +241,12 @@ export const INTENT_PHRASES: Readonly<Record<BotIntent, readonly string[]>> = {
     'ya no quiero la cita',
   ],
   ayuda: ['ayuda', 'help', 'menu', 'opciones', 'que puedo hacer', 'como funciona'],
-  /** Arrancar la conversación: en Telegram es `/start` y admite el código de vinculación. */
-  start: ['start', 'iniciar', 'empezar', 'comenzar'],
+  /**
+   * Arrancar la conversación: en Telegram es `/start` y admite el código de
+   * vinculación. En WhatsApp se escribe `vincular <código>` o `start <código>`
+   * (D13): el enlace `wa.me/...?text=` no puede crear un comando con barra.
+   */
+  start: ['start', 'iniciar', 'empezar', 'comenzar', 'vincular'],
 };
 
 /** Texto comparable: minúsculas, sin acentos, sin signos y con espacios simples. */
@@ -364,9 +388,22 @@ export interface DetectedIntent {
 }
 
 /**
+ * Intenciones que admiten un argumento detrás de la frase, sin comando con
+ * barra: `vincular ABC123`, `estado #000123`, `cancelar #000123`. En Telegram
+ * el mismo texto viaja como `/start ABC123`, etc.
+ */
+const INTENTS_WITH_ARGUMENT: ReadonlySet<BotIntent> = new Set(['start', 'estado', 'cancelar']);
+
+/**
  * Deduce la intención de un texto entrante. Los comandos con barra solo se
  * interpretan en canales que los tienen (`capacidades.comandos`); las frases
  * naturales funcionan en todos.
+ *
+ * **D13:** en los canales sin comandos (WhatsApp) se acepta
+ * «frase de intención + argumento» para las intenciones que lo admiten. Se busca
+ * primero la coincidencia exacta y después el **prefijo más largo**: así
+ * «cancelar mi cita» sigue siendo la frase exacta y «cancelar #000123» conserva
+ * el ticket como argumento.
  */
 export const detectIntent = (
   texto: string | null,
@@ -386,9 +423,19 @@ export const detectIntent = (
     };
   }
 
-  return {
-    intencion: INTENT_BY_PHRASE.get(normalizePhrase(raw)) ?? null,
-    argumento: '',
-    comando: false,
-  };
+  const exacta = INTENT_BY_PHRASE.get(normalizePhrase(raw));
+  if (exacta !== undefined) return { intencion: exacta, argumento: '', comando: false };
+
+  const palabras = raw.split(/\s+/);
+  for (let corte = palabras.length - 1; corte >= 1; corte -= 1) {
+    const intencion = INTENT_BY_PHRASE.get(normalizePhrase(palabras.slice(0, corte).join(' ')));
+    if (intencion === undefined || !INTENTS_WITH_ARGUMENT.has(intencion)) continue;
+    return {
+      intencion,
+      argumento: palabras.slice(corte).join(' ').trim(),
+      comando: false,
+    };
+  }
+
+  return { intencion: null, argumento: '', comando: false };
 };

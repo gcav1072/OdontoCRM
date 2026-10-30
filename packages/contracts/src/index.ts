@@ -24,6 +24,7 @@ export * from './domain/odontogram.js';
 export * from './domain/prosthesis.js';
 export * from './domain/patient.js';
 export * from './domain/periodontogram.js';
+export * from './domain/phone.js';
 export * from './domain/prescription.js';
 export * from './domain/reporting.js';
 export * from './domain/scheduling.js';

@@ -16,7 +16,7 @@ import { APPOINTMENT_CONFIRMATION_TEMPLATE, renderTemplate } from './scheduling.
  * Notificaciones y asistente multicanal (Fases 4 y 4.1).
  *
  * El asistente sigue el guion del plan §7: siete pasos con validación y
- * normalización, idempotencia por evento del canal (`update_id` o `wamid`),
+ * normalización, idempotencia por evento del canal (`update_id`, `key.id` o `wamid`),
  * anti-flood y conversaciones reanudables por `(canal, dirección)`. Los textos
  * viven en plantillas editables (tabla `message_templates`), sembradas desde aquí
  * para que el sistema funcione desde el primer arranque y se puedan cambiar sin
@@ -551,9 +551,78 @@ export const linkCodeSchema = z.object({
   botUsername: z.string().nullable(),
   /** Imagen del QR lista para mostrar (data:image/png;base64,...). */
   qrDataUrl: z.string().nullable().optional(),
+  /**
+   * Enlace de WhatsApp (`https://wa.me/<número>?text=VINCULAR%20<código>`).
+   * `null` cuando la sesión de Baileys no está conectada o no se conoce el
+   * número (D13).
+   */
+  whatsappLink: z.string().nullable().optional(),
+  /** QR del enlace de WhatsApp, con el mismo formato que `qrDataUrl`. */
+  whatsappQrDataUrl: z.string().nullable().optional(),
 });
 
 export type LinkCode = z.infer<typeof linkCodeSchema>;
+
+/* ── Sesión de WhatsApp (Baileys, ADR 0072/0073) ───────────────────────────── */
+
+/**
+ * Estados de la sesión que pinta el panel (y comparten la bandeja y la CLI).
+ * La máquina completa está en el ADR 0073: `desactivado` cuando el
+ * interruptor está apagado; `sin_vincular` cuando está encendido y no hay
+ * credenciales; `sesion_cerrada` y `reemplazada` piden intervención del admin.
+ */
+export const WHATSAPP_SESSION_STATES = [
+  'desactivado',
+  'sin_vincular',
+  'esperando_qr',
+  'conectando',
+  'conectado',
+  'reconectando',
+  'sesion_cerrada',
+  'reemplazada',
+] as const;
+
+export type WhatsAppSessionState = (typeof WHATSAPP_SESSION_STATES)[number];
+
+/** Vista de la sesión: lo público (nunca las credenciales Signal). */
+export const whatsappSessionViewSchema = z.object({
+  estado: z.enum(WHATSAPP_SESSION_STATES),
+  /** Número del consultorio en dígitos E.164 sin `+`, si se conoce. */
+  numero: z.string().nullable(),
+  nombre: z.string().nullable(),
+  /** QR como `data:image/png;base64,...` mientras está en `esperando_qr`. */
+  qrDataUrl: z.string().nullable().optional(),
+  /** Contenido crudo del QR, para pintarlo en la terminal (CLI). */
+  qrRaw: z.string().nullable().optional(),
+  qrExpiraEn: z.string().nullable().optional(),
+  /** Código de emparejamiento cuando se pidió `metodo: 'codigo'`. */
+  pairingCode: z.string().nullable().optional(),
+  conectadoDesde: z.string().nullable(),
+  ultimaDesconexion: z.string().nullable(),
+  /** Motivo legible del último cierre o error (sin secretos). */
+  motivo: z.string().nullable(),
+});
+
+export type WhatsAppSessionView = z.infer<typeof whatsappSessionViewSchema>;
+
+/** Pedir la vinculación: QR en pantalla o código de emparejamiento. */
+export const whatsappPairInputSchema = z
+  .object({
+    metodo: z.enum(['qr', 'codigo']),
+    /** Obligatorio con `codigo`; se normaliza a dígitos E.164 en el servicio. */
+    telefono: z.string().trim().min(5).max(30).optional(),
+  })
+  .superRefine((valor, ctx) => {
+    if (valor.metodo === 'codigo' && valor.telefono === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['telefono'],
+        message: 'Escribe el número del consultorio para pedir el código',
+      });
+    }
+  });
+
+export type WhatsAppPairInput = z.infer<typeof whatsappPairInputSchema>;
 
 /* ── Estado de los canales (para la bandeja) ───────────────────────────────── */
 
@@ -563,6 +632,8 @@ export const channelStatusSchema = z.object({
   nombre: z.string().nullable(),
   usuario: z.string().nullable(),
   conectado: z.boolean(),
+  /** Estado legible de la sesión (en WhatsApp: `conectado`, `reconectando`…). */
+  detalle: z.string().nullable().optional(),
   capacidades: z.object({
     botones: z.boolean(),
     documentos: z.boolean(),
