@@ -644,6 +644,10 @@ workspace y las rutas siguen siendo correctas.
 | Ver por qué un llamado no llega al lobby | `npm run smoke:screens`, `logs/screens.out.log` y `logs/scheduling.out.log` |
 | Probar con Telegram real | token en `services/notifications/.env` + `TELEGRAM_MODE=auto` y `npm run smoke:notifications` |
 | Probar WhatsApp | **Configuración → Canales → WhatsApp → Vincular (QR)** (se escanea desde el teléfono del consultorio) o `npm run whatsapp:estado` / `npm run whatsapp:vincular` (QR en la terminal). Cloud API queda como proveedor alternativo |
+| Ver qué librerías tienen versión nueva (incluido Baileys) | `npm run deps` (separa menores/parche seguras, mayores, Baileys y `npm audit`) |
+| Actualizar librerías menores/parche sin riesgo | `npm run deps:actualizar` (para la pila, actualiza dentro del rango `^`, corre `verify` y hace commit; si falla, restaura el `package-lock.json`) |
+| Actualizar Baileys a una versión exacta | `npm run deps:baileys` (o `npm run deps:baileys -- 7.0.0-rc15`; fija `--save-exact`, alinea `@hapi/boom`, corre las pruebas de WhatsApp + `verify` y muestra el checklist manual) |
+| Subir una dependencia mayor | `npm run deps:mayor -- <paquete>` (de una en una, con `verify` y reversión automática si rompe algo) |
 | Registrar una pantalla kiosko | módulo `/pantallas` → «Nueva pantalla» → abrir el enlace con el token en el televisor |
 | Revisar la auditoría de un cambio | módulo `/auditoria` o `GET /api/v1/audit/events` |
 | Un paciente con cita sigue como «en espera de cita» | `node tools/reparar-estados-pacientes.mjs` (informa) y `--apply` para repararlo · requiere `npm run build:node` |

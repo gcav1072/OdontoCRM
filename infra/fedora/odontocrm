@@ -13,6 +13,7 @@
 #   sudo odontocrm servicios       # estado de las 10 unidades
 #   sudo odontocrm logs clinical   # últimos registros de un servicio
 #   sudo odontocrm actualizar      # traer el código nuevo y reiniciar (RUNBOOK §8)
+#   sudo odontocrm revertir        # volver al commit previo si una actualización falló
 #
 # Existe para que en la clínica no haya que recordar rutas, `sudo`, variables de
 # entorno ni en qué orden se carga todo. Cada orden delega en el script que ya está
@@ -166,6 +167,9 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    Para el despliegue COMPLETO con evidencia (TLS,
                                    firewall, SELinux, respaldo y restauración probada)
                                    está \`infra/fedora/ensayo-despliegue.sh\`.
+  sudo odontocrm revertir          Vuelve al commit anterior guardado por \`actualizar\`
+                                   (si no hubo migraciones entre ambos), reinstala el
+                                   lockfile con \`npm ci\`, recompila y reinicia.
   sudo odontocrm parar             Detener los ${#SERVICIOS[@]} servicios (el gateway primero: es la
                                    puerta). nginx y PostgreSQL se quedan; con \`--todo\`
                                    se paran también ellos (sistema completamente parado).
@@ -552,14 +556,22 @@ case "$ORDEN" in
     for arg in "$@"; do
       case "$arg" in --rama=*) rama_objetivo="${arg#*=}" ;; esac
     done
+    commit_previo="$(git rev-parse HEAD 2>/dev/null || true)"
+    rama_actual="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    [[ -n "$rama_actual" && "$rama_actual" != "HEAD" ]] || rama_actual="main"
     git fetch --prune origin || morir 'no pude traer el código nuevo'
-    rama_actual="$(git rev-parse --abbrev-ref HEAD || true)"
-    rama="${rama_objetivo:-$rama_actual}"
+    rama="${rama_objetivo:-${ODONTOCRM_RAMA:-$rama_actual}}"
     if [[ -n "$rama_objetivo" && "$rama_objetivo" != "$rama_actual" ]]; then
       av "cambio de rama: $rama_actual → $rama_objetivo"
     fi
     git checkout -B "$rama" "origin/$rama" ||
       morir "no pude cambiar a la rama '$rama' (¿existe en el origen? ¿la escribiste bien?)"
+    commit_nuevo="$(git rev-parse HEAD 2>/dev/null || true)"
+    if [[ "${ODONTOCRM_REEXEC:-0}" != "1" && -n "$commit_previo" && -n "$commit_nuevo" && "$commit_previo" != "$commit_nuevo" ]]; then
+      mkdir -p "$DATA_DIR" 2>/dev/null || true
+      printf '%s %s\n' "$commit_previo" "$rama_actual" >"$DATA_DIR/commit-anterior" 2>/dev/null || true
+      ok "commit anterior guardado (${commit_previo:0:7}) por si hace falta «sudo odontocrm revertir»"
+    fi
     ok "rama $rama · código en $(git rev-parse --short HEAD)"
 
     # Código compilado, unidades, temporizadores, certificado, proxy, SELinux y
@@ -671,6 +683,64 @@ case "$ORDEN" in
     systemctl restart odontocrm-gateway.service >/dev/null 2>&1 ||
       av 'no pude reiniciar el gateway'
     ok "$reiniciados de ${#SERVICIOS[@]} servicios reiniciados"
+    exec "$0" verificar
+    ;;
+
+  revertir|rollback)
+    necesita_root
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    git config --global --add safe.directory "$CODE_DIR" 2>/dev/null || true
+    forzar_revertir=0
+    for arg in "$@"; do
+      case "$arg" in --forzar|--si) forzar_revertir=1 ;; esac
+    done
+    archivo_anterior="$DATA_DIR/commit-anterior"
+    [[ -s "$archivo_anterior" ]] ||
+      morir 'no hay un commit anterior registrado (lo guarda «sudo odontocrm actualizar» cuando trae cambios)'
+    commit_objetivo=""
+    rama_anterior=""
+    read -r commit_objetivo rama_anterior <"$archivo_anterior" || true
+    [[ -n "$commit_objetivo" ]] || morir "el registro de commit anterior ($archivo_anterior) está vacío"
+    [[ -n "$rama_anterior" && "$rama_anterior" != "HEAD" ]] || rama_anterior="main"
+
+    git cat-file -e "${commit_objetivo}^{commit}" 2>/dev/null ||
+      morir "el commit anterior ($commit_objetivo) no existe en $CODE_DIR"
+
+    commit_actual="$(git rev-parse HEAD 2>/dev/null || true)"
+    if [[ "$commit_actual" == "$commit_objetivo" ]]; then
+      ok "el código ya está en ${commit_objetivo:0:7}"
+      exit 0
+    fi
+
+    migraciones_cambiadas="$(git diff --name-only "$commit_objetivo" "$commit_actual" -- 'services/*/migrations/*' 'packages/*/migrations/*' 2>/dev/null || true)"
+    if [[ -n "$migraciones_cambiadas" && "$forzar_revertir" != "1" ]]; then
+      err 'entre ambas versiones cambiaron migraciones de base de datos:'
+      printf '%s\n' "$migraciones_cambiadas" | sed 's/^/    /' || true
+      av 'volver atrás solo el código dejaría el esquema adelantado: restaura el respaldo previo («sudo odontocrm restaurar --help»)'
+      printf '    (si sabes que la migración es compatible hacia atrás: sudo odontocrm revertir --forzar)\n'
+      exit 1
+    fi
+
+    printf '%sRevirtiendo %s a %s (rama %s)%s\n' "$C_TI" "$CODE_DIR" "${commit_objetivo:0:7}" "$rama_anterior" "$C_RE"
+    git checkout -B "$rama_anterior" "$commit_objetivo" ||
+      morir "no pude volver al commit $commit_objetivo"
+    if [[ -f "$CODE_DIR/infra/fedora/odontocrm" ]] &&
+       ! cmp -s "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm; then
+      install -m 0755 -o root -g root "$CODE_DIR/infra/fedora/odontocrm" /usr/local/bin/odontocrm
+      ok 'comando del servidor sincronizado con la versión anterior'
+    fi
+    npm ci --silent || morir 'falló npm ci al revertir'
+    npm run build >/tmp/odontocrm-build.log 2>&1 ||
+      { tail -30 /tmp/odontocrm-build.log; morir 'falló la compilación al revertir (registro: /tmp/odontocrm-build.log)'; }
+    ok "compilado en $(git rev-parse --short HEAD)"
+    comprobar_entrypoints || morir 'la compilación quedó incompleta tras revertir'
+    reiniciados=0
+    for s in "${SERVICIOS[@]}"; do
+      systemctl restart "odontocrm@$s.service" >/dev/null 2>&1 && reiniciados=$((reiniciados + 1))
+    done
+    systemctl restart odontocrm-gateway.service >/dev/null 2>&1 ||
+      av 'no pude reiniciar el gateway'
+    ok "$reiniciados de ${#SERVICIOS[@]} servicios reiniciados con la versión anterior"
     exec "$0" verificar
     ;;
 

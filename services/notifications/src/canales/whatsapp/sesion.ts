@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { Boom } from '@hapi/boom';
 import { and, eq } from 'drizzle-orm';
 import {
@@ -106,6 +109,38 @@ export interface WhatsAppSesion {
 const QR_TTL_MS = 60_000;
 const PAIR_QR_WAIT_MS = 15_000;
 
+/**
+ * Descubre la versión instalada de `@whiskeysockets/baileys` subiendo desde su
+ * punto de entrada resuelto, para no depender de que `exports` exponga `./package.json`
+ * en futuras versiones de la librería.
+ */
+export const leerVersionBaileys = (): string | null => {
+  try {
+    const require = createRequire(import.meta.url);
+    let dir = dirname(require.resolve('@whiskeysockets/baileys'));
+    for (let i = 0; i < 5; i += 1) {
+      const candidato = join(dir, 'package.json');
+      if (existsSync(candidato)) {
+        const pkg = JSON.parse(readFileSync(candidato, 'utf8')) as {
+          name?: unknown;
+          version?: unknown;
+        };
+        if (pkg.name === '@whiskeysockets/baileys' && typeof pkg.version === 'string') {
+          return pkg.version;
+        }
+      }
+      const padre = dirname(dir);
+      if (padre === dir) break;
+      dir = padre;
+    }
+  } catch {
+    // Si no se puede resolver en un entorno aislado, la vista sigue funcionando.
+  }
+  return null;
+};
+
+const BAILEYS_VERSION = leerVersionBaileys();
+
 const dormir = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const EVENTOS_SOCKET = ['connection.update', 'creds.update', 'messages.upsert'] as const;
@@ -170,6 +205,7 @@ export const createWhatsAppSesion = (options: WhatsAppSesionOptions): WhatsAppSe
   let alertaCaidaEnviada = false;
   let actorPendiente: { id: string | null; username: string | null } | null = null;
   let versionPromise: Promise<WAVersion> | null = null;
+  let waVersionActual: WAVersion | null = null;
 
   const limitador: Limitador = createLimitador({
     minIntervalMs: config.WHATSAPP_SEND_MIN_INTERVAL_MS,
@@ -510,6 +546,7 @@ export const createWhatsAppSesion = (options: WhatsAppSesionOptions): WhatsAppSe
             .catch(() => DEFAULT_CONNECTION_CONFIG.version)
         : Promise.resolve(DEFAULT_CONNECTION_CONFIG.version);
     const version = await versionPromise;
+    waVersionActual = version;
 
     try {
       const nuevo = (options.makeSocket ?? makeWASocket)({
@@ -603,6 +640,8 @@ export const createWhatsAppSesion = (options: WhatsAppSesionOptions): WhatsAppSe
       conectadoDesde: conectadoDesde?.toISOString() ?? null,
       ultimaDesconexion: ultimaDesconexion?.toISOString() ?? null,
       motivo,
+      baileysVersion: BAILEYS_VERSION,
+      waVersion: waVersionActual === null ? null : waVersionActual.join('.'),
     };
   };
 
@@ -666,6 +705,9 @@ export const createWhatsAppSesion = (options: WhatsAppSesionOptions): WhatsAppSe
     deteniendo = false;
     alertaCaidaEnviada = false;
     intentosReconexion = 0;
+    // Al reconectar explícitamente se invalida la versión cacheada del protocolo WA
+    // para volver a consultarla (`fetchLatestBaileysVersion`).
+    versionPromise = null;
     await cerrarSocket();
     estadoActual = 'sin_vincular';
     const auth = await getAuth();

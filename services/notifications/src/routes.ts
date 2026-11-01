@@ -27,6 +27,7 @@ import { z } from 'zod';
 import { desc } from 'drizzle-orm';
 
 import { appointmentsInInbox } from './appointments.js';
+import { leerVersionBaileys } from './canales/whatsapp/sesion.js';
 import { channelsInInbox } from './channels.js';
 import { botConversations } from './db/schema.js';
 import {
@@ -352,6 +353,8 @@ export const registerNotificationRoutes = (
       conectadoDesde: null,
       ultimaDesconexion: null,
       motivo: 'El canal WhatsApp no está activo en este momento',
+      baileysVersion: leerVersionBaileys(),
+      waVersion: null,
     };
   };
 

@@ -23,7 +23,7 @@
  * Desde que la pila se cambia de modo con `npm run stack:*`, este preflight es la
  * puerta de `npm run dev`: la regla es **una sola pila a la vez**.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import pg from 'pg';
@@ -243,6 +243,57 @@ try {
   }
 } catch {
   // Si no se puede comprobar (credenciales, tabla a medio migrar), no se bloquea nada.
+}
+
+/**
+ * Aviso pasivo (una vez cada 24 h) si salió una versión nueva de Baileys en npm.
+ * Nunca bloquea ni retrasa el arranque si no hay red.
+ */
+try {
+  const notifPkg = JSON.parse(
+    readFileSync(resolve(ROOT, 'services/notifications/package.json'), 'utf8'),
+  );
+  const instalada = String(notifPkg?.dependencies?.['@whiskeysockets/baileys'] ?? '').replace(
+    /^[~^]/,
+    '',
+  );
+  if (instalada !== '') {
+    const rutaCache = resolve(ROOT, 'tmp/deps-baileys-check.json');
+    const ttlMs = 24 * 60 * 60 * 1_000;
+    let latest = null;
+    if (existsSync(rutaCache)) {
+      const cache = JSON.parse(readFileSync(rutaCache, 'utf8'));
+      if (typeof cache?.checkedAt === 'number' && Date.now() - cache.checkedAt < ttlMs) {
+        latest = typeof cache.latest === 'string' ? cache.latest : null;
+      }
+    }
+    if (latest === null) {
+      const resp = await fetch(
+        'https://registry.npmjs.org/-/package/@whiskeysockets/baileys/dist-tags',
+        { signal: AbortSignal.timeout(2_500) },
+      );
+      if (resp.ok) {
+        const tags = await resp.json();
+        latest = typeof tags?.latest === 'string' ? tags.latest : null;
+        if (latest !== null) {
+          mkdirSync(resolve(ROOT, 'tmp'), { recursive: true });
+          writeFileSync(
+            rutaCache,
+            `${JSON.stringify({ checkedAt: Date.now(), latest }, null, 2)}\n`,
+            'utf8',
+          );
+        }
+      }
+    }
+    if (latest !== null && latest !== instalada) {
+      console.warn(
+        `dev:check: hay una versión nueva de Baileys en npm (${instalada} → ${latest}).\n` +
+          '           Para probarla y actualizar:  npm run deps:baileys\n',
+      );
+    }
+  }
+} catch {
+  // Sin red o con tmp bloqueado: silencio total.
 }
 
 console.log('dev:check: los puertos del desarrollo están libres y las 9 bases existen ✔');

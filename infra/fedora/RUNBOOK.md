@@ -517,10 +517,11 @@ sudo systemctl restart 'odontocrm@*' odontocrm-gateway.service # 6. reiniciar
 sudo odontocrm verificar                                       # 7. comprobar
 ```
 
-Si algo sale mal: `sudo git checkout fase-(N-1)`, `sudo npm ci && sudo npm run build`,
-reiniciar. Las migraciones son hacia adelante; volver atrás en el código con la base
-migrada funciona mientras la migración nueva no borre nada (ninguna lo hace: el
-proyecto prohíbe las migraciones destructivas).
+Si algo sale mal en una actualización sin migraciones (por ejemplo, una actualización de
+dependencias o de Baileys): `sudo odontocrm revertir` vuelve al commit anterior que guardó
+`actualizar`, ejecuta `npm ci && npm run build`, reinicia y verifica. Si entre ambas versiones
+cambiaron migraciones, `revertir` se niega para no dejar el código por detrás del esquema y
+remite a restaurar el respaldo previo (`sudo odontocrm restaurar`).
 
 ---
 

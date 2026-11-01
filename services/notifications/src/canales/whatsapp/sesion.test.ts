@@ -239,4 +239,15 @@ describe('sesión de WhatsApp por Baileys', () => {
     expect(sockets[0]?.endCalls).toBe(1);
     expect(sockets[0]?.logoutCalls).toBe(0);
   });
+
+  it('expone en la vista la versión instalada de Baileys y la del protocolo WA', async () => {
+    const { sesion, sockets } = crear({ linked: true });
+    await sesion.iniciar(async () => undefined);
+    sockets[0]?.emit('connection.update', { connection: 'open' });
+    await flush();
+
+    const vista = await sesion.vista();
+    expect(vista.baileysVersion).toMatch(/^\d+\.\d+\.\d+/);
+    expect(vista.waVersion).toMatch(/^\d+\.\d+\.\d+$/);
+  });
 });

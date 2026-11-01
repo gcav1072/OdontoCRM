@@ -606,6 +606,10 @@ export const whatsappSessionViewSchema = z.object({
   ultimaDesconexion: z.string().nullable(),
   /** Motivo legible del último cierre o error (sin secretos). */
   motivo: z.string().nullable(),
+  /** Versión instalada de `@whiskeysockets/baileys` en el servicio. */
+  baileysVersion: z.string().nullable().optional(),
+  /** Versión del protocolo WhatsApp Web negociada en la conexión actual. */
+  waVersion: z.string().nullable().optional(),
 });
 
 export type WhatsAppSessionView = z.infer<typeof whatsappSessionViewSchema>;
