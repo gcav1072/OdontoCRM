@@ -37,11 +37,16 @@ PostgreSQL y Caddy y luego reinicia los servicios.
 ```powershell
 odontocrm actualizar            # trae la rama del despliegue y vuelve a desplegar
 odontocrm actualizar --rama=main
+odontocrm revertir              # vuelve al commit anterior si la actualización no trajo migraciones
 ```
 
-`actualizar` trae el código, compila, aplica migraciones, reinstala el servicio y pone al día
-certificado y proxy. **No toca las credenciales** (ADR 0043): para rotarlas está
-`20-aprovisionar.ps1 --rotate`, a propósito.
+`actualizar` guarda el commit previo en `data\commit-anterior`, trae el código (con el
+`package-lock.json` ya probado en desarrollo), instala las librerías exactas (`npm ci`), compila,
+aplica migraciones, reinstala el servicio y pone al día certificado y proxy. **No toca las
+credenciales** (ADR 0043): para rotarlas está `20-aprovisionar.ps1 --rotate`, a propósito.
+Si una actualización de librerías o código sale mal y no tocó migraciones, `odontocrm revertir`
+vuelve al commit anterior, recompila y reinicia; si hubo migraciones, avisa y remite a
+`odontocrm restaurar`.
 
 ## 5. Usuarios
 

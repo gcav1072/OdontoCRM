@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # OdontoCRM · comandos del servidor (una sola puerta) — Windows
 #
 #   odontocrm                 # ayuda
@@ -12,6 +12,7 @@
 #   odontocrm servicios       # estado de los procesos con PM2
 #   odontocrm logs clinical   # últimos registros de un servicio
 #   odontocrm actualizar      # traer el código nuevo y reiniciar
+#   odontocrm revertir        # volver al commit previo si una actualización falló
 #
 # Existe para que en la clínica no haya que recordar rutas, «Ejecutar como
 # administrador» ni en qué orden se carga todo. Cada orden delega en el guion que ya
@@ -92,6 +93,7 @@ function Ayuda {
   Write-Host '  odontocrm whatsapp [estado|vincular|reconectar|cerrar]'
   Write-Host '                            Sesión de WhatsApp por Baileys: QR en la terminal.'
   Write-Host '  odontocrm actualizar      Trae el código nuevo, compila, migra y reinicia.'
+  Write-Host '  odontocrm revertir        Vuelve al commit anterior (si no hubo migraciones), recompila y reinicia.'
   Write-Host '  odontocrm certificado     Muestra el certificado y la CA, y cómo instalarla'
   Write-Host '                            en tablets, móviles y TVs.'
   Write-Host '  odontocrm credenciales    Comprueba que cada credencial CONECTA (no cambia nada).'
@@ -461,11 +463,24 @@ switch ($Orden) {
     try {
       $rama = 'main'
       foreach ($arg in $Resto) { if ($arg -like '--rama=*') { $rama = $arg.Substring(7) } }
+      $commitPrevio = (& git rev-parse HEAD 2>$null)
+      if ($commitPrevio) { $commitPrevio = "$commitPrevio".Trim() }
+      $ramaPrevia = (& git rev-parse --abbrev-ref HEAD 2>$null)
+      if ($ramaPrevia) { $ramaPrevia = "$ramaPrevia".Trim() }
+      if (-not $ramaPrevia -or $ramaPrevia -eq 'HEAD') { $ramaPrevia = $rama }
+
       Write-Host "Actualizando $OdontoCode (rama $rama)" -ForegroundColor White
       & git fetch --prune origin
       if ($LASTEXITCODE -ne 0) { Morir 'no pude traer el código nuevo (¿hay red y remoto?)' }
       & git checkout -B $rama "origin/$rama"
       if ($LASTEXITCODE -ne 0) { Morir "no pude cambiar a la rama '$rama'" }
+      $commitNuevo = (& git rev-parse HEAD 2>$null)
+      if ($commitNuevo) { $commitNuevo = "$commitNuevo".Trim() }
+      if ($commitPrevio -and $commitNuevo -and ($commitPrevio -ne $commitNuevo)) {
+        if (-not (Test-Path $OdontoDatos)) { New-Item -ItemType Directory -Force -Path $OdontoDatos | Out-Null }
+        Set-Content -Path (Join-Path $OdontoDatos 'commit-anterior') -Value "$commitPrevio $ramaPrevia" -Encoding ASCII
+        Escribir-Ok "commit anterior guardado ($($commitPrevio.Substring(0, [Math]::Min(7, $commitPrevio.Length)))) por si hace falta «odontocrm revertir»"
+      }
       Escribir-Ok "rama $rama · código en $(& git rev-parse --short HEAD)"
     }
     finally { Pop-Location }
@@ -480,6 +495,77 @@ switch ($Orden) {
     $env:USUARIOS_SEED = 'admin'
     & powershell -NoProfile -ExecutionPolicy Bypass -File $desplegar
     if ($LASTEXITCODE -ne 0) { Escribir-Aviso 'el despliegue reportó un problema: revisa la salida de arriba' }
+    exit $LASTEXITCODE
+  }
+
+  { $_ -in @('revertir', 'rollback') } {
+    Afirmar-Administrador
+    $forzar = $false
+    foreach ($arg in $Resto) { if ($arg -in @('--forzar', '--si')) { $forzar = $true } }
+    $archivoAnterior = Join-Path $OdontoDatos 'commit-anterior'
+    if (-not (Test-Path $archivoAnterior)) {
+      Morir 'no hay un commit anterior registrado (lo guarda «odontocrm actualizar» cuando trae cambios)'
+    }
+    $contenido = Get-Content $archivoAnterior -Raw -ErrorAction SilentlyContinue
+    if (-not $contenido -or -not $contenido.Trim()) {
+      Morir "el registro de commit anterior ($archivoAnterior) está vacío"
+    }
+    $partes = $contenido.Trim() -split '\s+'
+    $commitObjetivo = $partes[0]
+    $ramaAnterior = if ($partes.Count -ge 2 -and $partes[1] -ne 'HEAD') { $partes[1] } else { 'main' }
+
+    Push-Location $OdontoCode
+    try {
+      & git cat-file -e "$($commitObjetivo)^{commit}" 2>$null
+      if ($LASTEXITCODE -ne 0) { Morir "el commit anterior ($commitObjetivo) no existe en $OdontoCode" }
+
+      $commitActual = (& git rev-parse HEAD 2>$null)
+      if ($commitActual) { $commitActual = "$commitActual".Trim() }
+      if ($commitActual -eq $commitObjetivo) {
+        Escribir-Ok "el código ya está en $($commitObjetivo.Substring(0, [Math]::Min(7, $commitObjetivo.Length)))"
+        exit 0
+      }
+
+      $migraciones = @(& git diff --name-only $commitObjetivo $commitActual -- 'services/*/migrations/*' 'packages/*/migrations/*' 2>$null | Where-Object { $_ -and $_.Trim() -ne '' })
+      if ($migraciones.Count -gt 0 -and -not $forzar) {
+        Escribir-Error 'entre ambas versiones cambiaron migraciones de base de datos:'
+        foreach ($m in $migraciones) { Escribir-Detalle $m }
+        Escribir-Aviso 'volver atrás solo el código dejaría el esquema adelantado: restaura el respaldo previo («odontocrm restaurar --help»)'
+        Escribir-Detalle '(si sabes que la migración es compatible hacia atrás: odontocrm revertir --forzar)'
+        exit 1
+      }
+
+      Write-Host "Revirtiendo $OdontoCode a $($commitObjetivo.Substring(0, [Math]::Min(7, $commitObjetivo.Length))) (rama $ramaAnterior)" -ForegroundColor White
+      & git checkout -B $ramaAnterior $commitObjetivo
+      if ($LASTEXITCODE -ne 0) { Morir "no pude volver al commit $commitObjetivo" }
+
+      $cliOrigen = Join-Path $OdontoCode 'infra\windows\odontocrm.ps1'
+      if ((Test-Path $cliOrigen) -and (Test-Path $OdontoCmd)) {
+        Copy-Item -Force $cliOrigen (Join-Path $OdontoCmd 'odontocrm.ps1') -ErrorAction SilentlyContinue
+      }
+
+      Con-EntornoNpmLimpio {
+        & npm ci --silent
+        if ($LASTEXITCODE -ne 0) { Morir 'falló npm ci al revertir' }
+        $registro = Join-Path $env:TEMP 'odontocrm-build.log'
+        & npm run build *> $registro
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content $registro -Tail 30 | ForEach-Object { Escribir-Detalle $_ }
+          Morir "falló la compilación al revertir (registro: $registro)"
+        }
+      }
+      Escribir-Ok "compilado en $(& git rev-parse --short HEAD)"
+      $faltan = Get-EntrypointsFaltantes
+      if (@($faltan).Count -gt 0) {
+        foreach ($f in $faltan) { Escribir-Error "no se compiló: $f" }
+        Morir 'la compilación quedó incompleta tras revertir'
+      }
+    }
+    finally { Pop-Location }
+
+    & (Get-Pm2) restart all *> $null
+    Escribir-Ok 'servicios reiniciados con la versión anterior; comprobando…'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $OdontoCode 'infra\windows\instalar\40-verificar.ps1') --rapido
     exit $LASTEXITCODE
   }
 

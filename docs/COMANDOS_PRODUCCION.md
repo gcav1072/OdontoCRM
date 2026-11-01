@@ -194,7 +194,8 @@ No aplica migraciones a propósito: si el cambio toca el esquema, usa `actualiza
 
 | Cuándo | Qué usar | Qué hace |
 | :--- | :--- | :--- |
-| **Actualización de rutina** (un arreglo, una mejora) | `sudo odontocrm actualizar` | Trae el código, pone al día **unidades, plantillas y temporizadores** (`install.sh`), compila, migra, reinicia y **verifica esperando** a que los 9 escuchen |
+| **Actualización de rutina** (un arreglo, una mejora, librerías) | `sudo odontocrm actualizar` | Guarda el commit previo, trae el código, pone al día **unidades, plantillas y temporizadores**, instala el `package-lock.json` exacto (`npm ci`), compila, migra, reinicia y **verifica esperando** a que los servicios escuchen |
+| **Deshacer la última actualización** (p. ej. fallo de librería sin migraciones) | `sudo odontocrm revertir` | Vuelve al commit previo guardado por `actualizar` (se niega si entre ambos cambiaron migraciones), corre `npm ci` + `build`, reinicia y verifica |
 | **Quieres verlo paso a paso** | `sudo bash infra/fedora/ensayo-despliegue.sh --hasta=servicios` | Lo mismo **contando cada paso**, re-sincronizando los secretos desde el repositorio de trabajo y con el detalle de cada comprobación |
 | **Cambios de despliegue** (TLS, firewall, SELinux, respaldos) | `… --hasta=respaldos` o `--hasta=tls` | Además: certificado, `nginx`, `firewalld`, SELinux, respaldo y **prueba de restauración comparada fila a fila** |
 

@@ -96,6 +96,8 @@ const ver = async () => {
           conectadoDesde: vista.conectadoDesde,
           ultimaDesconexion: vista.ultimaDesconexion,
           motivo: vista.motivo,
+          baileysVersion: vista.baileysVersion ?? null,
+          waVersion: vista.waVersion ?? null,
         },
         null,
         2,
