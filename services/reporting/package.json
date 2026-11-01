@@ -11,11 +11,11 @@
     "db:migrate": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/db/migrate.js"
   },
   "dependencies": {
-    "@odontocrm/contracts": "*",
-    "@odontocrm/db": "*",
-    "@odontocrm/events": "*",
-    "@odontocrm/kernel": "*",
-    "fastify": "^5.12.5",
-    "playwright": "^1.63.0"
+    "@odontocrm/contracts": "^1.1.0",
+    "@odontocrm/db": "^1.1.0",
+    "@odontocrm/events": "^1.1.0",
+    "@odontocrm/kernel": "^1.1.0",
+    "fastify": "^5.12.7",
+    "playwright": "^1.64.1"
   }
 }

@@ -19,7 +19,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@odontocrm/contracts": "*",
-    "@odontocrm/events": "*"
+    "@odontocrm/contracts": "^1.1.0",
+    "@odontocrm/events": "^1.1.0"
   }
 }

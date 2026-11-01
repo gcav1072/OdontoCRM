@@ -13,13 +13,13 @@
     "seed:users": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/seed.js"
   },
   "dependencies": {
-    "@fastify/cookie": "^11.1.2",
-    "@fastify/multipart": "^9.2.1",
-    "@odontocrm/contracts": "*",
-    "@odontocrm/db": "*",
-    "@odontocrm/events": "*",
-    "@odontocrm/kernel": "*",
-    "@odontocrm/storage": "*",
-    "fastify": "^5.12.5"
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/multipart": "^9.4.0",
+    "@odontocrm/contracts": "^1.1.0",
+    "@odontocrm/db": "^1.1.0",
+    "@odontocrm/events": "^1.1.0",
+    "@odontocrm/kernel": "^1.1.0",
+    "@odontocrm/storage": "^1.1.0",
+    "fastify": "^5.12.7"
   }
 }

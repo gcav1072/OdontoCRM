@@ -19,10 +19,10 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@odontocrm/events": "*",
-    "drizzle-orm": "^0.45.3",
+    "@odontocrm/events": "^1.1.0",
+    "drizzle-orm": "^0.45.4",
     "pg": "^8.23.1",
-    "pg-boss": "^12.36.0",
-    "zod": "^4.6.5"
+    "pg-boss": "^12.38.0",
+    "zod": "^4.6.7"
   }
 }
