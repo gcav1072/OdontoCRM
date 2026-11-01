@@ -11,14 +11,14 @@
     "db:migrate": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/db/migrate.js"
   },
   "dependencies": {
-    "@fastify/multipart": "^9.2.1",
-    "@odontocrm/contracts": "*",
-    "@odontocrm/db": "*",
-    "@odontocrm/events": "*",
-    "@odontocrm/kernel": "*",
-    "@odontocrm/storage": "*",
-    "fastify": "^5.12.5",
-    "playwright": "^1.63.0",
-    "qrcode-generator": "^1.5.0"
+    "@fastify/multipart": "^9.4.0",
+    "@odontocrm/contracts": "^1.1.0",
+    "@odontocrm/db": "^1.1.0",
+    "@odontocrm/events": "^1.1.0",
+    "@odontocrm/kernel": "^1.1.0",
+    "@odontocrm/storage": "^1.1.0",
+    "fastify": "^5.12.7",
+    "playwright": "^1.64.1",
+    "qrcode-generator": "^1.5.2"
   }
 }
