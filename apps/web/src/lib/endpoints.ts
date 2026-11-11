@@ -1,5 +1,6 @@
 import {
   type AcceptConsentInput,
+  type AdminLicensingView,
   type AmendClinicalSessionInput,
   type AnnulPrescriptionInput,
   type AppointmentActivityItem,
@@ -84,6 +85,7 @@ import {
   type PrescriptionDetail,
   type PrescriptionList,
   type PrescriptionVerificationResult,
+  type PublicLicensingView,
   type RequestSummary,
   type ResetPasswordInput,
   type ReportDocument,
@@ -441,6 +443,42 @@ export interface MyDentistProfileResponse {
 }
 
 export type { ClinicProfile };
+
+/**
+ * Licenciamiento **offline** de la instalación ([ADR 0075](../../../docs/adr/0075-licenciamiento-offline-y-modo-consulta.md)).
+ *
+ * Tres rutas y nada más: el estado público (sin sesión, para el banner del login y de
+ * las pantallas), el detalle del administrador y la activación de un `.lic`. El
+ * proveedor no aparece aquí: emite el archivo por fuera y el consultorio solo lo activa.
+ * La verificación de la firma ocurre en el servidor; la interfaz nunca ve la clave.
+ */
+export const licensingApi = {
+  /**
+   * El estado que puede ver **cualquiera**, incluso antes de iniciar sesión: solo dice
+   * si la instalación está en prueba, por vencer o vencida. No lleva el nombre del
+   * consultorio ni datos de la licencia (esos son del administrador).
+   */
+  public: (signal?: AbortSignal): Promise<PublicLicensingView> =>
+    api.get<PublicLicensingView>('/licensing/public', {
+      anonymous: true,
+      skipRefresh: true,
+      ...(signal === undefined ? {} : { signal }),
+    }),
+
+  /** Detalle completo para `/licencia`: instalación, licencia, consultorio y solicitud. */
+  status: (signal?: AbortSignal): Promise<AdminLicensingView> =>
+    api.get<AdminLicensingView>('/licensing/status', {
+      ...(signal === undefined ? {} : { signal }),
+    }),
+
+  /**
+   * Activa una licencia ya emitida por el proveedor. El cuerpo es el `.lic` (un JWT
+   * compacto) tal cual: el servidor lo verifica y, si es de **esta** instalación,
+   * devuelve el detalle nuevo.
+   */
+  activate: (licencia: string): Promise<AdminLicensingView> =>
+    api.post<AdminLicensingView>('/licensing/activate', { licencia }),
+};
 
 /**
  * Consulta de auditoría (Fase 9: la pantalla; el transporte ya estaba desde la

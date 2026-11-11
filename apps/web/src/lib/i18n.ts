@@ -175,6 +175,9 @@ const DICCIONARIO = {
   'modulo.configuracion.titulo': 'Configuración',
   'modulo.configuracion.descripcion':
     'Marca de los imprimibles, acento, textos de pantalla, sillones y canales.',
+  'modulo.licencia.titulo': 'Licencia',
+  'modulo.licencia.descripcion':
+    'Estado de la prueba o de la licencia, solicitud al proveedor y activación del archivo.',
 
   // --- Configuración de la aplicación: módulo /configuracion (ADR 0060) -----
   'config.titulo': 'Configuración de la aplicación',
@@ -1272,6 +1275,85 @@ const DICCIONARIO = {
   'caja.doc.sinReimprimir': 'Sin reimprimir',
   'caja.doc.elige': 'Elige un documento de la lista para verlo y trabajar con él.',
 
+  // --- Licenciamiento offline (ADR 0075) -----------------------------------
+  // El aviso se ve también en el acceso: dice si la instalación está en prueba, por
+  // vencer o en modo consulta. La página `/licencia` es del administrador.
+  'licencia.banner.trial': 'PRUEBA · quedan {dias}',
+  'licencia.banner.trialPorVencer': 'PRUEBA · vence en {dias}',
+  'licencia.banner.trialVencida': 'PRUEBA VENCIDA · modo consulta',
+  'licencia.banner.porVencer': 'LICENCIA · vence en {dias}',
+  'licencia.banner.vencida': 'LICENCIA VENCIDA · modo consulta',
+  'licencia.banner.reloj': 'RELOJ DESAJUSTADO · modo consulta',
+  'licencia.banner.activar': 'Activar licencia',
+  'licencia.banner.ver': 'Ver licencia',
+  'licencia.banner.pideAdmin': 'Pide al administrador que la active.',
+
+  'licencia.titulo': 'Licencia de la instalación',
+  'licencia.descripcion':
+    'Estado de la prueba o de la licencia, el mensaje que se manda al proveedor y la activación del archivo que devuelve. La licencia se verifica en este equipo, sin internet.',
+  'licencia.cargando': 'Cargando el estado de la licencia…',
+  'licencia.error': 'No se pudo leer el estado de la licencia',
+  'licencia.unDia': '1 día',
+  'licencia.dias': '{dias} días',
+
+  'licencia.estado.trial': 'Periodo de prueba',
+  'licencia.estado.trialPorVencer': 'La prueba está por vencer',
+  'licencia.estado.trialVencida': 'Prueba vencida: modo consulta',
+  'licencia.estado.vigente': 'Licencia vigente',
+  'licencia.estado.porVencer': 'La licencia está por vencer',
+  'licencia.estado.vencida': 'Licencia vencida: modo consulta',
+  'licencia.estado.reloj': 'Reloj del equipo desajustado',
+
+  'licencia.origen.trial': 'Prueba',
+  'licencia.origen.licencia': 'Licencia',
+
+  'licencia.detalle.titulo': 'Detalle',
+  'licencia.detalle.origen': 'Origen',
+  'licencia.detalle.tipo': 'Tipo',
+  'licencia.detalle.vence': 'Vence',
+  'licencia.detalle.dias': 'Días restantes',
+  'licencia.detalle.instaladaEn': 'Instalada el',
+  'licencia.detalle.ultimaVez': 'Último uso registrado',
+  'licencia.detalle.consultorio': 'Consultorio',
+  'licencia.detalle.rif': 'RIF',
+  'licencia.detalle.instalacion': 'Instalación',
+
+  'licencia.licencia.titulo': 'Licencia activa',
+  'licencia.licencia.sinLicencia':
+    'Todavía no hay una licencia activada: la instalación sigue en periodo de prueba.',
+  'licencia.licencia.identificador': 'Identificador',
+  'licencia.licencia.cliente': 'Cliente',
+  'licencia.licencia.emitida': 'Emitida el',
+  'licencia.licencia.activada': 'Activada el',
+
+  'licencia.solicitud.titulo': 'Solicitar una licencia',
+  'licencia.solicitud.descripcion':
+    'Copia el mensaje y envíalo al proveedor. Con él emite la licencia y te devuelve el archivo .lic.',
+  'licencia.solicitud.mensaje': 'Mensaje para el proveedor',
+  'licencia.solicitud.copiarMensaje': 'Copiar mensaje',
+  'licencia.solicitud.codigo': 'Código de solicitud',
+  'licencia.solicitud.copiarCodigo': 'Copiar código',
+  'licencia.solicitud.aviso':
+    'El mensaje incluye el identificador de la instalación: es lo que ata la licencia a este equipo.',
+
+  'licencia.activar.titulo': 'Activar la licencia',
+  'licencia.activar.descripcion':
+    'Pega el contenido del archivo .lic o súbelo. La verificación se hace en este equipo, sin internet.',
+  'licencia.activar.token': 'Licencia (.lic)',
+  'licencia.activar.tokenAyuda': 'También puedes pegar el texto que te envíe el proveedor.',
+  'licencia.activar.placeholder': 'Contenido del archivo .lic…',
+  'licencia.activar.subir': 'Elegir archivo .lic',
+  'licencia.activar.archivo': 'Archivo cargado: {archivo}',
+  'licencia.activar.archivoVacio':
+    'El archivo está vacío. Elige el .lic que te envió el proveedor.',
+  'licencia.activar.errorArchivo':
+    'No se pudo leer el archivo. Elige el .lic que te envió el proveedor.',
+  'licencia.activar.boton': 'Activar licencia',
+  'licencia.activar.activando': 'Activando…',
+  'licencia.activar.vacio': 'Pega la licencia o elige el archivo .lic antes de continuar.',
+  'licencia.activar.exito': 'Licencia activada. La sesión se actualizó: ya puedes volver a editar.',
+  'licencia.activar.tituloError': 'No se pudo activar la licencia',
+
   // --- Permisos (§5.4 del plan) -------------------------------------------
   'permiso.users:manage': 'Gestionar usuarios y contraseñas',
   'permiso.patients:read': 'Consultar pacientes',
@@ -1300,6 +1382,7 @@ const DICCIONARIO = {
   'permiso.billing:rates': 'Fijar la tasa del día y la configuración fiscal',
   'permiso.billing:void': 'Anular facturas y emitir notas de crédito',
   'permiso.settings:manage': 'Configurar la aplicación (marca, pantallas y canales)',
+  'permiso.licensing:manage': 'Ver y activar la licencia de la instalación',
 
   // --- Acciones de auditoría ----------------------------------------------
   'auditoria.login': 'Inicio de sesión',
@@ -1324,6 +1407,8 @@ const DICCIONARIO = {
   'auditoria.brand_updated': 'Marca de los imprimibles actualizada',
   'auditoria.app_settings_updated': 'Configuración de la aplicación actualizada',
   'auditoria.channel_settings_updated': 'Canales de mensajería actualizados',
+  'auditoria.license_activated': 'Licencia activada',
+  'auditoria.license_activation_rejected': 'Intento de activación de licencia rechazado',
   'auditoria.whatsapp_session_paired': 'WhatsApp vinculado',
   'auditoria.whatsapp_session_logged_out': 'Sesión de WhatsApp cerrada',
   'auditoria.whatsapp_session_lost': 'Sesión de WhatsApp perdida',
@@ -3648,6 +3733,7 @@ export const PERMISSION_LABELS: Readonly<Record<Permission, string>> = {
   'billing:rates': t('permiso.billing:rates'),
   'billing:void': t('permiso.billing:void'),
   'settings:manage': t('permiso.settings:manage'),
+  'licensing:manage': t('permiso.licensing:manage'),
 };
 
 const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
@@ -3671,6 +3757,8 @@ const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   brand_updated: t('auditoria.brand_updated'),
   app_settings_updated: t('auditoria.app_settings_updated'),
   channel_settings_updated: t('auditoria.channel_settings_updated'),
+  license_activated: t('auditoria.license_activated'),
+  license_activation_rejected: t('auditoria.license_activation_rejected'),
   whatsapp_session_paired: t('auditoria.whatsapp_session_paired'),
   whatsapp_session_logged_out: t('auditoria.whatsapp_session_logged_out'),
   whatsapp_session_lost: t('auditoria.whatsapp_session_lost'),
