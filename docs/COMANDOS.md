@@ -448,7 +448,7 @@ Con `STORAGE_ENCRYPTION_KEY` puesta, todo lo que se guarda va **cifrado en repos
 > borran siempre, también cuando algo falla. Si sale mal, el aviso de emergencia va al bot de
 > administración (`ADMIN_TELEGRAM_BOT_TOKEN` / `ADMIN_TELEGRAM_CHAT_ID`).
 
-### El bot de administración (`/estado`, `/respaldos` y `/respaldo`)
+### El bot de administración (`/estado`, `/licencia`, `/respaldos` y `/respaldo`)
 
 El mismo bot de administración que recibe los avisos también **escucha** al dueño del
 consultorio. Lo atiende un proceso aparte —una herramienta de consola, no el servicio de
@@ -457,10 +457,25 @@ los servicios y volcar cada base):
 
 | Comando | Qué hace |
 | :--- | :--- |
-| `/estado` | La misma foto que `npm run estado` (servicios, bases, cola, outbox, envíos, eventos perdidos, disco y alertas), en texto compacto. |
+| `/estado` | La misma foto que `npm run estado` (servicios, bases, cola, outbox, envíos, eventos perdidos, disco, licencia y alertas), en texto compacto. |
+| `/licencia` | Estado de la licencia o de la prueba, `installationId` y el **texto de solicitud** (`ODO-REQ1.…`) que se reenvía al proveedor. Si el sistema está en **modo consulta**, lo dice con el motivo. |
 | `/respaldos` | Toma un respaldo **ahora** (`pg_dump -Fc` de cada base, con las credenciales de su propio servicio), verifica cada volcado, calcula las sumas SHA-256 y manda los `.dump` + `SHA256SUMS` por Telegram. Si un archivo supera los 50 MB (límite de Telegram), avisa y lo deja en la carpeta temporal. |
 | `/respaldo` | Respaldo **completo** —bases + almacén + configuración— que se queda **en el servidor**, en `ODONTOCRM_BACKUP_MANUAL_DIR` (Fedora `/var/lib/odontocrm/respaldo-manual`, Windows `C:\OdontoCRM\data\respaldo-manual`). **No manda archivos**: responde con la carpeta, el tamaño de cada bloque y las dos órdenes para comprobarlo y reponerlo. Se conservan las **5** últimas copias (`ODONTOCRM_BACKUP_MANUAL_KEEP`). |
 | `/ayuda` | La lista de comandos. |
+
+**Activar la licencia.** Cuando el proveedor mande el archivo `.lic`, **reenvíalo a este
+chat**: el bot lo comprueba (firma, instalación y vencimiento) y responde con el tipo y la
+fecha. No hace falta tocar el servidor ni reiniciar nada: los permisos de escritura vuelven en
+cuanto la sesión se refresca (la web lo hace sola en `/licencia`; con el bot, basta con volver
+a entrar o refrescar). El bot **solo verifica la firma**: la clave privada de las licencias
+vive en la máquina del proveedor, nunca en el consultorio.
+
+Si la prueba (30 días desde la instalación) o la licencia están **por vencer o vencidas**, el
+bot avisa **una vez al día** (entre las 8 y las 21, hora de Caracas). Al vencer sin renovar, el
+sistema pasa a **modo consulta**: se puede ver, imprimir y exportar todo —los datos clínicos no
+se bloquean nunca—, pero no se puede editar hasta activar una licencia nueva. El estado también
+se ve en el banner de la interfaz y en `/licencia`
+([ADR 0075](adr/0075-licenciamiento-offline-y-modo-consulta.md)).
 
 Lo que manda el bot **es restaurable tal cual** —es `pg_dump -Fc`, un archivo por base, con su
 `SHA256SUMS`—: se comprueba con `verify-backup.mjs --from` y se repone con `odontocrm restaurar`
@@ -493,6 +508,26 @@ sin tocar el archivo. Las herramientas leen la base directamente (corren fuera d
 menudo con los servicios caídos, que es justo cuando hay que avisar). El **bot relee las
 credenciales cada ~30 s**, así que un cambio del panel se aplica **en ~1 minuto y sin reiniciar**
 (el panel lo dice junto a los campos).
+
+### La licencia desde la consola del servidor
+
+Para una **instalación asistida** (el proveedor deja el arranque y la licencia listos en la
+misma visita) y para **soporte por consola** cuando no se quiere abrir la interfaz ni Telegram,
+el servidor tiene el comando `odontocrm licencia`:
+
+| Comando | Qué hace |
+| :--- | :--- |
+| `sudo odontocrm licencia estado` | Estado de la prueba o de la licencia: tipo, vencimiento, días que quedan y si el sistema está en modo consulta. Es también lo que hace `sudo odontocrm licencia` sin argumentos. |
+| `sudo odontocrm licencia solicitud` | `installationId` del consultorio y el texto de solicitud (`ODO-REQ1.…`) listo para mandárselo al proveedor. |
+| `sudo odontocrm licencia activar <archivo.lic>` | Verifica la firma del archivo y la activa: la misma operación que reenviarlo al bot de administración o subirlo en `/licencia`, pero sin salir de la consola. |
+
+Usa las **rutas internas de identity** —las mismas que el bot—, así que la consola no necesita
+una sesión de usuario y sirve aunque la interfaz esté caída. En Windows se ejecuta desde
+PowerShell como administrador con la misma forma (`odontocrm licencia estado`,
+`odontocrm licencia solicitud` u `odontocrm licencia activar <archivo.lic>`).
+
+Como el bot, **solo verifica la firma**: la clave privada de las licencias vive en la máquina
+del proveedor, nunca en el consultorio ([ADR 0075](adr/0075-licenciamiento-offline-y-modo-consulta.md)).
 
 ---
 

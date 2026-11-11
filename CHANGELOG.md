@@ -4,6 +4,33 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Sin publicar] — Licenciamiento offline y modo consulta
+
+### Añadido
+- **Prueba de 30 días desde la instalación** y licencias firmadas **mensual (30 días)**,
+  **trimestral (90)** y **anual (365)**, atadas a la instalación (`installationId`) y emitidas
+  **offline** con un JWT EdDSA firmado por el proveedor ([ADR 0075](docs/adr/0075-licenciamiento-offline-y-modo-consulta.md)).
+- **Modo consulta**: con la prueba o la licencia vencida, el token de acceso se emite solo con
+  permisos de lectura (más `licensing:manage`); leer, imprimir y exportar siguen funcionando y no
+  se toca ninguno de los 9 servicios.
+- Página **`/licencia`** (solo admin) con estado, instalación, **solicitud `ODO-REQ1.…`** para el
+  proveedor y activación pegando el token o subiendo el `.lic`; **banner** de prueba/vencimiento
+  visible también en el acceso.
+- **Bot de administración del consultorio**: comando `/licencia`, activación **reenviando el `.lic`**
+  al chat y aviso diario de vencimiento; `/estado` y `npm run estado` muestran la licencia.
+- **Herramientas del proveedor**: CLI `npm run licencia` (`claves`, `emitir`, `renovar`,
+  `pendientes`, `verificar`), bot de emisión `npm run licencia:bot` y plantillas PM2/systemd en
+  [`infra/licencias/`](infra/licencias/INSTALL.md). La clave privada y el registro viven fuera del
+  repositorio.
+- **Comando de servidor** `sudo odontocrm licencia [estado|solicitud|activar <archivo.lic>]` en
+  Fedora y Windows, para instalación asistida y soporte.
+- Guía [`docs/LICENCIAMIENTO.md`](docs/LICENCIAMIENTO.md) y ADR 0075.
+
+### Cambiado
+- **`hasPermission` manda por los permisos del token, no por el rol**: el atajo del rol `admin`
+  impedía que el modo consulta bloqueara al titular. El rol admin ya lleva todos los permisos al
+  emitir el token, así que el comportamiento normal no cambia.
+
 ## [Sin publicar] — WhatsApp por Baileys
 
 ### Cambiado

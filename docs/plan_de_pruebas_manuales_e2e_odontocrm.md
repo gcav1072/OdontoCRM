@@ -728,3 +728,20 @@ Estos casos se ejecutan con un **número de prueba** y un teléfono real; no usa
 - [ ] **WA-08 · Reconexión.** Cortar la red del servidor 30 s y restaurarla; el estado pasa por `reconectando` y vuelve a `conectado` sin reiniciar el servicio.
 - [ ] **WA-09 · Dos instancias.** Levantar una segunda copia con el mismo número: la primera pasa a `reemplazada` y **no** reconecta sola; el aviso llega al administrador.
 - [ ] **WA-10 · Modo test.** Con `TEST_MODE=true`, el socket no se abre (sin QR, sin envíos) y los avisos quedan simulados.
+
+---
+
+## 7. Licenciamiento offline (ADR 0075)
+
+Casos manuales, con la app instalada y el proveedor (CLI o bot) a mano. Los estados se ven en
+`/licencia`, en el banner de la app y en `sudo odontocrm licencia`.
+
+- [ ] **LIC-01 · Prueba automática.** Instalación nueva: `/licencia` muestra «prueba: quedan 30 días», el banner informativo se ve también en `/login` y no hay nada que activar.
+- [ ] **LIC-02 · Solicitud.** El admin copia la solicitud (`ODO-REQ1.…`); el proveedor la reenvía a su bot (o la usa con el CLI) y emite una licencia mensual; `/licencia` del consultorio la activa pegando el token o subiendo el `.lic`.
+- [ ] **LIC-03 · Activación por el bot.** El dueño reenvía el `.lic` al bot de administración; el bot responde tipo y vencimiento, `/estado` y `npm run estado` lo reflejan y la auditoría registra `license_activated`.
+- [ ] **LIC-04 · Activación por consola.** `sudo odontocrm licencia activar /ruta/licencia.lic` activa sin abrir interfaz; `sudo odontocrm licencia` muestra el estado y la solicitud.
+- [ ] **LIC-05 · Vencimiento y modo consulta.** Con la prueba o la licencia vencida (se puede forzar la fecha en la base), el banner pasa a rojo, los botones de escritura desaparecen, **leer/imprimir/exportar siguen** y la auditoría conserva el acceso.
+- [ ] **LIC-06 · Renovación.** Emitir una renovación antes del vencimiento: los días se suman al vencimiento vigente. Activarla desde una sesión en modo consulta devuelve la escritura sin reiniciar (el siguiente refresco de sesión).
+- [ ] **LIC-07 · Rechazos.** Un `.lic` de otra instalación, uno vencido o un archivo alterado se rechazan con un mensaje claro y quedan en auditoría como `license_activation_rejected`.
+- [ ] **LIC-08 · Reloj atrasado.** Atrasar el reloj del servidor más de 24 h respecto al último uso: la app pasa a modo consulta y lo avisa; corregir la hora y volver a entrar lo restaura.
+
