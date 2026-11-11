@@ -25,6 +25,18 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   desvinculación por canal (`?channel=telegram|whatsapp`).
 
 ### Corregido
+- **La desinstalación se quedaba a medias si un solo `pg_dump` fallaba**: un objeto de otro dueño
+  dentro de una base (un esquema `pgboss` heredado de una corrida de desarrollo) hacía fallar el
+  volcado con el rol del servicio y el guion bloqueaba **todas** las bases, no solo esa. Ahora se
+  reintenta el volcado como administrador y solo se conserva la base que de verdad no se pudo
+  copiar; las demás se borran. Si no hay `pg_dump`, no se borra ninguna. También se retiran la
+  plantilla `odontocrm@.service` y el simulacro de restauración
+  (`odontocrm-verificar-respaldo.service/.timer`), que sobrevivían a la desinstalación, y un
+  reintento tras un fallo reutiliza las credenciales del respaldo anterior.
+- **El desinstalador de Windows no reintentaba los volcados** que fallaban con el rol de respaldo
+  y podía intentar borrar el rol de una base que se había conservado (con un error confuso).
+  Ahora reintenta con el administrador (la misma credencial del paso 5), conserva el rol de una
+  base sin copia y, si falta `pg_dump.exe`, no borra ninguna base.
 - **El alta por WhatsApp llegaba al último paso y fallaba**: el borde interno de pacientes tenía
   una lista de canales copiada a mano sin `whatsapp`, así que el «Confirmar» respondía 400 y el
   paciente solo veía «ahora mismo no puedo consultar el sistema». Ahora usa el catálogo compartido
