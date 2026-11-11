@@ -6,12 +6,18 @@
 # Escucha los comandos del dueño del consultorio y responde por el **bot de
 # administración** (`ADMIN_TELEGRAM_*`, OTRO bot distinto al de los pacientes):
 #
-#   /estado     la misma foto que «npm run estado»
+#   /estado     la misma foto que «npm run estado» (incluye el estado de la licencia)
+#   /licencia   estado de la licencia o prueba + solicitud para el proveedor
+#               (para activarla, el dueño reenvía a este chat el archivo .lic)
 #   /respaldos  toma un respaldo AHORA y manda los .dump + SHA256SUMS por Telegram
 #   /respaldo   respaldo COMPLETO (bases + configuración + almacén) que se queda en el
 #               servidor, en /var/lib/odontocrm/respaldo-manual, listo para
 #               «odontocrm recuperar --from DIR» (por eso ReadWritePaths, más abajo)
 #   /ayuda      la lista de comandos
+#
+# La activación de la licencia SOLO verifica la firma con la clave pública: aquí
+# nunca está la clave privada del proveedor. Si la prueba o la licencia están por
+# vencer, el bot avisa una vez al día.
 #
 # Solo responde al chat de `ADMIN_TELEGRAM_CHAT_ID`: cualquier otro mensaje se
 # ignora en silencio.

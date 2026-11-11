@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   carpetaManualDeRespaldos,
   conservarRespaldosManuales,
+  formatearActivacionLicencia,
+  formatearLicenciaDetalle,
+  formatearLicenciaParaEstado,
   formatearRespaldoCompleto,
   marcaDeTiempo,
   nombreAlmacenDeRespaldo,
@@ -160,6 +163,145 @@ describe('resumen del respaldo completo', () => {
       archivo(`odonto_servicio_${String(indice)}`, 1024),
     );
     const texto = formatearRespaldoCompleto({ ...resultadoBase, archivos: muchas });
+    expect(texto.length).toBeLessThan(4096);
+  });
+});
+
+describe('licencia en el estado (ADR 0075)', () => {
+  /** Vista pública tal como la devuelve `GET /api/v1/licensing/public`. */
+  const vistaPublica = (extra = {}) => ({
+    estado: 'trial',
+    soloLectura: false,
+    origen: 'trial',
+    tipo: null,
+    diasRestantes: 23,
+    venceEn: '2026-12-11T13:00:00.000Z',
+    mensaje: 'Estás en el periodo de prueba: quedan 23 días.',
+    ...extra,
+  });
+
+  it('resume la prueba y la licencia en una línea, para el tablero y el bot', () => {
+    expect(formatearLicenciaParaEstado(vistaPublica())).toBe(
+      'prueba hasta el 11/12/2026 · quedan 23 días',
+    );
+
+    expect(
+      formatearLicenciaParaEstado(
+        vistaPublica({
+          estado: 'licencia_vigente',
+          origen: 'licencia',
+          tipo: 'mensual',
+          diasRestantes: 30,
+        }),
+      ),
+    ).toBe('licencia mensual vigente hasta el 11/12/2026 · quedan 30 días');
+  });
+
+  it('avisa cuando la prueba o la licencia están por vencer', () => {
+    const prueba = formatearLicenciaParaEstado(
+      vistaPublica({ estado: 'trial_por_vencer', diasRestantes: 5 }),
+    );
+    expect(prueba).toContain('por vencer');
+    expect(prueba).toContain('quedan 5 días');
+
+    const licencia = formatearLicenciaParaEstado(
+      vistaPublica({
+        estado: 'licencia_por_vencer',
+        origen: 'licencia',
+        tipo: 'anual',
+        diasRestantes: 3,
+      }),
+    );
+    expect(licencia).toContain('licencia anual');
+    expect(licencia).toContain('quedan 3 días');
+  });
+
+  it('grita el modo consulta y el reloj atrasado', () => {
+    for (const estado of ['trial_vencida', 'licencia_vencida']) {
+      const texto = formatearLicenciaParaEstado(
+        vistaPublica({ estado, soloLectura: true, diasRestantes: 0 }),
+      );
+      expect(texto).toContain('MODO CONSULTA');
+      // El modo consulta no es «no se puede usar»: se puede ver, imprimir y exportar.
+      expect(texto).toContain('imprimir');
+    }
+
+    expect(
+      formatearLicenciaParaEstado(vistaPublica({ estado: 'reloj_atrasado', soloLectura: true })),
+    ).toContain('reloj del equipo atrasado');
+  });
+
+  it('una licencia no comprobable se dice, no se inventa', () => {
+    expect(formatearLicenciaParaEstado({ error: 'HTTP 404' })).toBe('no comprobable (HTTP 404)');
+    // Una foto vieja del tablero no trae el campo: mejor no pintar nada que mentir.
+    expect(formatearLicenciaParaEstado(undefined)).toBeNull();
+  });
+});
+
+describe('detalle de la licencia para el bot', () => {
+  /** Vista del administrador tal como la devuelve la ruta interna de identity. */
+  const vistaInterna = (extra = {}) => ({
+    estado: 'trial_por_vencer',
+    soloLectura: false,
+    origen: 'trial',
+    tipo: null,
+    diasRestantes: 5,
+    venceEn: '2026-12-11T13:00:00.000Z',
+    mensaje: 'La prueba vence en 5 días (el 11/12/2026). Solicita la licencia.',
+    instalacion: '8e6b6e4c-1111-4222-8333-444455556666',
+    instaladaEn: '2026-10-12T13:00:00.000Z',
+    ultimaVezVisto: '2026-11-11T13:00:00.000Z',
+    licencia: null,
+    consultorio: { nombre: 'Consultorio Sonrisa', rif: 'J-12345678-9' },
+    solicitud: {
+      codigo: 'ODO-REQ1.abc',
+      texto:
+        'OdontoCRM · solicitud de licencia\nConsultorio: Consultorio Sonrisa\nCódigo: ODO-REQ1.abc',
+    },
+    ...extra,
+  });
+
+  it('trae la instalación, la solicitud y las instrucciones de activación', () => {
+    const texto = formatearLicenciaDetalle(vistaInterna());
+
+    expect(texto).toContain('Estado:');
+    expect(texto).toContain('Instalación: 8e6b6e4c-1111-4222-8333-444455556666');
+    expect(texto).toContain('Consultorio Sonrisa');
+    expect(texto).toContain('J-12345678-9');
+    expect(texto).toContain('ODO-REQ1.abc');
+    expect(texto).toContain('reenvía');
+    expect(texto).toContain('.lic');
+  });
+
+  it('con la vista pública (sin secreto interno) dice qué falta, en vez de enseñar huecos', () => {
+    const texto = formatearLicenciaDetalle(
+      vistaInterna({ instalacion: undefined, consultorio: undefined, solicitud: undefined }),
+    );
+
+    expect(texto).toContain('INTERNAL_SERVICE_SECRET');
+    expect(texto).toContain('Estado:');
+  });
+
+  it('un error de lectura se cuenta sin romper el bot', () => {
+    expect(formatearLicenciaDetalle({ error: 'ECONNREFUSED' })).toContain('ECONNREFUSED');
+    expect(formatearLicenciaDetalle(undefined)).toContain('no pude leer');
+  });
+
+  it('la activación correcta se responde con el tipo y el vencimiento', () => {
+    const texto = formatearActivacionLicencia({
+      estado: 'licencia_vigente',
+      soloLectura: false,
+      origen: 'licencia',
+      tipo: 'mensual',
+      diasRestantes: 30,
+      venceEn: '2026-12-11T13:00:00.000Z',
+      mensaje: 'Licencia mensual vigente hasta el 11/12/2026.',
+    });
+
+    expect(texto).toContain('✔ Licencia activada');
+    expect(texto).toContain('mensual');
+    expect(texto).toContain('11/12/2026');
+    expect(texto).toContain('30 días');
     expect(texto.length).toBeLessThan(4096);
   });
 });
