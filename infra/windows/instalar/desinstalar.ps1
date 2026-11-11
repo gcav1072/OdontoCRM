@@ -7,7 +7,9 @@
 #
 # Quita el servicio de PM2, el de Caddy, las tareas programadas, el código, las reglas de
 # firewall, los directorios de datos y las bases y los roles —y antes **guarda** los secretos
-# y un `pg_dump` de cada base—.
+# y un `pg_dump` de cada base—. Si un volcado falla, se **reintenta como administrador** y,
+# si tampoco así sale, **esa base concreta no se borra** (las demás sí): el error queda en
+# `<base>.dump.error`.
 #
 # **Node.js, PostgreSQL y sus datos de instalación NO se tocan**, a propósito.
 #
@@ -49,6 +51,25 @@ $info = Get-Info
 $sello = (Get-Date).ToString('yyyyMMdd-HHmmss')
 $guardado = "C:\OdontoCRM-antes-de-desinstalar-$sello"
 
+# La URL del administrador apunta a la base «postgres»; para volcar otra base hay que
+# cambiar el último segmento de la ruta y conservar los parámetros, si los hubiera.
+function Get-UrlAdminParaBase {
+  param([string]$Url, [string]$Base)
+  $separador = $Url.IndexOf('?')
+  $sinConsulta = if ($separador -ge 0) { $Url.Substring(0, $separador) } else { $Url }
+  $consulta = if ($separador -ge 0) { $Url.Substring($separador) } else { '' }
+  $corte = $sinConsulta.LastIndexOf('/')
+  if ($corte -lt 0) { return $null }
+  return $sinConsulta.Substring(0, $corte) + '/' + $Base + $consulta
+}
+
+# Se resuelve una sola vez: si el volcado con el rol de respaldo falla, el mismo
+# administrador que se pedirá en el paso 5 sirve para reintentar aquí (sin preguntar dos
+# veces). Si no hace falta, no se pregunta nada hasta el paso 5. `$adminIntentado` evita
+# volver a preguntar por cada base cuando el operador cancela la contraseña.
+$adminUrl = $null
+$adminIntentado = $false
+
 Write-Host ''
 Write-Host 'OdontoCRM · desinstalar (Windows)' -ForegroundColor White
 if ($DryRun) { Escribir-Aviso '--dry-run: no se borra nada' }
@@ -66,35 +87,77 @@ else {
   Escribir-Ok "secretos guardados en $guardado"
 
   # Un volcado por base, por si alguien desinstala una instalación con pacientes dentro.
-  # `$volcadoHecho` es la promesa del paso 5: si aquí no se pudo volcar NADA (falta pg_dump o
-  # .pgpass), ninguna base se borrará después. Lo que falló base a base queda marcado en
-  # `<base>.dump.error` y esa base concreta se conserva.
-  $volcadoHecho = $false
-  $pgDump = Join-Path (Get-PgBin) 'pg_dump.exe'
+  # Lo que falla base a base queda marcado en `<base>.dump.error` y SOLO esa base se
+  # conserva después (paso 5). Si el rol de respaldo no puede leer la base entera —un
+  # esquema heredado de una corrida de desarrollo con otro dueño, por ejemplo—, se
+  # reintenta como administrador con la misma credencial que se usa en el paso 5: el
+  # desinstalador ya es administrador y antes cualquier objeto ajeno dejaba la base sin
+  # borrar aunque los datos estuvieran intactos.
+  $pgBin = Get-PgBin
+  $pgDump = if ($pgBin) { Join-Path $pgBin 'pg_dump.exe' } else { $null }
   $pgPass = Join-Path $OdontoEnv '.pgpass'
-  if ((Test-Path $pgDump) -and (Test-Path $pgPass)) {
-    $volcadoHecho = $true
-    $anterior = $env:PGPASSFILE
-    $env:PGPASSFILE = $pgPass
-    $env:PGHOST = '127.0.0.1'; $env:PGPORT = '5432'; $env:PGUSER = 'odonto_backup'
-    try {
-      foreach ($base in $info.bases) {
-        $destino = Join-Path $guardado "$base.dump"
-        & $pgDump --format=custom --no-owner --no-privileges --file=$destino $base 2>$null
-        if ($LASTEXITCODE -eq 0) { Escribir-Ok "guardado $base" }
-        else {
-          Escribir-Aviso "${base}: NO se pudo guardar (se deja sin borrar esa base)"
-          # La copia es la única red: si falla, esa base no se borra.
-          Set-Content -Path "$destino.error" -Value 'el pg_dump falló; la base NO se borró' -Encoding UTF8
-        }
-      }
-    }
-    finally {
-      if ($null -eq $anterior) { Remove-Item Env:\PGPASSFILE -ErrorAction SilentlyContinue } else { $env:PGPASSFILE = $anterior }
-      Remove-Item Env:\PGHOST, Env:\PGPORT, Env:\PGUSER -ErrorAction SilentlyContinue
+  if (-not ($pgDump -and (Test-Path $pgDump))) {
+    # Sin copia no se borra nada: es la única red que hay si alguien desinstala una
+    # instalación con pacientes dentro.
+    Escribir-Aviso 'no encuentro pg_dump.exe: NO se borrará ninguna base (no habría copia)'
+    foreach ($base in $info.bases) {
+      Set-Content -Path (Join-Path $guardado "$base.dump.error") `
+        -Value 'no se encontró pg_dump.exe; la base NO se borró' -Encoding UTF8
     }
   }
-  else { Escribir-Aviso 'no pude volcar las bases (faltan pg_dump o .pgpass); NO se borrarán' }
+  else {
+    $rolRespaldoListo = Test-Path $pgPass
+    if (-not $rolRespaldoListo) {
+      Escribir-Aviso 'no hay .pgpass del rol de respaldo: se intentará volcar como administrador'
+    }
+    foreach ($base in $info.bases) {
+      $destino = Join-Path $guardado "$base.dump"
+      $errorDump = "$destino.error"
+      $volcado = $false
+      $salida = @()
+
+      if ($rolRespaldoListo) {
+        $anteriorPgp = $env:PGPASSFILE
+        $env:PGPASSFILE = $pgPass
+        $env:PGHOST = '127.0.0.1'; $env:PGPORT = '5432'; $env:PGUSER = 'odonto_backup'
+        try {
+          $salida = & $pgDump --format=custom --no-owner --no-privileges --file=$destino $base 2>&1
+        }
+        finally {
+          if ($null -eq $anteriorPgp) { Remove-Item Env:\PGPASSFILE -ErrorAction SilentlyContinue } else { $env:PGPASSFILE = $anteriorPgp }
+          Remove-Item Env:\PGHOST, Env:\PGPORT, Env:\PGUSER -ErrorAction SilentlyContinue
+        }
+        if ($LASTEXITCODE -eq 0) { $volcado = $true }
+      }
+
+      if (-not $volcado) {
+        if (-not $adminUrl -and -not $adminIntentado) {
+          $adminIntentado = $true
+          $adminUrl = Resolver-AdminUrlPostgres `
+            -Pregunta 'Para reintentar los volcados que fallen hace falta el administrador de PostgreSQL.'
+        }
+        if ($adminUrl) {
+          $urlBase = Get-UrlAdminParaBase -Url $adminUrl -Base $base
+          if ($urlBase) {
+            $salidaAdmin = & $pgDump --format=custom --no-owner --no-privileges --file=$destino $urlBase 2>&1
+            $salida = @($salida) + @($salidaAdmin)
+            if ($LASTEXITCODE -eq 0) { $volcado = $true }
+          }
+        }
+      }
+
+      if ($volcado) {
+        Escribir-Ok "guardado $base"
+        Remove-Item -Path $errorDump -ErrorAction SilentlyContinue
+      }
+      else {
+        Escribir-Aviso "${base}: NO se pudo guardar (se deja sin borrar esa base)"
+        # La copia es la única red: si falla, esa base no se borra.
+        $detalle = if ($salida) { ($salida | Out-String).Trim() } else { 'el pg_dump falló; la base NO se borró' }
+        Set-Content -Path $errorDump -Value $detalle -Encoding UTF8
+      }
+    }
+  }
 }
 
 # ── 2. Tareas programadas ────────────────────────────────────────────────────
@@ -178,16 +241,19 @@ foreach ($regla in @('OdontoCRM Web (HTTP)', 'OdontoCRM Web (HTTPS)')) {
 # ── 5. Las bases y los roles ────────────────────────────────────────
 Escribir-Paso '5/7 · Bases de datos y roles'
 $psql = Join-Path (Get-PgBin) 'psql.exe'
+# Bases que se conservan porque su copia de seguridad falló (se llena más abajo). Se usa en
+# el resumen final, igual que en el guion de Fedora.
+$sinBorrar = @()
 # Si el administrador no vino por entorno, se PIDE la contraseña (oculta). Sin ella no se puede
 # borrar ninguna base, y quedarse a medias es peor que preguntar.
 $adminUrl = Resolver-AdminUrlPostgres -SinPreguntar:$DryRun `
   -Pregunta 'Para borrar las bases y los roles hace falta el administrador de PostgreSQL.'
-if (-not $adminUrl) {
-  Escribir-Aviso 'sin administrador de PostgreSQL no puedo borrar las bases ni los roles: hazlo a mano si quieres'
-}
-elseif ($DryRun) {
+if ($DryRun) {
   Escribir-Detalle "[dry-run] borraría las bases: $($info.bases -join ', ')"
   Escribir-Detalle "[dry-run] y los roles: $(($info.servicios.base) -join ', '), odonto_events, odonto_backup"
+}
+elseif (-not $adminUrl) {
+  Escribir-Aviso 'sin administrador de PostgreSQL no puedo borrar las bases ni los roles: hazlo a mano si quieres'
 }
 else {
   # Como en Fedora (`desinstalar.sh` 5/6): UNA sentencia por objeto, con la salida del error a
@@ -197,35 +263,42 @@ else {
   # (2026-10-15), diera igual que hubieran entrado por el servidor o por `npm run dev`: las dos
   # pilas comparten las mismas bases `odonto_*`.
   $fallos = 0
-  if (-not $volcadoHecho) {
-    Escribir-Aviso 'no se pudo volcar NINGUNA base (faltaba pg_dump o .pgpass): NO se borra ninguna'
-    $fallos++
-  }
-  else {
-    foreach ($base in $info.bases) {
-      if (Test-Path (Join-Path $guardado "$base.dump.error")) {
-        Escribir-Aviso "no borro la base ${base}: su copia de seguridad falló (mira $guardado)"
-        $fallos++
-        continue
-      }
-      $salida = & $psql -X -q -w -v ON_ERROR_STOP=1 $adminUrl `
-        -c "DROP DATABASE IF EXISTS `"$base`" WITH (FORCE);" 2>&1
-      if ($LASTEXITCODE -eq 0) { Escribir-Ok "base $base borrada" }
-      else {
-        Escribir-Aviso "no pude borrar la base ${base}:"
-        $salida | Select-Object -First 3 | ForEach-Object { Escribir-Detalle "  $_" }
-        $fallos++
-      }
+  foreach ($base in $info.bases) {
+    if (Test-Path (Join-Path $guardado "$base.dump.error")) {
+      Escribir-Aviso "no borro la base ${base}: su copia de seguridad falló (mira $guardado)"
+      $sinBorrar += $base
+      $fallos++
+      continue
     }
-    # El rol solo se puede borrar cuando ya no es dueño de nada: por eso va DESPUÉS de sus bases.
-    foreach ($rol in (@($info.servicios.base) + @('odonto_events', 'odonto_backup'))) {
-      $salida = & $psql -X -q -w -v ON_ERROR_STOP=1 $adminUrl -c "DROP ROLE IF EXISTS `"$rol`";" 2>&1
-      if ($LASTEXITCODE -eq 0) { Escribir-Detalle "rol $rol retirado" }
-      else {
-        Escribir-Aviso "no pude borrar el rol ${rol}:"
-        $salida | Select-Object -First 3 | ForEach-Object { Escribir-Detalle "  $_" }
-        $fallos++
-      }
+    $salida = & $psql -X -q -w -v ON_ERROR_STOP=1 $adminUrl `
+      -c "DROP DATABASE IF EXISTS `"$base`" WITH (FORCE);" 2>&1
+    if ($LASTEXITCODE -eq 0) { Escribir-Ok "base $base borrada" }
+    else {
+      Escribir-Aviso "no pude borrar la base ${base}:"
+      $salida | Select-Object -First 3 | ForEach-Object { Escribir-Detalle "  $_" }
+      $fallos++
+    }
+  }
+  # El rol solo se puede borrar cuando ya no es dueño de nada: por eso va DESPUÉS de sus
+  # bases. Y si una base se conserva porque su copia falló, su rol tampoco se toca; el rol
+  # de respaldo (`odonto_backup`) se conserva mientras quede alguna base sin copia.
+  foreach ($rol in (@($info.servicios.base) + @('odonto_events', 'odonto_backup'))) {
+    if ($sinBorrar -contains $rol) {
+      Escribir-Aviso "no borro el rol ${rol}: su base quedó sin copia de seguridad"
+      $fallos++
+      continue
+    }
+    if ($rol -eq 'odonto_backup' -and $sinBorrar.Count -gt 0) {
+      Escribir-Aviso 'no borro el rol odonto_backup: queda alguna base sin copia de seguridad'
+      $fallos++
+      continue
+    }
+    $salida = & $psql -X -q -w -v ON_ERROR_STOP=1 $adminUrl -c "DROP ROLE IF EXISTS `"$rol`";" 2>&1
+    if ($LASTEXITCODE -eq 0) { Escribir-Detalle "rol $rol retirado" }
+    else {
+      Escribir-Aviso "no pude borrar el rol ${rol}:"
+      $salida | Select-Object -First 3 | ForEach-Object { Escribir-Detalle "  $_" }
+      $fallos++
     }
   }
   if ($fallos -eq 0) { Escribir-Ok 'bases y roles retirados' }
@@ -283,4 +356,8 @@ foreach ($ruta in $borrar) {
 Write-Host ''
 if ($DryRun) { Escribir-Ok 'simulación terminada: nada se ha borrado'; exit 0 }
 Escribir-Ok "desinstalación terminada. Antes de borrar se guardó todo en $guardado"
+if ($sinBorrar.Count -gt 0) {
+  Escribir-Aviso "estas bases NO se borraron (su copia falló): $($sinBorrar -join ', ')"
+  Escribir-Detalle "mira los .dump.error dentro de $guardado"
+}
 Escribir-Detalle 'Node.js, PostgreSQL y sus datos de instalación NO se han tocado.'
