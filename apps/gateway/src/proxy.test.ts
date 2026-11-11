@@ -29,6 +29,7 @@ describe('mapa de rutas del gateway', () => {
       '/api/v1/devices',
       '/api/v1/identity',
       '/api/v1/settings',
+      '/api/v1/licensing',
     ]);
   });
 
@@ -47,7 +48,7 @@ describe('mapa de rutas del gateway', () => {
       }),
     );
 
-    expect(routes).toHaveLength(17);
+    expect(routes).toHaveLength(18);
     expect(routes.map((route) => route.prefix)).toContain('/api/v1/screens');
   });
 
@@ -72,6 +73,10 @@ describe('mapa de rutas del gateway', () => {
     expect(isPublicPath('/api/v1/auth/login')).toBe(true);
     expect(isPublicPath('/api/v1/auth/refresh')).toBe(true);
     expect(isPublicPath('/api/v1/auth/logout')).toBe(true);
+    // El banner de prueba/licencia vencida se pinta en el acceso, sin sesión (ADR 0075).
+    expect(isPublicPath('/api/v1/licensing/public')).toBe(true);
+    expect(isPublicPath('/api/v1/licensing/status')).toBe(false);
+    expect(isPublicPath('/api/v1/licensing/activate')).toBe(false);
     // El webhook de WhatsApp no lleva JWT: lo valida la firma del proveedor.
     expect(isPublicPath('/api/v1/notifications/webhook/whatsapp')).toBe(true);
     expect(isPublicPath('/api/v1/notifications/webhook/telegram')).toBe(true);

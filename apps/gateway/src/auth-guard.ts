@@ -19,11 +19,16 @@ import type { FastifyInstance } from 'fastify';
  * kiosko** también lo es: la pantalla no tiene usuario ni cookie, cambia su token
  * de dispositivo por un JWT. `/api/v1/meta` lo es porque el banner de MODO TEST
  * tiene que verse **antes** de iniciar sesión, y no revela nada del consultorio.
+ *
+ * El estado **público** de la licencia (`/api/v1/licensing/public`) también: el
+ * banner de prueba o de licencia vencida tiene que verse en el acceso, antes de
+ * iniciar sesión, y no lleva datos del consultorio ni de la licencia (ADR 0075).
  */
 export const PUBLIC_PATHS: readonly string[] = [
   '/health',
   '/ready',
   '/api/v1/meta',
+  '/api/v1/licensing/public',
   '/api/v1/auth/login',
   '/api/v1/auth/refresh',
   '/api/v1/auth/logout',
