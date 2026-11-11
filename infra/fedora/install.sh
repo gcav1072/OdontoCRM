@@ -797,6 +797,10 @@ write_env_templates() {
 #   services/identity/src/config.ts antes de la puesta en marcha.
 JWT_PRIVATE_KEY_PATH=/etc/odontocrm/keys/jwt-private.pem
 JWT_PUBLIC_KEY_PATH=/etc/odontocrm/keys/jwt-public.pem
+# Clave PÚBLICA de las licencias offline (ADR 0075). Viaja con el código desplegado,
+# no con los secretos: la privada se queda en la máquina del proveedor. Si falta, la
+# prueba y el modo consulta funcionan, pero no se puede activar una licencia.
+LICENSE_PUBLIC_KEY_PATH=/opt/odontocrm/assets/licencias/licencia-publica.pem
 # Los TTL de sesión, el bloqueo por intentos y `SameSite` **no son variables de entorno**:
 # viven como constantes de `packages/contracts/src/domain/auth.ts` (15 min de acceso, 30
 # días de refresco, 5 intentos y 15 minutos de bloqueo). Se quitaron de esta plantilla
