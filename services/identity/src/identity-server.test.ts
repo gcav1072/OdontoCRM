@@ -111,6 +111,8 @@ describe('configuración de identity', () => {
     expect(config.IDENTITY_HOST).toBe('127.0.0.1');
     expect(config.DATABASE_POOL_MAX).toBe(10);
     expect(config.JWT_PRIVATE_KEY_PATH).toContain('jwt-private.pem');
+    // La pública de licencias viaja con el repo y es opcional en runtime (ADR 0075).
+    expect(config.LICENSE_PUBLIC_KEY_PATH).toContain('assets/licencias/licencia-publica.pem');
     expect(config.COOKIE_SECURE).toBe(false);
   });
 

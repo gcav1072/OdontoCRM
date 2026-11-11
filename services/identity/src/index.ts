@@ -6,14 +6,14 @@ import {
   startBoss,
   stopBoss,
 } from '@odontocrm/db';
-import { loadPrivateKey, startServer } from '@odontocrm/kernel';
+import { loadPrivateKey, loadPublicKey, startServer, type PublicKey } from '@odontocrm/kernel';
 import { createDiskBlobStore, parseEncryptionKey } from '@odontocrm/storage';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { handleDomainEvent } from './audit/event-consumer.js';
-import { jwtKeyPaths, loadIdentityConfig } from './config.js';
+import { jwtKeyPaths, licensePublicKeyPath, loadIdentityConfig } from './config.js';
 import { createIdentityDatabase } from './db/client.js';
 import { createIdentityServer } from './server.js';
 
@@ -32,6 +32,31 @@ const main = async (): Promise<void> => {
   const database = createIdentityDatabase(config);
   const privateKey = await loadPrivateKey(privateKeyPath);
 
+  /**
+   * Clave **pública** con la que se verifican las licencias offline (ADR 0075).
+   * Es opcional a propósito: sin ella la instalación funciona igual (prueba de 30
+   * días y modo consulta) pero no puede activar licencias, y el error lo dice.
+   * Un PEM ilegible se trata como ausencia: un archivo opcional no puede tumbar el
+   * arranque de todo el servicio.
+   */
+  const rutaClaveLicencias = licensePublicKeyPath(config);
+  let licensePublicKey: PublicKey | null = null;
+  let avisoClaveLicencias: string | null = null;
+  if (!existsSync(rutaClaveLicencias)) {
+    avisoClaveLicencias =
+      `No hay clave pública de licencias en ${rutaClaveLicencias}: ` +
+      'la activación queda deshabilitada (la prueba y el modo consulta siguen funcionando).';
+  } else {
+    try {
+      licensePublicKey = await loadPublicKey(rutaClaveLicencias);
+    } catch (error) {
+      avisoClaveLicencias =
+        `No se pudo leer la clave pública de licencias en ${rutaClaveLicencias}: ` +
+        `${error instanceof Error ? error.message : String(error)}. ` +
+        'La activación queda deshabilitada.';
+    }
+  }
+
   // El logo que sube el titular va al **almacén compartido** (el mismo de patients,
   // clinical y billing): no es un dato fiscal ni clínico, pero sí del consultorio.
   const storageRoot = resolve(config.STORAGE_DIR);
@@ -41,7 +66,15 @@ const main = async (): Promise<void> => {
     encryptionKey: parseEncryptionKey(config.STORAGE_ENCRYPTION_KEY),
   });
 
-  const app = await createIdentityServer({ config, database, privateKey, blobStore });
+  const app = await createIdentityServer({
+    config,
+    database,
+    privateKey,
+    blobStore,
+    licensePublicKey,
+  });
+
+  if (avisoClaveLicencias !== null) app.log.warn(avisoClaveLicencias);
 
   /**
    * Auditoría de otros servicios: identity **consume** los eventos de dominio

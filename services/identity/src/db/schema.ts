@@ -38,6 +38,7 @@ import type {
   BrandLetterheadSettings,
   BrandPaletteSettings,
   BrandTypographyInput,
+  LicenseClaims,
   RecipePaper,
   ScreenTexts,
 } from '@odontocrm/contracts';
@@ -148,6 +149,43 @@ export const clinicProfiles = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [check('chk_clinic_profiles_singleton', sql`${table.id} = 1`)],
+);
+
+/**
+ * La **instalación** y su licencia offline (ADR 0075), una sola fila (`id = 1`).
+ *
+ * `installed_at` es el arranque de la **prueba de 30 días**. `last_seen_at` es el
+ * marcador anti-atraso del reloj: solo avanza; si la hora del equipo retrocede más
+ * de la tolerancia (`LICENSE_CLOCK_TOLERANCE_HOURS`), la instalación entra en modo
+ * consulta hasta que se corrija.
+ *
+ * `license_token` guarda el JWT firmado tal como llegó (para poder enseñarlo y
+ * reenviarlo) y `license_claims` su contenido ya verificado, para no repetir la
+ * verificación criptográfica en cada petición. Mientras no haya fila de licencia,
+ * la instalación está en **prueba**.
+ */
+export const installation = pgTable(
+  'installation',
+  {
+    id: integer('id').primaryKey().default(1),
+    /** UUID que ata las licencias a ESTA instalación (viaja en la solicitud). */
+    installationId: uuid('installation_id').notNull().defaultRandom(),
+    installedAt: timestamp('installed_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Última vez que se vio un reloj coherente; nunca retrocede. */
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    /** JWT compacto de la licencia activa; `null` mientras está en prueba. */
+    licenseToken: text('license_token'),
+    /** Claims de la licencia ya verificados; `null` mientras está en prueba. */
+    licenseClaims: jsonb('license_claims').$type<LicenseClaims>(),
+    licenseActivatedAt: timestamp('license_activated_at', { withTimezone: true }),
+    /** Usuario que la activó; `null` si fue el bot de administración. */
+    licenseActivatedBy: uuid('license_activated_by'),
+    /** Cómo se activó («web», «bot de administración», …). */
+    licenseActivationReason: text('license_activation_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [check('chk_installation_singleton', sql`${table.id} = 1`)],
 );
 
 /**
@@ -367,6 +405,8 @@ export type DentistProfileRow = typeof dentistProfiles.$inferSelect;
 export type NewDentistProfileRow = typeof dentistProfiles.$inferInsert;
 export type ClinicProfileRow = typeof clinicProfiles.$inferSelect;
 export type NewClinicProfileRow = typeof clinicProfiles.$inferInsert;
+export type InstallationRow = typeof installation.$inferSelect;
+export type NewInstallationRow = typeof installation.$inferInsert;
 export type RefreshTokenRow = typeof refreshTokens.$inferSelect;
 export type DeviceTokenRow = typeof deviceTokens.$inferSelect;
 export type AuditEventRow = typeof auditEvents.$inferSelect;

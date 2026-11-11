@@ -1,4 +1,4 @@
-import type { PrivateKey } from '@odontocrm/kernel';
+import type { PrivateKey, PublicKey } from '@odontocrm/kernel';
 import type { BlobStore } from '@odontocrm/storage';
 import type pg from 'pg';
 
@@ -17,4 +17,10 @@ export interface IdentityServices {
    * repositorio).
    */
   blobStore: BlobStore | null;
+  /**
+   * Clave **pública** con la que se verifican las licencias offline (ADR 0075), o
+   * `null` si esta instalación no la tiene: entonces la activación responde un
+   * error claro y el resto (prueba y modo consulta) sigue funcionando.
+   */
+  licensePublicKey: PublicKey | null;
 }

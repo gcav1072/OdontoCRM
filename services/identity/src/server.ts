@@ -1,5 +1,5 @@
 import { createOutboxCheck, createPoolCheck } from '@odontocrm/db';
-import { buildServer, isProduction, type PrivateKey } from '@odontocrm/kernel';
+import { buildServer, isProduction, type PrivateKey, type PublicKey } from '@odontocrm/kernel';
 import type { BlobStore } from '@odontocrm/storage';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
@@ -12,6 +12,7 @@ import { registerAuthRoutes } from './routes/auth-routes.js';
 import { registerClinicRoutes } from './routes/clinic-routes.js';
 import { registerDeviceRoutes } from './routes/device-routes.js';
 import { registerInternalRoutes } from './routes/internal-routes.js';
+import { registerLicensingRoutes } from './routes/licensing-routes.js';
 import { registerSettingsRoutes } from './routes/settings-routes.js';
 import { registerUserRoutes } from './routes/user-routes.js';
 import type { IdentityServices } from './services.js';
@@ -26,6 +27,11 @@ export interface CreateIdentityServerOptions {
   privateKey: PrivateKey;
   /** Almacén del logo subido por el titular (opcional). */
   blobStore?: BlobStore | null;
+  /**
+   * Clave pública de licencias (ADR 0075). Opcional en las pruebas que no activan
+   * licencias; `null` deja la activación deshabilitada con un error claro.
+   */
+  licensePublicKey?: PublicKey | null;
 }
 
 /**
@@ -33,9 +39,10 @@ export interface CreateIdentityServerOptions {
  * con refresh rotativo, dispositivos kiosko y auditoría.
  *
  * Todas las rutas cuelgan de su prefijo público (`/api/v1/auth`, `/api/v1/users`,
- * `/api/v1/audit`, `/api/v1/devices` y `/api/v1/identity` —la identidad del
- * consultorio y los perfiles profesionales—); el gateway reenvía sin recortar la
- * ruta, así que cada servicio es dueño de su prefijo y no hay colisiones.
+ * `/api/v1/audit`, `/api/v1/devices`, `/api/v1/identity` —la identidad del
+ * consultorio y los perfiles profesionales— y `/api/v1/licensing` —la licencia
+ * offline, ADR 0075—); el gateway reenvía sin recortar la ruta, así que cada
+ * servicio es dueño de su prefijo y no hay colisiones.
  */
 export const createIdentityServer = async (
   options: CreateIdentityServerOptions,
@@ -72,6 +79,7 @@ export const createIdentityServer = async (
     pool: database.pool,
     privateKey,
     blobStore: options.blobStore ?? null,
+    licensePublicKey: options.licensePublicKey ?? null,
   };
 
   registerAuthRoutes(app, services);
@@ -80,6 +88,7 @@ export const createIdentityServer = async (
   registerSettingsRoutes(app, services);
   registerAuditRoutes(app, services);
   registerDeviceRoutes(app, services);
+  registerLicensingRoutes(app, services);
   registerInternalRoutes(app, services);
 
   return app;

@@ -1,3 +1,4 @@
+import { permissionsForRoles } from '@odontocrm/contracts';
 import {
   generateKeyPairPem,
   hashPassword,
@@ -57,7 +58,13 @@ describeWithDatabase('configuración de la aplicación (PostgreSQL real)', () =>
     'x-session-id': globalThis.crypto.randomUUID(),
   });
 
-  const comoAdmin = () => headers(adminId, adminUsername, 'admin', '*');
+  /**
+   * El token de un admin lleva **todos los permisos del rol** (`ROLE_PERMISSIONS.admin`
+   * es el catálogo completo): no hay atajo por rol en el kernel, así que la cabecera
+   * de prueba tiene que llevarlos explícitos como los llevaría un token real.
+   */
+  const comoAdmin = () =>
+    headers(adminId, adminUsername, 'admin', permissionsForRoles(['admin']).join(','));
   const comoSecretaria = (): Record<string, string> =>
     headers(secretaryId, secretaryUsername, 'secretario', 'patients:read');
 

@@ -35,6 +35,14 @@ export const identityEnvSchema = baseEnvSchema.extend({
   JWT_PUBLIC_KEY_PATH: z.string().min(1).default('./services/identity/.keys/jwt-public.pem'),
 
   /**
+   * Clave **pública** con la que se verifican las licencias offline (ADR 0075).
+   * Es pública y se versiona en el repositorio; la privada vive solo en la máquina
+   * del proveedor. Si el archivo no existe, la instalación funciona igual (prueba
+   * de 30 días y modo consulta), pero **no se puede activar** una licencia.
+   */
+  LICENSE_PUBLIC_KEY_PATH: z.string().min(1).default('./assets/licencias/licencia-publica.pem'),
+
+  /**
    * La cookie de refresco exige HTTPS cuando está en `true`. En desarrollo sobre
    * http tiene que ser `false`; en producción (TLS interno) siempre `true`.
    */
@@ -90,3 +98,7 @@ export const jwtKeyPaths = (
   privateKeyPath: resolveFromRepoRoot(config.JWT_PRIVATE_KEY_PATH),
   publicKeyPath: resolveFromRepoRoot(config.JWT_PUBLIC_KEY_PATH),
 });
+
+/** Ruta de la clave pública de licencias, resuelta contra la raíz del repositorio. */
+export const licensePublicKeyPath = (config: IdentityConfig): string =>
+  resolveFromRepoRoot(config.LICENSE_PUBLIC_KEY_PATH);

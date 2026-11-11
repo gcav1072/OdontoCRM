@@ -23,6 +23,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { writeAuditEvent } from '../audit/audit-service.js';
 import { needsDentistProfile } from '../clinic/identity-service.js';
+import { sessionPermissions } from '../licensing/licensing-service.js';
 import type { IdentityDb } from '../db/client.js';
 import { deviceTokens, type UserRow } from '../db/schema.js';
 import type { IdentityServices } from '../services.js';
@@ -53,7 +54,13 @@ import {
   LOCK_MINUTES,
 } from '../security/session.js';
 
-const toLoginResponse = (
+/**
+ * Respuesta de login/refresco/cambio de contraseña. Los permisos salen de
+ * `sessionPermissions` (no de `permissionsForRoles`): en modo consulta el token y
+ * la vista coinciden, y la interfaz oculta lo que la API va a rechazar (ADR 0075).
+ */
+const toLoginResponse = async (
+  db: IdentityDb,
   session: { accessToken: string; expiresIn: number },
   user: {
     id: string;
@@ -63,7 +70,7 @@ const toLoginResponse = (
     needsProfile: boolean;
   },
   roles: Role[],
-): LoginResponse => ({
+): Promise<LoginResponse> => ({
   accessToken: session.accessToken,
   expiresIn: session.expiresIn,
   user: {
@@ -71,7 +78,7 @@ const toLoginResponse = (
     username: user.username,
     fullName: user.fullName,
     roles,
-    permissions: permissionsForRoles(roles),
+    permissions: await sessionPermissions(db, roles),
     mustChangePassword: user.mustChangePassword,
     needsProfile: user.needsProfile,
   },
@@ -210,7 +217,7 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
       after: { roles },
     });
 
-    return reply.status(200).send(toLoginResponse(session, sessionUser, roles));
+    return reply.status(200).send(await toLoginResponse(db, session, sessionUser, roles));
   });
 
   /**
@@ -343,7 +350,7 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
       requestId: context.requestId,
     });
 
-    return reply.status(200).send(toLoginResponse(result.session, sessionUser, roles));
+    return reply.status(200).send(await toLoginResponse(db, result.session, sessionUser, roles));
   });
 
   /** Cierra la sesión actual (idempotente: siempre responde 204). */
@@ -389,7 +396,7 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
         username: user.username,
         fullName: user.fullName,
         roles,
-        permissions: permissionsForRoles(roles),
+        permissions: await sessionPermissions(db, roles),
         mustChangePassword: user.mustChangePassword,
         needsProfile: await needsDentistProfile(db, user.id, roles),
       },
@@ -459,7 +466,7 @@ export const registerAuthRoutes = (app: FastifyInstance, services: IdentityServi
       changedFields: ['passwordHash'],
     });
 
-    return reply.status(200).send(toLoginResponse(session, sessionUser, roles));
+    return reply.status(200).send(await toLoginResponse(db, session, sessionUser, roles));
   });
 
   /** Alias de salud bajo el prefijo público para poder comprobarlo por el gateway. */

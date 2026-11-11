@@ -140,6 +140,18 @@ const effectiveClinicProfile = (row: Awaited<ReturnType<typeof readClinicRow>>):
       };
 
 /**
+ * Nombre y RIF **efectivos** del consultorio, para quien solo necesita
+ * identificarlo (la solicitud de licencia, ADR 0075). Sin fila guardada, cae al
+ * respaldo neutro `CLINIC`: nunca inventa datos personales.
+ */
+export const readEffectiveClinicSummary = async (
+  db: IdentityDb,
+): Promise<{ nombre: string; rif: string | null }> => {
+  const perfil = effectiveClinicProfile(await readClinicRow(db));
+  return { nombre: perfil.name, rif: perfil.rif ?? null };
+};
+
+/**
  * Los odontólogos con perfil; si no hay ninguno, lista **vacía**. No se rellena con
  * el odontólogo de prueba del código: eso imprimiría un nombre ficticio en documentos
  * reales. El respaldo `CLINIC` solo aporta los campos del consultorio (vacíos).
