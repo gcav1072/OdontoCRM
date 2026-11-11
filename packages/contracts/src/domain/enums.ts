@@ -65,6 +65,12 @@ export const PERMISSIONS = [
    * `admin`: son ajustes que afectan a toda la clínica, no tareas de mostrador.
    */
   'settings:manage',
+  /**
+   * Ver y activar la **licencia** de la instalación ([ADR 0075](../../../docs/adr/0075-licenciamiento-offline-y-modo-consulta.md)).
+   * Solo el `admin` (el titular). Se conserva en «modo consulta»: activar la
+   * licencia es precisamente lo que hay que poder hacer cuando está vencida.
+   */
+  'licensing:manage',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 

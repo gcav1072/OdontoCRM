@@ -110,6 +110,11 @@ export const AUDIT_ACTIONS = [
   'fiscal_forms_registered',
   /** Una forma libre que se estropea: ocupa su control y se conserva (Art. 36 y 40). */
   'fiscal_form_spoiled',
+  // Licenciamiento (ADR 0075): activar o intentar activar una licencia.
+  /** Licencia verificada y guardada (desde la web o desde el bot de administración). */
+  'license_activated',
+  /** Intento de activación rechazado (firma, instalación o fecha inválidas). */
+  'license_activation_rejected',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
