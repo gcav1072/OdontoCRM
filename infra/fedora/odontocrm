@@ -206,6 +206,10 @@ ${C_TI}OdontoCRM · comandos del servidor${C_RE}
                                    secretos no se escriben en la línea de comandos.
                                    Ej.: sudo odontocrm con-entorno identity -- \
                                         node services/identity/dist/seed.js --reset
+  sudo odontocrm licencia [estado|solicitud|activar <archivo.lic>]
+                                   Estado de la licencia de la instalación, el texto
+                                   de solicitud para el proveedor (ODO-REQ1.…) y la
+                                   activación del archivo firmado que te devuelva.
   sudo odontocrm modo-test <on|off|estado>
                                    Leer o escribir el modo test (nunca en producción
                                    con datos reales: ver el ADR 0020).
@@ -246,6 +250,13 @@ case "$ORDEN" in
     necesita_root
     cd "$CODE_DIR" || morir "no existe $CODE_DIR"
     ODONTOCRM_ENV_DIR="$ETC_DIR" exec node tools/estado.mjs --alertas "$@"
+    ;;
+
+  licencia)
+    necesita_root
+    cd "$CODE_DIR" || morir "no existe $CODE_DIR"
+    # Las rutas internas de identity con el mismo entorno de producción que el resto.
+    ODONTOCRM_ENV_DIR="$ETC_DIR" NODE_ENV=production exec node tools/licencia-servidor.mjs "$@"
     ;;
 
   whatsapp)
