@@ -108,6 +108,10 @@ const fechaCorta = new Intl.DateTimeFormat('es-VE', {
 const cuando = (iso) =>
   iso === null || iso === undefined ? '—' : fechaCorta.format(new Date(iso));
 
+/** «vence el dd/mm/aaaa» o «sin vencimiento (vitalicia)». */
+const textoVencimiento = (iso) =>
+  iso === null || iso === undefined ? 'sin vencimiento (vitalicia)' : `vence el ${cuando(iso)}`;
+
 const mostrarEstado = (vista) => {
   console.log('');
   console.log(
@@ -118,7 +122,7 @@ const mostrarEstado = (vista) => {
   console.log(`  Instalada el: ${cuando(vista.instaladaEn)}`);
   if (vista.licencia !== null) {
     console.log(
-      `  Licencia:     ${vista.licencia.tipo} · ${vista.licencia.id} · vence ${cuando(vista.licencia.venceEn)}`,
+      `  Licencia:     ${vista.licencia.tipo} · ${vista.licencia.id} · ${textoVencimiento(vista.licencia.venceEn)}`,
     );
     console.log(`  Activada el:  ${cuando(vista.licencia.activadaEn)}`);
   } else {
@@ -157,7 +161,7 @@ const activar = async (rutaArchivo) => {
   console.log(`  Estado:  ${vista.mensaje}`);
   if (vista.licencia !== null) {
     console.log(
-      `  Licencia: ${vista.licencia.tipo} · ${vista.licencia.id} · vence ${cuando(vista.licencia.venceEn)}`,
+      `  Licencia: ${vista.licencia.tipo} · ${vista.licencia.id} · ${textoVencimiento(vista.licencia.venceEn)}`,
     );
   }
   console.log('');

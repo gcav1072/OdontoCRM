@@ -112,7 +112,9 @@ export const formatearLicenciaParaEstado = (licencia) => {
     case 'trial_vencida':
       return `prueba vencida · MODO CONSULTA (se puede ver e imprimir, no editar)`;
     case 'licencia_vigente':
-      return `${tipo === null ? 'licencia' : `licencia ${tipo}`} vigente${cuando === null ? '' : ` hasta el ${cuando}`}${dias === null ? '' : ` · ${restantes}`}`;
+      return `${tipo === null ? 'licencia' : `licencia ${tipo}`} vigente${
+        cuando === null ? ' · sin vencimiento' : ` hasta el ${cuando}`
+      }${dias === null ? '' : ` · ${restantes}`}`;
     case 'licencia_por_vencer':
       return `${tipo === null ? 'licencia' : `licencia ${tipo}`} por vencer${dias === null ? '' : ` · ${restantes}`}${cuando === null ? '' : ` (vence el ${cuando})`}`;
     case 'licencia_vencida':
@@ -144,7 +146,11 @@ export const formatearLicenciaDetalle = (vista) => {
   if (vista.origen === 'licencia' && tipo !== null) lineas.push(`Tipo: ${tipo}`);
 
   const cuando = fechaLicencia(vista.venceEn);
-  if (cuando !== null) lineas.push(`Vence: ${cuando}`);
+  if (cuando !== null) {
+    lineas.push(`Vence: ${cuando}`);
+  } else if (vista.origen === 'licencia') {
+    lineas.push('Vigencia: sin vencimiento (vitalicia)');
+  }
 
   // Solo la vista interna trae la instalación y la solicitud ya armada.
   if (typeof vista.instalacion === 'string') {
@@ -188,7 +194,11 @@ export const formatearActivacionLicencia = (vista) => {
   const tipo = tipoDeLicencia(vista?.tipo);
   if (tipo !== null) lineas.push(`Tipo: ${tipo}`);
   const cuando = fechaLicencia(vista?.venceEn);
-  if (cuando !== null) lineas.push(`Vence: ${cuando}`);
+  if (cuando !== null) {
+    lineas.push(`Vence: ${cuando}`);
+  } else if (tipo === 'vitalicia') {
+    lineas.push('Sin vencimiento (vitalicia).');
+  }
   const dias = diasDeLicencia(vista);
   if (dias !== null) lineas.push(`Quedan ${diasEnLetra(dias)}.`);
   if (typeof vista?.mensaje === 'string' && vista.mensaje !== '') {

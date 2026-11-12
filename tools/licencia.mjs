@@ -17,7 +17,7 @@
  *
  * Códigos de salida: 0 = bien, 1 = error de uso o de ejecución.
  */
-import { LICENSE_KINDS, LICENSE_KIND_DAYS, LICENSE_REQUEST_PREFIX } from '@odontocrm/contracts';
+import { LICENSE_KINDS, LICENSE_REQUEST_PREFIX, diasDelTipoDeLicencia } from '@odontocrm/contracts';
 import { generateKeyPairPem, verifyLicenseToken } from '@odontocrm/kernel';
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -47,9 +47,10 @@ import {
 /** Error de uso (argumentos que faltan o sobran): se muestra y sale con 1. */
 class ErrorUso extends Error {}
 
-const TIPOS = LICENSE_KINDS.map((tipo) => `${tipo} (${textoDias(LICENSE_KIND_DAYS[tipo])})`).join(
-  ' · ',
-);
+const TIPOS = LICENSE_KINDS.map((tipo) => {
+  const dias = diasDelTipoDeLicencia(tipo);
+  return dias === null ? `${tipo} (sin vencimiento)` : `${tipo} (${textoDias(dias)})`;
+}).join(' · ');
 
 const AYUDA = [
   'OdontoCRM · emisor de licencias offline (máquina del proveedor)',
@@ -67,6 +68,7 @@ const AYUDA = [
   '      Emite la primera licencia de una instalación (si ya tenía, suma días).',
   '  renovar --instalacion <uuid> --tipo <tipo> [--desde <ISO>] [--notas "<texto>"]',
   '      Renueva usando el consultorio de la licencia anterior del registro.',
+  '      Una vitalicia no se renueva: si hace falta reemplazarla, se emite otra.',
   '  pendientes [--dias 30]',
   '      Licencias que vencen en los próximos N días (y las ya vencidas).',
   '  verificar <archivo-o-token> [--publica <pem>]',
@@ -153,7 +155,7 @@ const validarInstalacion = (valor) => {
 };
 
 const validarTipo = (valor) => {
-  if (!Object.hasOwn(LICENSE_KIND_DAYS, valor)) {
+  if (!LICENSE_KINDS.includes(valor)) {
     throw new ErrorUso(`Tipo no válido: «${valor}». Usa: ${LICENSE_KINDS.join(' / ')}.`);
   }
   return valor;

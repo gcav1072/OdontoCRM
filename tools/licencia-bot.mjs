@@ -20,8 +20,8 @@
  */
 import {
   LICENSE_KINDS,
-  LICENSE_KIND_DAYS,
   LICENSE_KIND_LABELS,
+  diasDelTipoDeLicencia,
   LICENSE_REQUEST_PREFIX,
 } from '@odontocrm/contracts';
 
@@ -64,9 +64,12 @@ const AYUDA = [
   '',
   'Solicitudes del consultorio:',
   `  Reenvíame el mensaje que empieza por ${LICENSE_REQUEST_PREFIX}…; te digo el consultorio`,
-  '  y respondes /mensual, /trimestral o /anual para emitir y enviarte el .lic.',
+  '  y respondes /mensual, /trimestral, /anual o /vitalicia para emitir y enviarte el .lic.',
   '',
-  `Tipos: ${LICENSE_KINDS.map((tipo) => `${tipo} (${textoDias(LICENSE_KIND_DAYS[tipo])})`).join(' · ')}`,
+  `Tipos: ${LICENSE_KINDS.map((tipo) => {
+    const dias = diasDelTipoDeLicencia(tipo);
+    return dias === null ? `${tipo} (sin vencimiento)` : `${tipo} (${textoDias(dias)})`;
+  }).join(' · ')}`,
   '',
   'Rutas:',
   resumenRutas(),
@@ -234,7 +237,9 @@ const emitirYEnviar = async ({ instalacion, tipo, cliente, rif, desde, notas }) 
 
   const pie =
     `Licencia ${LICENSE_KIND_LABELS[tipo]} · ${cliente} · ` +
-    `vence ${fechaCorta(resultado.claims.venceEn)}`;
+    (resultado.claims.venceEn === null
+      ? 'sin vencimiento (vitalicia)'
+      : `vence ${fechaCorta(resultado.claims.venceEn)}`);
 
   try {
     await bot.sendDocument(
@@ -370,7 +375,7 @@ const atenderSolicitud = async (texto) => {
     pendiente = { solicitud, recibidaEn: new Date() };
     await bot.sendMessage(
       `${formatearSolicitud(solicitud)}\n\n` +
-        '¿Qué tipo emito? Responde /mensual, /trimestral o /anual.',
+        '¿Qué tipo emito? Responde /mensual, /trimestral, /anual o /vitalicia.',
     );
     return true;
   }
@@ -423,6 +428,7 @@ const atender = async (mensaje) => {
     case 'mensual':
     case 'trimestral':
     case 'anual':
+    case 'vitalicia':
       await comandoTipo(comando);
       break;
     default:

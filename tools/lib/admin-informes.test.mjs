@@ -231,6 +231,21 @@ describe('licencia en el estado (ADR 0075)', () => {
     ).toContain('reloj del equipo atrasado');
   });
 
+  it('una vitalicia se resume sin vencimiento y sin «quedan días»', () => {
+    const texto = formatearLicenciaParaEstado(
+      vistaPublica({
+        estado: 'licencia_vigente',
+        origen: 'licencia',
+        tipo: 'vitalicia',
+        diasRestantes: null,
+        venceEn: null,
+        mensaje: 'Licencia vitalicia: no vence y no hay que renovarla.',
+      }),
+    );
+
+    expect(texto).toBe('licencia vitalicia vigente · sin vencimiento');
+  });
+
   it('una licencia no comprobable se dice, no se inventa', () => {
     expect(formatearLicenciaParaEstado({ error: 'HTTP 404' })).toBe('no comprobable (HTTP 404)');
     // Una foto vieja del tablero no trae el campo: mejor no pintar nada que mentir.
@@ -285,6 +300,31 @@ describe('detalle de la licencia para el bot', () => {
   it('un error de lectura se cuenta sin romper el bot', () => {
     expect(formatearLicenciaDetalle({ error: 'ECONNREFUSED' })).toContain('ECONNREFUSED');
     expect(formatearLicenciaDetalle(undefined)).toContain('no pude leer');
+  });
+
+  it('el detalle y la activación de una vitalicia dicen «sin vencimiento»', () => {
+    const vitalicia = vistaInterna({
+      estado: 'licencia_vigente',
+      origen: 'licencia',
+      tipo: 'vitalicia',
+      diasRestantes: null,
+      venceEn: null,
+      mensaje: 'Licencia vitalicia: no vence y no hay que renovarla.',
+      licencia: {
+        id: 'LIC-2026-0009',
+        tipo: 'vitalicia',
+        cliente: { nombre: 'Consultorio Sonrisa' },
+        emitidaEn: '2026-11-11T13:00:00.000Z',
+        venceEn: null,
+        activadaEn: '2026-11-11T13:05:00.000Z',
+      },
+    });
+
+    expect(formatearLicenciaDetalle(vitalicia)).toContain('Vigencia: sin vencimiento (vitalicia)');
+    const activacion = formatearActivacionLicencia(vitalicia);
+    expect(activacion).toContain('vitalicia');
+    expect(activacion).toContain('Sin vencimiento (vitalicia).');
+    expect(activacion).not.toContain('Quedan');
   });
 
   it('la activación correcta se responde con el tipo y el vencimiento', () => {

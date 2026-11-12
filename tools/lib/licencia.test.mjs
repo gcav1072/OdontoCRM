@@ -40,6 +40,7 @@ import {
   pendientes,
   serializarEntrada,
   siguienteId,
+  textoVencimiento,
   ultimaPorInstalacion,
 } from './licencia-registro.mjs';
 import { crearBotLicencias, dividirMensaje, limpiarSecreto } from './telegram-licencias.mjs';
@@ -92,6 +93,15 @@ const entrada = (cambios = {}) => ({
   registradaEn: '2026-11-01T12:00:00.000Z',
   ...cambios,
 });
+
+/** Entrada de registro de una vitalicia (sin vencimiento). */
+const entradaVitalicia = (cambios = {}) =>
+  entrada({
+    lic: 'LIC-2026-0009',
+    tipo: 'vitalicia',
+    venceEn: null,
+    ...cambios,
+  });
 
 const parDeClaves = async () => {
   const { privatePem, publicPem } = await generateKeyPairPem();
@@ -256,6 +266,41 @@ describe('registro JSONL', () => {
     expect(invalidas).toEqual([2, 3]);
   });
 
+  it('una vitalicia es válida sin vencimiento y con vencimiento es ilegible', () => {
+    const texto = [
+      serializarEntrada(entradaVitalicia()),
+      serializarEntrada(entrada({ lic: 'LIC-2026-0010', venceEn: null })),
+    ].join('\n');
+
+    const { entradas, invalidas } = parsearRegistro(texto);
+    expect(entradas).toHaveLength(1);
+    expect(entradas[0].tipo).toBe('vitalicia');
+    expect(entradas[0].venceEn).toBeNull();
+    expect(invalidas).toEqual([2]);
+  });
+
+  it('una vitalicia manda como última licencia de la instalación', () => {
+    const elegida = ultimaPorInstalacion(
+      [entrada({ venceEn: '2099-01-01T00:00:00.000Z' }), entradaVitalicia()],
+      UUID_A,
+    );
+    expect(elegida?.tipo).toBe('vitalicia');
+  });
+
+  it('una temporal emitida DESPUÉS reemplaza a la vitalicia como última', () => {
+    const reemplazo = entrada({
+      lic: 'LIC-2026-0010',
+      emitidaEn: '2026-11-20T12:00:00.000Z',
+      venceEn: '2026-12-20T12:00:00.000Z',
+    });
+    const elegida = ultimaPorInstalacion([entradaVitalicia(), reemplazo], UUID_A);
+    expect(elegida?.lic).toBe('LIC-2026-0010');
+
+    // Y con ella vuelve a haber algo que renovar.
+    const filas = pendientes([entradaVitalicia(), reemplazo], { ahora: PUNTO, dias: 60 });
+    expect(filas.map((fila) => fila.lic)).toEqual(['LIC-2026-0010']);
+  });
+
   it('la última licencia de una instalación es la de vencimiento mayor', () => {
     const entradas = [
       entrada({ lic: 'LIC-2026-0001', venceEn: '2026-12-01T12:00:00.000Z' }),
@@ -294,6 +339,17 @@ describe('vencimientos y pendientes', () => {
 
     const vacio = formatearPendientes([], { ahora: PUNTO, dias: 30 });
     expect(vacio).toContain('No hay licencias');
+  });
+
+  it('una vitalicia no tiene días ni sale en pendientes; su texto lo dice', () => {
+    expect(diasRestantes(null, PUNTO)).toBeNull();
+    expect(textoVencimiento(null, PUNTO)).toContain('sin vencimiento');
+    expect(pendientes([entradaVitalicia()], { ahora: PUNTO, dias: 3650 })).toEqual([]);
+
+    const ficha = formatearDetalleLicencia(entradaVitalicia(), PUNTO);
+    expect(ficha).toContain('Vitalicia (sin vencimiento)');
+    expect(ficha).toContain('sin vencimiento');
+    expect(ficha).not.toContain('VENCIDA');
   });
 
   it('la ficha de una renovación nombra la licencia anterior', () => {
@@ -343,6 +399,18 @@ describe('cálculo del vencimiento', () => {
     expect(
       calcularVencimiento({ tipo: 'mensual', ahora: PUNTO, desde: '2027-01-01T00:00:00.000Z' }),
     ).toBe('2027-01-31T00:00:00.000Z');
+  });
+
+  it('una vitalicia no calcula vencimiento y reemplazarla con un tipo con días empieza ahora', () => {
+    expect(calcularVencimiento({ tipo: 'vitalicia', ahora: PUNTO })).toBeNull();
+    expect(diasDelTipo('vitalicia')).toBeNull();
+    expect(
+      calcularVencimiento({
+        tipo: 'mensual',
+        ahora: PUNTO,
+        vencimientoAnterior: null,
+      }),
+    ).toBe('2026-12-11T12:00:00.000Z');
   });
 
   it('rechaza tipos y fechas inválidas', () => {
@@ -469,6 +537,35 @@ describe('emisión completa (firma → verificación)', () => {
     expect(registro.entradas).toHaveLength(2);
     expect(registro.entradas[1].emitidaPor).toBe('bot');
     expect(formatearEmision(renovada)).toContain('Renovación de LIC-2026-0001');
+  });
+
+  it('emite una vitalicia sin vencimiento, la firma y la deja en el registro', async () => {
+    const rutas = crearRutas();
+    const { clavePrivada, clavePublica } = await parDeClaves();
+
+    const resultado = await emitirLicencia({
+      tipo: 'vitalicia',
+      instalacion: UUID_C,
+      cliente: 'Consultorio Vitalicio',
+      entradas: [],
+      clavePrivada,
+      rutas,
+      ahora: PUNTO,
+    });
+
+    expect(resultado.claims.tipo).toBe('vitalicia');
+    expect(resultado.claims.venceEn).toBeNull();
+    expect(resultado.renovacion).toBe(false);
+    expect(await verifyLicenseToken(resultado.token, clavePublica)).toEqual(resultado.claims);
+
+    const registro = leerRegistro(rutas.registro);
+    expect(registro.invalidas).toEqual([]);
+    expect(registro.entradas[0].venceEn).toBeNull();
+
+    const resumen = formatearEmision(resultado);
+    expect(resumen).toContain('Vitalicia (sin vencimiento)');
+    expect(resumen).toContain('Sin vencimiento');
+    expect(formatearVerificacion(resultado.claims, PUNTO)).toContain('sin vencimiento');
   });
 
   it('una licencia emitida para otra instalación no sirve en esta (queda a la vista del verificador)', async () => {

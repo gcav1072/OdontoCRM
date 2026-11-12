@@ -17,7 +17,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import { LICENSE_KIND_DAYS, LICENSE_KIND_LABELS } from '@odontocrm/contracts';
+import { LICENSE_KINDS, LICENSE_KIND_LABELS, diasDelTipoDeLicencia } from '@odontocrm/contracts';
 
 const DAY_MS = 86_400_000;
 
@@ -28,8 +28,9 @@ const formatoFecha = new Intl.DateTimeFormat('es-VE', {
   timeZone: 'America/Caracas',
 });
 
-/** Fecha `dd/mm/aaaa` (hora de Caracas) de un ISO; `—` si no se puede leer. */
+/** Fecha `dd/mm/aaaa` (hora de Caracas) de un ISO; `—` si no hay o no se puede leer. */
 export const fechaCorta = (iso) => {
+  if (iso === null || iso === undefined || iso === '') return '—';
   const instante = new Date(iso);
   return Number.isNaN(instante.getTime()) ? '—' : formatoFecha.format(instante);
 };
@@ -40,16 +41,16 @@ export const textoDias = (cantidad) => `${String(cantidad)} ${cantidad === 1 ? '
 /**
  * @typedef {object} EntradaRegistro
  * @property {string} lic                Identificador legible (`LIC-2026-0001`).
- * @property {'mensual'|'trimestral'|'anual'} tipo
+ * @property {'mensual'|'trimestral'|'anual'|'vitalicia'} tipo
  * @property {string} instalacion        UUID de la instalación (consultorio).
  * @property {{nombre: string, rif?: string}} cliente
  * @property {string} emitidaEn          ISO de emisión.
- * @property {string} venceEn            ISO de vencimiento.
+ * @property {string | null} venceEn     ISO de vencimiento; `null` en las vitalicias.
  * @property {string[]} modulos          Módulos licenciados (`['*']` hoy).
  * @property {string} [notas]
  * @property {'cli'|'bot'} emitidaPor    Herramienta que la emitió.
  * @property {boolean} renovacion        `true` si suma sobre una licencia anterior.
- * @property {{lic: string, venceEn: string} | null} anterior
+ * @property {{lic: string, venceEn: string | null} | null} anterior
  * @property {string} archivo            Nombre del `.lic` guardado en `emitidas/`.
  * @property {string} registradaEn       ISO del momento de anotar la entrada.
  */
@@ -58,17 +59,26 @@ export const textoDias = (cantidad) => `${String(cantidad)} ${cantidad === 1 ? '
 const ID_LICENCIA = /^LIC-(?<anio>\d{4})-(?<secuencia>\d{3,})$/u;
 
 /** Una entrada es aprovechable si tiene lo mínimo para operar con ella. */
-const esEntradaValida = (valor) =>
-  valor !== null &&
-  typeof valor === 'object' &&
-  !Array.isArray(valor) &&
-  typeof valor.lic === 'string' &&
-  ID_LICENCIA.test(valor.lic) &&
-  typeof valor.instalacion === 'string' &&
-  valor.instalacion !== '' &&
-  typeof valor.tipo === 'string' &&
-  Number.isFinite(Date.parse(valor.venceEn)) &&
-  Number.isFinite(Date.parse(valor.emitidaEn));
+const esEntradaValida = (valor) => {
+  if (
+    valor === null ||
+    typeof valor !== 'object' ||
+    Array.isArray(valor) ||
+    typeof valor.lic !== 'string' ||
+    !ID_LICENCIA.test(valor.lic) ||
+    typeof valor.instalacion !== 'string' ||
+    valor.instalacion === '' ||
+    typeof valor.tipo !== 'string' ||
+    !LICENSE_KINDS.includes(valor.tipo) ||
+    !Number.isFinite(Date.parse(valor.emitidaEn))
+  ) {
+    return false;
+  }
+  // La vitalicia no tiene fecha; las demás la exigen (misma regla que los claims).
+  return valor.tipo === 'vitalicia'
+    ? valor.venceEn === null
+    : Number.isFinite(Date.parse(valor.venceEn));
+};
 
 /**
  * Lee el texto completo del registro. **No falla por una línea corrupta** (un
@@ -139,20 +149,25 @@ export const siguienteId = (entradas, fecha = new Date()) => {
 export const elegirId = siguienteId;
 
 /**
- * Licencia **más reciente** de una instalación: la de vencimiento mayor. Si hay
- * empate, la emitida después y, si también, la última anotada. Es la que manda
- * para renovar y para `/licencia <uuid>`.
+ * Licencia **más reciente** de una instalación: manda la **emitida después** (es
+ * la que el proveedor acaba de entregar); a igualdad de emisión, la de
+ * vencimiento mayor, y la vitalicia no tiene vencimiento que la supere.
+ *
+ * Ordenar por emisión y no solo por vencimiento es lo que hace que una licencia
+ * temporal **que reemplaza a una vitalicia** sea la última (y vuelva a salir en
+ * `/pendientes`); con el criterio anterior, el vencimiento infinito de la
+ * vitalicia la dejaba ganando para siempre.
  */
 export const ultimaPorInstalacion = (entradas, instalacion) => {
   let elegida = null;
-  let venceElegida = Number.NEGATIVE_INFINITY;
   let emitidaElegida = Number.NEGATIVE_INFINITY;
+  let venceElegida = Number.NEGATIVE_INFINITY;
 
   for (const entrada of entradas ?? []) {
     if (!esEntradaValida(entrada) || entrada.instalacion !== instalacion) continue;
-    const vence = Date.parse(entrada.venceEn);
+    const vence = entrada.venceEn === null ? Number.POSITIVE_INFINITY : Date.parse(entrada.venceEn);
     const emitida = Date.parse(entrada.emitidaEn);
-    if (vence > venceElegida || (vence === venceElegida && emitida >= emitidaElegida)) {
+    if (emitida > emitidaElegida || (emitida === emitidaElegida && vence >= venceElegida)) {
       elegida = entrada;
       venceElegida = vence;
       emitidaElegida = emitida;
@@ -184,6 +199,7 @@ export const ultimasPorInstalacion = (entradas) => {
 
 /** Días que faltan para `venceEn` (redondeo hacia arriba; negativo si ya venció). */
 export const diasRestantes = (venceEn, ahora = new Date()) => {
+  if (venceEn === null || venceEn === undefined) return null;
   const vence = Date.parse(venceEn);
   if (!Number.isFinite(vence)) return null;
   return Math.ceil((vence - ahora.getTime()) / DAY_MS);
@@ -191,6 +207,7 @@ export const diasRestantes = (venceEn, ahora = new Date()) => {
 
 /** Texto del vencimiento para listas: fecha + «quedan N días» / «VENCIDA». */
 export const textoVencimiento = (venceEn, ahora = new Date()) => {
+  if (venceEn === null || venceEn === undefined) return 'sin vencimiento (vitalicia)';
   const vence = Date.parse(venceEn);
   if (!Number.isFinite(vence)) return 'fecha ilegible';
   const fecha = fechaCorta(venceEn);
@@ -214,7 +231,7 @@ export const pendientes = (entradas, { ahora = new Date(), dias = 30 } = {}) => 
 };
 
 /** ¿Es el tipo un tipo de licencia vendible? (para validar entradas del CLI/bot). */
-export const esTipoDeLicencia = (tipo) => Object.hasOwn(LICENSE_KIND_DAYS, tipo);
+export const esTipoDeLicencia = (tipo) => typeof tipo === 'string' && LICENSE_KINDS.includes(tipo);
 
 /** Una línea legible de una licencia pendiente. */
 export const formatearLineaPendiente = (entrada, ahora = new Date()) => {
@@ -245,20 +262,22 @@ export const formatearDetalleLicencia = (entrada, ahora = new Date()) => {
   if (entrada === null || entrada === undefined)
     return 'No hay licencias emitidas para esa instalación.';
   const tipo = LICENSE_KIND_LABELS[entrada.tipo] ?? entrada.tipo;
-  const dias = LICENSE_KIND_DAYS[entrada.tipo];
-  const vencida = Date.parse(entrada.venceEn) <= ahora.getTime();
+  const dias = diasDelTipoDeLicencia(entrada.tipo);
+  const vencida = entrada.venceEn !== null && Date.parse(entrada.venceEn) <= ahora.getTime();
   const lineas = [
     `Licencia ${entrada.lic}${vencida ? ' · VENCIDA' : ''}`,
     `  Consultorio: ${entrada.cliente?.nombre ?? '—'}${entrada.cliente?.rif === undefined ? '' : ` (${entrada.cliente.rif})`}`,
-    `  Tipo: ${tipo}${dias === undefined ? '' : ` (${textoDias(dias)})`}`,
+    `  Tipo: ${tipo}${dias === null ? ' (sin vencimiento)' : ` (${textoDias(dias)})`}`,
     `  Instalación: ${entrada.instalacion}`,
     `  Emitida: ${fechaCorta(entrada.emitidaEn)} · ${textoVencimiento(entrada.venceEn, ahora)}`,
     `  Archivo: ${entrada.archivo ?? `${entrada.lic}.lic`} · emitida por ${entrada.emitidaPor ?? '—'}`,
   ];
   if (entrada.renovacion === true && entrada.anterior !== null && entrada.anterior !== undefined) {
-    lineas.push(
-      `  Renovación de ${entrada.anterior.lic} (vencía el ${fechaCorta(entrada.anterior.venceEn)})`,
-    );
+    const anterior =
+      entrada.anterior.venceEn === null
+        ? `${entrada.anterior.lic} (era vitalicia, sin vencimiento)`
+        : `${entrada.anterior.lic} (vencía el ${fechaCorta(entrada.anterior.venceEn)})`;
+    lineas.push(`  Renovación de ${anterior}`);
   }
   if (entrada.notas !== undefined && entrada.notas !== '') lineas.push(`  Notas: ${entrada.notas}`);
   return lineas.join('\n');

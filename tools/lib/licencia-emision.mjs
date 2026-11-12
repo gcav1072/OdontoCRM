@@ -14,12 +14,12 @@
  * fijar el inicio sin poder acortar una licencia vigente.
  */
 import {
-  LICENSE_KIND_DAYS,
   LICENSE_KIND_LABELS,
   LICENSE_KINDS,
   LICENSE_REQUEST_PREFIX,
   LICENSE_VERSION,
   decodeLicenseRequest,
+  diasDelTipoDeLicencia,
   licenseClaimsSchema,
 } from '@odontocrm/contracts';
 import { loadPrivateKey, loadPublicKey, signLicenseToken } from '@odontocrm/kernel';
@@ -32,7 +32,6 @@ import {
   elegirId,
   fechaCorta,
   textoDias,
-  textoVencimiento,
   ultimaPorInstalacion,
 } from './licencia-registro.mjs';
 
@@ -52,20 +51,24 @@ const aFecha = (valor, campo) => {
   return fecha;
 };
 
-/** Días que dura un tipo de licencia; falla si el tipo no existe. */
+/** Días que dura un tipo de licencia; `null` para la vitalicia (sin vencimiento). */
 export const diasDelTipo = (tipo) => {
-  if (!Object.hasOwn(LICENSE_KIND_DAYS, String(tipo))) {
+  if (!LICENSE_KINDS.includes(String(tipo))) {
     throw new Error(
       `Tipo de licencia no válido: «${String(tipo)}». Usa ${LICENSE_KINDS.join(' / ')}.`,
     );
   }
-  return LICENSE_KIND_DAYS[tipo];
+  return diasDelTipoDeLicencia(tipo);
 };
 
 /**
  * Calcula el vencimiento de una emisión. `desde` (opcional) fija el inicio; si
  * no viene, empieza ahora. Nunca retrocede respecto del vencimiento anterior de
  * la misma instalación (renovación que suma).
+ *
+ * Devuelve **`null`** para una **vitalicia**: no lleva fecha de vencimiento. Si
+ * la anterior era vitalicia y se emite un tipo con vencimiento, la nueva empieza
+ * a contar ahora (el proveedor está reemplazando la licencia a propósito).
  */
 export const calcularVencimiento = ({
   tipo,
@@ -74,6 +77,8 @@ export const calcularVencimiento = ({
   vencimientoAnterior = null,
 } = {}) => {
   const dias = diasDelTipo(tipo);
+  if (dias === null) return null;
+
   const instanteAhora = aFecha(ahora, 'ahora') ?? new Date();
   const instanteDesde = aFecha(desde, '--desde');
   const anterior = aFecha(vencimientoAnterior, 'vencimiento anterior');
@@ -86,6 +91,18 @@ export const calcularVencimiento = ({
 
   return new Date(base.getTime() + dias * DAY_MS).toISOString();
 };
+
+/** «Mensual (30 días)» o «Vitalicia (sin vencimiento)», para los resúmenes. */
+const descripcionTipo = (tipo) => {
+  const dias = diasDelTipoDeLicencia(tipo);
+  return dias === null
+    ? `${LICENSE_KIND_LABELS[tipo]} (sin vencimiento)`
+    : `${LICENSE_KIND_LABELS[tipo]} (${textoDias(dias)})`;
+};
+
+/** «Vence el dd/mm/aaaa» o «sin vencimiento (vitalicia)». */
+const textoFechaVencimiento = (venceEn) =>
+  venceEn === null ? 'sin vencimiento (vitalicia)' : `vence el ${fechaCorta(venceEn)}`;
 
 /** Construye y valida los claims firmables a partir de los datos comerciales. */
 export const construirClaims = ({
@@ -280,9 +297,11 @@ export const formatearEmision = (
   const lineas = [
     `✔ Licencia emitida: ${claims.lic}`,
     `  Consultorio: ${claims.cliente.nombre}${rif}`,
-    `  Tipo: ${LICENSE_KIND_LABELS[claims.tipo]} (${textoDias(LICENSE_KIND_DAYS[claims.tipo])})`,
+    `  Tipo: ${descripcionTipo(claims.tipo)}`,
     `  Instalación: ${claims.instalacion}`,
-    `  Emitida: ${fechaCorta(claims.emitidaEn)} · Vence: ${fechaCorta(claims.venceEn)}`,
+    `  Emitida: ${fechaCorta(claims.emitidaEn)} · ${
+      claims.venceEn === null ? 'Sin vencimiento' : `Vence: ${fechaCorta(claims.venceEn)}`
+    }`,
   ];
   lineas.push(
     adjunto
@@ -291,7 +310,9 @@ export const formatearEmision = (
   );
   if (renovacion && anterior !== null && anterior !== undefined) {
     lineas.push(
-      `  Renovación de ${anterior.lic}: suma sobre su vencimiento (${fechaCorta(anterior.venceEn)}).`,
+      anterior.venceEn === null
+        ? `  Renovación de ${anterior.lic} (era vitalicia, sin vencimiento).`
+        : `  Renovación de ${anterior.lic}: suma sobre su vencimiento (${fechaCorta(anterior.venceEn)}).`,
     );
   } else if (renovacion) {
     lineas.push('  Renovación: suma sobre la licencia anterior de esta instalación.');
@@ -303,15 +324,15 @@ export const formatearEmision = (
 /** Ficha verificada de una licencia (`verificar` del CLI). */
 export const formatearVerificacion = (claims, ahora = new Date()) => {
   const rif = claims.cliente.rif === undefined ? '' : ` (${claims.cliente.rif})`;
-  const vencida = Date.parse(claims.venceEn) <= ahora.getTime();
+  const vencida = claims.venceEn !== null && Date.parse(claims.venceEn) <= ahora.getTime();
   return [
     '✔ La licencia es válida (firma, emisor y formato correctos).',
     `  Licencia: ${claims.lic}`,
     `  Consultorio: ${claims.cliente.nombre}${rif}`,
-    `  Tipo: ${LICENSE_KIND_LABELS[claims.tipo]} (${textoDias(LICENSE_KIND_DAYS[claims.tipo])})`,
+    `  Tipo: ${descripcionTipo(claims.tipo)}`,
     `  Instalación: ${claims.instalacion}`,
     `  Emitida: ${fechaCorta(claims.emitidaEn)}`,
-    `  Estado: ${vencida ? 'VENCIDA' : 'vigente'} · ${textoVencimiento(claims.venceEn, ahora)}`,
+    `  Estado: ${vencida ? 'VENCIDA' : 'vigente'} · ${textoFechaVencimiento(claims.venceEn)}`,
     ...(claims.notas === undefined || claims.notas === '' ? [] : [`  Notas: ${claims.notas}`]),
   ].join('\n');
 };
