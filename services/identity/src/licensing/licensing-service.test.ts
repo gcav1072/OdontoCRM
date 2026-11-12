@@ -127,6 +127,15 @@ describe('licencia guardada en la fila de la instalación', () => {
   it('una licencia sin fecha de activación conserva `activadaEn: null`', () => {
     expect(toLicenseView(fila({ licenseClaims: claims() }))?.activadaEn).toBeNull();
   });
+
+  it('una vitalicia se guarda sin vencimiento y la vista lo respeta', () => {
+    const vitalicia = claims({ tipo: 'vitalicia', venceEn: null, lic: 'LIC-VITALICIA-1' });
+
+    expect(parseStoredLicense(fila({ licenseClaims: vitalicia }))).toEqual(vitalicia);
+    const vista = toLicenseView(fila({ licenseClaims: vitalicia }));
+    expect(vista?.tipo).toBe('vitalicia');
+    expect(vista?.venceEn).toBeNull();
+  });
 });
 
 describe('solicitud de licencia (consultorio → proveedor)', () => {

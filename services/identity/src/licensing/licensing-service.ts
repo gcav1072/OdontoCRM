@@ -321,7 +321,8 @@ export const activateLicense = async (
     );
   }
 
-  if (new Date(claims.venceEn).getTime() <= ahora.getTime()) {
+  // La vitalicia no vence (el schema garantiza que no trae fecha); el resto sí.
+  if (claims.venceEn !== null && new Date(claims.venceEn).getTime() <= ahora.getTime()) {
     return rechazar(
       'license_expired',
       `La licencia ya venció (${claims.venceEn}): pide una renovación al proveedor.`,
@@ -345,7 +346,10 @@ export const activateLicense = async (
     action: 'license_activated',
     entityType: 'license',
     entityId: claims.lic,
-    summary: `Licencia ${LICENSE_KIND_LABELS[claims.tipo].toLowerCase()} activada hasta el ${claims.venceEn}`,
+    summary:
+      claims.venceEn === null
+        ? `Licencia ${LICENSE_KIND_LABELS[claims.tipo].toLowerCase()} activada (sin vencimiento)`
+        : `Licencia ${LICENSE_KIND_LABELS[claims.tipo].toLowerCase()} activada hasta el ${claims.venceEn}`,
     actorId: actor.actorId ?? null,
     actorUsername: actor.actorUsername ?? null,
     ip: actor.ip ?? null,

@@ -176,7 +176,15 @@ export const LicenciaPage = () => {
                     <Badge variant="primary">{tipoTexto(vista.tipo)}</Badge>
                   )}
                 </Dato>
-                <Dato etiqueta={t('licencia.detalle.vence')}>{vencimientoTexto(vista)}</Dato>
+                <Dato
+                  etiqueta={
+                    vista.venceEn === null
+                      ? t('licencia.detalle.vigencia')
+                      : t('licencia.detalle.vence')
+                  }
+                >
+                  {vencimientoTexto(vista)}
+                </Dato>
                 <Dato etiqueta={t('licencia.detalle.dias')}>
                   {vista.diasRestantes === null
                     ? t('comun.sinDato')

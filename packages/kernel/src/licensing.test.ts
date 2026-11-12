@@ -66,6 +66,30 @@ describe('licencia firmada (EdDSA)', () => {
     expect(await verifyLicenseToken('no-es-un-token', publicKey)).toBeNull();
   });
 
+  it('una licencia vitalicia (sin vencimiento) se firma y verifica igual', async () => {
+    const { privateKey, publicKey } = await par();
+    const vitalicia: LicenseClaims = {
+      ...claims(),
+      tipo: 'vitalicia',
+      venceEn: null,
+    };
+    const token = await signLicenseToken(vitalicia, { privateKey });
+
+    expect(await verifyLicenseToken(token, publicKey)).toEqual(vitalicia);
+  });
+
+  it('rechaza una vitalicia firmada CON fecha (claims incoherentes)', async () => {
+    const { privateKey, publicKey } = await par();
+    const incoherente = { ...claims(), tipo: 'vitalicia', venceEn: '2027-01-01T00:00:00.000Z' };
+    const token = await new SignJWT({ ...incoherente })
+      .setProtectedHeader({ alg: 'EdDSA', typ: 'JWT' })
+      .setIssuer(LICENSE_ISSUER)
+      .setAudience(LICENSE_AUDIENCE)
+      .sign(privateKey);
+
+    expect(await verifyLicenseToken(token, publicKey)).toBeNull();
+  });
+
   it('una licencia vencida sigue verificando: el vencimiento lo decide resolveLicensing', async () => {
     const { privateKey, publicKey } = await par();
     const vencida: LicenseClaims = { ...claims(), venceEn: '2020-01-01T00:00:00.000Z' };

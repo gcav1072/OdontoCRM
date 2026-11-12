@@ -1311,6 +1311,8 @@ const DICCIONARIO = {
   'licencia.detalle.origen': 'Origen',
   'licencia.detalle.tipo': 'Tipo',
   'licencia.detalle.vence': 'Vence',
+  'licencia.detalle.vigencia': 'Vigencia',
+  'licencia.detalle.sinVencimiento': 'Sin vencimiento (vitalicia)',
   'licencia.detalle.dias': 'Días restantes',
   'licencia.detalle.instaladaEn': 'Instalada el',
   'licencia.detalle.ultimaVez': 'Último uso registrado',

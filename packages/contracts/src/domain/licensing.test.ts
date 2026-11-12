@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  LICENSE_KIND_DAYS,
+  LICENSE_KINDS,
   LICENSE_REQUEST_PREFIX,
   LICENSE_WARN_DAYS,
   PERMISSIONS_ALLOWED_IN_READ_ONLY,
   PERMISSION_ACCESS,
   TRIAL_DAYS,
   decodeLicenseRequest,
+  diasDelTipoDeLicencia,
   encodeLicenseRequest,
+  esTipoConVencimiento,
+  licenseClaimsSchema,
   readOnlyPermissions,
   resolveLicensing,
   type LicenseClaims,
@@ -30,6 +33,17 @@ const licencia = (
   cliente: { nombre: 'Consultorio Sonrisa', rif: 'J-12345678-9' },
   emitidaEn: '2026-11-01T12:00:00.000Z',
   venceEn,
+  modulos: ['*'],
+});
+
+const vitalicia = (): LicenseClaims => ({
+  v: 1,
+  lic: 'LIC-2026-0002',
+  tipo: 'vitalicia',
+  instalacion: INSTALACION,
+  cliente: { nombre: 'Consultorio Sonrisa' },
+  emitidaEn: '2026-11-01T12:00:00.000Z',
+  venceEn: null,
   modulos: ['*'],
 });
 
@@ -121,6 +135,53 @@ describe('resolveLicensing · licencia', () => {
   });
 });
 
+describe('resolveLicensing · licencia vitalicia', () => {
+  it('nunca vence, no tiene días restantes y no pasa a modo consulta', () => {
+    const estado = resolveLicensing({
+      ahora: ahora('2099-01-01T12:00:00.000Z'),
+      instaladaEn: INSTALADA,
+      ultimaVezVisto: null,
+      licencia: vitalicia(),
+    });
+
+    expect(estado.estado).toBe('licencia_vigente');
+    expect(estado.soloLectura).toBe(false);
+    expect(estado.tipo).toBe('vitalicia');
+    expect(estado.diasRestantes).toBeNull();
+    expect(estado.venceEn).toBeNull();
+    expect(estado.mensaje).toContain('no vence');
+  });
+
+  it('el reloj atrasado sigue mandando incluso con una vitalicia', () => {
+    const estado = resolveLicensing({
+      ahora: ahora('2026-12-01T12:00:00.000Z'),
+      instaladaEn: INSTALADA,
+      ultimaVezVisto: ahora('2027-01-01T12:00:00.000Z'),
+      licencia: vitalicia(),
+    });
+
+    expect(estado.estado).toBe('reloj_atrasado');
+    expect(estado.soloLectura).toBe(true);
+    expect(estado.venceEn).toBeNull();
+  });
+});
+
+describe('claims · coherencia entre tipo y vencimiento', () => {
+  it('una vitalicia sin fecha es válida', () => {
+    expect(licenseClaimsSchema.safeParse(vitalicia()).success).toBe(true);
+  });
+
+  it('una vitalicia CON fecha se rechaza', () => {
+    const conFecha = { ...vitalicia(), venceEn: '2027-01-01T00:00:00.000Z' };
+    expect(licenseClaimsSchema.safeParse(conFecha).success).toBe(false);
+  });
+
+  it('una licencia con vencimiento SIN fecha se rechaza', () => {
+    const sinFecha = { ...licencia('2027-01-01T00:00:00.000Z'), venceEn: null };
+    expect(licenseClaimsSchema.safeParse(sinFecha).success).toBe(false);
+  });
+});
+
 describe('resolveLicensing · reloj atrasado', () => {
   it('si el reloj retrocede más de la tolerancia, el sistema pasa a solo lectura', () => {
     const ultimaVezVisto = ahora('2026-12-20T12:00:00.000Z');
@@ -150,9 +211,19 @@ describe('resolveLicensing · reloj atrasado', () => {
   });
 });
 
-describe('duraciones de los tipos de licencia', () => {
-  it('mensual 30, trimestral 90 y anual 365 días', () => {
-    expect(LICENSE_KIND_DAYS).toEqual({ mensual: 30, trimestral: 90, anual: 365 });
+describe('tipos y duraciones', () => {
+  it('mensual 30, trimestral 90 y anual 365 días; la vitalicia no tiene días', () => {
+    expect(diasDelTipoDeLicencia('mensual')).toBe(30);
+    expect(diasDelTipoDeLicencia('trimestral')).toBe(90);
+    expect(diasDelTipoDeLicencia('anual')).toBe(365);
+    expect(diasDelTipoDeLicencia('vitalicia')).toBeNull();
+  });
+
+  it('solo la vitalicia está fuera de los tipos con vencimiento', () => {
+    expect(esTipoConVencimiento('vitalicia')).toBe(false);
+    for (const tipo of LICENSE_KINDS.filter((kind) => kind !== 'vitalicia')) {
+      expect(esTipoConVencimiento(tipo)).toBe(true);
+    }
   });
 });
 
@@ -170,6 +241,11 @@ describe('código de solicitud', () => {
 
     expect(codigo.startsWith(LICENSE_REQUEST_PREFIX)).toBe(true);
     expect(decodeLicenseRequest(codigo)).toEqual(solicitud);
+  });
+
+  it('acepta una solicitud de vitalicia', () => {
+    const pedida = { ...solicitud, tipoSolicitado: 'vitalicia' as const };
+    expect(decodeLicenseRequest(encodeLicenseRequest(pedida))).toEqual(pedida);
   });
 
   it('rechaza cualquier cosa que no sea una solicitud', () => {

@@ -95,8 +95,12 @@ export const origenTexto = (origen: LicensingOrigen | null): string => {
 export const tipoTexto = (tipo: LicenseKind | null): string =>
   tipo === null ? t('comun.sinDato') : LICENSE_KIND_LABELS[tipo];
 
-/** Vencimiento del trial o de la licencia, `dd/mm/aaaa` en hora de Venezuela. */
-export const vencimientoTexto = (vista: PublicLicensingView): string => formatDate(vista.venceEn);
+/**
+ * Vencimiento del trial o de la licencia, `dd/mm/aaaa` en hora de Venezuela. Una
+ * licencia **vitalicia** no vence ([ADR 0076](../../../docs/adr/0076-licencias-vitalicias.md)).
+ */
+export const vencimientoTexto = (vista: PublicLicensingView): string =>
+  vista.venceEn === null ? t('licencia.detalle.sinVencimiento') : formatDate(vista.venceEn);
 
 /** ¿Hay que enseñar el aviso de modo consulta? (el servidor ya lo dice, no se recalcula) */
 export const enModoConsulta = (vista: PublicLicensingView | undefined): boolean =>

@@ -229,6 +229,52 @@ describeWithDatabase('licenciamiento offline (PostgreSQL real)', () => {
       expect(auditoria[0]?.reason).toBe('activación desde la web');
     });
 
+    it('activa una vitalicia: no se rechaza por vencida y no lleva fecha', async () => {
+      const fila = await resetInstallation();
+      const vitalicia = claims({
+        lic: `LIC-VITALICIA-${suffix}`,
+        tipo: 'vitalicia',
+        venceEn: null,
+        instalacion: fila.installationId,
+      });
+      const token = await signLicenseToken(vitalicia, { privateKey: licensePrivateKey });
+
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: '/api/v1/licensing/activate',
+        headers: encabezados(),
+        payload: { licencia: token },
+      });
+      expect(respuesta.statusCode).toBe(200);
+
+      const vista = adminLicensingViewSchema.parse(respuesta.json());
+      expect(vista.estado).toBe('licencia_vigente');
+      expect(vista.soloLectura).toBe(false);
+      expect(vista.tipo).toBe('vitalicia');
+      expect(vista.venceEn).toBeNull();
+      expect(vista.diasRestantes).toBeNull();
+      expect(vista.licencia?.venceEn).toBeNull();
+
+      const guardada = await readInstallation(database.db);
+      expect(guardada.licenseClaims?.tipo).toBe('vitalicia');
+      expect(guardada.licenseClaims?.venceEn).toBeNull();
+
+      // La vista pública tampoco inventa un vencimiento.
+      const publica = await app.inject({ method: 'GET', url: '/api/v1/licensing/public' });
+      const publicaVista = publicLicensingViewSchema.parse(publica.json());
+      expect(publicaVista.estado).toBe('licencia_vigente');
+      expect(publicaVista.venceEn).toBeNull();
+
+      const auditoria = await database.db
+        .select()
+        .from(auditEvents)
+        .where(
+          and(eq(auditEvents.action, 'license_activated'), eq(auditEvents.entityId, vitalicia.lic)),
+        )
+        .limit(1);
+      expect(auditoria[0]?.summary).toContain('sin vencimiento');
+    });
+
     it('rechaza (y audita) una licencia de otra instalación', async () => {
       const fila = await resetInstallation();
       const licencia = claims({

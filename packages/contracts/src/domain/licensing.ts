@@ -27,20 +27,33 @@ import type { Permission } from './enums.js';
 export const TRIAL_DAYS = 30;
 
 /** Tipos de licencia que se venden. La prueba no es un tipo: la da la instalación. */
-export const LICENSE_KINDS = ['mensual', 'trimestral', 'anual'] as const;
+export const LICENSE_KINDS = ['mensual', 'trimestral', 'anual', 'vitalicia'] as const;
 export type LicenseKind = (typeof LICENSE_KINDS)[number];
 
-/** Duración de cada tipo, en días fijos (decisión del 2026-11-11). */
-export const LICENSE_KIND_DAYS: Readonly<Record<LicenseKind, number>> = {
+/** Tipos **con vencimiento** (la vitalicia no vence: no lleva fecha). */
+export const LICENSE_KINDS_CON_DIAS = ['mensual', 'trimestral', 'anual'] as const;
+export type LicenseKindConDias = (typeof LICENSE_KINDS_CON_DIAS)[number];
+
+/** Duración de cada tipo con vencimiento, en días fijos (decisión del 2026-11-12). */
+export const LICENSE_KIND_DAYS: Readonly<Record<LicenseKindConDias, number>> = {
   mensual: 30,
   trimestral: 90,
   anual: 365,
 };
 
+/** `true` si el tipo caduca (la **vitalicia no**). */
+export const esTipoConVencimiento = (tipo: LicenseKind): tipo is LicenseKindConDias =>
+  (LICENSE_KINDS_CON_DIAS as readonly string[]).includes(tipo);
+
+/** Días que dura un tipo; `null` para la vitalicia (sin vencimiento). */
+export const diasDelTipoDeLicencia = (tipo: LicenseKind): number | null =>
+  esTipoConVencimiento(tipo) ? LICENSE_KIND_DAYS[tipo] : null;
+
 export const LICENSE_KIND_LABELS: Readonly<Record<LicenseKind, string>> = {
   mensual: 'Mensual',
   trimestral: 'Trimestral',
   anual: 'Anual',
+  vitalicia: 'Vitalicia',
 };
 
 /** Días que faltan para vencer a partir de los cuales se avisa. */
@@ -80,7 +93,7 @@ export type LicenseClient = z.infer<typeof licenseClientSchema>;
  * (`exp`) a propósito: la app tiene que poder distinguir «firma mala» de
  * «licencia vencida», y una firma sigue siendo válida aunque haya vencido.
  */
-export const licenseClaimsSchema = z.object({
+const licenseClaimsBaseSchema = z.object({
   v: z.literal(LICENSE_VERSION),
   lic: z.string().trim().min(1).max(40),
   tipo: z.enum(LICENSE_KINDS),
@@ -88,12 +101,29 @@ export const licenseClaimsSchema = z.object({
   instalacion: z.uuid(),
   cliente: licenseClientSchema,
   emitidaEn: z.string().datetime({ offset: true }),
-  venceEn: z.string().datetime({ offset: true }),
+  /**
+   * ISO del vencimiento. **`null` en las vitalicias**, que no vencen; en el
+   * resto es obligatorio. La coherencia tipo/fecha la vigila el `refine`.
+   */
+  venceEn: z.string().datetime({ offset: true }).nullable(),
   /** Módulos licenciados; `['*']` = producto completo (hoy siempre). */
   modulos: z.array(z.string().trim().min(1).max(40)).min(1).default(['*']),
   /** Nota libre del proveedor (no se muestra al consultorio salvo en el detalle). */
   notas: z.string().trim().max(300).optional(),
 });
+
+/**
+ * Una licencia **vitalicia** no lleva vencimiento, y las demás sí: una firma con
+ * la fecha y el tipo incoherentes se rechaza en la verificación (el emisor no
+ * puede colar una vitalicia con fecha ni una mensual sin fecha).
+ */
+export const licenseClaimsSchema = licenseClaimsBaseSchema.refine(
+  (claims) => (claims.tipo === 'vitalicia' ? claims.venceEn === null : claims.venceEn !== null),
+  {
+    message: 'La fecha de vencimiento no corresponde al tipo de licencia',
+    path: ['venceEn'],
+  },
+);
 export type LicenseClaims = z.infer<typeof licenseClaimsSchema>;
 
 /* ── Estado de la instalación ─────────────────────────────────────────────── */
@@ -171,14 +201,17 @@ const mensajeTrial = (
 const mensajeLicencia = (
   estado: 'licencia_vigente' | 'licencia_por_vencer' | 'licencia_vencida',
   tipo: LicenseKind,
-  diasRestantes: number,
-  venceEn: Date,
+  diasRestantes: number | null,
+  venceEn: Date | null,
 ): string => {
+  if (venceEn === null) {
+    return `Licencia ${LICENSE_KIND_LABELS[tipo].toLowerCase()}: no vence y no hay que renovarla.`;
+  }
   switch (estado) {
     case 'licencia_vigente':
       return `Licencia ${LICENSE_KIND_LABELS[tipo].toLowerCase()} vigente hasta el ${fecha(venceEn)}.`;
     case 'licencia_por_vencer':
-      return `La licencia vence en ${dias(diasRestantes)} (el ${fecha(venceEn)}). Renuévala para no pasar a modo consulta.`;
+      return `La licencia vence en ${dias(diasRestantes ?? 0)} (el ${fecha(venceEn)}). Renuévala para no pasar a modo consulta.`;
     case 'licencia_vencida':
       return `La licencia venció el ${fecha(venceEn)}. El sistema está en modo consulta: se puede ver, imprimir y exportar, pero no editar.`;
   }
@@ -196,8 +229,8 @@ export const resolveLicensing = (input: ResolveLicensingInput): LicensingStatus 
   let estado: LicensingEstado;
   let origen: LicensingOrigen;
   let tipo: LicenseKind | null = null;
-  let venceEn: Date;
-  let diasRestantes: number;
+  let venceEn: Date | null;
+  let diasRestantes: number | null;
 
   if (licencia === null) {
     origen = 'trial';
@@ -213,14 +246,20 @@ export const resolveLicensing = (input: ResolveLicensingInput): LicensingStatus 
   } else {
     origen = 'licencia';
     tipo = licencia.tipo;
-    venceEn = new Date(licencia.venceEn);
-    diasRestantes = diasHasta(venceEn, ahora);
-    if (venceEn.getTime() <= ahora.getTime()) {
-      estado = 'licencia_vencida';
-    } else if (diasRestantes <= LICENSE_WARN_DAYS) {
-      estado = 'licencia_por_vencer';
-    } else {
+    // La vitalicia no lleva fecha (el schema lo garantiza): vigente para siempre.
+    venceEn = licencia.venceEn === null ? null : new Date(licencia.venceEn);
+    if (venceEn === null) {
       estado = 'licencia_vigente';
+      diasRestantes = null;
+    } else {
+      diasRestantes = diasHasta(venceEn, ahora);
+      if (venceEn.getTime() <= ahora.getTime()) {
+        estado = 'licencia_vencida';
+      } else if (diasRestantes <= LICENSE_WARN_DAYS) {
+        estado = 'licencia_por_vencer';
+      } else {
+        estado = 'licencia_vigente';
+      }
     }
   }
 
@@ -229,8 +268,9 @@ export const resolveLicensing = (input: ResolveLicensingInput): LicensingStatus 
     origen === 'trial'
       ? mensajeTrial(
           estado as 'trial' | 'trial_por_vencer' | 'trial_vencida',
-          diasRestantes,
-          venceEn,
+          // En la rama de prueba ambas variables siempre están puestas.
+          diasRestantes ?? 0,
+          venceEn ?? finTrial,
         )
       : mensajeLicencia(
           estado as 'licencia_vigente' | 'licencia_por_vencer' | 'licencia_vencida',
@@ -250,7 +290,7 @@ export const resolveLicensing = (input: ResolveLicensingInput): LicensingStatus 
       origen,
       tipo,
       diasRestantes,
-      venceEn: venceEn.toISOString(),
+      venceEn: venceEn === null ? null : venceEn.toISOString(),
       mensaje:
         'El reloj del equipo está atrasado respecto al último uso del sistema. ' +
         'El sistema queda en modo consulta hasta que se corrija la hora.',
@@ -263,7 +303,7 @@ export const resolveLicensing = (input: ResolveLicensingInput): LicensingStatus 
     origen,
     tipo,
     diasRestantes,
-    venceEn: venceEn.toISOString(),
+    venceEn: venceEn === null ? null : venceEn.toISOString(),
     mensaje,
   };
 };
@@ -288,7 +328,7 @@ export const licensingLicenseViewSchema = z.object({
   tipo: z.enum(LICENSE_KINDS),
   cliente: licenseClientSchema,
   emitidaEn: z.string(),
-  venceEn: z.string(),
+  venceEn: z.string().nullable(),
   activadaEn: z.string().nullable(),
 });
 export type LicensingLicenseView = z.infer<typeof licensingLicenseViewSchema>;

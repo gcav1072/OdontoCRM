@@ -149,6 +149,22 @@ describe('rótulos de la página', () => {
     expect(vencimientoTexto(vista())).toBe('11/12/2026');
   });
 
+  it('una vitalicia se pinta sin vencimiento y sin banner', () => {
+    const vitalicia = vista({
+      estado: 'licencia_vigente',
+      origen: 'licencia',
+      tipo: 'vitalicia',
+      diasRestantes: null,
+      venceEn: null,
+      mensaje: 'Licencia vitalicia: no vence y no hay que renovarla.',
+    });
+
+    expect(tipoTexto('vitalicia')).toBe('Vitalicia');
+    expect(vencimientoTexto(vitalicia)).toBe('Sin vencimiento (vitalicia)');
+    expect(bannerDeLicencia(vitalicia)).toBeNull();
+    expect(enModoConsulta(vitalicia)).toBe(false);
+  });
+
   it('modo consulta es exactamente lo que dice el servidor', () => {
     expect(enModoConsulta(undefined)).toBe(false);
     expect(enModoConsulta(vista())).toBe(false);
