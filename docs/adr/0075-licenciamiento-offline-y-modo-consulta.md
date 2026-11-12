@@ -34,10 +34,11 @@ exportar ni verificar documentos.
    `installation` con `installation_id` (UUID), fecha de instalación, licencia
    verificada y `last_seen_at`. La licencia lleva el `instalacion` y activarla en
    otra instalación se rechaza. Un respaldo restaurado conserva la licencia.
-4. **Cuatro estados comerciales:** prueba de **30 días desde la instalación**
-   (automática, con el producto completo), y licencias **mensual (30 días)**,
-   **trimestral (90)** y **anual (365)**. No hay gracia: al vencer, el sistema
-   pasa a modo consulta; los avisos salen a 7/3/1 días y al vencer.
+4. **Estados comerciales:** prueba de **30 días desde la instalación**
+   (automática, con el producto completo), licencias **mensual (30 días)**,
+   **trimestral (90)** y **anual (365)** —con avisos a 7/3/1 días y modo consulta
+   al vencer, sin gracia— y, desde el [ADR 0076](0076-licencias-vitalicias.md),
+   también licencias **vitalicias** sin vencimiento.
 5. **Revocar = no renovar.** En offline no existe revocación remota; el
    vencimiento es el mecanismo. Renovar antes de tiempo **suma** los días al
    vencimiento vigente (`max(ahora, vencimiento) + días`), para no perder días.

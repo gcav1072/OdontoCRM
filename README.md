@@ -30,7 +30,7 @@ más adelante, fuera de ella por VPN.
 > | **Instalar el servidor de la clínica** | `sudo bash infra/fedora/instalar/instalar.sh` (Fedora) o `powershell -ExecutionPolicy Bypass -File infra\windows\instalar\instalar.ps1` (Windows) y, para el detalle, [`INSTALL.md`](infra/fedora/INSTALL.md) §3-bis o [`infra/windows/INSTALL.md`](infra/windows/INSTALL.md) |
 > | **Poner mi consultorio, mi logo y mis colores** | [`docs/IDENTIDAD_Y_DATOS.md`](docs/IDENTIDAD_Y_DATOS.md) — datos del consultorio, marca y tema, en desarrollo y en producción |
 > | **Operar el sistema ya instalado** | [`infra/fedora/RUNBOOK.md`](infra/fedora/RUNBOOK.md) y [`infra/windows/RUNBOOK.md`](infra/windows/RUNBOOK.md) y [`docs/COMANDOS_PRODUCCION.md`](docs/COMANDOS_PRODUCCION.md) |
-> | **Vender y emitir licencias** | [`docs/LICENCIAMIENTO.md`](docs/LICENCIAMIENTO.md) — prueba de 30 días, licencias mensual/trimestral/anual, activación y modo consulta |
+> | **Vender y emitir licencias** | [`docs/LICENCIAMIENTO.md`](docs/LICENCIAMIENTO.md) — prueba de 30 días, licencias mensual/trimestral/anual/vitalicia, activación y modo consulta |
 > | **Recuperar el servidor** (mudarlo o tras un fallo de disco) | [`docs/RECUPERACION.md`](docs/RECUPERACION.md) |
 > | **Usar el consultorio** (sin terminal) | [`docs/OPERACION_CLINICA.md`](docs/OPERACION_CLINICA.md) |
 > | **Conectar tablets, móviles y TVs** | [`docs/CERTIFICADO_EN_LOS_EQUIPOS.md`](docs/CERTIFICADO_EN_LOS_EQUIPOS.md) |

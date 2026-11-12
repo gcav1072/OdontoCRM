@@ -24,6 +24,10 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   repositorio.
 - **Comando de servidor** `sudo odontocrm licencia [estado|solicitud|activar <archivo.lic>]` en
   Fedora y Windows, para instalación asistida y soporte.
+- **Licencias vitalicias** (sin vencimiento) desde el mismo emisor: `--tipo vitalicia` en el CLI y
+  `/vitalicia` en el bot del proveedor. La app las trata como vigentes para siempre —el modo
+  consulta no llega por tiempo—, el registro y los pendientes las excluyen de las renovaciones y
+  la web/bots muestran «sin vencimiento» ([ADR 0076](docs/adr/0076-licencias-vitalicias.md)).
 - Guía [`docs/LICENCIAMIENTO.md`](docs/LICENCIAMIENTO.md) y ADR 0075.
 
 ### Cambiado

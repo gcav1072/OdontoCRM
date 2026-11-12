@@ -20,11 +20,17 @@ planes llevan el producto completo:
 | **Mensual** | 30 días | Licencia firmada |
 | **Trimestral** | 90 días | Licencia firmada |
 | **Anual** | 365 días | Licencia firmada |
+| **Vitalicia** | **no vence** | Licencia firmada |
 
 La licencia se puede renovar antes de que venza: los días **se suman** al
 vencimiento vigente (`max(ahora, vencimiento) + duración`), así que renovar
 pronto no pierde días. No hay periodo de gracia: con la licencia o la prueba
 vencida la instalación pasa a **modo consulta**.
+
+La **vitalicia** no tiene fecha de vencimiento ([ADR 0076](adr/0076-licencias-vitalicias.md)):
+la instalación queda vigente para siempre y el modo consulta nunca llega por
+tiempo. No se renueva (no hay nada que renovar); si hay que reemplazarla se
+emite otra licencia y se activa.
 
 ## Qué pasa cuando vence (modo consulta)
 
@@ -89,7 +95,10 @@ npm run licencia -- emitir \
   --cliente "Consultorio Sonrisa" --rif J-12345678-9 \
   --tipo mensual
 
-# Renovar (suma días al vencimiento del registro)
+# Licencia vitalicia (pago único, sin vencimiento)
+npm run licencia -- emitir --instalacion 5546502e-… --cliente "Consultorio Sonrisa" --tipo vitalicia
+
+# Renovar (suma días al vencimiento del registro; una vitalicia no se renueva)
 npm run licencia -- renovar --instalacion 5546502e-… --tipo anual
 
 # Qué vence pronto (y qué ya venció)
@@ -109,14 +118,14 @@ Ese registro es la memoria comercial: **respáldalo** junto con la clave privada
 `licencia-bot.env`, nunca en el repo) y permite emitir desde el móvil:
 
 ```
-/emitir <uuid> <mensual|trimestral|anual> [--cliente "…"] [--rif …]
+/emitir <uuid> <mensual|trimestral|anual|vitalicia> [--cliente "…"] [--rif …]
 /renovar <uuid> <tipo>
 /licencia <uuid>
 /pendientes [dias]
 ```
 
 Si le reenvías una solicitud `ODO-REQ1.…` del consultorio, la decodifica y te
-pregunta el tipo; respondes `/mensual`, `/trimestral` o `/anual` y te devuelve el
+pregunta el tipo; respondes `/mensual`, `/trimestral`, `/anual` o `/vitalicia` y te devuelve el
 `.lic` listo para reenviar. Telegram no deja que un bot le escriba a otro: el
 archivo lo reenvía una persona.
 
@@ -146,6 +155,9 @@ la **auditoría** (`license_activated`) y no requieren reiniciar nada.
   licencia es un documento firmado con fecha y el cliente controla su servidor.
   Si algún día hace falta corte inmediato o telemetría, se añade validación en
   línea reutilizando el mismo formato.
+- **Una vitalicia no se revoca por vencimiento** (no vence). Si hay que quitarla
+  o corregirla, se emite otra licencia que la reemplace y el consultorio la activa;
+  la última activada manda. La atadura a la instalación no cambia.
 - **Reinstalar de cero** crea una instalación nueva (trial nuevo) y la licencia
   vieja **no sirve** en ella: está atada al `installationId`. Emite una nueva.
 - **Restaurar un respaldo o mudar el disco** conserva la instalación y la
@@ -184,7 +196,7 @@ de verificar: por eso la rotación incluye reemisión.
    mandarla al proveedor **antes** de que acabe la prueba.
 4. Recibir el `.lic` y activarlo (web, bot o consola).
 5. Verificar: `/licencia` muestra «Licencia mensual/trimestral/anual vigente
-   hasta …» y `sudo odontocrm licencia` lo confirma.
+   hasta …» (o «Vitalicia … sin vencimiento») y `sudo odontocrm licencia` lo confirma.
 
 Para instalaciones que ya estaban en uso: emitir su licencia **antes** de
 desplegar esta versión; la migración no debe convertir en prueba a un cliente

@@ -115,7 +115,7 @@ Luego escribe `/ayuda` al bot en Telegram: debe responder con los comandos.
 
 - Reenvía al bot un mensaje que empiece por `ODO-REQ1.…` (lo genera el consultorio en `/licencia` o
   en su bot). El bot muestra el consultorio y la instalación, y pregunta el tipo.
-- Responde **`/mensual`**, **`/trimestral`** o **`/anual`**. El bot emite, anota el registro y te
+- Responde **`/mensual`**, **`/trimestral`**, **`/anual`** o **`/vitalicia`**. El bot emite, anota el registro y te
   manda el `.lic` como documento.
 - Reenvía ese archivo al consultorio (por WhatsApp o Telegram): allí lo reenvían al **bot de
   administración** o lo suben en `/licencia` de la app, y queda activado.
@@ -132,7 +132,7 @@ npm run licencia -- pendientes --dias 30
 npm run licencia -- verificar ~/.local/share/odontocrm/licencias/emitidas/LIC-2026-0001.lic
 ```
 
-Los tipos son `mensual` (30 días), `trimestral` (90) y `anual` (365). Renovar antes de tiempo
+Los tipos son `mensual` (30 días), `trimestral` (90), `anual` (365) y `vitalicia` (sin vencimiento). Renovar antes de tiempo
 **suma** los días: si renuevas 5 días antes, el nuevo vencimiento parte del actual.
 
 ## 6. Actualizar

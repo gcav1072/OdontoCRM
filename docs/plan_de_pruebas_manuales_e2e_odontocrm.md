@@ -744,4 +744,5 @@ Casos manuales, con la app instalada y el proveedor (CLI o bot) a mano. Los esta
 - [ ] **LIC-06 · Renovación.** Emitir una renovación antes del vencimiento: los días se suman al vencimiento vigente. Activarla desde una sesión en modo consulta devuelve la escritura sin reiniciar (el siguiente refresco de sesión).
 - [ ] **LIC-07 · Rechazos.** Un `.lic` de otra instalación, uno vencido o un archivo alterado se rechazan con un mensaje claro y quedan en auditoría como `license_activation_rejected`.
 - [ ] **LIC-08 · Reloj atrasado.** Atrasar el reloj del servidor más de 24 h respecto al último uso: la app pasa a modo consulta y lo avisa; corregir la hora y volver a entrar lo restaura.
+- [ ] **LIC-09 · Vitalicia.** El proveedor emite una `--tipo vitalicia` (o responde `/vitalicia` a la solicitud); el consultorio la activa y `/licencia` muestra «sin vencimiento», sin días restantes y sin banner. La auditoría dice «sin vencimiento» y no aparece en `/pendientes`.
 
