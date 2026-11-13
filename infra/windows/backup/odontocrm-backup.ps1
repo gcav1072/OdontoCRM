@@ -69,7 +69,16 @@ $IncludeConfig = Test-Bandera $args 'include-config'
 $IncludeStorage = Test-Bandera $args 'include-storage'
 $NoVerify = Test-Bandera $args 'no-verify'
 $DbList = @()
-foreach ($arg in $args) { if ($arg -like '--db=*') { $DbList += $arg.Substring(5) } }
+# `--db NOMBRE` (lo que dice la ayuda), `--db=NOMBRE` y con uno o dos guiones; repetible.
+$DbList = @()
+for ($i = 0; $i -lt $args.Count; $i += 1) {
+  $arg = [string]$args[$i]
+  if ($arg -match '^-{1,2}db=(?<valor>.+)$') { $DbList += $Matches['valor'] }
+  elseif ($arg -match '^-{1,2}db$' -and $i + 1 -lt $args.Count) {
+    $DbList += [string]$args[$i + 1]
+    $i += 1
+  }
+}
 $dest = Get-Argumento $args 'dest'; if ($dest) { $BackupDir = $dest }
 $ret = Get-Argumento $args 'retention'; if ($ret) { $RetentionDias = [int]$ret }
 $cfg = Get-Argumento $args 'config'

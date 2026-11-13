@@ -114,6 +114,8 @@ Los guiones del instalador (`infra\windows\instalar\`) siguen estas reglas, apre
 - **Guarda los `.ps1` como UTF-8 CON BOM.** PowerShell 5.1 lee sin BOM como ANSI y destroza los
   acentos (hasta romper el parser). `comun.ps1` pone la consola en UTF-8 para la salida.
 - **`npm run windows:check` lo comprueba** (y corre dentro de `npm run verify`): todo `.ps1` tiene que empezar con BOM UTF-8 y todo `.cmd`/`.bat` ser ASCII puro. En noviembre de 2026 `odontocrm.ps1` perdió el BOM al editarlo y el comando `odontocrm` dejó de arrancar con `MissingEndCurlyBrace`; `40-verificar.ps1` ahora también comprueba, al instalar, que el guion del comando se puede interpretar.
+- **Un recorte de `$args` con el operador `..` no siempre es un array.** Con un solo argumento devuelve un **escalar**, y al splatearlo (`@Resto`) PowerShell manda cada CARÁCTER como argumento distinto: el 2026-11-13 `odontocrm restaurar --list` llegaba al restaurador como «- - l i s t» y moría con `PSArgumentException`. Para recortar los argumentos: `$Resto = @($args | Select-Object -Skip 1)`.
+- **Las opciones se leen con `Get-Argumento` y `Test-Bandera`** (en `comun.ps1`), que aceptan `--x=v`, `--x v`, `-x v` y `-x`. No las compares a mano con `-like '--x=*'`: la ayuda y las guías usan la forma con espacio y quedaría fuera.
 - **No pongas `$ErrorActionPreference = 'Stop'`** en un guion que llame a órdenes nativas
   (`npm`, `git`, `psql`…): en 5.1, la salida de error de una orden nativa se vuelve un error
   terminante y el guion aborta. Comprueba `$LASTEXITCODE`.

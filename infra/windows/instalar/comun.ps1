@@ -172,18 +172,33 @@ function Get-NodeMayor {
 }
 
 # ── Argumentos al estilo Fedora (`--clave=valor`, `--bandera`) ────────────────
+# Lee una opción con valor. Acepta `--from=DIR`, `--from DIR`, y con UN solo guion
+# (`-from DIR`, `-from=DIR`). El 2026-11-13 se vio que la ayuda y las guías usaban la
+# forma con espacio (`--from DIR`) y el parser solo entendía `=`; ahora valen las dos.
 function Get-Argumento {
   param([string[]]$Argumentos, [string]$Nombre)
-  foreach ($arg in $Argumentos) {
-    if ($arg -like "--$Nombre=*") { return $arg.Substring($arg.IndexOf('=') + 1) }
+  $patron = [regex]::Escape($Nombre)
+  for ($i = 0; $i -lt $Argumentos.Count; $i += 1) {
+    $arg = [string]$Argumentos[$i]
+    if ($arg -match "^-{1,2}${patron}=(?<valor>.*)$") { return $Matches['valor'] }
+    if ($arg -match "^-{1,2}${patron}$") {
+      $siguiente = if ($i + 1 -lt $Argumentos.Count) { [string]$Argumentos[$i + 1] } else { $null }
+      # Un valor que empieza por guion es casi siempre una bandera olvidada:
+      # `--from --all` debe decir que falta --from, no buscar una ruta «--all».
+      if ($siguiente -and $siguiente -notmatch '^--?[A-Za-z]') { return $siguiente }
+      return $null
+    }
   }
   return $null
 }
 
+# ¿Viene la bandera? Acepta `--bandera` y `-bandera` (en la consola de Windows el guion
+# simple es lo que sale a mano; antes un `-all` moría con un PSArgumentException del parser).
 function Test-Bandera {
   param([string[]]$Argumentos, [string]$Nombre)
+  $patron = [regex]::Escape($Nombre)
   foreach ($arg in $Argumentos) {
-    if ($arg -eq "--$Nombre") { return $true }
+    if ([string]$arg -match "^-{1,2}${patron}$") { return $true }
   }
   return $false
 }

@@ -36,6 +36,9 @@ const tieneBom = (bytes) =>
   bytes[1] === BOM_UTF8[1] &&
   bytes[2] === BOM_UTF8[2];
 
+/** Texto del guion (sin el BOM) para revisar patrones que no son de codificación. */
+const textoDeGuion = (bytes) => (tieneBom(bytes) ? bytes.subarray(3) : bytes).toString('utf8');
+
 /**
  * Problemas de un `.ps1`: el BOM es obligatorio y el contenido tiene que ser UTF-8
  * válido (un archivo doblemente codificado también rompe la salida aunque lleve BOM).
@@ -84,13 +87,47 @@ const listarGuiones = () => {
     .filter((ruta) => existsSync(join(ROOT, ruta)));
 };
 
+/**
+ * Fallos de **argumentos** que ya han roto la consola y no queremos repetir:
+ *
+ * 1. `$args[1..N]` devuelve un **escalar** cuando queda un solo argumento; si luego se
+ *    splatea con `@Resto`, PowerShell manda cada carácter como argumento y el hijo
+ *    muere con `PSArgumentException` («argumento 'name' no es válido»). Pasó con
+ *    `odontocrm restaurar --list` el 2026-11-13. Se usa `@($args | Select-Object -Skip 1)`.
+ * 2. Leer una opción comparando a mano `-like '--opcion=*'` se deja fuera la forma
+ *    documentada con espacio (`--opcion valor`) y la de un solo guion. Para eso están
+ *    `Get-Argumento` y `Test-Bandera` de `comun.ps1`.
+ */
+const PATRONES_DE_ARGUMENTOS = [
+  {
+    patron: /\$args\[\s*1\s*\.\./,
+    mensaje:
+      '`$args[1..N]` devuelve un ESCALAR cuando queda un solo argumento y `@Resto` manda cada carácter. Usa `@($args | Select-Object -Skip 1)`.',
+  },
+  {
+    patron: /-like\s+'--[A-Za-z0-9-]+=\*'/,
+    mensaje:
+      "no leas opciones con `-like '--x=*'`: usa `Get-Argumento`/`Test-Bandera` (aceptan `--x=v`, `--x v`, `-x v` y `-x`).",
+  },
+];
+
+/** Problemas de argumentos de un `.ps1` (recibe el texto ya decodificado). */
+export const problemasDeArgumentos = (ruta, texto) =>
+  PATRONES_DE_ARGUMENTOS.filter(({ patron }) => patron.test(texto)).map(
+    ({ mensaje }) => `${ruta}: ${mensaje}`,
+  );
+
 /** Revisa la lista de rutas (relativas al repositorio) y devuelve los problemas. */
 export const verificarGuionesWindows = (rutas) => {
   const problemas = [];
   for (const ruta of rutas) {
     const bytes = readFileSync(join(ROOT, ruta));
-    if (/\.ps1$/i.test(ruta)) problemas.push(...problemasDeGuionPs1(ruta, bytes));
-    else problemas.push(...problemasDeGuionCmd(ruta, bytes));
+    if (/\.ps1$/i.test(ruta)) {
+      problemas.push(...problemasDeGuionPs1(ruta, bytes));
+      problemas.push(...problemasDeArgumentos(ruta, textoDeGuion(bytes)));
+    } else {
+      problemas.push(...problemasDeGuionCmd(ruta, bytes));
+    }
   }
   return problemas;
 };
@@ -100,15 +137,19 @@ const main = () => {
   const problemas = verificarGuionesWindows(rutas);
 
   if (problemas.length > 0) {
-    console.error('Guiones de Windows con problemas de codificación:');
+    console.error('Guiones de Windows con problemas:');
     for (const problema of problemas) console.error(`  - ${problema}`);
     console.error('');
-    console.error('Regla (infra/windows/DESARROLLO.md §7): los .ps1 van en UTF-8 CON BOM;');
-    console.error('los .cmd/.bat, en ASCII puro. Así los lee PowerShell 5.1 y cmd.exe.');
+    console.error('Reglas (infra/windows/DESARROLLO.md §7): los .ps1 van en UTF-8 CON BOM,');
+    console.error(
+      'los .cmd/.bat en ASCII puro, y las opciones se leen con los helpers de comun.ps1.',
+    );
     process.exit(1);
   }
 
-  console.log(`Guiones de Windows revisados: ${rutas.length} (UTF-8 con BOM / ASCII puro) ✔`);
+  console.log(
+    `Guiones de Windows revisados: ${rutas.length} (UTF-8 con BOM / ASCII puro / argumentos con helpers) ✔`,
+  );
 };
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

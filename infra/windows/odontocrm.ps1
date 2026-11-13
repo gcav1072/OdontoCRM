@@ -34,7 +34,12 @@ if (-not (Test-Path $__comun)) {
 trap { Escribir-Corte; exit 1 }
 
 $Orden = if ($args.Count -gt 0) { $args[0] } else { 'ayuda' }
-$Resto = if ($args.Count -gt 1) { $args[1..($args.Count - 1)] } else { @() }
+# OJO (2026-11-13): rebanar `$args` con el operador `..` devuelve un ESCALAR cuando
+# queda un solo argumento, y
+# splatear ese string (`@Resto`) manda cada CARÁCTER como argumento distinto. Así,
+# `odontocrm restaurar --list` llegaba al restaurador como «- - l i s t» y moría con un
+# PSArgumentException en vez de listar. Tiene que ser SIEMPRE un array:
+$Resto = @($args | Select-Object -Skip 1)
 
 $info = Get-Info
 $puertoGateway = $info.puertoGateway
@@ -148,6 +153,28 @@ function Invocar-Node {
     else { $env:NODE_ENV = $anteriorNodeEnv }
     Pop-Location
   }
+}
+
+# Aplica las migraciones de los servicios con el entorno de producción. Lo usan
+# «recuperar» y la restauración completa: un respaldo puede ser de una versión anterior
+# del código y su esquema quedaría atrasado (2026-11-13).
+function Invocar-Migraciones {
+  param([string]$Paso)
+  Escribir-Paso $Paso
+  Push-Location $OdontoCode
+  try {
+    foreach ($s in $info.servicios) {
+      $registro = Join-Path $env:TEMP "odontocrm-migrar-$($s.nombre).log"
+      & node tools/con-entorno.mjs $OdontoEnv $s.nombre -- node "services/$($s.nombre)/dist/db/migrate.js" *> $registro
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "    --- $registro ---"
+        Get-Content $registro -Tail 25 | ForEach-Object { Write-Host "    $_" }
+        Morir "fallaron las migraciones de $($s.nombre)"
+      }
+      Escribir-Ok "migraciones de $($s.nombre)"
+    }
+  }
+  finally { Pop-Location }
 }
 
 # Repone el almacén (radiografías/PDF) y reconcilia la clave del respaldo. Es lo que hace que
@@ -277,7 +304,6 @@ switch ($Orden) {
   }
 
   'recuperar' {
-    Afirmar-Administrador
     # **Recuperación completa en un comando** (RUNBOOK §"Recuperación completa"): parar →
     # restaurar las bases → reponer el almacén → arrancar. Es el flujo de un servidor nuevo o
     # de un fallo físico, partiendo del pendrive o de la carpeta del respaldo. No reimplementa
@@ -322,25 +348,34 @@ switch ($Orden) {
       exit 10
     }
 
+    # A partir de aquí se toca el sistema: parar servicios y reemplazar las bases.
+    Afirmar-Administrador
+
     # 1) Parar los servicios (PostgreSQL se queda arriba). Se reusa el mismo camino que
     #    «odontocrm parar» re-invocando el propio comando.
-    Escribir-Paso '1/4 · Parar'
+    Escribir-Paso '1/5 · Parar'
     & powershell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath parar
     if ($LASTEXITCODE -ne 0) { Morir 'no pude parar los servicios' }
 
     # 2) Las bases (el restaurador verifica cada volcado en una base temporal antes de la real).
-    Escribir-Paso '2/4 · Bases'
+    Escribir-Paso '2/5 · Bases'
     & powershell -NoProfile -ExecutionPolicy Bypass -File $restaurador --from $desde --all --keep-old --yes
     if ($LASTEXITCODE -ne 0) { Morir 'falló la restauración de las bases (revisa lo de arriba)' }
 
-    # 3) El almacén (radiografías y PDFs) + su clave de cifrado, y comprobación de que se lee.
-    Escribir-Paso '3/4 · Almacén'
+    # 3) Migraciones: el respaldo puede venir de OTRA versión del código (el que guarda el
+    #    desinstalador, por ejemplo, es anterior a una migración). Restaurar bases viejas sobre
+    #    un sistema nuevo deja el esquema atrasado; las migraciones son idempotentes y lo ponen
+    #    al día antes de arrancar, que es cuando de verdad importa.
+    Invocar-Migraciones '3/5 · Migraciones'
+
+    # 4) El almacén (radiografías y PDFs) + su clave de cifrado, y comprobación de que se lee.
+    Escribir-Paso '4/5 · Almacén'
     if (-not (Restaurar-Almacen -StorageZip $storageZip -ConfigZip $configZip)) {
       Escribir-Aviso 'no pude reponer el almacén: míralo a mano (RUNBOOK)'
     }
 
     # 4) La configuración, solo si se pide a propósito.
-    Escribir-Paso '4/4 · Configuración'
+    Escribir-Paso '5/5 · Configuración'
     if ($conConfig) {
       if (Test-Path $configZip) {
         Escribir-Aviso 'repones la configuración: revisa DESPUÉS las rutas y las contraseñas de los .env'
@@ -370,7 +405,10 @@ switch ($Orden) {
   }
 
   'restaurar' {
-    Afirmar-Administrador
+    # Mirar no requiere Administrador: `--list`, `--help` y `--dry-run` no tocan nada.
+    $soloMirar = (Test-Bandera $Resto 'list') -or (Test-Bandera $Resto 'help') -or
+      (Test-Bandera $Resto 'ayuda') -or (Test-Bandera $Resto 'dry-run')
+    if (-not $soloMirar) { Afirmar-Administrador }
     $guion = Join-Path $OdontoRepo 'infra\windows\backup\odontocrm-restore.ps1'
     if (-not (Test-Path $guion)) { $guion = Join-Path $OdontoCode 'infra\windows\backup\odontocrm-restore.ps1' }
 
@@ -385,6 +423,12 @@ switch ($Orden) {
     $configZip = if ($desde) { Join-Path $desde 'config.zip' } else { $null }
 
     if (-not $conTodo -or -not $desde -or -not (Test-Path $storageZip) -or $dry -or -not $asumir) {
+      # Solo-bases o simulación: el restaurador NO aplica migraciones. Si el respaldo es de
+      # otra versión del código, hay que migrar antes de arrancar (o usar «odontocrm recuperar»,
+      # que ya lo hace).
+      if (-not $soloMirar) {
+        Escribir-Aviso 'si el respaldo es de otra versión del código, aplica las migraciones antes de arrancar («odontocrm recuperar» lo hace).'
+      }
       & powershell -NoProfile -ExecutionPolicy Bypass -File $guion @Resto
       exit $LASTEXITCODE
     }
@@ -394,15 +438,17 @@ switch ($Orden) {
     Escribir-Detalle 'bases    : todas (la anterior se conserva como «<base>__antes_de_restaurar_<fecha>»)'
     Escribir-Detalle "almacén  : $(Split-Path $storageZip -Leaf)"
 
-    Escribir-Paso '1/3 · Parar'
+    Escribir-Paso '1/4 · Parar'
     & powershell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath parar
     if ($LASTEXITCODE -ne 0) { Morir 'no pude parar los servicios' }
 
-    Escribir-Paso '2/3 · Bases'
+    Escribir-Paso '2/4 · Bases'
     & powershell -NoProfile -ExecutionPolicy Bypass -File $guion @Resto
     if ($LASTEXITCODE -ne 0) { Morir 'falló la restauración de las bases (revisa lo de arriba)' }
 
-    Escribir-Paso '3/3 · Almacén'
+    Invocar-Migraciones '3/4 · Migraciones'
+
+    Escribir-Paso '4/4 · Almacén'
     # Se AVISA y se sigue: las bases ya están restauradas, y dejar los servicios parados por el
     # almacén sería peor. El operador lo ve y lo repone a mano si hace falta.
     if (-not (Restaurar-Almacen -StorageZip $storageZip -ConfigZip $configZip)) {
@@ -461,8 +507,8 @@ switch ($Orden) {
     Afirmar-Administrador
     Push-Location $OdontoCode
     try {
-      $rama = 'main'
-      foreach ($arg in $Resto) { if ($arg -like '--rama=*') { $rama = $arg.Substring(7) } }
+      $rama = Get-Argumento $Resto 'rama'
+      if (-not $rama) { $rama = 'main' }
       $commitPrevio = (& git rev-parse HEAD 2>$null)
       if ($commitPrevio) { $commitPrevio = "$commitPrevio".Trim() }
       $ramaPrevia = (& git rev-parse --abbrev-ref HEAD 2>$null)
@@ -500,8 +546,7 @@ switch ($Orden) {
 
   { $_ -in @('revertir', 'rollback') } {
     Afirmar-Administrador
-    $forzar = $false
-    foreach ($arg in $Resto) { if ($arg -in @('--forzar', '--si')) { $forzar = $true } }
+    $forzar = (Test-Bandera $Resto 'forzar') -or (Test-Bandera $Resto 'si')
     $archivoAnterior = Join-Path $OdontoDatos 'commit-anterior'
     if (-not (Test-Path $archivoAnterior)) {
       Morir 'no hay un commit anterior registrado (lo guarda «odontocrm actualizar» cuando trae cambios)'
@@ -620,12 +665,8 @@ switch ($Orden) {
 
   { $_ -in @('red', 'ip', 'lan') } {
     Afirmar-Administrador
-    $arreglar = $false
-    $siCambio = $false
-    foreach ($arg in $Resto) {
-      if ($arg -in @('--arreglar', '-a', '--si')) { $arreglar = $true }
-      if ($arg -in @('--si-cambio', '--vigilar')) { $siCambio = $true }
-    }
+    $arreglar = (Test-Bandera $Resto 'arreglar') -or (Test-Bandera $Resto 'a') -or (Test-Bandera $Resto 'si')
+    $siCambio = (Test-Bandera $Resto 'si-cambio') -or (Test-Bandera $Resto 'vigilar')
     $ip = Get-IpLan
     $nombre = Get-Nombre
 
@@ -760,7 +801,9 @@ switch ($Orden) {
     }
     $servicio = $Resto[0]
     if (-not (Test-Path (Join-Path $OdontoEnv "$servicio.env"))) { Morir "no existe $OdontoEnv\$servicio.env" }
-    $comando = $Resto[2..($Resto.Count - 1)]
+    # `con-entorno <servicio> -- <una sola palabra>` también necesita array: el rango de un
+# solo índice devuelve un string y `@comando` mandaría las letras sueltas al proceso.
+    $comando = @($Resto[2..($Resto.Count - 1)])
     Push-Location $OdontoCode
     try {
       & node (Join-Path $OdontoCode 'tools\con-entorno.mjs') $OdontoEnv $servicio -- @comando
@@ -785,8 +828,7 @@ switch ($Orden) {
 
   { $_ -in @('parar', 'stop', 'detener') } {
     Afirmar-Administrador
-    $todo = $false
-    foreach ($arg in $Resto) { if ($arg -in @('--todo', '--con-base')) { $todo = $true } }
+    $todo = (Test-Bandera $Resto 'todo') -or (Test-Bandera $Resto 'con-base')
 
     # El gateway PRIMERO: es la puerta. Si se para al final, las peticiones en curso se
     # quedan colgadas contra servicios que ya no están.

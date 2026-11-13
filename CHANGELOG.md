@@ -7,12 +7,31 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 ## [Sin publicar] — Correcciones
 
 ### Corregido
+- **Cualquier orden de `odontocrm` con UN SOLO argumento moría en Windows** con
+  `PSArgumentException` («el valor del argumento "name" no es válido»): `restaurar --list`,
+  `restaurar --all`, `logs clinical`, `whatsapp estado`, `licencia estado`… El recorte de
+  `$args` devolvía un **escalar** cuando quedaba un argumento y, al pasarlo al hijo con
+  `@Resto`, PowerShell mandaba cada carácter por separado (`- - l i s t`). Ahora `$Resto` es
+  siempre un array y `odontocrm con-entorno … -- <orden de una palabra>` tampoco parte la
+  orden en letras.
+- **La forma documentada de `--from DIR` / `--db NOMBRE` no funcionaba**: `Get-Argumento` y
+  el respaldo/restaurador solo entendían `--from=DIR`. Ahora se aceptan `--x=v`, `--x v` y
+  la variante con un solo guion (`-x v`, `-x`), que es la que sale a mano en la consola de
+  Windows. Las banderas que cada orden comparaba a mano (`--rama=`, `--forzar`, `--arreglar`,
+  `--todo`…) usan ya esos helpers.
+- **La restauración de un respaldo no aplicaba migraciones**: restaurar volcados de una
+  versión anterior sobre el código nuevo dejaba el esquema atrasado y los servicios fallaban
+  al arrancar. `odontocrm recuperar` y la restauración completa migran antes de arrancar;
+  `odontocrm restaurar` (solo bases) avisa de que hay que hacerlo si el respaldo es de otra
+  versión. `recuperar --dry-run` y `restaurar --list/--help/--dry-run` ya no exigen
+  Administrador para mirar.
 - **El comando `odontocrm` no arrancaba en Windows** (`MissingEndCurlyBrace`): la CLI se
   guardó como UTF-8 **sin BOM**, así que Windows PowerShell 5.1 la leía como ANSI y los
   acentos y flechas del texto rompían el parser. Ahora `infra/windows/odontocrm.ps1` va en
   UTF-8 con BOM, el lanzador `.cmd` queda en ASCII puro y `npm run windows:check` (dentro
   de `npm run verify`) impide que vuelva a pasar; además `40-verificar.ps1` comprueba al
   instalar que el guion del comando se puede interpretar.
+
 ## [Sin publicar] — Licenciamiento offline y modo consulta
 
 ### Añadido

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { problemasDeGuionCmd, problemasDeGuionPs1 } from './scripts-windows.mjs';
+import {
+  problemasDeArgumentos,
+  problemasDeGuionCmd,
+  problemasDeGuionPs1,
+} from './scripts-windows.mjs';
 
 /**
  * El fallo que motivó este verificador: `infra/windows/odontocrm.ps1` se guardó sin
@@ -55,5 +59,36 @@ describe('lanzadores .cmd/.bat: ASCII puro', () => {
     const bytes = Buffer.concat([BOM, Buffer.from('@echo off\r\n', 'ascii')]);
     const problemas = problemasDeGuionCmd('bom.cmd', bytes);
     expect(problemas.some((problema) => problema.includes('BOM'))).toBe(true);
+  });
+});
+
+describe('argumentos: los dos fallos reales de la CLI', () => {
+  it('detecta `$args[1..N]` (escalar cuando queda un solo argumento)', () => {
+    const texto = '$Resto = if ($args.Count -gt 1) { $args[1..($args.Count - 1)] } else { @() }';
+    const problemas = problemasDeArgumentos('cli.ps1', texto);
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toContain('ESCALAR');
+    expect(problemas[0]).toContain('cli.ps1');
+  });
+
+  it('acepta la forma correcta con Select-Object -Skip 1', () => {
+    expect(problemasDeArgumentos('cli.ps1', '$Resto = @($args | Select-Object -Skip 1)')).toEqual(
+      [],
+    );
+  });
+
+  it('detecta leer opciones a mano con -like --x=*', () => {
+    const texto = "foreach ($arg in $args) { if ($arg -like '--db=*') { $lista += $arg } }";
+    const problemas = problemasDeArgumentos('backup.ps1', texto);
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toContain('Get-Argumento');
+  });
+
+  it('acepta los helpers Get-Argumento y Test-Bandera', () => {
+    const texto = [
+      "$desde = Get-Argumento $Resto 'from'",
+      "$todos = Test-Bandera $Resto 'all'",
+    ].join('\r\n');
+    expect(problemasDeArgumentos('restore.ps1', texto)).toEqual([]);
   });
 });

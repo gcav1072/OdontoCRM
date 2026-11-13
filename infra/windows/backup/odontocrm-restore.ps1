@@ -70,7 +70,17 @@ if (Test-Path $configFile) {
 }
 
 $From = Get-Argumento $args 'from'
-$DbList = @(); foreach ($arg in $args) { if ($arg -like '--db=*') { $DbList += $arg.Substring(5) } }
+# `--db NOMBRE` (lo que dice la ayuda), `--db=NOMBRE` y con uno o dos guiones; repetible.
+# Antes solo entendía `--db=…` y la ayuda mentía (2026-11-13).
+$DbList = @()
+for ($i = 0; $i -lt $args.Count; $i += 1) {
+  $arg = [string]$args[$i]
+  if ($arg -match '^-{1,2}db=(?<valor>.+)$') { $DbList += $Matches['valor'] }
+  elseif ($arg -match '^-{1,2}db$' -and $i + 1 -lt $args.Count) {
+    $DbList += [string]$args[$i + 1]
+    $i += 1
+  }
+}
 $All = Test-Bandera $args 'all'
 $DryRun = Test-Bandera $args 'dry-run'
 $AsumirSi = Test-Bandera $args 'yes'
@@ -213,5 +223,7 @@ foreach ($base in $DbList) {
 Write-Host ''
 if ($DryRun) { Escribir-Ok 'simulación terminada: nada se ha tocado'; exit 0 }
 if ($fallos -gt 0) { Escribir-Error "$fallos base(s) con problemas"; exit 4 }
-Escribir-Ok 'restauración correcta. Reinicia los servicios:  odontocrm reiniciar'
+Escribir-Ok 'restauración correcta.'
+Escribir-Detalle 'reinicia los servicios:  odontocrm reiniciar'
+Escribir-Detalle 'si el respaldo es de otra versión del código, aplica antes las migraciones (pieza 3, o usa «odontocrm recuperar»).'
 exit 0
