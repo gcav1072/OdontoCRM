@@ -7,6 +7,11 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 ## [Sin publicar] — Correcciones
 
 ### Corregido
+- **`odontocrm actualizar` abortaba si el código desplegado tenía parches locales**
+  («Your local changes … would be overwritten by checkout»): el repo de desarrollo está
+  limpio, pero `C:\OdontoCRM` podía llevar arreglos de soporte aplicados a mano. Ahora
+  `actualizar` (y `revertir`) **apartan los cambios en `git stash`** —o en un `.patch`
+  dentro de los datos si el stash no se puede— y continúan, avisando de cómo recuperarlos.
 - **Tras restaurar, WhatsApp no reconectaba** (`Unsupported state or unable to authenticate
   data`): la sesión de `whatsapp_auth` y las credenciales de canales se restauran con la
   base, pero estaban cifradas con la `STORAGE_ENCRYPTION_KEY` del servidor anterior y la

@@ -100,6 +100,7 @@ function Ayuda {
   Write-Host '  odontocrm whatsapp [estado|vincular|reconectar|cerrar]'
   Write-Host '                            Sesión de WhatsApp por Baileys: QR en la terminal.'
   Write-Host '  odontocrm actualizar      Trae el código nuevo, compila, migra y reinicia.'
+  Write-Host '                            Si el código tiene parches locales, los guarda en git stash.'
   Write-Host '  odontocrm revertir        Vuelve al commit anterior (si no hubo migraciones), recompila y reinicia.'
   Write-Host '  odontocrm certificado     Muestra el certificado y la CA, y cómo instalarla'
   Write-Host '                            en tablets, móviles y TVs.'
@@ -177,6 +178,30 @@ function Invocar-Migraciones {
     }
   }
   finally { Pop-Location }
+}
+
+# Aparta los cambios locales antes de `git checkout`. El código desplegado puede tener
+# parches de soporte aplicados a mano (pasó el 2026-11-13 con los arreglos de Windows y
+# WhatsApp): sin esto `actualizar` aborta con «Your local changes … would be overwritten».
+# Se guardan en `git stash` (recuperables) y, si el stash falla, en un .patch dentro de
+# los datos. NO se vuelven a aplicar solos: la versión nueva ya los trae o los sustituye.
+function Preparar-ArbolLimpio {
+  $estado = @(& git status --porcelain 2>$null)
+  if ($estado.Count -eq 0) { return }
+  if (-not (Test-Path $OdontoDatos)) { New-Item -ItemType Directory -Force -Path $OdontoDatos | Out-Null }
+  Escribir-Aviso "hay cambios locales en el código desplegado (¿un parche de soporte?): se apartan para actualizar"
+  foreach ($linea in $estado) { Escribir-Detalle $linea }
+  $marca = Get-Date -Format 'yyyyMMdd-HHmmss'
+  & git stash push --message "odontocrm antes de actualizar $marca" 2>&1 | Out-Null
+  if ($LASTEXITCODE -eq 0) {
+    Escribir-Ok 'cambios locales guardados en «git stash» (para recuperarlos: git stash pop)'
+    return
+  }
+  $parche = Join-Path $OdontoDatos "cambios-locales-$marca.patch"
+  & git diff > $parche
+  & git checkout -- .
+  if ($LASTEXITCODE -ne 0) { Morir 'no pude apartar los cambios locales del código desplegado' }
+  Escribir-Aviso "no se pudo usar git stash: los cambios quedaron en $parche (aplicar: git apply)"
 }
 
 # Repone el almacén (radiografías/PDF) y reconcilia la clave del respaldo. Es lo que hace que
@@ -520,6 +545,7 @@ switch ($Orden) {
       Write-Host "Actualizando $OdontoCode (rama $rama)" -ForegroundColor White
       & git fetch --prune origin
       if ($LASTEXITCODE -ne 0) { Morir 'no pude traer el código nuevo (¿hay red y remoto?)' }
+      Preparar-ArbolLimpio
       & git checkout -B $rama "origin/$rama"
       if ($LASTEXITCODE -ne 0) { Morir "no pude cambiar a la rama '$rama'" }
       $commitNuevo = (& git rev-parse HEAD 2>$null)
@@ -582,6 +608,7 @@ switch ($Orden) {
         exit 1
       }
 
+      Preparar-ArbolLimpio
       Write-Host "Revirtiendo $OdontoCode a $($commitObjetivo.Substring(0, [Math]::Min(7, $commitObjetivo.Length))) (rama $ramaAnterior)" -ForegroundColor White
       & git checkout -B $ramaAnterior $commitObjetivo
       if ($LASTEXITCODE -ne 0) { Morir "no pude volver al commit $commitObjetivo" }
