@@ -4,6 +4,37 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Sin publicar] — Licenciamiento offline y modo consulta
+
+### Añadido
+- **Prueba de 30 días desde la instalación** y licencias firmadas **mensual (30 días)**,
+  **trimestral (90)** y **anual (365)**, atadas a la instalación (`installationId`) y emitidas
+  **offline** con un JWT EdDSA firmado por el proveedor ([ADR 0075](docs/adr/0075-licenciamiento-offline-y-modo-consulta.md)).
+- **Modo consulta**: con la prueba o la licencia vencida, el token de acceso se emite solo con
+  permisos de lectura (más `licensing:manage`); leer, imprimir y exportar siguen funcionando y no
+  se toca ninguno de los 9 servicios.
+- Página **`/licencia`** (solo admin) con estado, instalación, **solicitud `ODO-REQ1.…`** para el
+  proveedor y activación pegando el token o subiendo el `.lic`; **banner** de prueba/vencimiento
+  visible también en el acceso.
+- **Bot de administración del consultorio**: comando `/licencia`, activación **reenviando el `.lic`**
+  al chat y aviso diario de vencimiento; `/estado` y `npm run estado` muestran la licencia.
+- **Herramientas del proveedor**: CLI `npm run licencia` (`claves`, `emitir`, `renovar`,
+  `pendientes`, `verificar`), bot de emisión `npm run licencia:bot` y plantillas PM2/systemd en
+  [`infra/licencias/`](infra/licencias/INSTALL.md). La clave privada y el registro viven fuera del
+  repositorio.
+- **Comando de servidor** `sudo odontocrm licencia [estado|solicitud|activar <archivo.lic>]` en
+  Fedora y Windows, para instalación asistida y soporte.
+- **Licencias vitalicias** (sin vencimiento) desde el mismo emisor: `--tipo vitalicia` en el CLI y
+  `/vitalicia` en el bot del proveedor. La app las trata como vigentes para siempre —el modo
+  consulta no llega por tiempo—, el registro y los pendientes las excluyen de las renovaciones y
+  la web/bots muestran «sin vencimiento» ([ADR 0076](docs/adr/0076-licencias-vitalicias.md)).
+- Guía [`docs/LICENCIAMIENTO.md`](docs/LICENCIAMIENTO.md) y ADR 0075.
+
+### Cambiado
+- **`hasPermission` manda por los permisos del token, no por el rol**: el atajo del rol `admin`
+  impedía que el modo consulta bloqueara al titular. El rol admin ya lleva todos los permisos al
+  emitir el token, así que el comportamiento normal no cambia.
+
 ## [Sin publicar] — WhatsApp por Baileys
 
 ### Cambiado
@@ -25,6 +56,18 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
   desvinculación por canal (`?channel=telegram|whatsapp`).
 
 ### Corregido
+- **La desinstalación se quedaba a medias si un solo `pg_dump` fallaba**: un objeto de otro dueño
+  dentro de una base (un esquema `pgboss` heredado de una corrida de desarrollo) hacía fallar el
+  volcado con el rol del servicio y el guion bloqueaba **todas** las bases, no solo esa. Ahora se
+  reintenta el volcado como administrador y solo se conserva la base que de verdad no se pudo
+  copiar; las demás se borran. Si no hay `pg_dump`, no se borra ninguna. También se retiran la
+  plantilla `odontocrm@.service` y el simulacro de restauración
+  (`odontocrm-verificar-respaldo.service/.timer`), que sobrevivían a la desinstalación, y un
+  reintento tras un fallo reutiliza las credenciales del respaldo anterior.
+- **El desinstalador de Windows no reintentaba los volcados** que fallaban con el rol de respaldo
+  y podía intentar borrar el rol de una base que se había conservado (con un error confuso).
+  Ahora reintenta con el administrador (la misma credencial del paso 5), conserva el rol de una
+  base sin copia y, si falta `pg_dump.exe`, no borra ninguna base.
 - **El alta por WhatsApp llegaba al último paso y fallaba**: el borde interno de pacientes tenía
   una lista de canales copiada a mano sin `whatsapp`, así que el «Confirmar» respondía 400 y el
   paciente solo veía «ahora mismo no puedo consultar el sistema». Ahora usa el catálogo compartido

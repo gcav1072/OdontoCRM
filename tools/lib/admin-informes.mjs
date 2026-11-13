@@ -39,6 +39,8 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
+import { LICENSE_KIND_LABELS } from '@odontocrm/contracts';
+
 import { alertasDe, bytes } from './alertas.mjs';
 import { dirDeEntornos, entornoRaiz, leerEnv, ROOT, rutaEnvDe, SERVICIOS } from './servicios.mjs';
 
@@ -52,6 +54,159 @@ const fechaCaracas = (iso) =>
 
 const recortar = (texto, limite = MAX_TELEGRAM_TEXTO) =>
   texto.length <= limite ? texto : `${texto.slice(0, limite - 20)}\n…(recortado)`;
+
+/* ── Licencia del consultorio (ADR 0075) ───────────────────────────────────── */
+
+/**
+ * Formato de fecha del licenciamiento, en hora de Caracas como el resto de los informes.
+ * Se construye una sola vez: crear un `Intl.DateTimeFormat` por línea es caro y aquí se
+ * formatean varias por mensaje.
+ */
+const FECHA_LICENCIA = new Intl.DateTimeFormat('es-VE', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  timeZone: CARACAS,
+});
+
+const fechaLicencia = (iso) => {
+  if (typeof iso !== 'string' || iso === '') return null;
+  const valor = new Date(iso);
+  return Number.isNaN(valor.getTime()) ? null : FECHA_LICENCIA.format(valor);
+};
+
+const diasDeLicencia = (vista) => {
+  const dias = vista?.diasRestantes;
+  return typeof dias === 'number' && Number.isFinite(dias) && dias >= 0 ? Math.trunc(dias) : null;
+};
+
+const tipoDeLicencia = (tipo) =>
+  typeof tipo === 'string' && tipo in LICENSE_KIND_LABELS
+    ? LICENSE_KIND_LABELS[tipo].toLowerCase()
+    : null;
+
+const diasEnLetra = (dias) => `${String(dias)} ${dias === 1 ? 'día' : 'días'}`;
+
+/**
+ * Una línea con el estado de la licencia, a partir de la vista pública que publica identity
+ * (o del `{ error }` que dejó la consulta si no se pudo hacer). **Pura**: la usa el tablero
+ * (`npm run estado`) y el `/estado` del bot para que los dos digan exactamente lo mismo.
+ *
+ * Devuelve `null` cuando la foto no trae licencia (una versión vieja del tablero): así no se
+ * inventa un estado que no se comprobó.
+ */
+export const formatearLicenciaParaEstado = (licencia) => {
+  if (licencia === null || licencia === undefined) return null;
+  if (licencia.error !== undefined) return `no comprobable (${String(licencia.error)})`;
+
+  const cuando = fechaLicencia(licencia.venceEn);
+  const dias = diasDeLicencia(licencia);
+  const restantes = dias === null ? '' : `quedan ${diasEnLetra(dias)}`;
+  const tipo = tipoDeLicencia(licencia.tipo);
+
+  switch (licencia.estado) {
+    case 'trial':
+      return `prueba${cuando === null ? '' : ` hasta el ${cuando}`}${dias === null ? '' : ` · ${restantes}`}`;
+    case 'trial_por_vencer':
+      return `¡la prueba está por vencer!${dias === null ? '' : ` · ${restantes}`}${cuando === null ? '' : ` (vence el ${cuando})`}`;
+    case 'trial_vencida':
+      return `prueba vencida · MODO CONSULTA (se puede ver e imprimir, no editar)`;
+    case 'licencia_vigente':
+      return `${tipo === null ? 'licencia' : `licencia ${tipo}`} vigente${
+        cuando === null ? ' · sin vencimiento' : ` hasta el ${cuando}`
+      }${dias === null ? '' : ` · ${restantes}`}`;
+    case 'licencia_por_vencer':
+      return `${tipo === null ? 'licencia' : `licencia ${tipo}`} por vencer${dias === null ? '' : ` · ${restantes}`}${cuando === null ? '' : ` (vence el ${cuando})`}`;
+    case 'licencia_vencida':
+      return `${tipo === null ? 'licencia' : `licencia ${tipo}`} vencida · MODO CONSULTA (se puede ver e imprimir, no editar)`;
+    case 'reloj_atrasado':
+      return 'reloj del equipo atrasado · MODO CONSULTA hasta que se corrija la hora';
+    default:
+      return typeof licencia.mensaje === 'string' ? licencia.mensaje : 'sin estado de licencia';
+  }
+};
+
+/**
+ * Detalle para el comando `/licencia` del bot: estado, instalación, consultorio y la
+ * **solicitud** que se reenvía al proveedor, más cómo activar. Cuando la vista es la pública
+ * (no hubo `INTERNAL_SERVICE_SECRET`) se dice qué falta, en vez de enseñar campos vacíos.
+ */
+export const formatearLicenciaDetalle = (vista) => {
+  if (vista === null || vista === undefined) {
+    return '⚠ no pude leer el estado de la licencia';
+  }
+  if (vista.error !== undefined) {
+    return `⚠ no pude leer el estado de la licencia: ${String(vista.error)}`;
+  }
+
+  const lineas = ['OdontoCRM · licencia', ''];
+  lineas.push(`Estado: ${typeof vista.mensaje === 'string' ? vista.mensaje : 'sin detalle'}`);
+
+  const tipo = tipoDeLicencia(vista.tipo);
+  if (vista.origen === 'licencia' && tipo !== null) lineas.push(`Tipo: ${tipo}`);
+
+  const cuando = fechaLicencia(vista.venceEn);
+  if (cuando !== null) {
+    lineas.push(`Vence: ${cuando}`);
+  } else if (vista.origen === 'licencia') {
+    lineas.push('Vigencia: sin vencimiento (vitalicia)');
+  }
+
+  // Solo la vista interna trae la instalación y la solicitud ya armada.
+  if (typeof vista.instalacion === 'string') {
+    lineas.push(`Instalación: ${vista.instalacion}`);
+    if (typeof vista.consultorio?.nombre === 'string' && vista.consultorio.nombre !== '') {
+      const rif = typeof vista.consultorio.rif === 'string' && vista.consultorio.rif !== '';
+      lineas.push(
+        `Consultorio: ${vista.consultorio.nombre}${rif ? ` · ${vista.consultorio.rif}` : ''}`,
+      );
+    }
+    if (vista.licencia !== null && vista.licencia !== undefined) {
+      const emitida = fechaLicencia(vista.licencia.emitidaEn);
+      lineas.push(
+        `Licencia: ${String(vista.licencia.id)}${emitida === null ? '' : ` · emitida el ${emitida}`}`,
+      );
+    }
+
+    lineas.push('');
+    if (typeof vista.solicitud?.texto === 'string' && vista.solicitud.texto !== '') {
+      lineas.push('Solicitud (reenvía este mensaje al proveedor):');
+      lineas.push(vista.solicitud.texto);
+    } else {
+      lineas.push('No puedo armar la solicitud: identity no la devolvió.');
+    }
+  } else {
+    lineas.push('');
+    lineas.push(
+      'Faltan los datos de la instalación y la solicitud: sin INTERNAL_SERVICE_SECRET solo se ' +
+        'puede leer la vista pública.',
+    );
+  }
+
+  lineas.push('');
+  lineas.push('Para activar: reenvía a este chat el archivo .lic que te mande el proveedor.');
+  return recortar(lineas.join('\n'));
+};
+
+/** Respuesta del bot cuando la activación salió bien. */
+export const formatearActivacionLicencia = (vista) => {
+  const lineas = ['✔ Licencia activada.'];
+  const tipo = tipoDeLicencia(vista?.tipo);
+  if (tipo !== null) lineas.push(`Tipo: ${tipo}`);
+  const cuando = fechaLicencia(vista?.venceEn);
+  if (cuando !== null) {
+    lineas.push(`Vence: ${cuando}`);
+  } else if (tipo === 'vitalicia') {
+    lineas.push('Sin vencimiento (vitalicia).');
+  }
+  const dias = diasDeLicencia(vista);
+  if (dias !== null) lineas.push(`Quedan ${diasEnLetra(dias)}.`);
+  if (typeof vista?.mensaje === 'string' && vista.mensaje !== '') {
+    lineas.push('');
+    lineas.push(vista.mensaje);
+  }
+  return recortar(lineas.join('\n'));
+};
 
 /* ── Estado del sistema ────────────────────────────────────────────────────── */
 
@@ -91,6 +246,11 @@ export const formatearEstado = (foto, problemas) => {
   if (foto.modoTest?.enabled === true) {
     lineas.push('⚠ MODO TEST activo: los datos son ficticios.');
   }
+
+  // La licencia va arriba, junto al modo test: es lo primero que hay que mirar cuando el
+  // consultorio entra en modo consulta (y lo que se pide renovar).
+  const licencia = formatearLicenciaParaEstado(foto.licencia);
+  if (licencia !== null) lineas.push(`Licencia: ${licencia}`);
 
   const servicios = Array.isArray(foto.servicios) ? foto.servicios : [];
   if (servicios.length > 0) {

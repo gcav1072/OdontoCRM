@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AppShell } from './components/shell/AppShell';
+import { LicenseBannerLive } from './components/shell/LicenseBanner';
 import { MustChangePasswordGate } from './components/shell/MustChangePasswordGate';
 import { NeedsProfileGate } from './components/shell/NeedsProfileGate';
 import { RequireAuth } from './components/shell/RequireAuth';
@@ -28,6 +29,7 @@ import { ReportesPage } from './pages/ReportesPage';
 import { AuditoriaPage } from './pages/AuditoriaPage';
 import { CajaPage } from './pages/CajaPage';
 import { ConfiguracionPage } from './pages/ConfiguracionPage';
+import { LicenciaPage } from './pages/LicenciaPage';
 import { SchedulingPage } from './pages/SchedulingPage';
 import { ScreensPage } from './pages/ScreensPage';
 import { ScreenConsultorioPage } from './pages/ScreenConsultorioPage';
@@ -69,6 +71,7 @@ export const App = () => {
         'reportes',
         'auditoria',
         'configuracion',
+        'licencia',
       ].includes(modulo.id),
   );
 
@@ -77,6 +80,11 @@ export const App = () => {
       {/* Modo test (ADR 0020): el aviso va **fuera** de las rutas para que se vea
           también en el acceso y en las pantallas kiosko, que no pasan por el shell. */}
       <TestModeBannerLive />
+
+      {/* Licenciamiento offline (ADR 0075): el aviso de prueba/vencimiento se lee sin
+          sesión, así que también aparece en el login. Sin aviso (licencia vigente) no
+          pinta nada. */}
+      <LicenseBannerLive />
 
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -264,6 +272,18 @@ export const App = () => {
             element={
               <RequirePermission permission="settings:manage">
                 <ConfiguracionPage />
+              </RequirePermission>
+            }
+          />
+
+          {/* Licenciamiento offline (ADR 0075): estado, solicitud y activación del
+              `.lic`. Solo el titular (`licensing:manage`); el aviso del borde lo ve
+              todo el personal, incluso antes de iniciar sesión. */}
+          <Route
+            path="licencia"
+            element={
+              <RequirePermission permission="licensing:manage">
+                <LicenciaPage />
               </RequirePermission>
             }
           />

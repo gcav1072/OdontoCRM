@@ -57,6 +57,11 @@ export const buildProxyRoutes = (config: GatewayConfig): ProxyRoute[] => {
     config.IDENTITY_URL,
     'Configuración de la aplicación: marca, pantallas y canales (ADR 0060)',
   );
+  add(
+    '/api/v1/licensing',
+    config.IDENTITY_URL,
+    'Licencia de la instalación: estado, solicitud y activación (ADR 0075)',
+  );
 
   add('/api/v1/patients', config.PATIENTS_URL, 'Pacientes y archivos');
 

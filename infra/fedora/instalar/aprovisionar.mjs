@@ -542,6 +542,11 @@ const extrasDe = (nombre) => {
         COOKIE_SECURE: 'true',
         JWT_PRIVATE_KEY_PATH: join(CLAVES, 'jwt-private.pem'),
         JWT_PUBLIC_KEY_PATH: join(CLAVES, 'jwt-public.pem'),
+        // Clave PÚBLICA de licencias (ADR 0075): se despliega con el código, no es un
+        // secreto. Ruta absoluta como el resto de las que no dependen del cwd del proceso.
+        LICENSE_PUBLIC_KEY_PATH: ES_WINDOWS
+          ? join('C:\\OdontoCRM', 'assets', 'licencias', 'licencia-publica.pem')
+          : '/opt/odontocrm/assets/licencias/licencia-publica.pem',
         // El logo que sube el titular va al almacén compartido (ADR 0056): sin
         // `STORAGE_DIR` el servicio escribiría en `./storage/patients` relativo, que bajo
         // `ProtectSystem=strict` es de solo lectura y la subida fallaría con «permiso denegado».

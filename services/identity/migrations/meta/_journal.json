@@ -64,6 +64,13 @@
       "when": 1793326788693,
       "tag": "0008_whatsapp_baileys",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794418955095,
+      "tag": "0009_licencia_offline",
+      "breakpoints": true
     }
   ]
 }

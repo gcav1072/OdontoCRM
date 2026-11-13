@@ -24,7 +24,9 @@ como examen JSONB versionado del servicio de odontograma (mediciones sin valores
 revisión optimista, cierre inmutable y clasificación AAP/EFP sugerida, no automática). Las
 **0072–0074** cambian WhatsApp: Baileys como proveedor por defecto (Cloud API se conserva),
 la sesión Signal cifrada en la base con vinculación por QR/código y la vinculación del
-paciente por `wa.me` con intenciones que aceptan argumento.
+paciente por `wa.me` con intenciones que aceptan argumento. La **0075** incorpora el
+**licenciamiento offline**: prueba de 30 días, licencias mensual/trimestral/anual y modo
+consulta cuando vencen; la **0076** añade las **licencias vitalicias** (sin vencimiento).
 
 > **Numeración de la Fase 11:** el plan de facturación
 > ([`../feat_billing.md`](../feat_billing.md)) numeraba sus cinco ADRs **0043–0047** porque daba por hecho
@@ -108,3 +110,5 @@ paciente por `wa.me` con intenciones que aceptan argumento.
 | [0072](0072-whatsapp-por-baileys.md) | WhatsApp pasa a **Baileys** por defecto (socket saliente, sin webhook); Cloud API se conserva como alternativa. Opt-in, sin botones, ritmo y tope diario, número dedicado | propuesta |
 | [0073](0073-sesion-de-whatsapp-cifrada-y-vinculada-por-qr.md) | La **sesión Signal** de WhatsApp vive cifrada en `odonto_notifications` y se vincula por QR o código desde el panel; máquina de estados, alertas y auditoría | propuesta |
 | [0074](0074-vinculacion-por-wa-me-e-intenciones-con-argumento.md) | Vinculación del paciente por **`wa.me`** e intenciones con argumento en canales sin comandos (`vincular ABC123`, `estado #000123`); desvincular por canal | propuesta |
+| [0075](0075-licenciamiento-offline-y-modo-consulta.md) | Licenciamiento **offline** con JWT EdDSA firmado por el proveedor: prueba de 30 días, licencias mensual/trimestral/anual (revocar = no renovar), atadura a la instalación, modo consulta por permisos y bots de emisión/activación | propuesta |
+| [0076](0076-licencias-vitalicias.md) | Licencias **vitalicias** (sin vencimiento): `venceEn` nullable con coherencia por tipo, siempre vigentes, el modo consulta no llega por tiempo y el emisor las ofrece con `--tipo vitalicia` / `/vitalicia` | propuesta |

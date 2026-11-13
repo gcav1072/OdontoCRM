@@ -85,12 +85,21 @@ describe('guardias de permiso', () => {
     await expect(requirePermission('users:manage')(request)).rejects.toThrowError(/contraseña/);
   });
 
-  it('admin pasa cualquier permiso y requireAnyPermission acepta una de la lista', async () => {
-    const request = fakeRequest(headers({ roles: 'admin', permissions: '' }));
+  it('requireAnyPermission acepta una de la lista y el rol admin no sustituye al permiso', async () => {
+    // Un token real de admin lleva los permisos del rol (ROLE_PERMISSIONS.admin es el catálogo
+    // completo): no hay atajo por rol. En modo consulta el token viene recortado a lectura.
+    const request = fakeRequest(
+      headers({ roles: 'admin', permissions: 'audit:read,users:manage' }),
+    );
     await expect(requirePermission('audit:read')(request)).resolves.toBeUndefined();
     await expect(
       requireAnyPermission(['users:manage', 'audit:read'])(request),
     ).resolves.toBeUndefined();
+
+    const adminRecortado = fakeRequest(headers({ roles: 'admin', permissions: 'patients:read' }));
+    await expect(requirePermission('audit:read')(adminRecortado)).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
 
     const secretario = fakeRequest(headers({ roles: 'secretario', permissions: 'patients:read' }));
     await expect(
@@ -98,12 +107,28 @@ describe('guardias de permiso', () => {
     ).rejects.toThrow();
   });
 
-  it('requireIdentity devuelve la identidad y hasPermission respeta el rol admin', () => {
+  it('hasPermission manda por los permisos del token, no por el rol (modo consulta)', () => {
     const identity = requireIdentity(
       fakeRequest(headers({ roles: 'odontologo', permissions: '' })),
     );
     expect(identity.roles).toEqual(['odontologo']);
     expect(hasPermission(identity, 'clinical:write')).toBe(false);
-    expect(hasPermission({ ...identity, roles: ['admin'] }, 'clinical:write')).toBe(true);
+
+    // Un admin normal lleva todos los permisos en el token: sigue pudiendo todo.
+    expect(
+      hasPermission(
+        { ...identity, roles: ['admin'], permissions: ['clinical:write'] },
+        'clinical:write',
+      ),
+    ).toBe(true);
+
+    // Con la licencia vencida el token se recorta aunque el rol siga siendo `admin`:
+    // ningún atajo por rol puede devolverle la escritura.
+    expect(
+      hasPermission(
+        { ...identity, roles: ['admin'], permissions: ['clinical:read'] },
+        'clinical:write',
+      ),
+    ).toBe(false);
   });
 });

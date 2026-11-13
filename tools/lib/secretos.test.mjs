@@ -136,4 +136,10 @@ describe('las rutas que nunca deben versionarse', () => {
     expect(isForbiddenPath('services/billing/.env.example')).toBe(false);
     expect(isForbiddenPath('services/billing/src/index.ts')).toBe(false);
   });
+
+  it('la clave pública de licencias se versiona; la privada no', () => {
+    expect(isForbiddenPath('assets/licencias/licencia-publica.pem')).toBe(false);
+    expect(isForbiddenPath('licencia-publica.pem')).toBe(true);
+    expect(isForbiddenPath('assets/licencias/licencia-privada.pem')).toBe(true);
+  });
 });

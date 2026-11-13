@@ -44,6 +44,8 @@ const llamar = async (bot, metodo, cuerpo, timeoutMs = TIMEOUT_MS) => {
  * @property {(offset: number, timeoutSeconds: number) => Promise<object[]>} getUpdates
  * @property {(texto: string) => Promise<void>} sendMessage
  * @property {(documento: {filename: string, content: Buffer, mime: string}, pie?: string) => Promise<void>} sendDocument
+ * @property {(fileId: string) => Promise<{ file_path?: string, file_size?: number }>} getFile
+ * @property {(filePath: string) => Promise<Buffer>} descargarArchivo
  * @property {(commands: readonly {command: string, description: string}[]) => Promise<void>} setMyCommands
  * @property {() => Promise<void>} setChatMenuButton
  */
@@ -100,6 +102,35 @@ export const crearBotAdmin = async () => {
       if (datos.ok !== true) {
         throw new Error(`Telegram sendDocument falló: ${datos.description ?? respuesta.status}`);
       }
+    },
+
+    /**
+     * Metadatos de un archivo que llegó por Telegram (`message.document`). Hace falta para
+     * activar una licencia reenviada: primero se pide `getFile` y después se descarga.
+     */
+    getFile: async (fileId) => {
+      const datos = await llamar(bot, 'getFile', { file_id: fileId });
+      return {
+        file_path: typeof datos.file_path === 'string' ? datos.file_path : undefined,
+        file_size: typeof datos.file_size === 'number' ? datos.file_size : undefined,
+      };
+    },
+
+    /**
+     * Descarga un archivo de Telegram por `file_path` (el que devolvió `getFile`) y lo deja
+     * en memoria. Es para el `.lic` de la licencia: unos pocos KB, no un respaldo.
+     *
+     * La URL lleva el token (es como funciona la API de archivos de Telegram): por eso el error
+     * no incluye la URL, solo el código HTTP.
+     */
+    descargarArchivo: async (filePath) => {
+      const respuesta = await fetch(`${bot.apiBase}/file/bot${bot.token}/${filePath}`, {
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!respuesta.ok) {
+        throw new Error(`Telegram no me dio el archivo: HTTP ${String(respuesta.status)}`);
+      }
+      return Buffer.from(await respuesta.arrayBuffer());
     },
 
     /** El menú que aparece al pulsar `/` (idempotente: se registra en cada arranque). */

@@ -49,9 +49,17 @@ export const SECRET_PATTERNS = [
 /** Las plantillas de entorno se versionan a propósito: son las que enseñan qué hay que poner. */
 export const ALLOWED_EXAMPLE = /\.env\.example$/;
 
+/**
+ * La clave **pública** de licencias (ADR 0075/0076) sí se versiona: viaja con la app
+ * para verificar las firmas y no es un secreto. La privada, en cambio, sigue prohibida
+ * (y además está ignorada por Git).
+ */
+export const ALLOWED_LICENSE_PUBLIC_KEY = /(^|\/)assets\/licencias\/licencia-publica\.pem$/;
+
 /** Rutas que jamás deben llegar al repositorio, ni siquiera con un valor de ejemplo dentro. */
 export const isForbiddenPath = (path) => {
   if (ALLOWED_EXAMPLE.test(path)) return false;
+  if (ALLOWED_LICENSE_PUBLIC_KEY.test(path)) return false;
   return (
     /(^|\/)\.env(\.|$)/.test(path) ||
     /\.(pem|key|p12|pfx)$/.test(path) ||

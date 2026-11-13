@@ -81,8 +81,17 @@ export const requireIdentity = (request: FastifyRequest): RequestIdentity => {
   return identity;
 };
 
+/**
+ * Los **permisos del token** son la única autoridad. No hay atajo por rol: el rol
+ * `admin` ya lleva todos los permisos porque `ROLE_PERMISSIONS.admin` es el catálogo
+ * completo al emitir el token. El atajo existía antes del licenciamiento, pero en
+ * modo consulta el token se recorta a solo lectura ([ADR 0075](../../../../docs/adr/0075-licenciamiento-offline-y-modo-consulta.md)):
+ * un `roles: ['admin']` con permisos recortados tiene que quedar bloqueado como
+ * cualquier otro. Si se dejara el atajo, el titular seguiría escribiendo con la
+ * licencia vencida.
+ */
 export const hasPermission = (identity: RequestIdentity, permission: Permission): boolean =>
-  identity.roles.includes('admin') || identity.permissions.includes(permission);
+  identity.permissions.includes(permission);
 
 /**
  * Exige un permiso concreto. Mientras el usuario deba cambiar su contraseña

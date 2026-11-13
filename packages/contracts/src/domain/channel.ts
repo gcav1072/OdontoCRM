@@ -349,6 +349,9 @@ export interface AdminBotCommand {
 export const ADMIN_BOT_COMMANDS: readonly AdminBotCommand[] = [
   { comando: 'start', descripcion: 'Empezar' },
   { comando: 'estado', descripcion: 'Estado del servidor' },
+  // La licencia del consultorio (ADR 0075): estado, solicitud para el proveedor y activación
+  // reenviando el `.lic`. El bot solo **verifica** la firma; la clave privada no está aquí.
+  { comando: 'licencia', descripcion: 'Licencia: estado y activación' },
   { comando: 'respaldos', descripcion: 'Respaldar las bases y recibirlas aquí' },
   // `/respaldos` manda volcados por chat (ad-hoc, para llevárselos); `/respaldo` deja una
   // **copia completa en el servidor** (bases + configuración + almacén) con la misma forma

@@ -299,9 +299,10 @@ Dos cosas que conviene saber antes de lanzarlo:
   `git clone` de la instalación siguiente muere con «esta operación debe ser realizada en un
   árbol de trabajo» y parece un fallo del código. El guion lo detecta y **se niega a seguir
   (código 11)** en vez de dejarte así. Si ya te pasó: abre otra terminal o haz `cd ~`.
-- **Si un `pg_dump` falla, esa base no se borra** y el motivo queda en
-  `<base>.error` dentro del respaldo (el error se enseña en pantalla). La copia es la única
-  red que hay si alguien desinstala una instalación con pacientes dentro.
+- **Si un `pg_dump` falla, se reintenta como administrador y, si tampoco así sale, esa base
+  no se borra** (las demás sí siguen): el motivo queda en `<base>.error` dentro del respaldo
+  (el error se enseña en pantalla). La copia es la única red que hay si alguien desinstala
+  una instalación con pacientes dentro.
 
 ### Una sola fuente de verdad para las credenciales (ADR 0043)
 

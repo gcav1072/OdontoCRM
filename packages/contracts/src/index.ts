@@ -19,6 +19,7 @@ export * from './domain/dossier.js';
 export * from './domain/enums.js';
 export * from './domain/health.js';
 export * from './domain/ics.js';
+export * from './domain/licensing.js';
 export * from './domain/notification.js';
 export * from './domain/odontogram.js';
 export * from './domain/prosthesis.js';

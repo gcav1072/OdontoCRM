@@ -1,0 +1,85 @@
+# =============================================================================
+# OdontoCRM · emisor de licencias del PROVEEDOR (bot de Telegram)
+# Archivo : infra/licencias/odontocrm-licencias.service
+# Destino : /etc/systemd/system/odontocrm-licencias.service
+#
+# **Esto NO es una unidad del consultorio.** Corre en una máquina del proveedor,
+# porque necesita la clave privada con la que se firman las licencias
+# ([ADR 0075](../../docs/adr/0075-licenciamiento-offline-y-modo-consulta.md)).
+# En el servidor de la clínica el bot que existe es otro: `odontocrm-admin-bot`.
+#
+# Escucha los comandos del proveedor y responde con licencias:
+#
+#   /emitir <uuid> <tipo> [--cliente "…"]   emitir (la primera de una instalación)
+#   /renovar <uuid> <tipo>                  renovar (suma días al vencimiento)
+#   /licencia <uuid>                        ver la última licencia
+#   /pendientes [dias]                      vencimientos próximos
+#   /ayuda                                  la lista de comandos
+#
+# Y reenvía solicitudes `ODO-REQ1.…` del consultorio (les pide el tipo y
+# devuelve el `.lic` como documento).
+#
+# Solo responde al chat de `LICENCIA_BOT_CHAT_ID`, configurado en
+# `licencia-bot.env` (directorio de configuración del usuario, fuera del repo).
+#
+# ANTES DE INSTALARLA (ver INSTALL.md):
+#   1. Ajusta `User=`, `Group=` y `WorkingDirectory=` a tu máquina.
+#   2. Crea los directorios de configuración y datos del usuario que corre el
+#      bot (ReadWritePaths exige que existan antes de arrancar):
+#         mkdir -p ~/.config/odontocrm ~/.local/share/odontocrm
+#   3. Genera las claves una vez:  npm run licencia -- claves --publicar
+#   4. Crea `licencia-bot.env` con el token del BotFather y el chat id.
+#
+# Instalación:
+#   sudo install -m 0644 -o root -g root \
+#     infra/licencias/odontocrm-licencias.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now odontocrm-licencias.service
+#
+# Ver cómo va:
+#   systemctl status odontocrm-licencias
+#   journalctl -u odontocrm-licencias -n 50 --no-pager
+# =============================================================================
+
+[Unit]
+Description=OdontoCRM · emisor de licencias del proveedor (bot de Telegram)
+Documentation=file:///opt/odontocrm-proveedor/infra/licencias/INSTALL.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# AJUSTA estos dos valores a tu usuario del servidor del proveedor.
+User=licencias
+Group=licencias
+
+# AJUSTA esta ruta al clon del repositorio en la máquina que emite.
+WorkingDirectory=/opt/odontocrm-proveedor
+
+Environment=NODE_ENV=production
+Environment=TZ=America/Caracas
+
+ExecStart=/usr/bin/node tools/licencia-bot.mjs
+
+# `on-failure` a propósito: sin credenciales configuradas la herramienta sale
+# con 0 y no hay que reiniciarla en bucle.
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+KillSignal=SIGTERM
+
+# --- Endurecimiento ----------------------------------------------------------
+NoNewPrivileges=true
+ProtectSystem=strict
+# El bot escribe en el directorio de configuración (clave privada, bot env) y en
+# el de datos (registro y .lic emitidos) del usuario. ProtectSystem=strict deja
+# todo lo demás de solo lectura. Los directorios deben existir antes de arrancar.
+ReadWritePaths=%h/.config/odontocrm %h/.local/share/odontocrm
+ProtectHome=false
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true

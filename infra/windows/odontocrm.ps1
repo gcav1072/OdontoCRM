@@ -105,6 +105,9 @@ function Ayuda {
   Write-Host '  odontocrm arrancar        Arranca lo que falte y comprueba.'
   Write-Host '  odontocrm reiniciar       Reinicia todo (aplica configuración).'
   Write-Host '  odontocrm compilar        Solo compila.  ·  odontocrm recompilar  Compila y reinicia.'
+  Write-Host '  odontocrm licencia [estado|solicitud|activar <archivo.lic>]'
+  Write-Host '                            Estado de la licencia, el texto de solicitud para el'
+  Write-Host '                            proveedor y activación del archivo firmado.'
   Write-Host '  odontocrm modo-test <on|off|estado>'
   Write-Host '  odontocrm purgar-prueba [--si] [--desactivar|--borrar]'
   Write-Host '                            Quita las cuentas de PRUEBA que el seed creaba (recepcion y'
@@ -253,6 +256,13 @@ switch ($Orden) {
     # El código de salida es el contrato: 0 = sin problemas, 1 = hay alertas (el
     # temporizador y los guiones lo comprueban). Igual que arriba, sin `exit (…)`.
     Invocar-Node (@((Join-Path $OdontoCode 'tools\estado.mjs'), '--alertas') + $Resto)
+    exit $script:CodigoDeSalida
+  }
+
+  'licencia' {
+    Afirmar-Administrador
+    # Igual que `estado`: a nivel de instrucción, el código de salida por la variable.
+    Invocar-Node (@((Join-Path $OdontoCode 'tools\licencia-servidor.mjs')) + $Resto)
     exit $script:CodigoDeSalida
   }
 

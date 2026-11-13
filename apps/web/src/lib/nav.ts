@@ -7,6 +7,7 @@ import {
   ContactRound,
   House,
   IdCard,
+  KeyRound,
   MonitorPlay,
   Receipt,
   ScrollText,
@@ -44,7 +45,8 @@ export type ModuleId =
   | 'usuarios'
   | 'miPerfil'
   | 'pantallas'
-  | 'configuracion';
+  | 'configuracion'
+  | 'licencia';
 
 export interface ModuleDefinition {
   id: ModuleId;
@@ -191,6 +193,15 @@ export const MODULES: Readonly<Record<ModuleId, ModuleDefinition>> = {
     // Solo el admin: son ajustes que afectan a toda la clínica (marca, canales, sillones).
     permission: 'settings:manage',
   },
+  licencia: {
+    id: 'licencia',
+    path: '/licencia',
+    labelKey: 'modulo.licencia.titulo',
+    descriptionKey: 'modulo.licencia.descripcion',
+    icon: KeyRound,
+    // Solo el titular: ver, solicitar y activar la licencia de la instalación (ADR 0075).
+    permission: 'licensing:manage',
+  },
 };
 
 export interface NavSection {
@@ -214,7 +225,10 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     ],
   },
   { titleKey: 'menu.seccion.analisis', modules: ['reportes', 'auditoria'] },
-  { titleKey: 'menu.seccion.admin', modules: ['usuarios', 'pantallas', 'configuracion'] },
+  {
+    titleKey: 'menu.seccion.admin',
+    modules: ['usuarios', 'pantallas', 'configuracion', 'licencia'],
+  },
 ];
 
 /** Módulo al que pertenece una ruta; `null` si es una pantalla sin módulo. */

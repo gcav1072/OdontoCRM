@@ -22,6 +22,8 @@
  * 5. **Los envíos atascados** de notificaciones: mensajes en cola cuyo siguiente
  *    intento ya venció hace rato.
  * 6. **El modo test**: si está activo, avisa en cada foto (los datos son ficticios).
+ * 7. **La licencia**: prueba o licencia vigente, por vencer o vencida (modo consulta). Se
+ *    lee de la ruta pública de identity; si no se puede comprobar, se dice y nada más.
  *
  * Con `--alertas` imprime solo los problemas y devuelve código 1: así lo puede
  * vigilar un `systemd` timer (`infra/fedora/systemd/odontocrm-alertas.*`) sin que
@@ -34,8 +36,9 @@ import { resolve } from 'node:path';
 
 import pg from 'pg';
 
-import { resolveTestMode } from '@odontocrm/contracts';
+import { publicLicensingViewSchema, resolveTestMode } from '@odontocrm/contracts';
 
+import { formatearLicenciaParaEstado } from './lib/admin-informes.mjs';
 import { alertasDe, bytes, hace } from './lib/alertas.mjs';
 
 import {
@@ -622,6 +625,38 @@ const revisarDisco = async () => {
   }
 };
 
+/** Tope de la consulta de licencia: el tablero no puede quedarse esperando a identity. */
+const TIMEOUT_LICENCIA_MS = 2_000;
+
+/**
+ * Estado de la licencia por la ruta **pública** de identity (`GET /api/v1/licensing/public`),
+ * que no exige sesión ni secreto: es la misma vista que pinta el banner de la interfaz.
+ *
+ * El tablero **no** convierte esto en una alerta (el temporizador de 5 minutos repetiría el
+ * aviso cada vez); solo lo enseña. Si identity no responde o la ruta todavía no existe, se
+ * guarda el motivo y el diagnóstico del sistema sigue: una licencia sin comprobar no puede
+ * tumbar el tablero.
+ */
+const revisarLicencia = async (entorno) => {
+  const base = (process.env.IDENTITY_URL ?? entorno.IDENTITY_URL ?? 'http://127.0.0.1:4001')
+    .trim()
+    .replace(/\/+$/u, '');
+  try {
+    const respuesta = await fetch(`${base}/api/v1/licensing/public`, {
+      signal: AbortSignal.timeout(TIMEOUT_LICENCIA_MS),
+    });
+    const cuerpo = await respuesta.json().catch(() => null);
+    if (!respuesta.ok) return { error: `HTTP ${String(respuesta.status)}` };
+    const vista = publicLicensingViewSchema.safeParse(cuerpo);
+    return vista.success ? vista.data : { error: 'respuesta inesperada de identity' };
+  } catch (fallo) {
+    // `fetch` envuelve el error real en `cause` (ECONNREFUSED, ENOTFOUND…): lo que orienta.
+    const causa = fallo instanceof Error ? fallo.cause : undefined;
+    if (causa instanceof Error && typeof causa.code === 'string') return { error: causa.code };
+    return { error: fallo instanceof Error ? fallo.message : String(fallo) };
+  }
+};
+
 const estadoDelModoTest = (entorno) =>
   resolveTestMode({
     nodeEnv: entorno.NODE_ENV ?? process.env.NODE_ENV ?? 'development',
@@ -639,18 +674,20 @@ export const tomarFoto = async () => {
   const permisos = revisarPermisos();
   const datos = permisos.envLegible ? await revisarDatos() : [];
   const systemd = revisarSupervisor();
-  const [bases, cola, envios, reportes, disco, cartasMuertas] = await Promise.all([
+  const [bases, cola, envios, reportes, disco, cartasMuertas, licencia] = await Promise.all([
     revisarBases(entorno, datos),
     revisarCola(permisos.envLegible),
     revisarEnvios(permisos.envLegible),
     revisarReportes(permisos.envLegible),
     revisarDisco(),
     revisarCartasMuertas(permisos.envLegible),
+    revisarLicencia(entorno),
   ]);
 
   return {
     generadoEn: ahora().toISOString(),
     modoTest: estadoDelModoTest(entorno),
+    licencia,
     servicios: servicios.servicios,
     bases,
     cola,
@@ -665,6 +702,21 @@ export const tomarFoto = async () => {
 };
 
 // ── Presentación ──────────────────────────────────────────────────────────────
+
+/** Color de la marca de la licencia: rojo si hay modo consulta, ámbar si está por vencer. */
+const marcaDeLicencia = (licencia) => {
+  switch (licencia?.estado) {
+    case 'trial_vencida':
+    case 'licencia_vencida':
+    case 'reloj_atrasado':
+      return color.error('✖');
+    case 'trial_por_vencer':
+    case 'licencia_por_vencer':
+      return color.aviso('!');
+    default:
+      return licencia?.error === undefined ? color.ok('✔') : color.aviso('!');
+  }
+};
 
 const tablero = (foto) => {
   const problemas = alertasDe(foto);
@@ -681,6 +733,13 @@ const tablero = (foto) => {
     lineas.push(
       `  ${color.aviso('! MODO TEST activo')}: los datos son ficticios y los envíos están bloqueados.`,
     );
+  }
+
+  // La licencia, arriba: cuando el consultorio está en modo consulta es lo primero que hay que
+  // ver (y lo que se renueva). Se pinta con la misma regla que el `/estado` del bot.
+  const lineaDeLicencia = formatearLicenciaParaEstado(foto.licencia);
+  if (lineaDeLicencia !== null) {
+    lineas.push(`  ${marcaDeLicencia(foto.licencia)} Licencia: ${lineaDeLicencia}`);
   }
 
   if (!sinServicios) {

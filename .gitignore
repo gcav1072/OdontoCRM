@@ -62,3 +62,16 @@ desktop.ini
 # ─── PM2 ─────────────────────────────────────────────────────────────────────
 .pm2/
 pm2-*.log
+
+# ── Licencias (ADR 0075) ─────────────────────────────────────────────────────
+# La clave PÚBLICA sí se versiona (assets/licencias/licencia-publica.pem). La
+# privada, el registro del proveedor y los .lic emitidos viven FUERA del repo;
+# esto es la red de seguridad para que un descuido no los versione.
+#
+# OJO: la regla general `*.pem` de arriba (claves TLS y del JWT) ignoraría
+# también la pública, que a propósito viaja con la app. Esta excepción la rescata.
+!assets/licencias/licencia-publica.pem
+**/licencia-privada*.pem
+**/*-privada.pem
+**/licencia-bot.env
+var/licencias/

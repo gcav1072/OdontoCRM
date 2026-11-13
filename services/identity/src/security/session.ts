@@ -4,7 +4,6 @@ import {
   MAX_FAILED_ATTEMPTS,
   REFRESH_GRACE_SECONDS,
   REFRESH_TOKEN_TTL_SECONDS,
-  permissionsForRoles,
   type Role,
 } from '@odontocrm/contracts';
 import type { IdentityDb } from '../db/client.js';
@@ -16,6 +15,8 @@ import {
   type PrivateKey,
 } from '@odontocrm/kernel';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+
+import { sessionPermissions } from '../licensing/licensing-service.js';
 
 export { ACCESS_TOKEN_TTL_SECONDS, LOCK_MINUTES, MAX_FAILED_ATTEMPTS, REFRESH_TOKEN_TTL_SECONDS };
 
@@ -59,7 +60,13 @@ export const getRolesForUser = async (db: IdentityDb, userId: string): Promise<R
   return rows.map((row) => row.role as Role);
 };
 
+/**
+ * Firma el token de acceso con los permisos **efectivos**. En modo consulta (prueba
+ * o licencia vencida) `sessionPermissions` deja solo los de lectura: es el único
+ * cambio que necesitan los 9 servicios para respetar la licencia (ADR 0075).
+ */
 const signFor = async (
+  db: IdentityDb,
   privateKey: PrivateKey,
   user: SessionUser,
   roles: Role[],
@@ -71,7 +78,7 @@ const signFor = async (
       username: user.username,
       fullName: user.fullName,
       roles,
-      permissions: permissionsForRoles(roles),
+      permissions: await sessionPermissions(db, roles),
       mustChangePassword: user.mustChangePassword,
       needsProfile: user.needsProfile,
       sid: sessionId,
@@ -108,7 +115,7 @@ export const issueSession = async (
     userAgent: options.context.userAgent,
   });
 
-  const accessToken = await signFor(options.privateKey, options.user, options.roles, sessionId);
+  const accessToken = await signFor(db, options.privateKey, options.user, options.roles, sessionId);
 
   return {
     accessToken,

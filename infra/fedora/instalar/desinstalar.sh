@@ -18,9 +18,11 @@
 #   1. guarda /etc/odontocrm (los secretos) en /root/odontocrm-antes-de-desinstalar-…
 #   2. vuelca las bases con pg_dump en ese mismo directorio (0600, solo root)
 #
-# Si un volcado falla, **esa base NO se borra** (y se dice por qué: el error de
-# `pg_dump` se guarda en `<base>.error` y se enseña). La copia es la única red que
-# hay si alguien desinstala una instalación con pacientes dentro.
+# Si un volcado falla, se **reintenta como administrador** (el rol del servicio no
+# siempre puede leer toda la base) y, si tampoco así sale, **esa base NO se borra** y se
+# dice por qué: el error de `pg_dump` se guarda en `<base>.error` y se enseña. Las demás
+# se borran igual. La copia es la única red que hay si alguien desinstala una instalación
+# con pacientes dentro.
 #
 # **Sal antes de lanzarlo si tu terminal está dentro de `/opt/odontocrm` o de
 # `/etc/odontocrm`**: borrar el directorio donde vive la terminal la deja rota
@@ -66,9 +68,16 @@ export DRY_RUN
 # quien reinstala tiene que ver que sus adjuntos y sus respaldos siguen ahí.
 UNIDADES=()
 for s in "${SERVICIOS[@]}"; do UNIDADES+=("odontocrm@$s.service"); done
+# La PLANTILLA de la unidad (`odontocrm@.service`) y los dos del simulacro de restauración
+# no son instancias: `systemctl disable odontocrm@identity` no las toca y antes se quedaban
+# en /etc/systemd/system. El temporizador de verificación seguía ENABLED y con su aviso
+# semanal después de «desinstalar» (trampa del 2026-11-11; el hermano de Windows ya la
+# tenía resuelta desde el 2026-10-14 con la cuarta tarea programada).
+UNIDADES+=(odontocrm@.service)
 UNIDADES+=(odontocrm-gateway.service odontocrm-admin-bot.service odontocrm-alertas.service odontocrm-alertas.timer)
 UNIDADES+=(odontocrm-red.service odontocrm-red.timer)
 UNIDADES+=(odontocrm-backup.service odontocrm-backup.timer)
+UNIDADES+=(odontocrm-verificar-respaldo.service odontocrm-verificar-respaldo.timer)
 RUTAS_FIJAS=("$CODE_DIR" "$ETC_DIR" /usr/local/bin/odontocrm /etc/logrotate.d/odontocrm)
 RUTAS_FIJAS+=(/etc/nginx/conf.d/odontocrm.conf /etc/dnsmasq.d/odontocrm.conf)
 RUTAS_FIJAS+=(/etc/pki/tls/certs/odontocrm.crt /etc/pki/tls/private/odontocrm.key)
@@ -82,7 +91,8 @@ if (( ! SI )); then
   for u in "${UNIDADES[@]}"; do printf '      %s\n' "$u"; done
   printf '\n  %sCódigo, secretos y proxy%s\n' "$C_TI" "$C_RE"
   for r in "${RUTAS_FIJAS[@]}"; do printf '      %s\n' "$r"; done
-  printf '\n  %sBases y roles de PostgreSQL%s (los que digan los .env de %s)\n' "$C_TI" "$C_RE" "$ETC_DIR"
+  printf '\n  %sBases y roles de PostgreSQL%s (los que digan los .env de %s, o del respaldo\n' "$C_TI" "$C_RE" "$ETC_DIR"
+  printf '  anterior si una corrida a medias ya borró ese directorio)\n'
   printf '\n  %sDatos%s (se conservan con --conservar-datos)\n' "$C_TI" "$C_RE"
   for r in "${RUTAS_DATOS[@]}"; do printf '      %s\n' "$r"; done
   echo
@@ -136,9 +146,22 @@ quitar() { # $1 = ruta · $2 = cómo llamarlo en el mensaje
 # ── Las bases y los roles, según los propios .env (no se adivinan nombres) ───
 # El usuario de la URL ES el rol, y la base va al final: así vale también para una
 # clínica que haya renombrado sus bases.
+#
+# Si una corrida anterior YA borró /etc/odontocrm (este guion lo hace en el paso 4) y se
+# quedó a medias, las credenciales siguen en el respaldo que esa corrida dejó: se usan
+# esas. Antes, un reintento decía «no pude leer ninguna DATABASE_URL» y las bases se
+# quedaban ahí sin que el guion pudiera ni verlas.
+DIR_ENV_BASES="$ETC_DIR"
+if [[ ! -d "$DIR_ENV_BASES" ]]; then
+  anterior="$(ls -1d /root/odontocrm-antes-de-desinstalar-*/etc-odontocrm 2>/dev/null | sort -r | head -n 1 || true)"
+  if [[ -n "$anterior" ]]; then
+    DIR_ENV_BASES="$anterior"
+    av "no hay $ETC_DIR; uso las credenciales que guardó la corrida anterior: $DIR_ENV_BASES"
+  fi
+fi
+
 bases=()
 roles=()
-compartidas=()
 anotar() { # $1 = url
   local url="$1" resto rol base
   [[ "$url" == postgres://* ]] || return 0
@@ -149,10 +172,10 @@ anotar() { # $1 = url
   bases+=("$base"); roles+=("${rol:-postgres}")
 }
 for s in "${SERVICIOS[@]}"; do
-  anotar "$(leer_clave_entorno "$ETC_DIR/$s.env" DATABASE_URL)"
-  anotar "$(leer_clave_entorno "$ETC_DIR/$s.env" EVENTS_DATABASE_URL)"
+  anotar "$(leer_clave_entorno "$DIR_ENV_BASES/$s.env" DATABASE_URL)"
+  anotar "$(leer_clave_entorno "$DIR_ENV_BASES/$s.env" EVENTS_DATABASE_URL)"
 done
-[[ ${#bases[@]} -gt 0 ]] || av "no pude leer ninguna DATABASE_URL de $ETC_DIR (¿ya estaba desinstalado?)"
+[[ ${#bases[@]} -gt 0 ]] || av "no pude leer ninguna DATABASE_URL de $DIR_ENV_BASES (¿ya estaba desinstalado?)"
 
 # La URL con la que se conecta una base: la del servicio que la usa, o la de la cola de
 # eventos (que comparten los ocho). Se devuelve ENTERA: es la misma cadena que el servicio
@@ -160,8 +183,8 @@ done
 url_de_base() { # $1 = base de datos
   local s url
   for s in "${SERVICIOS[@]}"; do
-    for url in "$(leer_clave_entorno "$ETC_DIR/$s.env" DATABASE_URL)" \
-      "$(leer_clave_entorno "$ETC_DIR/$s.env" EVENTS_DATABASE_URL)"; do
+    for url in "$(leer_clave_entorno "$DIR_ENV_BASES/$s.env" DATABASE_URL)" \
+      "$(leer_clave_entorno "$DIR_ENV_BASES/$s.env" EVENTS_DATABASE_URL)"; do
       if [[ -n "$url" && "${url##*/}" == "$1" ]]; then
         printf '%s' "$url"
         return 0
@@ -170,20 +193,75 @@ url_de_base() { # $1 = base de datos
   done
   return 1
 }
-fallos_respaldo=0
-solo_archivos=0
+
+# Ruta ABSOLUTA de las herramientas: `runuser` puede no heredar el PATH con el que se
+# ejecutó el guion (los binarios de PostgreSQL del repositorio PGDG viven en
+# /usr/pgsql-18/bin, no en /usr/bin), y el segundo intento del volcado tiene que
+# encontrarlas igual que el primero.
+PG_DUMP="$(command -v pg_dump 2>/dev/null || true)"
+RUNUSER="$(command -v runuser 2>/dev/null || true)"
+
+# URL del administrador apuntando a una base concreta. `--admin-url` apunta a la base
+# «postgres»; se cambia solo el último segmento de la ruta y se conservan los parámetros
+# (por ejemplo la forma con socket: `postgres://usuario@/postgres?host=/var/run/postgresql`).
+url_admin_de_base() { # $1 = base de datos
+  local base="$1" sin_consulta consulta=""
+  if [[ "$ADMIN_URL" == *\?* ]]; then
+    sin_consulta="${ADMIN_URL%%\?*}"
+    consulta="?${ADMIN_URL#*\?}"
+  else
+    sin_consulta="$ADMIN_URL"
+  fi
+  printf '%s/%s%s' "${sin_consulta%/*}" "$base" "$consulta"
+}
+
+# Segundo intento del volcado, ya como administrador. Hace falta cuando dentro de una base
+# hay objetos de otro dueño (por ejemplo un esquema `pgboss` que dejó una corrida de
+# desarrollo): el rol del servicio no puede ni leerlos y `pg_dump` falla aunque los datos
+# estén intactos. Aquí ya somos root y el paso 5 necesita el administrador de todos modos,
+# así que no hay ninguna credencial nueva que pedir.
+volcar_como_admin() { # $1 = base de datos · escribe el volcado por la salida estándar
+  local base="$1"
+  if [[ -n "${ADMIN_URL:-}" ]]; then
+    "$PG_DUMP" "$(url_admin_de_base "$base")"
+  elif [[ -n "$RUNUSER" ]]; then
+    "$RUNUSER" -u postgres -- "$PG_DUMP" --no-password -d "$base"
+  else
+    return 1
+  fi
+}
+
+# Bases cuya copia de seguridad no se pudo hacer. Solo esas se conservan: antes un único
+# fallo (un objeto ajeno dentro de una base) bloqueaba también las nueve que SÍ se habían
+# volcado, y el resumen decía que «no se borraron» todas.
+sin_respaldo=()
+base_sin_respaldo() { # $1 = base de datos
+  local b
+  for b in "${sin_respaldo[@]}"; do [[ "$b" == "$1" ]] && return 0; done
+  return 1
+}
 
 # ── 1. Copia de seguridad de los secretos y de los datos ────────────────────
 paso '1/6 · Copia antes de borrar'
+# El directorio del respaldo se crea SIEMPRE: si /etc/odontocrm ya no está (reintento de
+# una corrida a medias) pero las bases se conocen por el respaldo anterior, los volcados
+# y sus .error tienen que poder escribirse igual.
+ejecutar install -d -m 0700 "$RESPALDO"
 if [[ -d "$ETC_DIR" ]]; then
-  ejecutar install -d -m 0700 "$RESPALDO"
   ejecutar cp -a "$ETC_DIR" "$RESPALDO/etc-odontocrm"
   if (( DRY_RUN )); then detalle "se copiaría $ETC_DIR → $RESPALDO/etc-odontocrm"
   else ok "secretos → $RESPALDO/etc-odontocrm (0600)"; fi
 else
   av "no hay $ETC_DIR: nada que copiar"
 fi
-if [[ ${#bases[@]} -gt 0 ]] && command -v pg_dump >/dev/null; then
+if [[ ${#bases[@]} -eq 0 ]]; then
+  av 'sin bases que volcar'
+elif [[ -z "$PG_DUMP" ]] && (( ! DRY_RUN )); then
+  # Sin copia no se borra nada: es la única red que hay si alguien desinstala una
+  # instalación con pacientes dentro. (Antes se seguía adelante y se borraban igual.)
+  av 'no encuentro pg_dump: NO se borrará ninguna base (no habría copia)'
+  sin_respaldo=("${bases[@]}")
+else
   for i in "${!bases[@]}"; do
     base="${bases[$i]}"
     # Se vuelca con la URL COMPLETA que usa ese servicio, no con las piezas que uno
@@ -196,34 +274,42 @@ if [[ ${#bases[@]} -gt 0 ]] && command -v pg_dump >/dev/null; then
       detalle "[dry-run] pg_dump $base → $RESPALDO/$base.sql"
       continue
     fi
-    if [[ -z "$url" ]]; then
-      av "no encuentro la credencial de $base en $ETC_DIR: no la puedo volcar"
-      continue
-    fi
+    destino="$RESPALDO/$base.sql"
     error="$RESPALDO/$base.error"
-    if pg_dump "$url" >"$RESPALDO/$base.sql" 2>"$error"; then
-      chmod 0600 "$RESPALDO/$base.sql"
+    : >"$error"
+    if [[ -n "$url" ]]; then
+      if "$PG_DUMP" "$url" >"$destino" 2>"$error"; then
+        chmod 0600 "$destino"
+        rm -f "$error"
+        ok "datos → $destino"
+        continue
+      fi
+    else
+      printf 'no encontré la credencial de %s en %s\n' "$base" "$DIR_ENV_BASES" >>"$error"
+    fi
+    # El rol del servicio puede no leer TODA la base (un esquema heredado de una corrida
+    # de desarrollo con otro dueño, por ejemplo): se reintenta como administrador, que es
+    # lo que el paso 5 necesita de todos modos. Solo si los dos intentos fallan esa base
+    # concreta se conserva; las demás se borran igual.
+    printf '\n--- reintento como administrador ---\n' >>"$error"
+    if volcar_como_admin "$base" >"$destino" 2>>"$error"; then
+      chmod 0600 "$destino"
       rm -f "$error"
-      ok "datos → $RESPALDO/$base.sql"
+      ok "datos → $destino (con el administrador)"
     else
       # Un `.sql` a medias engaña (parece una copia y no lo es): se quita.
-      rm -f "$RESPALDO/$base.sql"
+      rm -f "$destino"
       chmod 0600 "$error" 2>/dev/null || true
-      av "no pude volcar $base (la base NO se tocará si no se puede copiar):"
+      av "no pude volcar $base (esa base NO se borrará):"
       sed -n '1,3p' "$error" 2>/dev/null | sed 's/^/        /'
       detalle "el detalle completo está en $error"
-      fallos_respaldo=$((fallos_respaldo + 1))
+      sin_respaldo+=("$base")
     fi
   done
-else
-  av 'sin bases que volcar (o sin pg_dump)'
 fi
-# Sin copia de los datos no se borra NADA de la base: es la única red que hay si alguien
-# desinstala por error una instalación con pacientes.
-if (( fallos_respaldo > 0 )) && (( ! DRY_RUN )); then
-  err "no pude copiar $fallos_respaldo base(s): NO las voy a borrar"
-  detalle "mira los .error de $RESPALDO, arréglalo y repite (o borra las bases a mano si estás seguro)"
-  solo_archivos=1
+if (( ${#sin_respaldo[@]} > 0 )) && (( ! DRY_RUN )); then
+  err "no pude copiar ${#sin_respaldo[@]} base(s): solo esas no se borrarán"
+  detalle "las demás siguen adelante; mira los .error de $RESPALDO y repite para terminar de limpiar"
 fi
 
 # ── 2. Los servicios de systemd ─────────────────────────────────────────────
@@ -283,7 +369,7 @@ if [[ ${#bases[@]} -gt 0 ]]; then
       detalle "[dry-run] DROP DATABASE IF EXISTS \"$base\" WITH (FORCE); DROP ROLE IF EXISTS \"$rol\";"
       continue
     fi
-    if (( solo_archivos )); then
+    if base_sin_respaldo "$base"; then
       av "no borro la base $base: su copia de seguridad falló (mira $RESPALDO)"
       continue
     fi
@@ -371,9 +457,10 @@ printf '\n%s══════════════════════�
   printf '%s  Desinstalación terminada%s\n' "$C_TI" "$C_RE"
 printf '%s══════════════════════════════════════════════════════════════════%s\n\n' "$C_TI" "$C_RE"
 [[ -d "$RESPALDO" ]] && printf '  Lo que había, guardado en:\n      %s\n\n' "$RESPALDO"
-if (( solo_archivos )) && (( ! DRY_RUN )); then
-  printf '  %sLas bases NO se han borrado%s: su copia de seguridad falló (mira los .error\n' "$C_TI" "$C_RE"
-  printf '  de %s). Arréglalo y repite, o bórralas a mano si estás seguro.\n\n' "$RESPALDO"
+if (( ${#sin_respaldo[@]} > 0 )) && (( ! DRY_RUN )); then
+  printf '  %sEstas bases NO se han borrado%s (su copia de seguridad falló): %s\n' \
+    "$C_TI" "$C_RE" "${sin_respaldo[*]}"
+  printf '  Mira los .error de %s, arréglalo y repite para terminar de limpiar.\n\n' "$RESPALDO"
 fi
 printf '  Para volver a instalarlo desde cero:\n'
 printf '      sudo bash %s/instalar.sh\n\n' "$INSTALADOR_DIR"
