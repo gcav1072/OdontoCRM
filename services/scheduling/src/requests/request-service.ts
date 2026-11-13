@@ -137,6 +137,8 @@ export const listRequests = async (
   }
   if (filters.channel !== undefined)
     conditions.push(eq(appointmentRequests.channel, filters.channel));
+  if (filters.patientId !== undefined)
+    conditions.push(eq(appointmentRequests.patientId, filters.patientId));
 
   const search = filters.search?.trim() ?? '';
   if (search !== '') {

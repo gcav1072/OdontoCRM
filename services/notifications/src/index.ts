@@ -31,6 +31,7 @@ import {
 import { handleDomainEvent, publishMessageEvent } from './consumer.js';
 import { avisarFalloAlPaciente, handleInbound } from './core/asistente.js';
 import { createNotificationsDatabase } from './db/client.js';
+import { createDocumentLoader } from './documents.js';
 import { createInternalClients } from './internal-client.js';
 import { ensureDefaultTemplates, processQueue } from './messaging.js';
 import { createNotificationsServer } from './server.js';
@@ -225,6 +226,7 @@ const main = async (): Promise<void> => {
     try {
       const result = await processQueue(database.db, canales.registry, config, {
         appointmentLoader: (id) => clients.getAppointment(id),
+        documentLoader: createDocumentLoader(clients),
         onResult: async (info) => {
           await publishMessageEvent(database.db, {
             topic: info.ok ? EVENT_TOPICS.messageSent : EVENT_TOPICS.messageFailed,

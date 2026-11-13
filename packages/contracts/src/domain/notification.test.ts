@@ -13,18 +13,29 @@ import {
 } from './ics.js';
 import {
   ANTI_FLOOD_MAX_MESSAGES,
+  BOT_CONVERSATION_STATES,
+  BOT_STEPS,
   DEFAULT_MESSAGE_TEMPLATES,
+  DOCUMENT_NOTIFICATION_KINDS,
+  MAX_PATIENT_CANCEL_CUTOFF_DAYS,
+  MAX_REMINDER_DAYS_BEFORE,
   NOTIFICATION_MAX_ATTEMPTS,
   NOTIFICATION_RETRY_DELAYS_SECONDS,
   NOTIFICATION_TEMPLATE_KEYS,
+  REMINDER_SEND_HOUR_MAX,
+  REMINDER_SEND_HOUR_MIN,
   botDraftSchema,
   markContactedSchema,
   maskDocument,
   maskPhone,
   messageTemplateInputSchema,
   normalizeBotName,
+  notificationSettingsInputSchema,
+  notificationSettingsSchema,
   parseBotDate,
+  patientChannelSchema,
   renderMessage,
+  sendDocumentNotificationSchema,
 } from './notification.js';
 
 describe('asistente: nombre', () => {
@@ -137,6 +148,167 @@ describe('borrador de la conversación', () => {
     });
     expect(filled.docType).toBe('V');
     expect(botDraftSchema.safeParse({ docType: 'X' }).success).toBe(false);
+  });
+
+  it('guarda el modo de corrección y los intentos de verificación (v1.2)', () => {
+    const empty = botDraftSchema.parse({});
+    expect(empty.editingSingleField).toBe(false);
+    expect(empty.verifyAttempts).toBe(0);
+    expect(empty.flow).toBeNull();
+
+    const editando = botDraftSchema.parse({
+      editingSingleField: true,
+      verifyAttempts: 2,
+      flow: 'nueva',
+    });
+    expect(editando.editingSingleField).toBe(true);
+    expect(editando.verifyAttempts).toBe(2);
+    expect(editando.flow).toBe('nueva');
+    expect(botDraftSchema.safeParse({ verifyAttempts: 4 }).success).toBe(false);
+    expect(botDraftSchema.safeParse({ flow: 'otra' }).success).toBe(false);
+  });
+});
+
+describe('v1.2: pasos del asistente', () => {
+  it('la cédula es el Paso 1 de 7 y la confirmación el último', () => {
+    expect(BOT_STEPS).toHaveLength(7);
+    expect(BOT_STEPS[0]).toBe('documento');
+    expect(BOT_STEPS).toEqual([
+      'documento',
+      'nombre',
+      'telefono',
+      'nacimiento',
+      'sexo',
+      'motivo',
+      'confirmacion',
+    ]);
+  });
+
+  it('los estados nuevos del flujo existen', () => {
+    for (const estado of ['verificar_identidad', 'corregir_menu', 'confirmar_desvinculacion']) {
+      expect(BOT_CONVERSATION_STATES).toContain(estado);
+    }
+  });
+
+  it('las plantillas de los pasos llevan la numeración correcta', () => {
+    const bodyOf = (key: string): string =>
+      DEFAULT_MESSAGE_TEMPLATES.find((template) => template.key === key)?.body ?? '';
+    expect(bodyOf('pedir_documento')).toContain('Paso 1 de 7');
+    expect(bodyOf('pedir_nombre')).toContain('Paso 2 de 7');
+    expect(bodyOf('pedir_telefono')).toContain('Paso 3 de 7');
+    expect(bodyOf('pedir_nacimiento')).toContain('Paso 4 de 7');
+    expect(bodyOf('pedir_sexo')).toContain('Paso 5 de 7');
+    expect(bodyOf('pedir_motivo')).toContain('Paso 6 de 7');
+    expect(bodyOf('confirmar')).toContain('Paso 7 de 7');
+  });
+
+  it('el catálogo trae las plantillas nuevas de v1.2', () => {
+    const keys = DEFAULT_MESSAGE_TEMPLATES.map((template) => template.key);
+    for (const key of [
+      'vinculado',
+      'confirmar_desvinculacion',
+      'desvinculado',
+      'desvinculado_y_nueva',
+      'cita_para',
+      'desvincular_y_nueva',
+      'pedir_verificacion',
+      'verificacion_fallida',
+      'verificacion_agotada',
+      'corregir_menu',
+      'proceso_cancelado',
+      'cita_recordatorio',
+      'cita_recordatorio_confirmada',
+      'documento_recipe',
+      'documento_factura',
+      'documento_recibo',
+    ]) {
+      expect(keys).toContain(key);
+    }
+  });
+
+  it('el recordatorio renderiza los días que faltan y el nombre del consultorio', () => {
+    const body =
+      DEFAULT_MESSAGE_TEMPLATES.find((template) => template.key === 'cita_recordatorio')?.body ??
+      '';
+    const texto = renderMessage(body, {
+      paciente: 'María Pérez',
+      clinica: 'Consultorio de prueba',
+      fecha: '15/05/2026',
+      hora: '9:30 a. m.',
+      dias: 'mañana',
+      lugar: 'Calle de prueba 123',
+      ticket: '#000123',
+    });
+    expect(texto).toContain('María Pérez');
+    expect(texto).toContain('mañana');
+    expect(texto).toContain('#000123');
+    expect(texto).not.toContain('{');
+  });
+});
+
+describe('v1.2: configuración de recordatorios y canales', () => {
+  it('la configuración admite los cuatro ajustes nuevos con sus topes', () => {
+    const guardada = notificationSettingsSchema.parse({
+      patientCancelCutoffDays: 2,
+      reminderDaysBefore: 1,
+      reminderSendHour: 9,
+      reminderIncludeConfirmed: false,
+      autoSendDocuments: true,
+      updatedAt: null,
+      updatedByUserId: null,
+    });
+    expect(guardada.reminderDaysBefore).toBe(1);
+    expect(guardada.autoSendDocuments).toBe(true);
+    expect(MAX_REMINDER_DAYS_BEFORE).toBe(30);
+    expect(REMINDER_SEND_HOUR_MIN).toBe(7);
+    expect(REMINDER_SEND_HOUR_MAX).toBe(20);
+  });
+
+  it('la edición es parcial: basta con un campo y los topes se respetan', () => {
+    expect(notificationSettingsInputSchema.safeParse({}).success).toBe(false);
+    expect(notificationSettingsInputSchema.safeParse({ reminderDaysBefore: 3 }).success).toBe(true);
+    expect(notificationSettingsInputSchema.safeParse({ reminderSendHour: 21 }).success).toBe(false);
+    expect(
+      notificationSettingsInputSchema.safeParse({
+        patientCancelCutoffDays: MAX_PATIENT_CANCEL_CUTOFF_DAYS,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('un vínculo de canal se identifica por su id y dice si es el principal', () => {
+    const canal = patientChannelSchema.parse({
+      id: '00000000-0000-4000-8000-000000000000',
+      patientId: '00000000-0000-4000-8000-000000000001',
+      patientName: 'María Pérez',
+      channel: 'whatsapp',
+      direccionMasked: '58••••67',
+      usuario: null,
+      linkedAt: '2026-11-01T10:00:00.000Z',
+      lastInboundAt: null,
+      isPrimary: true,
+      isBlocked: false,
+    });
+    expect(canal.isPrimary).toBe(true);
+    expect(canal.lastInboundAt).toBeNull();
+  });
+
+  it('el envío de documentos valida el tipo y el identificador del clic', () => {
+    expect(DOCUMENT_NOTIFICATION_KINDS).toEqual(['prescription', 'invoice', 'receipt']);
+    const base = {
+      kind: 'prescription',
+      entityId: '00000000-0000-4000-8000-000000000002',
+      patientId: '00000000-0000-4000-8000-000000000003',
+    };
+    expect(sendDocumentNotificationSchema.safeParse(base).success).toBe(true);
+    expect(sendDocumentNotificationSchema.safeParse({ ...base, kind: 'receta' }).success).toBe(
+      false,
+    );
+    expect(
+      sendDocumentNotificationSchema.safeParse({
+        ...base,
+        clientRequestId: '00000000-0000-4000-8000-000000000004',
+      }).success,
+    ).toBe(true);
   });
 });
 

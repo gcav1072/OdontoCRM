@@ -1,20 +1,24 @@
 import {
   DEFAULT_MESSAGE_TEMPLATES,
+  DOCUMENT_CAPTION_MAX_CHARS,
   ICS_FORMAT_VERSION,
   NOTIFICATION_MAX_ATTEMPTS,
   buildIcsEvent,
   icsFilename,
   icsFormatVersionOf,
+  numberedOptions,
   renderMessage,
   type AppointmentSummary,
   type Channel,
   type ChannelId,
+  type DocumentNotificationKind,
   type MessageTemplate,
   type NotificationFilters,
   type NotificationRecord,
+  type OutboundDocument,
   type Paginated,
 } from '@odontocrm/contracts';
-import { NotFoundError } from '@odontocrm/kernel';
+import { ConflictError, NotFoundError } from '@odontocrm/kernel';
 import {
   and,
   asc,
@@ -44,6 +48,7 @@ import {
   type IcsArtifactRow,
   type MessageTemplateRow,
   type NotificationRow,
+  type PatientChannelRow,
 } from './db/schema.js';
 import { icsSha256 } from './ics-hash.js';
 
@@ -164,7 +169,6 @@ export const ensureDefaultTemplates = async (db: NotificationsDb): Promise<numbe
 export const todayInClinic = (now: Date = new Date()): string =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Caracas' }).format(now);
 
-/** Canales que el asistente puede atender hoy (el resto son canales «de oficina»). */
 const ATTENDED_CHANNELS: readonly ChannelId[] = ['telegram', 'whatsapp'];
 
 const isAttended = (canal: string): canal is ChannelId =>
@@ -174,14 +178,39 @@ export const maskDireccion = (direccion: string): string =>
   direccion.length <= 4 ? '••••' : `${direccion.slice(0, 2)}••••${direccion.slice(-2)}`;
 
 export interface LinkedChannel {
+  /** Id de la fila en `patient_channels` (v1.2: desvinculación y principal por vínculo). */
+  id: string;
+  patientId: string;
   canal: ChannelId;
   direccion: string;
+  isPrimary: boolean;
+  lastInboundAt: Date | null;
 }
 
 /**
- * Canal por el que se le escribe a un paciente. Si se pide un canal concreto se
- * respeta; si no (o si no está vinculado por ese), se prefiere **WhatsApp**
- * —decisión D16: es el canal principal— y después Telegram.
+ * Orden de preferencia del canal cuando no se pide uno concreto (D16: WhatsApp es el
+ * canal principal). Se usa dentro del `ORDER BY` para desempatar antes de mirar la
+ * actividad.
+ */
+const channelRank = (): SQL =>
+  sql`case when ${patientChannels.channel} = 'whatsapp' then 0 when ${patientChannels.channel} = 'telegram' then 1 else 2 end`;
+
+/**
+ * **Selección determinista del chat** al que se escribe (v1.2, §4.3 del plan).
+ *
+ * Un paciente puede tener varios vínculos —dos WhatsApp, WhatsApp y Telegram—, así
+ * que elegir «el primero que salga» haría que el destino familiar cambiara solo. El
+ * orden es:
+ *
+ *  1. `isPrimary DESC`: el chat que la secretaría marcó como principal.
+ *  2. Preferencia de canal (`whatsapp` > `telegram`) **solo si no se pidió canal**.
+ *  3. `lastInboundAt DESC NULLS LAST`: el que el paciente usó de último.
+ *  4. `linkedAt DESC`: el más reciente, como último desempate.
+ *
+ * Los recordatorios y avisos rutinarios salen **una sola vez** al principal/más
+ * reciente, protegiendo el tope diario de Baileys; cualquier chat vinculado puede
+ * consultar `estado`, `confirmar`, `cancelar` y recibir documentos cuando se elige
+ * explícitamente su vínculo.
  */
 export const findChannel = async (
   db: NotificationsDb,
@@ -199,17 +228,127 @@ export const findChannel = async (
         ...(canal === undefined ? [] : [eq(patientChannels.channel, canal)]),
       ),
     )
-    .orderBy(desc(patientChannels.linkedAt));
+    .orderBy(
+      desc(patientChannels.isPrimary),
+      ...(canal === undefined ? [channelRank()] : []),
+      sql`${patientChannels.lastInboundAt} desc nulls last`,
+      desc(patientChannels.linkedAt),
+    );
 
   const usable = rows.filter(
     (row): row is typeof row & { direccion: string } =>
       row.direccion !== null && isAttended(row.channel),
   );
-  const preferido = canal ?? 'whatsapp';
-  const preferred = usable.find((row) => row.channel === preferido) ?? usable[0] ?? null;
+  const preferred = usable[0] ?? null;
   if (preferred === null) return null;
 
-  return { canal: preferred.channel as ChannelId, direccion: preferred.direccion };
+  return {
+    id: preferred.id,
+    patientId: preferred.patientId,
+    canal: preferred.channel as ChannelId,
+    direccion: preferred.direccion,
+    isPrimary: preferred.isPrimary,
+    lastInboundAt: preferred.lastInboundAt,
+  };
+};
+
+/**
+ * El vínculo concreto por su id (v1.2): es lo que el disparador manual de documentos
+ * usa cuando la interfaz elige un chat entre varios. `null` si no existe, está
+ * bloqueado o ya no tiene dirección.
+ */
+export const findChannelById = async (
+  db: NotificationsDb,
+  channelId: string,
+): Promise<LinkedChannel | null> => {
+  const rows = await db
+    .select()
+    .from(patientChannels)
+    .where(eq(patientChannels.id, channelId))
+    .limit(1);
+  const row = rows[0];
+  if (row === undefined || row.isBlocked || row.direccion === null) return null;
+  if (!isAttended(row.channel)) return null;
+  return {
+    id: row.id,
+    patientId: row.patientId,
+    canal: row.channel as ChannelId,
+    direccion: row.direccion,
+    isPrimary: row.isPrimary,
+    lastInboundAt: row.lastInboundAt,
+  };
+};
+
+/** Marca de actividad del chat: cada mensaje entrante del paciente la actualiza. */
+export const touchInbound = async (
+  db: NotificationsDb,
+  canal: ChannelId,
+  direccion: string,
+  now: Date = new Date(),
+): Promise<void> => {
+  await db
+    .update(patientChannels)
+    .set({ lastInboundAt: now, updatedAt: now })
+    .where(and(eq(patientChannels.channel, canal), eq(patientChannels.direccion, direccion)));
+};
+
+/**
+ * Deja **un solo** chat principal por paciente (v1.2). Va en transacción porque el
+ * índice único parcial `uq_patient_channels_primary` no admite dos a la vez: primero
+ * se limpia el anterior y después se marca el nuevo.
+ */
+export const setPrimaryChannel = async (
+  db: NotificationsDb,
+  channelId: string,
+): Promise<PatientChannelRow> => {
+  const rows = await db
+    .select()
+    .from(patientChannels)
+    .where(eq(patientChannels.id, channelId))
+    .limit(1);
+  const row = rows[0];
+  if (row === undefined) throw new NotFoundError('Ese vínculo ya no existe');
+  if (row.direccion === null) {
+    throw new ConflictError('Un enlace pendiente de vincular no puede ser el chat principal');
+  }
+  if (row.isBlocked) throw new ConflictError('Un vínculo bloqueado no puede ser el chat principal');
+
+  const updated = await db.transaction(async (tx) => {
+    await tx
+      .update(patientChannels)
+      .set({ isPrimary: false, updatedAt: new Date() })
+      .where(
+        and(eq(patientChannels.patientId, row.patientId), eq(patientChannels.isPrimary, true)),
+      );
+    const marcados = await tx
+      .update(patientChannels)
+      .set({ isPrimary: true, updatedAt: new Date() })
+      .where(eq(patientChannels.id, channelId))
+      .returning();
+    return marcados[0];
+  });
+
+  if (updated === undefined) throw new NotFoundError('Ese vínculo ya no existe');
+  return updated;
+};
+
+/** Si el paciente no tiene principal, el vínculo recién creado pasa a serlo. */
+const ensurePrimary = async (
+  db: NotificationsDb,
+  patientId: string,
+  channelId: string,
+): Promise<void> => {
+  const existing = await db
+    .select({ id: patientChannels.id })
+    .from(patientChannels)
+    .where(and(eq(patientChannels.patientId, patientId), eq(patientChannels.isPrimary, true)))
+    .limit(1);
+  if (existing.length > 0) return;
+  await db
+    .update(patientChannels)
+    .set({ isPrimary: true, updatedAt: new Date() })
+    .where(eq(patientChannels.id, channelId))
+    .catch(() => undefined);
 };
 
 /**
@@ -262,11 +401,14 @@ export const listChannels = async (
   patientId?: string,
 ): Promise<
   {
+    id: string;
     patientId: string;
     canal: ChannelId;
     direccion: string;
     usuario: string | null;
     linkedAt: Date;
+    lastInboundAt: Date | null;
+    isPrimary: boolean;
     isBlocked: boolean;
   }[]
 > => {
@@ -277,7 +419,7 @@ export const listChannels = async (
     .select()
     .from(patientChannels)
     .where(and(...conditions))
-    .orderBy(desc(patientChannels.linkedAt))
+    .orderBy(desc(patientChannels.isPrimary), desc(patientChannels.linkedAt))
     .limit(100);
 
   return rows.flatMap((row) =>
@@ -285,11 +427,14 @@ export const listChannels = async (
       ? []
       : [
           {
+            id: row.id,
             patientId: row.patientId,
             canal: row.channel as ChannelId,
             direccion: row.direccion,
             usuario: row.usuario,
             linkedAt: row.linkedAt,
+            lastInboundAt: row.lastInboundAt,
+            isPrimary: row.isPrimary,
             isBlocked: row.isBlocked,
           },
         ],
@@ -312,7 +457,18 @@ export const linkChat = async (
     await db.delete(patientChannels).where(eq(patientChannels.linkCode, input.viaCode));
   }
 
-  await db
+  // ¿La dirección ya estaba vinculada? Si cambia de paciente no puede heredar ser la
+  // principal del anterior (el índice parcial no admitiría dos principales).
+  const previous = await db
+    .select({ patientId: patientChannels.patientId })
+    .from(patientChannels)
+    .where(
+      and(eq(patientChannels.channel, input.canal), eq(patientChannels.direccion, input.direccion)),
+    )
+    .limit(1);
+  const mismoPaciente = previous[0]?.patientId === input.patientId;
+
+  const rows = await db
     .insert(patientChannels)
     .values({
       patientId: input.patientId,
@@ -329,8 +485,14 @@ export const linkChat = async (
         isBlocked: false,
         linkedAt: new Date(),
         updatedAt: new Date(),
+        ...(mismoPaciente ? {} : { isPrimary: false }),
       },
-    });
+    })
+    .returning({ id: patientChannels.id });
+
+  const vinculado = rows[0];
+  // El primer chat del paciente queda como principal: los avisos tienen destino.
+  if (vinculado !== undefined) await ensurePrimary(db, input.patientId, vinculado.id);
 };
 
 /**
@@ -374,6 +536,66 @@ export const unlinkPatient = async (
   });
 };
 
+/**
+ * Reinicia la conversación de un chat **sin borrarla**: estado `inicio`, borrador
+ * vacío y sin paciente ni ticket. Se usa al desvincular un chat individual (v1.2):
+ * así el mismo chat puede empezar a registrar a otra persona en el acto. Se
+ * actualiza en vez de borrar para que el asistente, que acaba de desvincular y sigue
+ * en el mismo turno, pueda continuar el flujo y guardar los pasos siguientes.
+ */
+const resetConversation = async (
+  db: NotificationsDb,
+  canal: string,
+  direccion: string,
+): Promise<void> => {
+  await db
+    .update(botConversations)
+    .set({
+      state: 'inicio',
+      draft: {},
+      patientId: null,
+      lastTicket: null,
+      opciones: {},
+      updatedAt: new Date(),
+    })
+    .where(and(eq(botConversations.canal, canal), eq(botConversations.direccion, direccion)));
+};
+
+/**
+ * Desvincula **un chat concreto** por su dirección (v1.2, §5.2 del plan).
+ *
+ * Es la operación del flujo «otro paciente en el mismo chat»: borra solo la fila
+ * `(channel, direccion)` de `patient_channels`. Si el paciente tenía además otro
+ * chat (su Telegram y su WhatsApp, por ejemplo), **no se toca**. La conversación de
+ * ese chat se reinicia para que pueda registrar a otra persona.
+ */
+export const unlinkChatByDireccion = async (
+  db: NotificationsDb,
+  canal: ChannelId,
+  direccion: string,
+): Promise<void> => {
+  await db
+    .delete(patientChannels)
+    .where(and(eq(patientChannels.channel, canal), eq(patientChannels.direccion, direccion)));
+  await resetConversation(db, canal, direccion);
+};
+
+/** Desvincula **un vínculo concreto** por su `patient_channels.id` (v1.2). */
+export const unlinkChannelById = async (db: NotificationsDb, channelId: string): Promise<void> => {
+  const rows = await db
+    .select()
+    .from(patientChannels)
+    .where(eq(patientChannels.id, channelId))
+    .limit(1);
+  const row = rows[0];
+  if (row === undefined) throw new NotFoundError('Ese vínculo ya no existe');
+
+  await db.delete(patientChannels).where(eq(patientChannels.id, channelId));
+  if (row.direccion !== null) {
+    await resetConversation(db, row.channel, row.direccion);
+  }
+};
+
 /* ── Cola de envíos ────────────────────────────────────────────────────────── */
 
 const toRecord = (row: NotificationRow): NotificationRecord => ({
@@ -412,8 +634,30 @@ export interface EnqueueInput {
   text?: string;
   /** Adjunto `.ics` para los avisos de cita. */
   attachIcs?: boolean;
+  /**
+   * Documento digital a enviar como adjunto PDF (Req 5). **Sin bytes**: la fila solo
+   * guarda qué documento es; el PDF se descarga de `clinical`/`billing` al procesar
+   * la cola y no se duplica en la base de notificaciones.
+   */
+  document?: DocumentPayload;
+  /**
+   * `true` si el aviso invita a confirmar o cancelar la cita: en los canales sin
+   * botones se adjuntan opciones numeradas (`1) Confirmar asistencia`, `2) Cancelar`)
+   * y se guardan en `bot_conversations.opciones` si el chat está en `inicio`.
+   */
+  offerAppointmentActions?: boolean;
   /** Intentos permitidos antes de darlo por fallido (por defecto, los del plan). */
   maxAttempts?: number;
+}
+
+/** Documento digital encolado: identifica el archivo sin traer sus bytes a la base. */
+export interface DocumentPayload {
+  kind: DocumentNotificationKind;
+  entityId: string;
+  /** Nombre corto para la bandeja («Récipe #000123», «Factura A-000012»…). */
+  label: string;
+  /** Nombre de archivo con el que viaja el PDF (sin ruta). */
+  filename: string;
 }
 
 /**
@@ -454,7 +698,13 @@ export const enqueue = async (
       status: linked === null ? 'skipped_no_channel' : 'queued',
       maxAttempts: input.maxAttempts ?? NOTIFICATION_MAX_ATTEMPTS,
       nextAttemptAt: new Date(),
-      payload: { ...input.payload, text, attachIcs: input.attachIcs ?? false },
+      payload: {
+        ...input.payload,
+        text,
+        attachIcs: input.attachIcs ?? false,
+        ...(input.document === undefined ? {} : { document: input.document }),
+        ...(input.offerAppointmentActions === true ? { offerActions: true } : {}),
+      },
       dedupeKey: input.dedupeKey,
     })
     .onConflictDoNothing({ target: notifications.dedupeKey })
@@ -788,8 +1038,109 @@ const textFor = async (
       : {};
   return renderMessageFor(db, row.templateKey, {
     ...variables,
+    clinica: config.CLINIC_NAME ?? '',
     lugar: config.CLINIC_ADDRESS ?? '',
   });
+};
+
+/**
+ * Un documento encolado que **ya no se puede enviar** (anulado, borrado o sin PDF).
+ * Si es `definitivo`, el aviso se marca fallido en el acto: reintentarlo durante una
+ * hora no va a resucitar un récipe anulado, y la bandeja debe decirlo ya.
+ */
+export class DocumentoNoDisponibleError extends Error {
+  constructor(
+    message: string,
+    readonly definitivo = true,
+  ) {
+    super(message);
+    this.name = 'DocumentoNoDisponibleError';
+  }
+}
+
+const readDocumentPayload = (raw: unknown): DocumentPayload | null => {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const candidate = raw as Partial<DocumentPayload>;
+  if (
+    (candidate.kind !== 'prescription' &&
+      candidate.kind !== 'invoice' &&
+      candidate.kind !== 'receipt') ||
+    typeof candidate.entityId !== 'string' ||
+    typeof candidate.filename !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    kind: candidate.kind,
+    entityId: candidate.entityId,
+    label: typeof candidate.label === 'string' ? candidate.label : candidate.filename,
+    filename: candidate.filename,
+  };
+};
+
+/** Pie de foto seguro para Baileys: como mucho 1024 caracteres (Req 5). */
+const captionFor = (text: string): string =>
+  text.length <= DOCUMENT_CAPTION_MAX_CHARS
+    ? text
+    : `${text.slice(0, DOCUMENT_CAPTION_MAX_CHARS - 1)}…`;
+
+/**
+ * Opciones numeradas en los avisos proactivos para canales **sin botones** (v1.2,
+ * §2.3.4): el paciente de Baileys no tiene botones que pulsar, así que el aviso de
+ * cita termina en «1) Confirmar asistencia / 2) Cancelar» y el mapa se guarda en
+ * `bot_conversations.opciones` para entender su «1».
+ *
+ * **No se pisa una conversación a medio formulario**: si el paciente está rellenando
+ * el alta, sobrescribir sus opciones rompería el paso en curso. En ese caso el texto
+ * ya invita a escribir «confirmar» o «cancelar».
+ */
+const withAppointmentOptions = async (
+  db: NotificationsDb,
+  row: NotificationRow,
+  recipient: string,
+  texto: string,
+  adapter: { capacidades: { botones: boolean } },
+): Promise<string> => {
+  if (adapter.capacidades.botones) return texto;
+  if (row.payload['offerActions'] !== true || row.appointmentId === null) return texto;
+
+  const existente = await db
+    .select({ state: botConversations.state })
+    .from(botConversations)
+    .where(and(eq(botConversations.canal, row.channel), eq(botConversations.direccion, recipient)))
+    .limit(1);
+  const estado = existente[0]?.state ?? 'inicio';
+  if (estado !== 'inicio') return texto;
+
+  const numeradas = numberedOptions([
+    { etiqueta: 'Confirmar asistencia', accion: `confirmar_cita:${row.appointmentId}` },
+    { etiqueta: 'Cancelar cita', accion: `cancelar_cita:${row.appointmentId}` },
+  ]);
+  const opciones = Object.fromEntries(numeradas.acciones);
+
+  await db
+    .insert(botConversations)
+    .values({
+      canal: row.channel,
+      direccion: recipient,
+      state: 'inicio',
+      draft: {},
+      opciones,
+      windowStartedAt: new Date(),
+    })
+    .onConflictDoNothing({ target: [botConversations.canal, botConversations.direccion] });
+  await db
+    .update(botConversations)
+    .set({ opciones, updatedAt: new Date() })
+    .where(
+      and(
+        eq(botConversations.canal, row.channel),
+        eq(botConversations.direccion, recipient),
+        eq(botConversations.state, 'inicio'),
+      ),
+    );
+
+  return `${texto}\n\n${numeradas.texto}`;
 };
 
 /**
@@ -808,6 +1159,12 @@ export const processQueue = async (
     limit?: number;
     now?: Date;
     appointmentLoader?: (id: string) => Promise<AppointmentSummary | null>;
+    /**
+     * Descarga el PDF del documento encolado (Req 5). Lo inyecta el arranque con los
+     * clientes internos de `clinical`/`billing`; sin él, los avisos con documento
+     * fallan con un error claro en vez de salir sin adjunto.
+     */
+    documentLoader?: (document: DocumentPayload) => Promise<OutboundDocument>;
     /** Se llama por cada aviso resuelto: sirve para dejar rastro en la auditoría. */
     onResult?: (info: {
       id: string;
@@ -880,13 +1237,31 @@ export const processQueue = async (
       const text = await textFor(db, row, config);
       let messageId: string;
 
+      const documentPayload = readDocumentPayload(row.payload['document']);
       const attachIcs = row.payload['attachIcs'] === true && row.appointmentId !== null;
       const appointment =
         attachIcs && row.appointmentId !== null
           ? ((await options.appointmentLoader?.(row.appointmentId)) ?? null)
           : null;
 
-      if (attachIcs && appointment !== null) {
+      if (documentPayload !== null) {
+        // Req 5: el PDF **no** vive en la base de notificaciones. Se descarga de
+        // clinical/billing en el momento de enviar y viaja en un solo mensaje con
+        // el texto como pie de foto (límite de 1024 caracteres en Baileys).
+        const loader = options.documentLoader;
+        if (loader === undefined) {
+          throw new DocumentoNoDisponibleError(
+            'No hay cargador de documentos configurado en el servicio de notificaciones',
+          );
+        }
+        const documento = await loader(documentPayload);
+        const message = await adapter.enviar({
+          direccion: recipient,
+          texto: captionFor(text),
+          documento,
+        });
+        messageId = message.idMensaje;
+      } else if (attachIcs && appointment !== null) {
         const ics = await ensureIcsArtifact(db, config, appointment);
 
         /**
@@ -896,8 +1271,8 @@ export const processQueue = async (
          * `.ics` viaja así desde la Fase 4. Para que el paciente pueda confirmar con
          * un toque, el texto y su botón van primero y el calendario después —con un
          * pie corto, para que las dos burbujas se entiendan—. Los canales sin
-         * botones (Baileys) reciben el mismo texto, que ya invita a escribir
-         * «confirmar».
+         * botones (Baileys) reciben el mismo texto con las opciones **numeradas**
+         * del núcleo (v1.2), que es lo que entiende al responder «1».
          */
         if (adapter.capacidades.botones) {
           await adapter.enviar({
@@ -914,7 +1289,10 @@ export const processQueue = async (
             ],
           });
         } else {
-          await adapter.enviar({ direccion: recipient, texto: text });
+          await adapter.enviar({
+            direccion: recipient,
+            texto: await withAppointmentOptions(db, row, recipient, text, adapter),
+          });
         }
 
         const attachment = await adapter.enviar({
@@ -934,7 +1312,10 @@ export const processQueue = async (
         });
         messageId = attachment.idMensaje;
       } else {
-        const message = await adapter.enviar({ direccion: recipient, texto: text });
+        const message = await adapter.enviar({
+          direccion: recipient,
+          texto: await withAppointmentOptions(db, row, recipient, text, adapter),
+        });
         messageId = message.idMensaje;
       }
 
@@ -965,6 +1346,35 @@ export const processQueue = async (
         providerMessageId: messageId,
       });
     } catch (error) {
+      /**
+       * **Documento anulado o inexistente** (Req 5): no se reintenta. Un récipe que se
+       * anuló entre el encolado y el envío no vuelve; el aviso queda fallido con su
+       * motivo para que la bandeja lo enseñe y la secretaría decida.
+       */
+      if (error instanceof DocumentoNoDisponibleError && error.definitivo) {
+        const message = error.message.slice(0, 300);
+        await db
+          .update(notifications)
+          .set({
+            status: 'failed',
+            attempts: row.maxAttempts,
+            lastError: message,
+            updatedAt: new Date(),
+          })
+          .where(eq(notifications.id, row.id));
+        failed += 1;
+        await options.onResult?.({
+          id: row.id,
+          patientId: row.patientId,
+          appointmentId: row.appointmentId,
+          templateKey: row.templateKey,
+          channel: row.channel,
+          ok: false,
+          error: message,
+        });
+        continue;
+      }
+
       /**
        * **Diferimiento sin gastar intentos** (D9, igual que «consultorio sin
        * configurar»): si WhatsApp no está conectado o se alcanzó el tope diario,

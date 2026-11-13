@@ -414,9 +414,15 @@ export type RequestSummary = z.infer<typeof requestSummarySchema>;
 export const requestFiltersSchema = z.object({
   status: z.enum(REQUEST_STATUSES).optional(),
   // Ojo: `z.coerce.boolean()` leería `?onlyWaiting=false` como `true` (el clásico
-  // `Boolean('false')`), así que se usa el booleano de URL explícito.
+  // `Boolean(false)`), así que se usa el booleano de URL explícito.
   onlyWaiting: queryBoolean,
   channel: z.enum(REQUEST_CHANNELS).optional(),
+  /**
+   * Filtra por paciente (v1.2). Lo usa la ruta interna del bot para saber si el
+   * paciente ya tiene una solicitud activa **aunque el segundo chat no la conozca**:
+   * con varios chats vinculados, el ticket no puede depender de en cuál se creó.
+   */
+  patientId: z.uuid().optional(),
   search: z.string().trim().max(120).optional(),
   order: z.enum(['ticket', 'antiguedad']).default('ticket'),
   page: z.coerce.number().int().min(1).default(1),

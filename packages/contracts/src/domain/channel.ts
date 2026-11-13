@@ -172,6 +172,10 @@ export const BOT_INTENTS = [
   'mi_ticket',
   'confirmar',
   'cancelar',
+  /** Cambiar de paciente: desvincula **este** chat y permite vincular otro (v1.2). */
+  'desvincular',
+  /** Solo vincular el chat con la ficha, sin pedir cita (v1.2). */
+  'vincular',
   'ayuda',
   'start',
 ] as const;
@@ -242,11 +246,34 @@ export const INTENT_PHRASES: Readonly<Record<BotIntent, readonly string[]>> = {
   ],
   ayuda: ['ayuda', 'help', 'menu', 'opciones', 'que puedo hacer', 'como funciona'],
   /**
+   * Cambiar de paciente (v1.2): el chat solo puede estar vinculado a uno a la vez
+   * (Opción B del plan), así que se desvincula y se vuelve a vincular en el mismo
+   * hilo. Las frases son las que la gente escribe cuando el bot le habla de otra
+   * persona: «no soy yo», «cambiar de paciente», «otro paciente».
+   */
+  desvincular: [
+    'desvincular',
+    'desvincular chat',
+    'desvincular este chat',
+    'cambiar paciente',
+    'cambiar de paciente',
+    'otro paciente',
+    'cambiar cedula',
+    'no soy yo',
+    'cerrar sesion',
+  ],
+  /**
+   * Vincular este chat con la ficha **sin pedir cita** (v1.2). Con un código
+   * detrás (`vincular ABC123`) se enlaza directo; sin código, el asistente pide el
+   * documento y verifica la identidad antes de vincular.
+   */
+  vincular: ['vincular', 'vincular chat', 'vincular este chat', 'vincular cuenta'],
+  /**
    * Arrancar la conversación: en Telegram es `/start` y admite el código de
    * vinculación. En WhatsApp se escribe `vincular <código>` o `start <código>`
    * (D13): el enlace `wa.me/...?text=` no puede crear un comando con barra.
    */
-  start: ['start', 'iniciar', 'empezar', 'comenzar', 'vincular'],
+  start: ['start', 'iniciar', 'empezar', 'comenzar'],
 };
 
 /** Texto comparable: minúsculas, sin acentos, sin signos y con espacios simples. */
@@ -298,6 +325,17 @@ export const BOT_COMMANDS: readonly BotCommand[] = [
     comando: 'cancelar',
     descripcion: 'Cancelar mi cita o solicitud',
     intencion: 'cancelar',
+    admiteArgumento: true,
+  },
+  {
+    comando: 'desvincular',
+    descripcion: 'Desvincular este chat o cambiar de paciente',
+    intencion: 'desvincular',
+  },
+  {
+    comando: 'vincular',
+    descripcion: 'Vincular este chat con mi ficha',
+    intencion: 'vincular',
     admiteArgumento: true,
   },
   { comando: 'ayuda', descripcion: 'Ver todo lo que puedo hacer', intencion: 'ayuda' },
@@ -395,7 +433,12 @@ export interface DetectedIntent {
  * barra: `vincular ABC123`, `estado #000123`, `cancelar #000123`. En Telegram
  * el mismo texto viaja como `/start ABC123`, etc.
  */
-const INTENTS_WITH_ARGUMENT: ReadonlySet<BotIntent> = new Set(['start', 'estado', 'cancelar']);
+const INTENTS_WITH_ARGUMENT: ReadonlySet<BotIntent> = new Set([
+  'start',
+  'vincular',
+  'estado',
+  'cancelar',
+]);
 
 /**
  * Deduce la intención de un texto entrante. Los comandos con barra solo se
@@ -441,4 +484,42 @@ export const detectIntent = (
   }
 
   return { intencion: null, argumento: '', comando: false };
+};
+
+/* ── Navegación dentro del flujo (v1.2) ────────────────────────────────────── */
+
+/**
+ * Salir de un proceso a medias sin dejarlo huérfano: en la mitad de los siete pasos
+ * (o del menú de corrección) el paciente puede escribir «volver» y retroceder un
+ * paso, o «salir» y abortar el borrador. Antes no había forma de escapar y el
+ * mensaje seguía cayendo en el paso en curso.
+ */
+export type FlowNavigation = 'atras' | 'salir';
+
+const FLOW_BACK_PHRASES: ReadonlySet<string> = new Set(
+  ['atras', 'volver', 'regresar', 'volver atras', 'paso anterior', 'anterior'].map(normalizePhrase),
+);
+
+const FLOW_EXIT_PHRASES: ReadonlySet<string> = new Set(
+  [
+    'salir',
+    'salir del proceso',
+    'cancelar proceso',
+    'cancelar el proceso',
+    'reiniciar',
+    'reiniciar proceso',
+    'inicio',
+    'empezar de nuevo',
+    'empezar otra vez',
+    'cerrar proceso',
+  ].map(normalizePhrase),
+);
+
+/** `true` si el texto pide retroceder un paso o abortar el proceso en curso. */
+export const detectFlowNavigation = (texto: string): FlowNavigation | null => {
+  const clave = normalizePhrase(texto);
+  if (clave === '') return null;
+  if (FLOW_BACK_PHRASES.has(clave)) return 'atras';
+  if (FLOW_EXIT_PHRASES.has(clave)) return 'salir';
+  return null;
 };

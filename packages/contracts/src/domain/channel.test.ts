@@ -7,6 +7,7 @@ import {
   BOT_INTENTS,
   adminBotCommandsAsText,
   botCommandsAsText,
+  detectFlowNavigation,
   detectIntent,
   numberedOptions,
   resolveNumberedOption,
@@ -82,7 +83,7 @@ describe('intenciones del asistente', () => {
 
   it('en canales sin comandos acepta «frase + argumento» solo en las que lo admiten', () => {
     expect(detectIntent('vincular ABC123', sinComandos)).toMatchObject({
-      intencion: 'start',
+      intencion: 'vincular',
       argumento: 'ABC123',
       comando: false,
     });
@@ -121,6 +122,34 @@ describe('intenciones del asistente', () => {
       argumento: '',
       comando: false,
     });
+  });
+
+  it('reconoce las intenciones de cambio de paciente (v1.2)', () => {
+    expect(detectIntent('desvincular', conComandos).intencion).toBe('desvincular');
+    expect(detectIntent('/desvincular', conComandos).intencion).toBe('desvincular');
+    expect(detectIntent('cambiar de paciente', sinComandos).intencion).toBe('desvincular');
+    expect(detectIntent('no soy yo', sinComandos).intencion).toBe('desvincular');
+    expect(detectIntent('vincular', sinComandos).intencion).toBe('vincular');
+    expect(detectIntent('vincularme', sinComandos).intencion).toBeNull();
+  });
+});
+
+describe('navegación dentro del flujo (v1.2)', () => {
+  it('«volver» retrocede un paso y «salir» aborta el proceso', () => {
+    for (const texto of ['volver', 'Atrás', 'paso anterior', 'Regresar']) {
+      expect(detectFlowNavigation(texto)).toBe('atras');
+    }
+    for (const texto of ['salir', 'reiniciar', 'cancelar proceso', 'inicio', 'empezar de nuevo']) {
+      expect(detectFlowNavigation(texto)).toBe('salir');
+    }
+  });
+
+  it('no confunde datos del paciente con navegación', () => {
+    expect(detectFlowNavigation('María Pérez')).toBeNull();
+    expect(detectFlowNavigation('0412-1234567')).toBeNull();
+    // «cancelar» a secas es la intención de cancelar una cita: no aborta el flujo.
+    expect(detectFlowNavigation('cancelar')).toBeNull();
+    expect(detectFlowNavigation('')).toBeNull();
   });
 });
 

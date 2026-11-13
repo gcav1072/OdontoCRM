@@ -1,7 +1,10 @@
 import {
   CHANNELS,
   MAX_PATIENT_CANCEL_CUTOFF_DAYS,
+  MAX_REMINDER_DAYS_BEFORE,
   NOTIFICATION_STATUSES,
+  REMINDER_SEND_HOUR_MAX,
+  REMINDER_SEND_HOUR_MIN,
 } from '@odontocrm/contracts';
 import { sql } from 'drizzle-orm';
 import {
@@ -50,6 +53,18 @@ export const patientChannels = pgTable(
     linkCode: text('link_code'),
     linkCodeExpiresAt: timestamp('link_code_expires_at', { withTimezone: true }),
     isBlocked: boolean('is_blocked').notNull().default(false),
+    /**
+     * Chat **principal** del paciente (v1.2): destino por defecto de los avisos y
+     * recordatorios rutinarios. A lo sumo uno por paciente; la base lo garantiza
+     * con un índice único parcial sobre `is_primary`.
+     */
+    isPrimary: boolean('is_primary').notNull().default(false),
+    /**
+     * Último mensaje **entrante** del paciente por este chat (v1.2). Desempata la
+     * elección de destino entre varios vínculos del mismo paciente: se prefiere el
+     * que acaba de escribir. `null` si nunca lo ha hecho por aquí.
+     */
+    lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -57,6 +72,10 @@ export const patientChannels = pgTable(
     uniqueIndex('uq_patient_channels_direccion').on(table.channel, table.direccion),
     index('idx_patient_channels_patient').on(table.patientId),
     uniqueIndex('uq_patient_channels_link_code').on(table.linkCode),
+    /** Un solo chat principal por paciente (`WHERE is_primary`). */
+    uniqueIndex('uq_patient_channels_primary')
+      .on(table.patientId)
+      .where(sql`${table.isPrimary}`),
     check('chk_patient_channels_channel', sql`${table.channel} in (${sqlLiteralList(CHANNELS)})`),
   ],
 );
@@ -242,6 +261,14 @@ export const notificationSettings = pgTable(
     id: integer('id').primaryKey().default(1),
     /** Días mínimos de antelación para cancelar una cita **confirmada**. 0 = sin corte. */
     patientCancelCutoffDays: integer('patient_cancel_cutoff_days').notNull().default(0),
+    /** Días de antelación de los recordatorios (0 = desactivados). */
+    reminderDaysBefore: integer('reminder_days_before').notNull().default(0),
+    /** Hora local (America/Caracas) a partir de la cual se envían los recordatorios. */
+    reminderSendHour: integer('reminder_send_hour').notNull().default(9),
+    /** Si `true`, también se recuerdan las citas ya confirmadas (texto informativo). */
+    reminderIncludeConfirmed: boolean('reminder_include_confirmed').notNull().default(false),
+    /** (Req 5) Enviar automáticamente récipes, facturas y recibos al emitirse. */
+    autoSendDocuments: boolean('auto_send_documents').notNull().default(false),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     updatedByUserId: uuid('updated_by_user_id'),
   },
@@ -251,6 +278,16 @@ export const notificationSettings = pgTable(
       'chk_notification_settings_cutoff',
       // eslint-disable-next-line no-restricted-syntax -- constante del contrato, nunca entrada de usuario
       sql`${table.patientCancelCutoffDays} between 0 and ${sql.raw(String(MAX_PATIENT_CANCEL_CUTOFF_DAYS))}`,
+    ),
+    check(
+      'chk_notification_settings_reminder_days',
+      // eslint-disable-next-line no-restricted-syntax -- constante del contrato, nunca entrada de usuario
+      sql`${table.reminderDaysBefore} between 0 and ${sql.raw(String(MAX_REMINDER_DAYS_BEFORE))}`,
+    ),
+    check(
+      'chk_notification_settings_reminder_hour',
+      // eslint-disable-next-line no-restricted-syntax -- constantes del contrato, nunca entrada de usuario
+      sql`${table.reminderSendHour} between ${sql.raw(String(REMINDER_SEND_HOUR_MIN))} and ${sql.raw(String(REMINDER_SEND_HOUR_MAX))}`,
     ),
   ],
 );

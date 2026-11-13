@@ -160,6 +160,13 @@ export const notificationsEnvSchema = baseEnvSchema
     /** Servicios internos que usa el bot (altas de paciente y solicitudes). */
     PATIENTS_URL: z.string().min(1).default('http://127.0.0.1:4002'),
     SCHEDULING_URL: z.string().min(1).default('http://127.0.0.1:4003'),
+    /**
+     * Servicios **dueños de los documentos** (Req 5, v1.2): de aquí se descargan los
+     * PDFs archivados para enviarlos por chat. `notifications` no accede a su almacén
+     * ni a sus bases; solo pide `meta` y el archivo por ruta interna.
+     */
+    CLINICAL_URL: z.string().min(1).default('http://127.0.0.1:4005'),
+    BILLING_URL: z.string().min(1).default('http://127.0.0.1:4009'),
     INTERNAL_SERVICE_SECRET: z.string().min(16).optional(),
 
     /**

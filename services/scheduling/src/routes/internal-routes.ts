@@ -4,6 +4,7 @@ import {
   CHANNELS,
   confirmAppointmentSchema,
   createRequestSchema,
+  requestFiltersSchema,
 } from '@odontocrm/contracts';
 import { ForbiddenError, NotFoundError, parseOrThrow, parseQuery } from '@odontocrm/kernel';
 import type { FastifyInstance } from 'fastify';
@@ -21,6 +22,7 @@ import {
   cancelRequest,
   createRequest,
   findRequestByTicket,
+  listRequests,
   updateRequestReason,
 } from '../requests/request-service.js';
 import type { SchedulingServices } from '../services.js';
@@ -92,6 +94,17 @@ export const registerInternalRoutes = (
     const request_ = await findRequestByTicket(db, ticket);
     if (request_ === null) throw new NotFoundError('No hay ninguna solicitud con ese ticket');
     return reply.status(200).send(request_);
+  });
+
+  /**
+   * Solicitudes para el bot, con los mismos filtros públicos (v1.2). El asistente
+   * la usa para **deduplicar entre chats**: si el paciente creó un ticket desde
+   * Telegram y luego escribe desde WhatsApp, el segundo chat debe reutilizar la
+   * solicitud activa en vez de crear otra.
+   */
+  app.get('/internal/v1/requests', async (request, reply) => {
+    const filters = parseQuery(requestFiltersSchema, request.query);
+    return reply.status(200).send(await listRequests(db, filters));
   });
 
   /**

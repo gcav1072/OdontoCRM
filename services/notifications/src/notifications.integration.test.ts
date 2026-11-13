@@ -178,6 +178,22 @@ const fakeClients = (): InternalClients & {
       }
       return encontrada;
     },
+
+    // v1.2: deduplicación del ticket entre chats vinculados y documentos digitales.
+    listRequestsByPatient: async (patientId) =>
+      requests.filter((request) => request.patientId === patientId),
+    getPrescriptionMeta: async () => null,
+    downloadPrescriptionPdf: async () => {
+      throw new Error('el doble no tiene récipes archivados');
+    },
+    getInvoiceMeta: async () => null,
+    downloadInvoicePdf: async () => {
+      throw new Error('el doble no tiene facturas archivadas');
+    },
+    getPaymentMeta: async () => null,
+    downloadReceiptPdf: async () => {
+      throw new Error('el doble no tiene recibos archivados');
+    },
   };
 };
 

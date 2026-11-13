@@ -118,18 +118,34 @@ export const appointmentsInInbox = async (
       .orderBy(desc(notifications.createdAt)),
   ]);
 
-  // Un canal por paciente, con la misma preferencia que usa el envío real: si tiene
-  // los dos vinculados se mira WhatsApp, que es el canal principal (D16).
+  // Un canal por paciente, con la **misma selección determinista que el envío real**
+  // (v1.2): primero el chat principal, después la preferencia de canal (D16) y por
+  // último el que el paciente usó más recientemente.
   const canalPorPaciente = new Map<string, { canal: ChannelId; direccion: string }>();
+  const ordenDeCanal = (fila: (typeof canales)[number]): readonly number[] => [
+    fila.isPrimary ? 0 : 1,
+    rangoDeCanal(fila.channel),
+    fila.lastInboundAt?.getTime() ?? 0,
+    fila.linkedAt.getTime(),
+  ];
+  const comparar = (a: readonly number[], b: readonly number[]): number => {
+    for (let indice = 0; indice < a.length; indice += 1) {
+      const diferencia = (a[indice] ?? 0) - (b[indice] ?? 0);
+      if (diferencia !== 0) return diferencia;
+    }
+    return 0;
+  };
+  const ordenPorPaciente = new Map<string, readonly number[]>();
   for (const fila of canales) {
     if (fila.direccion === null || !canalAtendido(fila.channel)) continue;
-    const actual = canalPorPaciente.get(fila.patientId);
-    if (actual === undefined || rangoDeCanal(fila.channel) < rangoDeCanal(actual.canal)) {
-      canalPorPaciente.set(fila.patientId, {
-        canal: fila.channel,
-        direccion: fila.direccion,
-      });
-    }
+    const orden = ordenDeCanal(fila);
+    const anterior = ordenPorPaciente.get(fila.patientId);
+    if (anterior !== undefined && comparar(anterior, orden) <= 0) continue;
+    ordenPorPaciente.set(fila.patientId, orden);
+    canalPorPaciente.set(fila.patientId, {
+      canal: fila.channel,
+      direccion: fila.direccion,
+    });
   }
 
   // El **último** aviso de cada cita: como la consulta viene de más nuevo a más

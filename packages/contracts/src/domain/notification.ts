@@ -26,8 +26,8 @@ import { APPOINTMENT_CONFIRMATION_TEMPLATE, renderTemplate } from './scheduling.
 /* ── Asistente paso a paso ─────────────────────────────────────────────────── */
 
 export const BOT_STEPS = [
-  'nombre',
   'documento',
+  'nombre',
   'telefono',
   'nacimiento',
   'sexo',
@@ -42,6 +42,18 @@ export const BOT_CONVERSATION_STATES = [
   ...BOT_STEPS,
   /** Sub-paso de `nacimiento` cuando el paciente es menor de edad. */
   'representante',
+  /**
+   * **Verificación ligera de identidad** (v1.2): el documento escrito en el Paso 1
+   * ya existe en la base y este chat no está vinculado. Antes de vincularlo hay que
+   * probar que quien escribe es el paciente (fecha de nacimiento o últimos 4 dígitos
+   * del teléfono), porque con el envío de documentos por chat un vínculo regalado
+   * entregaría récipes y facturas a cualquiera que conozca una cédula pública.
+   */
+  'verificar_identidad',
+  /** Menú de corrección en un solo salto desde el resumen (v1.2). */
+  'corregir_menu',
+  /** Confirmación antes de desvincular este chat (v1.2). */
+  'confirmar_desvinculacion',
   'esperando_confirmacion',
   'listo',
 ] as const;
@@ -78,6 +90,24 @@ export const botDraftSchema = z.object({
     .nullable()
     .default(null),
   guardianDocNumber: z.string().max(20).nullable().default(null),
+  /**
+   * `true` mientras se corrige **un solo campo** desde el resumen (v1.2): el
+   * handler lo actualiza y vuelve directo a `confirmacion` en vez de seguir el
+   * guion completo. Vive dentro de `bot_conversations.draft` (jsonb), así que no
+   * necesita migración y es retrocompatible con conversaciones ya abiertas.
+   */
+  editingSingleField: z.boolean().default(false),
+  /**
+   * Intentos fallidos de verificación de identidad (máximo 3). Se guarda en el
+   * borrador para sobrevivir a un reinicio del servicio a mitad del flujo.
+   */
+  verifyAttempts: z.number().int().min(0).max(3).default(0),
+  /**
+   * Con qué intención arrancó el alta: `nueva` pide una cita y `vincular` solo
+   * enlaza el chat con la ficha. Lo necesita `verificar_identidad` para saber si,
+   * tras verificar, debe seguir al Paso 6 (motivo) o terminar en `inicio`.
+   */
+  flow: z.enum(['nueva', 'vincular']).nullable().default(null),
 });
 
 export type BotDraft = z.infer<typeof botDraftSchema>;
@@ -210,6 +240,40 @@ export const NOTIFICATION_TEMPLATE_KEYS = [
   'cita_cancelacion_fuera_de_plazo',
   /** Cuando escribe «confirmar» y no tiene ninguna cita próxima que confirmar. */
   'sin_citas',
+  // ── v1.2: identidad, cambio de paciente y navegación del flujo ─────────────
+  /** Chat recién vinculado (sustituye a la doble burbuja `bienvenida` + «Listo…»). */
+  'vinculado',
+  /** Intención `desvincular` en un chat que no está vinculado a nadie. */
+  'desvincular_no_vinculado',
+  /** Aviso y confirmación antes de desvincular el chat actual. */
+  'confirmar_desvinculacion',
+  /** Resultado de una desvinculación confirmada. */
+  'desvinculado',
+  /** Desvinculado y seguido del Paso 1 para registrar a otra persona en el mismo chat. */
+  'desvinculado_y_nueva',
+  /** Pregunta contextual al pedir cita desde un chat ya vinculado. */
+  'cita_para',
+  /** Explica la regla de un paciente por chat y pide confirmar la desvinculación. */
+  'desvincular_y_nueva',
+  /** Verificación ligera (fecha de nacimiento o últimos 4 dígitos del teléfono). */
+  'pedir_verificacion',
+  /** Intento fallido de verificación, con los que quedan. */
+  'verificacion_fallida',
+  /** Tres fallos: no se vincula y se sugiere el código presencial. */
+  'verificacion_agotada',
+  /** Menú de corrección en un solo salto desde el resumen. */
+  'corregir_menu',
+  /** «salir» / «reiniciar» en mitad del flujo. */
+  'proceso_cancelado',
+  // ── v1.2: recordatorios automáticos ───────────────────────────────────────
+  /** Recordatorio `N` días antes de la cita. */
+  'cita_recordatorio',
+  /** Recordatorio informativo para citas ya confirmadas (sin pedir confirmar otra vez). */
+  'cita_recordatorio_confirmada',
+  // ── v1.2: documentos digitales por chat ───────────────────────────────────
+  'documento_recipe',
+  'documento_factura',
+  'documento_recibo',
 ] as const;
 export type NotificationTemplateKey = (typeof NOTIFICATION_TEMPLATE_KEYS)[number];
 
@@ -249,7 +313,7 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     key: 'pedir_nombre',
     channel: 'telegram',
     subject: null,
-    body: 'Paso 1 de 7 · ¿Cómo te llamas? Escribe tu nombre y apellido.',
+    body: 'Paso 2 de 7 · ¿Cómo te llamas? Escribe tu nombre y apellido.',
     placeholders: [],
   },
   {
@@ -257,7 +321,7 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     channel: 'telegram',
     subject: null,
     body:
-      'Paso 2 de 7 · ¿Cuál es tu documento?\n' +
+      'Paso 1 de 7 · ¿Cuál es tu documento?\n' +
       'Elige el tipo (V, E, P o SC) y escríbeme el número, por ejemplo V-12345678.',
     placeholders: [],
   },
@@ -448,6 +512,166 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
       'Si crees que es un error, escríbenos por aquí o llama al consultorio y lo miramos.',
     placeholders: [],
   },
+  // ── v1.2: identidad, cambio de paciente y navegación del flujo ─────────────
+  {
+    key: 'vinculado',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Listo, {paciente}: este chat quedó vinculado con tu ficha del consultorio.\n' +
+      'Te avisaré por aquí cuando tu cita esté confirmada.',
+    placeholders: ['paciente'],
+  },
+  {
+    key: 'desvincular_no_vinculado',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Este chat no está vinculado a ningún paciente.\n' +
+      'Escríbeme «cita» para registrarte o consultar tu cédula.',
+    placeholders: [],
+  },
+  {
+    key: 'confirmar_desvinculacion',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Este chat está vinculado a {paciente} ({documento}).\n' +
+      'Si lo desvinculas, dejarás de recibir aquí sus avisos de citas y documentos. ' +
+      'Su ficha clínica y sus citas en el consultorio NO se borran, y si tiene otro chat ' +
+      'vinculado seguirá activo.\n\n' +
+      '¿Desvincular este chat?',
+    placeholders: ['paciente', 'documento'],
+  },
+  {
+    key: 'desvinculado',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Listo: este chat quedó desvinculado.\n' +
+      'Su ficha clínica y sus citas no se borraron. ' +
+      'Cuando quieras empezar de nuevo, escríbeme «cita».',
+    placeholders: [],
+  },
+  {
+    key: 'desvinculado_y_nueva',
+    channel: 'telegram',
+    subject: null,
+    body: 'Listo: este chat quedó desvinculado. Ahora registremos a la otra persona.\n\n{paso}',
+    placeholders: ['paso'],
+  },
+  {
+    key: 'cita_para',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Veo que este chat está vinculado a {paciente}.\n' +
+      '¿La cita es para ti o para otra persona (otra cédula)?',
+    placeholders: ['paciente'],
+  },
+  {
+    key: 'desvincular_y_nueva',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Este chat solo puede estar vinculado a un paciente a la vez, así que para registrar ' +
+      'a otra persona tengo que desvincular el chat actual.\n' +
+      'Su ficha clínica y sus citas NO se borran; si tiene otro chat vinculado, seguirá activo.\n\n' +
+      '¿Desvinculo este chat y registramos a la otra persona?',
+    placeholders: [],
+  },
+  {
+    key: 'pedir_verificacion',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Encontré una ficha registrada con ese documento: {paciente} ({documento}).\n' +
+      'Para verificar tu identidad y vincular este chat, escríbeme tu fecha de nacimiento ' +
+      '(dd/mm/aaaa) o los últimos 4 dígitos de tu teléfono registrado.',
+    placeholders: ['paciente', 'documento'],
+  },
+  {
+    key: 'verificacion_fallida',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'No coincide. Te quedan {intentos} intento(s).\n' +
+      'Escríbeme tu fecha de nacimiento (dd/mm/aaaa) o los últimos 4 dígitos de tu teléfono.',
+    placeholders: ['intentos'],
+  },
+  {
+    key: 'verificacion_agotada',
+    channel: 'telegram',
+    subject: null,
+    body:
+      '{paciente}: no pude verificar tu identidad, así que no vinculé este chat.\n' +
+      'Para hacerlo, pídele al consultorio un código de vinculación y luego escríbeme ' +
+      '«vincular <código>».',
+    placeholders: ['paciente'],
+  },
+  {
+    key: 'corregir_menu',
+    channel: 'telegram',
+    subject: null,
+    body: 'Paso 7 de 7 · ¿Qué quieres corregir?\nElige una opción o escribe el nombre del dato.',
+    placeholders: [],
+  },
+  {
+    key: 'proceso_cancelado',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Proceso cancelado. No se borró ninguna cita ya agendada.\n' +
+      'Cuando quieras empezar de nuevo, escríbeme «cita».',
+    placeholders: [],
+  },
+  // ── v1.2: recordatorios automáticos ────────────────────────────────────────
+  {
+    key: 'cita_recordatorio',
+    channel: 'telegram',
+    subject: 'Recordatorio de tu cita',
+    body:
+      'Hola {paciente}: te recordamos tu cita en {clinica} para el {fecha} a las {hora} ' +
+      '(falta {dias}).\n' +
+      'Lugar: {lugar}\n' +
+      'Ticket: {ticket}\n\n' +
+      'Por favor confirma tu asistencia o avísanos si no podrás asistir.',
+    placeholders: ['paciente', 'clinica', 'fecha', 'hora', 'dias', 'lugar', 'ticket'],
+  },
+  {
+    key: 'cita_recordatorio_confirmada',
+    channel: 'telegram',
+    subject: 'Recordatorio de tu cita',
+    body:
+      'Hola {paciente}: te recordamos tu cita en {clinica} para el {fecha} a las {hora} ' +
+      '(falta {dias}).\n' +
+      'Lugar: {lugar}\n' +
+      'Ticket: {ticket}\n\n' +
+      'Nos vemos allí.',
+    placeholders: ['paciente', 'clinica', 'fecha', 'hora', 'dias', 'lugar', 'ticket'],
+  },
+  // ── v1.2: documentos digitales por chat ────────────────────────────────────
+  {
+    key: 'documento_recipe',
+    channel: 'telegram',
+    subject: null,
+    body: 'Hola {paciente}: te compartimos tu récipe digital {numero} emitido en {clinica}.',
+    placeholders: ['paciente', 'numero', 'clinica'],
+  },
+  {
+    key: 'documento_factura',
+    channel: 'telegram',
+    subject: null,
+    body: 'Hola {paciente}: te compartimos tu factura digital {numero} de {clinica}.',
+    placeholders: ['paciente', 'numero', 'clinica'],
+  },
+  {
+    key: 'documento_recibo',
+    channel: 'telegram',
+    subject: null,
+    body: 'Hola {paciente}: te compartimos el recibo de pago {numero} de {clinica}.',
+    placeholders: ['paciente', 'numero', 'clinica'],
+  },
 ];
 
 export const messageTemplateSchema = z.object({
@@ -534,7 +758,13 @@ export type MarkContactedInput = z.infer<typeof markContactedSchema>;
 
 /* ── Canales y vinculación ─────────────────────────────────────────────────── */
 
+/**
+ * Un **vínculo** concreto de la tabla `patient_channels` (v1.2): la misma ficha
+ * puede tener varios chats —dos WhatsApp, WhatsApp y Telegram— y cada fila se
+ * lista y se desvincula por su `id`, no por `(paciente, canal)`.
+ */
 export const patientChannelSchema = z.object({
+  id: z.uuid(),
   patientId: z.uuid(),
   patientName: z.string().nullable(),
   channel: z.enum(CHANNELS),
@@ -542,6 +772,14 @@ export const patientChannelSchema = z.object({
   direccionMasked: z.string(),
   usuario: z.string().nullable(),
   linkedAt: z.string().nullable(),
+  /** Último mensaje entrante del paciente por este chat (`null` si nunca escribió). */
+  lastInboundAt: z.string().nullable(),
+  /**
+   * Chat **principal**: es el destino por defecto de los avisos y recordatorios
+   * rutinarios. A lo sumo uno por paciente (la base lo garantiza con un índice
+   * parcial único).
+   */
+  isPrimary: z.boolean(),
   isBlocked: z.boolean(),
 });
 
@@ -694,28 +932,113 @@ export type BotStatus = z.infer<typeof botStatusSchema>;
  * propósito, para que activar la guardia sea una decisión explícita del consultorio.
  */
 export const MAX_PATIENT_CANCEL_CUTOFF_DAYS = 30;
+/** Días de antelación de los recordatorios: del mismo orden que el corte de cancelación. */
+export const MAX_REMINDER_DAYS_BEFORE = 30;
+/**
+ * Ventana diurna en la que el barrido puede enviar recordatorios, en hora local del
+ * consultorio (`America/Caracas`). Nunca de madrugada: el plan fija las 21:00 como
+ * cierre y este es el margen que se puede configurar.
+ */
+export const REMINDER_SEND_HOUR_MIN = 7;
+export const REMINDER_SEND_HOUR_MAX = 20;
 
 export const notificationSettingsSchema = z.object({
   /** Corte en días (0 = sin corte). */
   patientCancelCutoffDays: z.number().int().min(0).max(MAX_PATIENT_CANCEL_CUTOFF_DAYS),
+  /** Días de antelación de los recordatorios (0 = recordatorios automáticos apagados). */
+  reminderDaysBefore: z.number().int().min(0).max(MAX_REMINDER_DAYS_BEFORE),
+  /** Hora local a partir de la cual se envían los recordatorios del día. */
+  reminderSendHour: z.number().int().min(REMINDER_SEND_HOUR_MIN).max(REMINDER_SEND_HOUR_MAX),
+  /** Si `true`, también se recuerdan las citas ya confirmadas (texto informativo). */
+  reminderIncludeConfirmed: z.boolean(),
+  /** (Req 5) Enviar automáticamente récipes, facturas y recibos al emitirse. */
+  autoSendDocuments: z.boolean(),
   updatedAt: z.string().nullable(),
   updatedByUserId: z.uuid().nullable(),
 });
 
 export type NotificationSettings = z.infer<typeof notificationSettingsSchema>;
 
-export const notificationSettingsInputSchema = z.object({
-  patientCancelCutoffDays: z
-    .number()
-    .int()
-    .min(0, 'No puede ser negativo')
-    .max(
-      MAX_PATIENT_CANCEL_CUTOFF_DAYS,
-      `Como mucho ${String(MAX_PATIENT_CANCEL_CUTOFF_DAYS)} días`,
-    ),
-});
+/**
+ * Edición **parcial** de la configuración (v1.2): la tarjeta de cancelación y la de
+ * recordatorios comparten el mismo endpoint y cada una manda solo lo suyo. Al menos
+ * un ajuste tiene que venir.
+ */
+export const notificationSettingsInputSchema = z
+  .object({
+    patientCancelCutoffDays: z
+      .number()
+      .int()
+      .min(0, 'No puede ser negativo')
+      .max(
+        MAX_PATIENT_CANCEL_CUTOFF_DAYS,
+        `Como mucho ${String(MAX_PATIENT_CANCEL_CUTOFF_DAYS)} días`,
+      )
+      .optional(),
+    reminderDaysBefore: z
+      .number()
+      .int()
+      .min(0, 'No puede ser negativo')
+      .max(MAX_REMINDER_DAYS_BEFORE, `Como mucho ${String(MAX_REMINDER_DAYS_BEFORE)} días`)
+      .optional(),
+    reminderSendHour: z
+      .number()
+      .int()
+      .min(REMINDER_SEND_HOUR_MIN, `Desde las ${String(REMINDER_SEND_HOUR_MIN)}:00`)
+      .max(REMINDER_SEND_HOUR_MAX, `Hasta las ${String(REMINDER_SEND_HOUR_MAX)}:00`)
+      .optional(),
+    reminderIncludeConfirmed: z.boolean().optional(),
+    autoSendDocuments: z.boolean().optional(),
+  })
+  .refine((valor) => Object.values(valor).some((campo) => campo !== undefined), {
+    message: 'Indica al menos un ajuste que guardar',
+  });
 
 export type NotificationSettingsInput = z.infer<typeof notificationSettingsInputSchema>;
+
+/* ── Envío de documentos digitales por chat (v1.2) ─────────────────────────── */
+
+/**
+ * Tipos de documento que `notifications` puede descargar de `clinical`/`billing`
+ * y enviar como adjunto PDF. No guarda los bytes en su base: los pide por ruta
+ * interna al procesar la cola (ADR 0004/0015/0048/0049).
+ */
+export const DOCUMENT_NOTIFICATION_KINDS = ['prescription', 'invoice', 'receipt'] as const;
+export type DocumentNotificationKind = (typeof DOCUMENT_NOTIFICATION_KINDS)[number];
+
+/** Límite de pie de foto de WhatsApp/Baileys: el texto del envío no puede pasarlo. */
+export const DOCUMENT_CAPTION_MAX_CHARS = 1024;
+
+/**
+ * Ventana anti-doble-clic del disparador manual (Req 5): si la interfaz no manda un
+ * `clientRequestId`, dos pulsaciones dentro de estos segundos cuentan como una.
+ */
+export const DOCUMENT_SEND_DEDUPE_WINDOW_SECONDS = 10;
+
+export const sendDocumentNotificationSchema = z.object({
+  kind: z.enum(DOCUMENT_NOTIFICATION_KINDS),
+  /** Identificador del récipe, factura o cobro según el `kind`. */
+  entityId: z.uuid(),
+  patientId: z.uuid(),
+  /** Canal pedido; si no viene se elige el chat principal del paciente. */
+  channel: z.enum(CHANNEL_IDS).optional(),
+  /** Vínculo concreto de `patient_channels`; manda sobre `channel` si viene. */
+  channelId: z.uuid().optional(),
+  /** Idempotencia del clic (la interfaz genera uno por diálogo/acción). */
+  clientRequestId: z.uuid().optional(),
+});
+
+export type SendDocumentNotificationInput = z.infer<typeof sendDocumentNotificationSchema>;
+
+export const sendDocumentNotificationResultSchema = z.object({
+  notificationId: z.uuid(),
+  /** `duplicado` cuando el mismo clic (o la ventana de 10 s) ya lo había encolado. */
+  status: z.enum(['queued', 'duplicado']),
+  channel: z.enum(CHANNEL_IDS),
+  direccionMasked: z.string(),
+});
+
+export type SendDocumentNotificationResult = z.infer<typeof sendDocumentNotificationResultSchema>;
 
 /* ── Sección de citas de la bandeja (ADR 0052) ─────────────────────────────── */
 

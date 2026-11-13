@@ -32,12 +32,15 @@ export const channelsInInbox = async (
   }
 
   const items: PatientChannel[] = canales.map((canal) => ({
+    id: canal.id,
     patientId: canal.patientId,
     patientName: nombres.get(canal.patientId) ?? null,
     channel: canal.canal,
     direccionMasked: maskDireccion(canal.direccion),
     usuario: canal.usuario,
     linkedAt: canal.linkedAt.toISOString(),
+    lastInboundAt: canal.lastInboundAt?.toISOString() ?? null,
+    isPrimary: canal.isPrimary,
     isBlocked: canal.isBlocked,
   }));
 

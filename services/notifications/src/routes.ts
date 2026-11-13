@@ -8,16 +8,20 @@ import {
   notificationFiltersSchema,
   notificationSettingsInputSchema,
   retryNotificationSchema,
+  sendDocumentNotificationSchema,
   toE164Digits,
   whatsappPairInputSchema,
   type ChannelStatus,
+  type Permission,
   type WhatsAppSessionView,
 } from '@odontocrm/contracts';
 import {
   ForbiddenError,
   NotFoundError,
+  hasPermission,
   parseOrThrow,
   parseQuery,
+  requireIdentity,
   requirePermission,
 } from '@odontocrm/kernel';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -30,6 +34,7 @@ import { appointmentsInInbox } from './appointments.js';
 import { leerVersionBaileys } from './canales/whatsapp/sesion.js';
 import { channelsInInbox } from './channels.js';
 import { botConversations } from './db/schema.js';
+import { sendDocumentNotification, createDocumentLoader } from './documents.js';
 import {
   createLinkCode,
   findIcsArtifact,
@@ -42,6 +47,8 @@ import {
   queueSnapshot,
   resetTemplate,
   retryNotification,
+  setPrimaryChannel,
+  unlinkChannelById,
   unlinkPatient,
   updateTemplate,
 } from './messaging.js';
@@ -53,7 +60,12 @@ const keyParamsSchema = z.object({ key: z.string().trim().min(1).max(60) });
 const patientParamsSchema = z.object({ patientId: z.uuid() });
 const linkCodeSchema = z.object({ patientId: z.uuid() });
 const channelsQuerySchema = z.object({ patientId: z.uuid().optional() });
-const unlinkQuerySchema = z.object({ channel: z.enum(CHANNEL_IDS).optional() });
+const unlinkQuerySchema = z.object({
+  /** Compatibilidad: desvincula todos los vínculos del paciente en ese canal. */
+  channel: z.enum(CHANNEL_IDS).optional(),
+  /** v1.2: desvincula **un solo vínculo** (una fila de `patient_channels`). */
+  channelId: z.uuid().optional(),
+});
 const icsParamsSchema = z.object({ appointmentId: z.uuid() });
 const webhookParamsSchema = z.object({ canal: z.enum(CHANNEL_IDS) });
 
@@ -103,6 +115,29 @@ export const registerNotificationRoutes = (
   const manage = requirePermission('settings:manage');
   /** Política de cancelación (ADR 0057): solo `admin` y odontólogo. */
   const policy = requirePermission('scheduling:cancel_policy');
+
+  /**
+   * Envío de documentos (Req 5): el permiso depende del tipo. El odontólogo puede
+   * mandar récipes (`clinical:read`) pero no facturas; la secretaría, que atiende el
+   * mostrador y tiene `scheduling:notify`, puede mandar los tres.
+   */
+  const requierePermisoDeDocumento = async (request: FastifyRequest): Promise<void> => {
+    const input = parseOrThrow(sendDocumentNotificationSchema, request.body);
+    const identity = requireIdentity(request);
+    if (identity.mustChangePassword) {
+      throw new ForbiddenError('Debes cambiar tu contraseña antes de continuar');
+    }
+    if (identity.needsProfile) {
+      throw new ForbiddenError('Completa tu perfil profesional antes de continuar');
+    }
+    const permitidos: readonly Permission[] =
+      input.kind === 'prescription'
+        ? ['clinical:read', 'scheduling:notify']
+        : ['billing:read', 'scheduling:notify'];
+    if (!permitidos.some((permiso) => hasPermission(identity, permiso))) {
+      throw new ForbiddenError('No tienes permiso para enviar este documento');
+    }
+  };
 
   app.get('/api/v1/notifications', { preHandler: read }, async (request, reply) => {
     const filters = parseQuery(notificationFiltersSchema, request.query);
@@ -313,9 +348,50 @@ export const registerNotificationRoutes = (
     { preHandler: notify },
     async (request, reply) => {
       const { patientId } = parseOrThrow(patientParamsSchema, request.params);
-      const { channel } = parseQuery(unlinkQuerySchema, request.query);
-      await unlinkPatient(db, patientId, channel);
+      const { channel, channelId } = parseQuery(unlinkQuerySchema, request.query);
+      if (channelId !== undefined) {
+        // v1.2: un vínculo concreto (el paciente puede tener varios chats).
+        await unlinkChannelById(db, channelId);
+      } else {
+        await unlinkPatient(db, patientId, channel);
+      }
       return reply.status(204).send();
+    },
+  );
+
+  /**
+   * **Marcar un chat como principal** (v1.2): es el destino por defecto de los avisos
+   * y recordatorios rutinarios. El cambio se hace en transacción porque la base exige
+   * un solo principal por paciente (índice único parcial).
+   */
+  app.patch(
+    '/api/v1/notifications/channels/:id/primary',
+    { preHandler: notify },
+    async (request, reply) => {
+      const { id } = parseOrThrow(idParamsSchema, request.params);
+      const marcado = await setPrimaryChannel(db, id);
+      return reply.status(200).send({
+        id: marcado.id,
+        patientId: marcado.patientId,
+        channel: marcado.channel,
+        isPrimary: marcado.isPrimary,
+      });
+    },
+  );
+
+  /**
+   * **Enviar un récipe, factura o recibo por chat** (Req 5, v1.2). El disparador
+   * manual de la interfaz. Valida que el documento sea enviable (emitido y vigente) y
+   * que el paciente tenga un chat vinculado; después encola el aviso. En canales sin
+   * botones no se ofrecen opciones de cita: es un envío documental.
+   */
+  app.post(
+    '/api/v1/notifications/documents/send',
+    { preHandler: requierePermisoDeDocumento },
+    async (request, reply) => {
+      const input = parseOrThrow(sendDocumentNotificationSchema, request.body);
+      const resultado = await sendDocumentNotification(db, services.clients, input);
+      return reply.status(200).send(resultado);
     },
   );
 
@@ -503,6 +579,7 @@ export const registerNotificationRoutes = (
   app.post('/internal/v1/notifications/process', async (_request, reply) => {
     const result = await processQueue(db, canales.registry, config, {
       appointmentLoader: (id) => services.clients.getAppointment(id),
+      documentLoader: createDocumentLoader(services.clients),
     });
     return reply.status(200).send(result);
   });
