@@ -33,6 +33,25 @@ const PREFIX_ENC = 'enc:';
 const PREFIX_PLAIN = 'plain:';
 const CREDS = 'creds';
 
+/**
+ * ¿La fila se cifró con **otra** `STORAGE_ENCRYPTION_KEY`? Pasa al restaurar una base de
+ * otro servidor: el AES-GCM no puede autenticar el dato y Node lanza
+ * `Unsupported state or unable to authenticate data`. No es un fallo de la sesión de
+ * WhatsApp (que puede ser perfectamente válida): es que esta instalación no tiene la
+ * clave con la que se guardó.
+ */
+const esClaveIncorrecta = (error: unknown): boolean =>
+  error instanceof Error &&
+  /unable to authenticate data|unsupported state|bad decrypt|decryption failed/i.test(
+    error.message,
+  );
+
+const AVISO_CLAVE_INCORRECTA =
+  'La sesión de WhatsApp guardada no se puede descifrar con STORAGE_ENCRYPTION_KEY ' +
+  '(¿restaurada de otro servidor?): se descarta para que el canal arranque y habrá que ' +
+  'volver a vincularla. Si conservas la clave del servidor anterior, ponla en el .env ' +
+  '(o restaura la configuración del respaldo).';
+
 export interface WhatsAppAuthHandle {
   state: AuthenticationState;
   /** Persiste las credenciales actuales (Baileys llama tras cada `creds.update`). */
@@ -91,6 +110,26 @@ export const usePostgresAuthState = async (
     );
   }
 
+  const clearRows = async (): Promise<void> => {
+    await db.delete(whatsappAuth).where(eq(whatsappAuth.sessionId, sessionId));
+  };
+
+  /**
+   * Si el error es de clave incorrecta, **descarta la sesión ilegible** en vez de tumbar
+   * la carga del canal: el adaptador arrancará en `sin_vincular` y el admin podrá volver
+   * a vincular sin tocar la base a mano. Solo se avisa una vez por proceso.
+   */
+  let avisoClaveIncorrecta = false;
+  const descartarClaveIncorrecta = async (error: unknown): Promise<boolean> => {
+    if (!esClaveIncorrecta(error)) return false;
+    await clearRows();
+    if (!avisoClaveIncorrecta) {
+      avisoClaveIncorrecta = true;
+      options.warn?.(AVISO_CLAVE_INCORRECTA);
+    }
+    return true;
+  };
+
   const readRow = async (categoria: string, clave: string): Promise<string | null> => {
     const rows = await db
       .select({ valor: whatsappAuth.valor })
@@ -104,7 +143,13 @@ export const usePostgresAuthState = async (
       )
       .limit(1);
     const row = rows[0];
-    return row === undefined ? null : open(row.valor, key);
+    if (row === undefined) return null;
+    try {
+      return open(row.valor, key);
+    } catch (error) {
+      if (await descartarClaveIncorrecta(error)) return null;
+      throw error;
+    }
   };
 
   const writeRows = async (
@@ -164,14 +209,21 @@ export const usePostgresAuthState = async (
 
       const result: { [id: string]: SignalDataTypeMap[T] } = {};
       for (const row of rows) {
-        const texto = open(row.valor, key);
-        const parsed = deserializar(texto);
-        result[row.clave] =
-          type === 'app-state-sync-key'
-            ? (proto.Message.AppStateSyncKeyData.fromObject(
-                parsed as Record<string, unknown>,
-              ) as unknown as SignalDataTypeMap[T])
-            : (parsed as SignalDataTypeMap[T]);
+        try {
+          const texto = open(row.valor, key);
+          const parsed = deserializar(texto);
+          result[row.clave] =
+            type === 'app-state-sync-key'
+              ? (proto.Message.AppStateSyncKeyData.fromObject(
+                  parsed as Record<string, unknown>,
+                ) as unknown as SignalDataTypeMap[T])
+              : (parsed as SignalDataTypeMap[T]);
+        } catch (error) {
+          // Una fila cifrada con otra clave invalida toda la sesión: se vacía y se
+          // empieza de cero en vez de dejar el canal sin arrancar.
+          if (await descartarClaveIncorrecta(error)) return {};
+          throw error;
+        }
       }
       return result;
     },

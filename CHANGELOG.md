@@ -7,6 +7,15 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 ## [Sin publicar] — Correcciones
 
 ### Corregido
+- **Tras restaurar, WhatsApp no reconectaba** (`Unsupported state or unable to authenticate
+  data`): la sesión de `whatsapp_auth` y las credenciales de canales se restauran con la
+  base, pero estaban cifradas con la `STORAGE_ENCRYPTION_KEY` del servidor anterior y la
+  instalación nueva generó otra. La restauración ahora **reconcilia la clave del respaldo**
+  (de `config.zip` o de la carpeta `env/` que deja el desinstalador) al terminar; hay un
+  modo rápido `odontocrm restaurar --solo-clave --from <respaldo>` para una restauración ya
+  hecha. Además, si una sesión de WhatsApp no se puede descifrar, el servicio la descarta
+  con un aviso en vez de tumbar la carga del canal: arranca en «sin vincular» y se vuelve
+  a vincular desde Configuración → Canales.
 - **Restaurar en Windows dejaba las bases y las tablas a nombre de `postgres`**, así que
   las migraciones de cada servicio fallaban al arrancar con `42501 permission denied`
   (pasó en la recuperación del 2026-11-13). Ahora, como en Fedora, la base y el

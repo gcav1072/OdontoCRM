@@ -109,6 +109,34 @@ describeWithDatabase('auth store de WhatsApp en PostgreSQL', () => {
     );
   });
 
+  it('si la sesión está cifrada con OTRA clave, la descarta y avisa (caso restauración)', async () => {
+    // Caso real del 2026-11-13: la base se restaura en un servidor nuevo con otra
+    // STORAGE_ENCRYPTION_KEY. La sesión de WhatsApp es válida, pero no se puede leer.
+    const sesionRestaurada = sesion('otra-clave');
+    const original = await usePostgresAuthState(handle.db, {
+      sessionId: sesionRestaurada,
+      encryptionKey: CLAVE,
+    });
+    await original.saveCreds();
+
+    const avisos: string[] = [];
+    const otraClave = Buffer.alloc(32, 9).toString('base64url');
+    const auth = await usePostgresAuthState(handle.db, {
+      sessionId: sesionRestaurada,
+      encryptionKey: otraClave,
+      warn: (mensaje) => avisos.push(mensaje),
+    });
+
+    // No lanza: el canal puede arrancar en «sin vincular».
+    expect(await auth.hasCreds()).toBe(false);
+    expect(avisos.join(' ')).toContain('no se puede descifrar');
+    const filas = await handle.db
+      .select()
+      .from(whatsappAuth)
+      .where(eq(whatsappAuth.sessionId, sesionRestaurada));
+    expect(filas).toHaveLength(0);
+  });
+
   it('sin clave guarda en claro y lo avisa (solo desarrollo)', async () => {
     const avisos: string[] = [];
     const sesionPlana = sesion('plano');

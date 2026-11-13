@@ -150,6 +150,13 @@ powershell -ExecutionPolicy Bypass -File infra\windows\instalar\instalar.ps1
 odontocrm recuperar --from C:\OdontoCRM\backups\2026-10-12 --yes
 ```
 
+> **Después de restaurar sin la configuración** (el respaldo del desinstalador no trae
+> `config.zip`), la clave del almacén de la instalación nueva no puede descifrar la sesión de
+> WhatsApp ni las credenciales de canales restauradas. `recuperar`/`restaurar` ya reconcilian
+> la clave si el respaldo la trae; si no, usa
+> `odontocrm restaurar --solo-clave --from <carpeta del respaldo>` y `odontocrm reiniciar`.
+> El servicio descarta una sesión ilegible y se vuelve a vincular desde Canales.
+
 > **La clave de `postgres` se pide una sola vez** (si no está en `PGPASSWORD` ni en
 > `.pgpass`): la restauración de las 10 bases reutiliza esa misma conexión y ya no vuelve
 > a preguntarla. Si la consola no es interactiva, define `PGPASSWORD` en el entorno.

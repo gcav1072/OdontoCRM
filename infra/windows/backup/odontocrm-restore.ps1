@@ -46,6 +46,7 @@ OdontoCRM · restaurar (Windows)
 USO
   .\odontocrm-restore.ps1 --list
   .\odontocrm-restore.ps1 --from <dir|dump> (--db NOMBRE | --all) [--dry-run] [--yes]
+  .\odontocrm-restore.ps1 --solo-clave --from <dir>   (solo la clave del almacén)
                            [--keep-old] [--keep-verify-db]
 
 OPCIONES
@@ -54,6 +55,9 @@ OPCIONES
   --db NOMBRE       Restaura esa base (se puede repetir).  --all  todas.
   --keep-old        Conserva la base actual como <base>__antes_de_restaurar_<fecha>.
   --keep-verify-db  No borra la base temporal de verificación.
+  --solo-clave      Solo reconcilia la clave del almacén con la del respaldo, sin tocar
+                    las bases. Para cuando WhatsApp no reconecta o el panel no lee los
+                    canales tras restaurar sin la configuración.
   --dry-run         Simula: dice exactamente qué haría, sin tocar nada.
   --yes             Confirma la restauración real (sin esto no se ejecuta).
 
@@ -96,10 +100,103 @@ $AsumirSi = Test-Bandera $args 'yes'
 $ListOnly = Test-Bandera $args 'list'
 $KeepVerify = Test-Bandera $args 'keep-verify-db'
 $KeepOld = Test-Bandera $args 'keep-old'
+$SoloClave = (Test-Bandera $args 'solo-clave') -or (Test-Bandera $args 'reconciliar-clave')
 
 $pgBin = Get-PgBin
 function PgTool { param([string]$n) if ($pgBin) { return (Join-Path $pgBin "$n.exe") } return $n }
 $psql = PgTool 'psql'; $pgRestore = PgTool 'pg_restore'
+
+# ── Clave del almacén: la del respaldo, cuando la instalación es nueva ──────
+# Los valores cifrados (sesión de WhatsApp en `whatsapp_auth` y credenciales de
+# canales en identity) se restauran CON la base, pero están cifrados con la
+# STORAGE_ENCRYPTION_KEY del servidor ANTERIOR. Si la instalación nueva generó otra,
+# no se pueden descifrar: WhatsApp no reconecta y el panel no puede leer los canales
+# (fallo real del 2026-11-13). La clave vieja viaja en `config.zip` o, en el respaldo
+# del desinstalador, en la carpeta `env`.
+function Leer-ClaveAlmacen {
+  param([string]$Texto)
+  $m = [regex]::Match($Texto, '(?m)^STORAGE_ENCRYPTION_KEY=(.*)$')
+  if (-not $m.Success) { return $null }
+  $clave = $m.Groups[1].Value.Trim().Trim([char]0x22).Trim([char]0x27)
+  if ($clave -eq '') { return $null }
+  return $clave
+}
+
+function ClaveDelRespaldo {
+  param([string]$Carpeta, [string]$Servicio)
+  $archivoEnv = Join-Path (Join-Path $Carpeta 'env') "$Servicio.env"
+  if (Test-Path $archivoEnv) {
+    $clave = Leer-ClaveAlmacen (Get-Content -Raw $archivoEnv)
+    if ($clave) { return $clave }
+  }
+  $zip = Join-Path $Carpeta 'config.zip'
+  if (Test-Path $zip) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+    $archivo = [IO.Compression.ZipFile]::OpenRead($zip)
+    try {
+      $patron = '(^|/)' + [regex]::Escape($Servicio) + '\.env$'
+      $entrada = $archivo.Entries | Where-Object { $_.FullName -match $patron } | Select-Object -First 1
+      if ($entrada) {
+        $lector = New-Object System.IO.StreamReader($entrada.Open(), [Text.Encoding]::UTF8)
+        try { return (Leer-ClaveAlmacen $lector.ReadToEnd()) } finally { $lector.Dispose() }
+      }
+    } finally { $archivo.Dispose() }
+  }
+  return $null
+}
+
+function Reconciliar-ClaveAlmacen {
+  param([string]$Carpeta, [bool]$Simular)
+  $servicios = @('identity', 'notifications', 'clinical', 'billing', 'patients')
+  $cambiadas = @()
+  $sinOrigen = @()
+  foreach ($servicio in $servicios) {
+    $actualRuta = Join-Path $OdontoEnv "$servicio.env"
+    if (-not (Test-Path $actualRuta)) { continue }
+    $contenido = Get-Content -Raw $actualRuta
+    $actualClave = Leer-ClaveAlmacen $contenido
+    if (-not $actualClave) { continue }
+    $vieja = ClaveDelRespaldo -Carpeta $Carpeta -Servicio $servicio
+    if (-not $vieja) { $vieja = ClaveDelRespaldo -Carpeta $Carpeta -Servicio 'notifications' }
+    if (-not $vieja) { $sinOrigen += $servicio; continue }
+    if ($actualClave -eq $vieja) { continue }
+    if ($Simular) {
+      Escribir-Detalle "[dry-run] pondría la clave del respaldo en $servicio.env"
+      $cambiadas += $servicio
+      continue
+    }
+    $nuevo = [regex]::Replace($contenido, '(?m)^STORAGE_ENCRYPTION_KEY=.*$', 'STORAGE_ENCRYPTION_KEY=' + $vieja)
+    [IO.File]::WriteAllText($actualRuta, $nuevo, (New-Object System.Text.UTF8Encoding($false)))
+    if (Get-Command Proteger-Archivo -ErrorAction SilentlyContinue) {
+      Proteger-Archivo -Ruta $actualRuta -LecturaServicio | Out-Null
+    }
+    $cambiadas += $servicio
+  }
+  if ($cambiadas.Count -gt 0) {
+    if ($Simular) {
+      Escribir-Aviso ('[dry-run] se pondría la clave del respaldo en: ' + ($cambiadas -join ', '))
+    } else {
+      Escribir-Ok ('clave del almacén reconciliada con la del respaldo en: ' + ($cambiadas -join ', '))
+      Escribir-Detalle 'la sesión de WhatsApp y las credenciales de canales vuelven a poder descifrarse; reinicia los servicios para aplicarlo'
+    }
+  } elseif ($sinOrigen.Count -gt 0) {
+    Escribir-Aviso 'el respaldo no trae la clave del almacén: la sesión de WhatsApp restaurada no se podrá leer (habrá que volver a vincularla)'
+  } else { Escribir-Detalle 'la clave del almacén ya coincide con la del respaldo' }
+  return ($cambiadas.Count -gt 0)
+}
+
+# ── --solo-clave: reconciliar la clave del almacén sin tocar las bases ──────
+# Camino rápido para una restauración ya hecha sin la configuración: en vez de
+# volver a restaurar las bases, ajusta solo STORAGE_ENCRYPTION_KEY en los .env.
+if ($SoloClave) {
+  if (-not $From) { Morir 'falta --from <carpeta-del-respaldo>' }
+  if (-not (Test-Path $From)) { Morir "no encuentro $From" }
+  if (-not $DryRun) { Afirmar-Administrador }
+  $carpetaSolo = if ((Get-Item $From).PSIsContainer) { $From } else { Split-Path $From -Parent }
+  [void](Reconciliar-ClaveAlmacen -Carpeta $carpetaSolo -Simular $DryRun)
+  if ($DryRun) { Escribir-Ok 'simulación terminada: nada se ha tocado' }
+  exit 0
+}
 
 # Restaurar toca datos: hace falta Administrador (salvo para mirar o simular).
 if (-not $DryRun -and -not $ListOnly) { Afirmar-Administrador }
@@ -118,7 +215,7 @@ if ($ListOnly) {
   exit 0
 }
 
-if (-not $All -and $DbList.Count -eq 0) { Morir 'indica qué restaurar: --all o --db <nombre> (mira --list)' }
+if (-not $SoloClave -and -not $All -and $DbList.Count -eq 0) { Morir 'indica qué restaurar: --all o --db <nombre> (mira --list)' }
 if (-not $From) { Morir 'falta --from <directorio|dump>' }
 if (-not (Test-Path $From)) { Morir "no encuentro $From" }
 
@@ -320,6 +417,15 @@ foreach ($base in $DbList) {
 Write-Host ''
 if ($DryRun) { Escribir-Ok 'simulación terminada: nada se ha tocado'; exit 0 }
 if ($fallos -gt 0) { Escribir-Error "$fallos base(s) con problemas"; exit 4 }
+
+# Las bases restauradas traen datos cifrados con la clave del servidor anterior
+# (WhatsApp y credenciales de canales). Si el respaldo trae esa clave, se pone para
+# que el servicio pueda descifrarlos; si no, se avisa y WhatsApp pedirá re-vincular.
+if (-not $DryRun) {
+  $carpetaRespaldo = if ((Get-Item $From).PSIsContainer) { $From } else { Split-Path $From -Parent }
+  [void](Reconciliar-ClaveAlmacen -Carpeta $carpetaRespaldo -Simular $false)
+}
+
 Escribir-Ok 'restauración correcta.'
 Escribir-Detalle 'reinicia los servicios:  odontocrm reiniciar'
 Escribir-Detalle 'si el respaldo es de otra versión del código, aplica antes las migraciones (pieza 3, o usa «odontocrm recuperar»).'

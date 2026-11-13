@@ -86,6 +86,8 @@ function Ayuda {
   Write-Host '  odontocrm respaldar       Respaldo ahora de las bases y de la configuración'
   Write-Host '                            (CONTINENE SECRETOS: custodiar el medio).'
   Write-Host '  odontocrm restaurar ...   Restaurar desde un respaldo (mira --help del guion).'
+  Write-Host '                            Con --solo-clave --from DIR reconcilia la clave del'
+  Write-Host '                            almacén del respaldo (sesión de WhatsApp y canales).'
   Write-Host '                            Con --all repone ADEMÁS el almacén (radiografías y PDF) y su'
   Write-Host '                            clave, y reinicia: reimprimir un récipe funciona al terminar.'
   Write-Host '  odontocrm recuperar --from DIR'

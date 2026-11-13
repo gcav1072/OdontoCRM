@@ -244,6 +244,11 @@ odontocrm recuperar --from E:\2026-10-12 --yes                        # Windows
 
 `recuperar` hace, en orden:
 
+> Si restauras **sin la configuración** (`config.zip`) en una instalación nueva, los datos
+> cifrados (sesión de WhatsApp y credenciales de canales) quedan con la clave del servidor
+> anterior: reconcilia la clave con `odontocrm restaurar --solo-clave --from <respaldo>` y
+> reinicia. Si el respaldo no trae la clave, WhatsApp habrá que vincularlo de nuevo.
+
 1. **Para** los servicios. *PostgreSQL se queda arriba*: la restauración necesita conectarse.
    Las bases se recrean con el **rol del servicio** como propietario (`ROLE_<base>` en
    `backup.env`, o el nombre de la base) y se restauran con `--no-owner --role`; sin eso las
