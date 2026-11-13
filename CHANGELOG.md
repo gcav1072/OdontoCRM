@@ -4,6 +4,15 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Sin publicar] — Correcciones
+
+### Corregido
+- **El comando `odontocrm` no arrancaba en Windows** (`MissingEndCurlyBrace`): la CLI se
+  guardó como UTF-8 **sin BOM**, así que Windows PowerShell 5.1 la leía como ANSI y los
+  acentos y flechas del texto rompían el parser. Ahora `infra/windows/odontocrm.ps1` va en
+  UTF-8 con BOM, el lanzador `.cmd` queda en ASCII puro y `npm run windows:check` (dentro
+  de `npm run verify`) impide que vuelva a pasar; además `40-verificar.ps1` comprueba al
+  instalar que el guion del comando se puede interpretar.
 ## [Sin publicar] — Licenciamiento offline y modo consulta
 
 ### Añadido

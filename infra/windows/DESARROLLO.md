@@ -113,6 +113,7 @@ Los guiones del instalador (`infra\windows\instalar\`) siguen estas reglas, apre
 
 - **Guarda los `.ps1` como UTF-8 CON BOM.** PowerShell 5.1 lee sin BOM como ANSI y destroza los
   acentos (hasta romper el parser). `comun.ps1` pone la consola en UTF-8 para la salida.
+- **`npm run windows:check` lo comprueba** (y corre dentro de `npm run verify`): todo `.ps1` tiene que empezar con BOM UTF-8 y todo `.cmd`/`.bat` ser ASCII puro. En noviembre de 2026 `odontocrm.ps1` perdió el BOM al editarlo y el comando `odontocrm` dejó de arrancar con `MissingEndCurlyBrace`; `40-verificar.ps1` ahora también comprueba, al instalar, que el guion del comando se puede interpretar.
 - **No pongas `$ErrorActionPreference = 'Stop'`** en un guion que llame a órdenes nativas
   (`npm`, `git`, `psql`…): en 5.1, la salida de error de una orden nativa se vuelve un error
   terminante y el guion aborta. Comprueba `$LASTEXITCODE`.

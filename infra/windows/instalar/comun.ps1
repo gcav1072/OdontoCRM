@@ -151,6 +151,18 @@ function Test-Comando {
   return [bool](Get-Command $Nombre -ErrorAction SilentlyContinue)
 }
 
+# ¿Se puede interpretar el guion con la PowerShell que está corriendo? Un `.ps1`
+# guardado como UTF-8 SIN BOM se lee como ANSI en PowerShell 5.1 y los acentos y las
+# flechas rompen las comillas y el parser (fue justo lo que dejó «odontocrm» sin
+# arrancar en noviembre de 2026). La comprobación se hace con el parser de verdad.
+function Test-GuionPowershell {
+  param([string]$Ruta)
+  $tokens = $null
+  $errores = $null
+  [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $Ruta).Path, [ref]$tokens, [ref]$errores) | Out-Null
+  return ($errores.Count -eq 0)
+}
+
 # Versión mayor de Node (0 si no está). Se usa en la preparación y en la comprobación previa.
 function Get-NodeMayor {
   if (-not (Test-Comando node)) { return 0 }

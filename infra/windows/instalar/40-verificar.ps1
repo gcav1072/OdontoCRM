@@ -432,6 +432,11 @@ elseif (-not (([Environment]::GetEnvironmentVariable('Path', 'Machine') -split '
   Fallo "$OdontoCmd no está en el PATH de la máquina: «odontocrm» no se reconoce al teclearlo"
   Escribir-Detalle 'se arregla con la pieza 1:  .\10-preparar.ps1   (luego abre una consola nueva)'
 }
+elseif (-not (Test-GuionPowershell $guionCli)) {
+  Fallo 'el guion del comando (odontocrm.ps1) está corrupto: PowerShell no puede interpretarlo'
+  Escribir-Detalle 'suele ser un guardado en UTF-8 SIN BOM: el guion tiene que ir en UTF-8 con BOM'
+  Escribir-Detalle 'se arregla reinstalando la pieza 3 desde el repositorio corregido:  .\30-desplegar.ps1'
+}
 elseif (-not (Test-Comando odontocrm)) {
   Escribir-Aviso 'el PATH está bien, pero esta consola es anterior al cambio: ábrela de nuevo'
   Escribir-Detalle "el comando está instalado en $lanzador"
