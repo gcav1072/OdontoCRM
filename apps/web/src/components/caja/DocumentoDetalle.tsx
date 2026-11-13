@@ -15,6 +15,7 @@ import {
 import { billingApi } from '../../lib/endpoints';
 import { formatDateTime } from '../../lib/format';
 import { t } from '../../lib/i18n';
+import { SendDocumentButton } from '../notifications/SendDocumentDialog';
 
 export interface DocumentoDetalleProps {
   documento: BillingInvoiceListItem;
@@ -219,6 +220,22 @@ export const DocumentoDetalle = ({
           </Button>
         )}
 
+        {/* v1.2: enviar la factura por chat (solo emitidas y vigentes). */}
+        {documento.status !== 'borrador' && documento.status !== 'anulada' && (
+          <SendDocumentButton
+            kind="invoice"
+            entityId={documento.id}
+            patientId={documento.patientId}
+            documentLabel={t('notificaciones.envio.etiquetaFactura', {
+              numero: documento.numberLabel ?? t('comun.sinDato'),
+            })}
+            label={t('notificaciones.envio.factura')}
+            onNotice={(variant, message) =>
+              variant === 'success' ? onAviso(message) : onError(message)
+            }
+          />
+        )}
+
         {(puedeCobrar || puedeAnular) && <span className="flex-1" />}
         {puedeCobrar && (
           <Button type="button" onClick={onCobrar}>
@@ -278,6 +295,21 @@ export const DocumentoDetalle = ({
               >
                 {t('caja.doc.recibo')}
               </Button>
+              {/* v1.2: cada recibo vigente se puede mandar por chat. */}
+              {cobro.voidedAt === null && (
+                <SendDocumentButton
+                  kind="receipt"
+                  entityId={cobro.id}
+                  patientId={documento.patientId}
+                  documentLabel={t('notificaciones.envio.etiquetaRecibo', {
+                    numero: cobro.receiptLabel,
+                  })}
+                  label={t('notificaciones.envio.recibo')}
+                  onNotice={(variant, message) =>
+                    variant === 'success' ? onAviso(message) : onError(message)
+                  }
+                />
+              )}
               {puedeAnularCobros && cobro.voidedAt === null && (
                 <Button
                   type="button"

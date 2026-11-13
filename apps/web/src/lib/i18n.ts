@@ -2067,6 +2067,9 @@ const DICCIONARIO = {
   'notificaciones.conversaciones.estado.listo': 'Listo',
   'notificaciones.conversaciones.estado.esperando': 'Esperando {paso}',
   'notificaciones.conversaciones.estado.representante': 'Datos del representante',
+  'notificaciones.conversaciones.estado.verificarIdentidad': 'Verificando la identidad',
+  'notificaciones.conversaciones.estado.corregirMenu': 'Menú de corrección',
+  'notificaciones.conversaciones.estado.confirmarDesvinculacion': 'Confirmación de desvinculación',
 
   // Bandeja
   'notificaciones.bandeja.titulo': 'Bandeja de envíos',
@@ -2266,11 +2269,18 @@ const DICCIONARIO = {
   'notificaciones.canales.columna.vinculado': 'Vinculado',
   'notificaciones.canales.columna.acciones': 'Acciones',
   'notificaciones.canales.bloqueado': 'Bloqueado',
+  'notificaciones.canales.principal': 'Principal',
+  'notificaciones.canales.marcarPrincipal': 'Marcar como principal',
+  'notificaciones.canales.principalHecho':
+    'El chat {direccion} de {paciente} es ahora el principal: ahí irán los avisos y recordatorios.',
   'notificaciones.canales.desvincular': 'Desvincular',
-  'notificaciones.canales.desvincularTitulo': 'Desvincular a {paciente}',
+  'notificaciones.canales.desvincularEste': 'Desvincular este chat',
+  'notificaciones.canales.desvincularTitulo': 'Desvincular este chat',
+  'notificaciones.canales.desvincularChat':
+    'Vas a desvincular el chat de {paciente}: {canal} · {direccion}.',
   'notificaciones.canales.desvincularTexto':
-    'El chat se separa de esta ficha: no volverá a recibir sus avisos y, si escribe otra vez, empezará una conversación nueva y podrá registrarse como otro paciente.',
-  'notificaciones.canales.desvinculado': 'Paciente desvinculado.',
+    'El chat se separa de esta ficha: no volverá a recibir sus avisos y, si escribe otra vez, empezará una conversación nueva y podrá registrarse como otro paciente. La ficha del paciente y sus citas no se borran.',
+  'notificaciones.canales.desvinculado': 'Chat desvinculado.',
   'notificaciones.canales.generado': 'Enlace de vinculación generado para {paciente}.',
   'notificaciones.canales.errorGenerar': 'No se pudo generar el enlace de vinculación.',
 
@@ -2290,6 +2300,57 @@ const DICCIONARIO = {
     'Un paciente que confirmó solo puede cancelar si faltan más de {dias} día(s) para su cita.',
   'notificaciones.politica.invalido': 'Escribe un número entero entre 0 y 30.',
   'notificaciones.politica.error': 'No se pudo cargar la política de cancelación.',
+
+  // --- Recordatorios de citas (v1.2) ---------------------------------------
+  'notificaciones.recordatorios.titulo': 'Recordatorios de citas',
+  'notificaciones.recordatorios.descripcion':
+    'Avisos automáticos que el bot manda antes de cada cita. La hora es la del consultorio (America/Caracas).',
+  'notificaciones.recordatorios.campoDias': 'Días de antelación (0 = desactivado)',
+  'notificaciones.recordatorios.ayudaDias':
+    'Con 0 no se envían recordatorios automáticos; las citas se siguen avisando a mano desde la agenda.',
+  'notificaciones.recordatorios.campoHora': 'Hora de envío',
+  'notificaciones.recordatorios.ayudaHora':
+    'A partir de esta hora salen los recordatorios del día. Nunca de madrugada.',
+  'notificaciones.recordatorios.incluirConfirmadas': 'Recordar también citas ya confirmadas',
+  'notificaciones.recordatorios.incluirConfirmadasAyuda':
+    'Si está apagado, las citas que el paciente ya confirmó no reciben recordatorio.',
+  'notificaciones.recordatorios.autoDocumentos':
+    'Enviar automáticamente récipes, facturas y recibos por chat',
+  'notificaciones.recordatorios.autoDocumentosAyuda':
+    'Al emitirse, el documento se manda al chat principal del paciente. También se puede enviar a mano desde cada documento.',
+  'notificaciones.recordatorios.activo':
+    'Activo: se enviará un recordatorio {dias} día(s) antes a partir de las {hora}.',
+  'notificaciones.recordatorios.desactivado':
+    'Desactivado: no se envían recordatorios automáticos.',
+  'notificaciones.recordatorios.invalido': 'Escribe un número entero entre 0 y 30.',
+  'notificaciones.recordatorios.invalidoHora': 'Elige una hora entre las 7:00 y las 20:00.',
+  'notificaciones.recordatorios.guardar': 'Guardar',
+  'notificaciones.recordatorios.guardando': 'Guardando…',
+  'notificaciones.recordatorios.guardado': 'Recordatorios actualizados.',
+  'notificaciones.recordatorios.error': 'No se pudo cargar la configuración de recordatorios.',
+
+  // --- Envío de documentos por chat (v1.2) ---------------------------------
+  'notificaciones.envio.titulo': 'Enviar por chat',
+  'notificaciones.envio.descripcion': 'Se enviará el documento «{documento}» como PDF adjunto.',
+  'notificaciones.envio.etiquetaRecipe': 'Récipe {numero}',
+  'notificaciones.envio.etiquetaFactura': 'Factura {numero}',
+  'notificaciones.envio.etiquetaRecibo': 'Recibo {numero}',
+  'notificaciones.envio.boton': 'Enviar por chat',
+  'notificaciones.envio.recipe': 'Enviar por chat',
+  'notificaciones.envio.factura': 'Enviar factura por chat',
+  'notificaciones.envio.recibo': 'Enviar recibo por chat',
+  'notificaciones.envio.elegirChat': 'Chat de destino',
+  'notificaciones.envio.cargando': 'Cargando los chats del paciente…',
+  'notificaciones.envio.errorCanales': 'No se pudieron cargar los chats del paciente.',
+  'notificaciones.envio.sinCanalesTitulo': 'Este paciente no tiene WhatsApp ni Telegram vinculado.',
+  'notificaciones.envio.sinCanalesTexto':
+    'Para enviarle documentos por chat, vincula un WhatsApp o un Telegram desde Notificaciones.',
+  'notificaciones.envio.irANotificaciones': 'Ir a Notificaciones',
+  'notificaciones.envio.enviar': 'Enviar',
+  'notificaciones.envio.enviando': 'Enviando…',
+  'notificaciones.envio.encolado': 'En cola de envío.',
+  'notificaciones.envio.duplicado': 'Ya estaba en cola: no se envía dos veces.',
+  'notificaciones.envio.error': 'No se pudo enviar el documento.',
 
   // --- Fase 5: secretaría ---------------------------------------------------
   'secretaria.titulo': 'Secretaría del día',
@@ -3987,6 +4048,10 @@ const BOT_STATE_LABELS: Readonly<Record<BotConversationState, string>> = {
   motivo: BOT_STEP_LABELS.motivo,
   confirmacion: BOT_STEP_LABELS.confirmacion,
   representante: t('notificaciones.conversaciones.estado.representante'),
+  // Estados nuevos de la v1.2: se nombran aunque no sean un dato que se pida.
+  verificar_identidad: t('notificaciones.conversaciones.estado.verificarIdentidad'),
+  corregir_menu: t('notificaciones.conversaciones.estado.corregirMenu'),
+  confirmar_desvinculacion: t('notificaciones.conversaciones.estado.confirmarDesvinculacion'),
   esperando_confirmacion: t('notificaciones.conversaciones.estado.esperando', {
     paso: BOT_STEP_LABELS.confirmacion,
   }),

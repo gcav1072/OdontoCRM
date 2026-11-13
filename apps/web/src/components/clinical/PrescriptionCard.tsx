@@ -14,6 +14,7 @@ import { clinicalApi } from '../../lib/endpoints';
 import { formatDate } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { NoticeBanner } from '../NoticeBanner';
+import { SendDocumentButton } from '../notifications/SendDocumentDialog';
 
 /**
  * Los récipes del paciente (o de la sesión): número, estado, PDF archivado y las
@@ -27,6 +28,8 @@ const variantPorEstado = (status: string): 'success' | 'info' | 'danger' =>
   status === 'emitida' ? 'success' : status === 'anulada' ? 'danger' : 'info';
 
 export interface PrescriptionCardProps {
+  /** Paciente dueño de los récipes: el envío por chat necesita su ficha. */
+  patientId: string;
   prescriptions: readonly PrescriptionSummary[];
   loading?: boolean;
   canWrite: boolean;
@@ -36,6 +39,7 @@ export interface PrescriptionCardProps {
 }
 
 export const PrescriptionCard = ({
+  patientId,
   prescriptions,
   loading = false,
   canWrite,
@@ -150,6 +154,23 @@ export const PrescriptionCard = ({
                   >
                     {t('clinica.recipe.imprimir')}
                   </Button>
+                  {/* v1.2: solo los récipes emitidos tienen PDF enviable. */}
+                  {prescription.status === 'emitida' && (
+                    <SendDocumentButton
+                      kind="prescription"
+                      entityId={prescription.id}
+                      patientId={patientId}
+                      documentLabel={t('notificaciones.envio.etiquetaRecipe', {
+                        numero:
+                          prescription.number ??
+                          formatPrescriptionNumber(prescription.prescriptionNumber ?? 0),
+                      })}
+                      label={t('notificaciones.envio.recipe')}
+                      onNotice={(variant, message) =>
+                        variant === 'success' ? exito(message) : error(message)
+                      }
+                    />
+                  )}
                   {canWrite && prescription.status === 'emitida' && (
                     <Button
                       variant="ghost"

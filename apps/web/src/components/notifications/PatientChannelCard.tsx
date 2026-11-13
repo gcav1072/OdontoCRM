@@ -21,7 +21,7 @@ import {
   TableRow,
   cn,
 } from '@odontocrm/ui';
-import { Check, Copy, Link2, Plug, QrCode, Search, Unlink, UserRound } from 'lucide-react';
+import { Check, Copy, Link2, Plug, QrCode, Search, Star, Unlink, UserRound } from 'lucide-react';
 import { useState } from 'react';
 
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
@@ -97,19 +97,20 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
 
   const desvincular = useMutation({
     mutationFn: (canal: PatientChannel) =>
-      notificationsApi.unlinkChannel(canal.patientId, canal.channel),
+      // v1.2: se desvincula **ese vínculo** (por su id), no todos los del canal.
+      notificationsApi.unlinkChannel(canal.patientId, { channelId: canal.id }),
     onSuccess: (_resultado, canal) => {
       setDesvinculando(null);
       cliente.setQueryData<PatientChannelList>(notificationKeys.channels(null), (actual) =>
         actual === undefined
           ? actual
           : {
-              items: actual.items.filter(
-                (fila) => !(fila.patientId === canal.patientId && fila.channel === canal.channel),
-              ),
+              items: actual.items.filter((fila) => fila.id !== canal.id),
               total: Math.max(0, actual.total - 1),
             },
       );
+      // La lista de la bandeja y los contadores del bot cambian a la vez.
+      void cliente.invalidateQueries({ queryKey: notificationKeys.channelsRoot });
       void cliente.invalidateQueries({ queryKey: notificationKeys.status });
       onNotice('success', t('notificaciones.canales.desvinculado'));
     },
@@ -117,6 +118,35 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
       setDesvinculando(null);
       onNotice('danger', apiErrorMessage(fallo));
     },
+  });
+
+  const marcarPrincipal = useMutation({
+    mutationFn: (canal: PatientChannel) => notificationsApi.setPrimaryChannel(canal.id),
+    onSuccess: (marcado, canal) => {
+      // En la lista, el principal es único por paciente: se limpia el anterior.
+      cliente.setQueryData<PatientChannelList>(notificationKeys.channels(null), (actual) =>
+        actual === undefined
+          ? actual
+          : {
+              items: actual.items.map((fila) =>
+                fila.patientId === marcado.patientId
+                  ? { ...fila, isPrimary: fila.id === marcado.id }
+                  : fila,
+              ),
+              total: actual.total,
+            },
+      );
+      void cliente.invalidateQueries({ queryKey: notificationKeys.channelsRoot });
+      void cliente.invalidateQueries({ queryKey: notificationKeys.status });
+      onNotice(
+        'success',
+        t('notificaciones.canales.principalHecho', {
+          direccion: canal.direccionMasked,
+          paciente: canal.patientName ?? t('comun.desconocido'),
+        }),
+      );
+    },
+    onError: (fallo) => onNotice('danger', apiErrorMessage(fallo)),
   });
 
   const elegir = (elegido: PatientSummary) => {
@@ -411,7 +441,7 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
               </TableHeader>
               <TableBody>
                 {canales.map((canal) => (
-                  <TableRow key={`${canal.patientId}:${canal.channel}`}>
+                  <TableRow key={canal.id}>
                     <TableCell className="text-sm text-ink">
                       {canal.patientName ?? t('comun.desconocido')}
                       {canal.isBlocked && (
@@ -421,7 +451,12 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
                       )}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-ink-muted">
-                      {canal.direccionMasked}
+                      <span className="flex flex-wrap items-center gap-2">
+                        {canal.direccionMasked}
+                        {canal.isPrimary && (
+                          <Badge variant="primary">{t('notificaciones.canales.principal')}</Badge>
+                        )}
+                      </span>
                       <span className="block font-sans text-xs text-ink-subtle">
                         {t(`comun.canal.${canal.channel}`)}
                       </span>
@@ -440,14 +475,30 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
                     </TableCell>
                     <TableCell className="text-right">
                       {canNotify && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          leadingIcon={<Unlink className="size-3.5" aria-hidden="true" />}
-                          onClick={() => setDesvinculando(canal)}
-                        >
-                          {t('notificaciones.canales.desvincular')}
-                        </Button>
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          {!canal.isPrimary && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              loading={
+                                marcarPrincipal.isPending &&
+                                marcarPrincipal.variables?.id === canal.id
+                              }
+                              leadingIcon={<Star className="size-3.5" aria-hidden="true" />}
+                              onClick={() => marcarPrincipal.mutate(canal)}
+                            >
+                              {t('notificaciones.canales.marcarPrincipal')}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            leadingIcon={<Unlink className="size-3.5" aria-hidden="true" />}
+                            onClick={() => setDesvinculando(canal)}
+                          >
+                            {t('notificaciones.canales.desvincularEste')}
+                          </Button>
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>
@@ -463,8 +514,11 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
           open
           onClose={() => setDesvinculando(null)}
           size="sm"
-          title={t('notificaciones.canales.desvincularTitulo', {
+          title={t('notificaciones.canales.desvincularTitulo')}
+          description={t('notificaciones.canales.desvincularChat', {
             paciente: desvinculando.patientName ?? t('comun.desconocido'),
+            canal: t(`comun.canal.${desvinculando.channel}`),
+            direccion: desvinculando.direccionMasked,
           })}
           dismissOnBackdrop={false}
           closeLabel={t('comun.cerrar')}
@@ -482,7 +536,7 @@ export const PatientChannelCard = ({ bot, canNotify, onNotice }: PatientChannelC
                 loading={desvincular.isPending}
                 onClick={() => desvincular.mutate(desvinculando)}
               >
-                {t('notificaciones.canales.desvincular')}
+                {t('notificaciones.canales.desvincularEste')}
               </Button>
             </>
           }

@@ -101,6 +101,8 @@ import {
   type ScreenDeviceInput,
   type ScreenDeviceList,
   type ScreenDeviceUpdate,
+  type SendDocumentNotificationInput,
+  type SendDocumentNotificationResult,
   type SessionInfo,
   type Sex,
   type SlotTemplate,
@@ -973,6 +975,17 @@ export interface PatientChannelList {
 }
 
 /**
+ * Respuesta de `PATCH /notifications/channels/:id/primary` (v1.2): el vínculo
+ * concreto que quedó marcado como **chat principal** del paciente.
+ */
+export interface SetPrimaryChannelResult {
+  id: string;
+  patientId: string;
+  channel: Channel;
+  isPrimary: boolean;
+}
+
+/**
  * Enlace de vinculación con la imagen del QR ya renderizada.
  *
  * El contrato comparte `LinkCode` sin `qrDataUrl` porque la generación del QR es
@@ -1017,12 +1030,17 @@ export const notificationsApi = {
     api.get<BotStatus>('/notifications/status', { signal }),
 
   /**
-   * **Política de cancelación del paciente** (ADR 0057). Exige
-   * `scheduling:cancel_policy`: solo el `admin` y el odontólogo la leen y la editan.
+   * **Configuración de notificaciones** (v1.2): el corte de cancelación del
+   * paciente y los recordatorios automáticos, en la misma fila. Exige
+   * `scheduling:cancel_policy` (solo el `admin`).
    */
   settings: (signal?: AbortSignal): Promise<NotificationSettings> =>
     api.get<NotificationSettings>('/notifications/settings', { signal }),
 
+  /**
+   * Edición **parcial**: la tarjeta de cancelación y la de recordatorios comparten
+   * este `PATCH` y cada una manda solo lo que cambió.
+   */
   updateSettings: (input: NotificationSettingsInput): Promise<NotificationSettings> =>
     api.patch<NotificationSettings>('/notifications/settings', input),
 
@@ -1063,10 +1081,39 @@ export const notificationsApi = {
   linkCode: (patientId: string): Promise<LinkCodeResponse> =>
     api.post<LinkCodeResponse>('/notifications/channels/link-code', { patientId }),
 
-  unlinkChannel: (patientId: string, channel?: Channel): Promise<void> =>
-    api.delete<void>(`/notifications/channels/${patientId}`, {
-      query: channel === undefined ? undefined : { channel },
-    }),
+  /**
+   * Desvincula un chat. Con `channelId` se quita **un vínculo concreto** (v1.2: un
+   * paciente puede tener varios chats, incluso del mismo canal); con `channel` —o
+   * sin nada— se quitan todos los de ese canal, como antes.
+   */
+  unlinkChannel: (
+    patientId: string,
+    opciones: { channelId?: string; channel?: Channel } = {},
+  ): Promise<void> => {
+    const query: QueryParams =
+      opciones.channelId !== undefined
+        ? { channelId: opciones.channelId }
+        : opciones.channel === undefined
+          ? {}
+          : { channel: opciones.channel };
+    return api.delete<void>(`/notifications/channels/${patientId}`, { query });
+  },
+
+  /**
+   * Marca ese vínculo como **chat principal**: el destino por defecto de los avisos
+   * y recordatorios rutinarios. La API deja uno solo por paciente.
+   */
+  setPrimaryChannel: (channelId: string): Promise<SetPrimaryChannelResult> =>
+    api.patch<SetPrimaryChannelResult>(`/notifications/channels/${channelId}/primary`, {}),
+
+  /**
+   * Envía un **récipe, factura o recibo en PDF por chat** (v1.2). Es el disparador
+   * manual: devuelve `queued` o `duplicado` (el mismo clic ya estaba encolado) y el
+   * canal por el que sale. Un 409 significa que el paciente no tiene chat vinculado
+   * o que el documento ya no es enviable (borrador o anulado).
+   */
+  sendDocument: (input: SendDocumentNotificationInput): Promise<SendDocumentNotificationResult> =>
+    api.post<SendDocumentNotificationResult>('/notifications/documents/send', input),
 };
 
 /** Constancia de impresión de una historia clínica. */

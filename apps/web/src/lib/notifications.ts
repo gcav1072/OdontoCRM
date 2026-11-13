@@ -1,4 +1,12 @@
-import { renderMessage, type NotificationRecord } from '@odontocrm/contracts';
+import {
+  MAX_REMINDER_DAYS_BEFORE,
+  REMINDER_SEND_HOUR_MAX,
+  REMINDER_SEND_HOUR_MIN,
+  renderMessage,
+  type NotificationRecord,
+  type NotificationSettings,
+  type NotificationSettingsInput,
+} from '@odontocrm/contracts';
 
 import type { AppointmentsNotificationParams, NotificationsListParams } from './endpoints';
 
@@ -39,6 +47,92 @@ export const notificationKeys = {
 
 /** Refresco de la cabecera de estado: el bot recibe mensajes a cada rato. */
 export const BOT_STATUS_REFRESH_MS = 15_000;
+
+/* ── Recordatorios de citas (v1.2) ─────────────────────────────────────────── */
+
+/**
+ * Lo que se edita en la tarjeta de recordatorios, ya como números (el campo de
+ * días se teclea como texto y la tarjeta valida antes de llegar aquí). Se separa de
+ * `NotificationSettings` porque es el **borrador** del formulario, no lo guardado.
+ */
+export interface ReminderPolicyDraft {
+  /** Días de antelación; 0 = recordatorios automáticos apagados. */
+  daysBefore: number;
+  /** Hora local del consultorio a partir de la cual se envía. */
+  sendHour: number;
+  /** También recordar las citas que el paciente ya confirmó. */
+  includeConfirmed: boolean;
+  /** Enviar récipes, facturas y recibos automáticamente al emitirse. */
+  autoSendDocuments: boolean;
+}
+
+/** Los cuatro campos de la tarjeta, tomados de la configuración cargada. */
+export const reminderPolicyFrom = (
+  settings: Pick<
+    NotificationSettings,
+    'reminderDaysBefore' | 'reminderSendHour' | 'reminderIncludeConfirmed' | 'autoSendDocuments'
+  >,
+): ReminderPolicyDraft => ({
+  daysBefore: settings.reminderDaysBefore,
+  sendHour: settings.reminderSendHour,
+  includeConfirmed: settings.reminderIncludeConfirmed,
+  autoSendDocuments: settings.autoSendDocuments,
+});
+
+/**
+ * Solo lo que cambió respecto a lo guardado: el `PATCH` es parcial a propósito
+ * (la tarjeta de cancelación comparte el mismo endpoint y no debe reescribir lo de
+ * la otra). Sin cambios devuelve `{}`.
+ */
+export const reminderPolicyChanges = (
+  saved: ReminderPolicyDraft,
+  draft: ReminderPolicyDraft,
+): NotificationSettingsInput => {
+  const cambios: NotificationSettingsInput = {};
+  if (draft.daysBefore !== saved.daysBefore) cambios.reminderDaysBefore = draft.daysBefore;
+  if (draft.sendHour !== saved.sendHour) cambios.reminderSendHour = draft.sendHour;
+  if (draft.includeConfirmed !== saved.includeConfirmed)
+    cambios.reminderIncludeConfirmed = draft.includeConfirmed;
+  if (draft.autoSendDocuments !== saved.autoSendDocuments)
+    cambios.autoSendDocuments = draft.autoSendDocuments;
+  return cambios;
+};
+
+/** ¿El borrador entra en los rangos del contrato? (enteros, 0..30 días y 7..20 h). */
+export const reminderPolicyIsValid = (draft: ReminderPolicyDraft): boolean =>
+  Number.isInteger(draft.daysBefore) &&
+  draft.daysBefore >= 0 &&
+  draft.daysBefore <= MAX_REMINDER_DAYS_BEFORE &&
+  Number.isInteger(draft.sendHour) &&
+  draft.sendHour >= REMINDER_SEND_HOUR_MIN &&
+  draft.sendHour <= REMINDER_SEND_HOUR_MAX;
+
+/** Una hora del selector o del resumen: `9` → «9:00». */
+export const reminderHourText = (hour: number): string => `${String(hour)}:00`;
+
+/** Las horas que ofrece el selector (las de la ventana diurna del contrato). */
+export const reminderHourOptions = (): readonly number[] =>
+  Array.from(
+    { length: REMINDER_SEND_HOUR_MAX - REMINDER_SEND_HOUR_MIN + 1 },
+    (_, indice) => REMINDER_SEND_HOUR_MIN + indice,
+  );
+
+/**
+ * El resumen vivo de la tarjeta: con 0 días está apagada; con días, dice cuándo
+ * saldrá el recordatorio. Es lo que se pinta en el `Alert` mientras se edita.
+ */
+export type ReminderPolicySummary =
+  { active: false } | { active: true; daysBefore: number; sendHour: number; hourText: string };
+
+export const reminderPolicySummary = (draft: ReminderPolicyDraft): ReminderPolicySummary =>
+  draft.daysBefore === 0
+    ? { active: false }
+    : {
+        active: true,
+        daysBefore: draft.daysBefore,
+        sendHour: draft.sendHour,
+        hourText: reminderHourText(draft.sendHour),
+      };
 
 /* ── Lectura defensiva del payload ─────────────────────────────────────────── */
 

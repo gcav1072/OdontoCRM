@@ -432,6 +432,7 @@ export const SessionPanel = ({
 
       {sesionVisibleId !== null ? (
         <PrescriptionCard
+          patientId={patientId}
           prescriptions={recetasQuery.data?.items ?? []}
           loading={recetasQuery.isLoading}
           canWrite={canWrite && !sesionCerrada}
@@ -443,6 +444,7 @@ export const SessionPanel = ({
         />
       ) : (
         <PrescriptionCard
+          patientId={patientId}
           prescriptions={recetasPacienteQuery.data?.items ?? []}
           loading={recetasPacienteQuery.isLoading}
           canWrite={false}

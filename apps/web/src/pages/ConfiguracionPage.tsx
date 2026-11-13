@@ -16,6 +16,7 @@ import { PantallasSection } from '../components/config/PantallasSection';
 import { TributarioSection } from '../components/config/TributarioSection';
 import { NoticeBanner } from '../components/NoticeBanner';
 import { CancellationPolicyCard } from '../components/notifications/CancellationPolicyCard';
+import { ReminderPolicyCard } from '../components/notifications/ReminderPolicyCard';
 import { useNotice } from '../hooks/useNotice';
 import { apiErrorMessage, apiErrorMessageConCampos } from '../lib/api';
 import { settingsApi } from '../lib/endpoints';
@@ -111,6 +112,7 @@ export const ConfiguracionPage = () => {
           <CanalesSection vista={vista} onNotice={avisar} />
           <TributarioSection onNotice={avisar} />
           <CancellationPolicyCard onNotice={(variant, message) => mostrar({ variant, message })} />
+          <ReminderPolicyCard onNotice={(variant, message) => mostrar({ variant, message })} />
         </>
       )}
     </div>
