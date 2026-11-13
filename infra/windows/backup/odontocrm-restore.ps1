@@ -21,6 +21,11 @@
 #   .\odontocrm-restore.ps1 --from …\2026-10-02 --db odonto_identity --keep-verify-db --yes
 #   .\odontocrm-restore.ps1 --from …\2026-10-02 --db odonto_identity --keep-old --yes
 #
+# CLAVE DE POSTGRES
+#   Se pide **una sola vez** al empezar (si `postgres` no tiene entrada en `.pgpass`)
+#   y se usa para todas las conexiones de la restauración. También vale definir
+#   PGPASSWORD o añadir la entrada a `.pgpass`.
+#
 # CÓDIGOS DE SALIDA
 #   0 correcto · 1 configuración · 2 respaldo no encontrado/corrupto
 #   3 falló la verificación (NO se tocó la base real) · 4 falló la restauración
@@ -49,6 +54,8 @@ OPCIONES
   --keep-verify-db  No borra la base temporal de verificación.
   --dry-run         Simula: dice exactamente qué haría, sin tocar nada.
   --yes             Confirma la restauración real (sin esto no se ejecuta).
+
+La clave del usuario postgres se pide UNA sola vez (o se toma de PGPASSWORD/.pgpass).
 '@
 
 if ((Test-Bandera $args 'ayuda') -or (Test-Bandera $args 'help')) { Write-Host $Ayuda; exit 0 }
@@ -122,6 +129,9 @@ if ($All) {
 function Env-PgAdmin {
   $entorno = @{ PGHOST = $PgHost; PGPORT = [string]$PgPort; PGUSER = $PgAdminUser; PGCONNECT_TIMEOUT = '15' }
   if (Test-Path $PgPassFile) { $entorno['PGPASSFILE'] = $PgPassFile }
+  # La clave que se pidió UNA vez al empezar; ConEntorno la pone y la quita en cada
+  # llamada, así no queda en el entorno de la consola.
+  if ($script:ClavePgAdmin) { $entorno['PGPASSWORD'] = $script:ClavePgAdmin }
   return $entorno
 }
 function ConEntorno {
@@ -150,6 +160,44 @@ function Test-VolcadoRapido {
   Escribir-Ok "${Etiqueta}: volcado válido"
   return $true
 }
+
+# ── Clave del administrador de PostgreSQL: una sola vez ───────────────────
+# Restaurar abre VARIAS conexiones por base (verificar en temporal, renombrar,
+# crear, restaurar, ANALYZE). Si `postgres` no tiene entrada en `.pgpass`, psql
+# pedía la clave en cada una: ~9 veces por base y ~90 en una restauración
+# completa (2026-11-13). Se pide UNA vez y se pasa a los hijos por PGPASSWORD,
+# en memoria y solo mientras dura la restauración.
+$script:ClavePgAdmin = $null
+
+function Test-ConexionAdmin {
+  ConEntorno (Env-PgAdmin) { & $psql -X -q -w -d postgres -c 'select 1' *> $null }
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Asegurar-ClavePostgres {
+  if (Test-ConexionAdmin) {
+    Escribir-Ok 'conexión de administrador lista (sin pedir la clave)'
+    return
+  }
+  if (-not [Environment]::UserInteractive) {
+    Morir 'falta la clave de postgres y esta consola no es interactiva: define PGPASSWORD o añade una línea de postgres a .pgpass'
+  }
+  Write-Host ''
+  Escribir-Aviso 'Restaurar abre varias conexiones por base. La clave se pide UNA sola vez:'
+  $segura = Read-Host "Clave del usuario $PgAdminUser (se usa solo en esta restauración)" -AsSecureString
+  $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($segura)
+  try { $script:ClavePgAdmin = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
+  finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+  if (-not (Test-ConexionAdmin)) {
+    $script:ClavePgAdmin = $null
+    Morir 'la clave de postgres no conecta: revísala y vuelve a ejecutar la restauración'
+  }
+  Escribir-Ok 'clave aceptada: no se volverá a pedir en esta restauración'
+}
+
+# La verificación de cada volcado toca la base temporal, así que la clave hace
+# falta también sin `--yes`; con `--dry-run` no se conecta y no se pregunta.
+if (-not $DryRun) { Asegurar-ClavePostgres }
 
 $fallos = 0
 foreach ($base in $DbList) {

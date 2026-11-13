@@ -150,6 +150,10 @@ powershell -ExecutionPolicy Bypass -File infra\windows\instalar\instalar.ps1
 odontocrm recuperar --from C:\OdontoCRM\backups\2026-10-12 --yes
 ```
 
+> **La clave de `postgres` se pide una sola vez** (si no está en `PGPASSWORD` ni en
+> `.pgpass`): la restauración de las 10 bases reutiliza esa misma conexión y ya no vuelve
+> a preguntarla. Si la consola no es interactiva, define `PGPASSWORD` en el entorno.
+
 `recuperar` **no toca la configuración** a propósito: los `.env` del respaldo son de la máquina
 **anterior** y pisarían las contraseñas que el instalador acaba de crear (los servicios no
 conectarían). Si lo necesitas, añade `--con-config`. Sin `--yes` solo dice qué haría; con

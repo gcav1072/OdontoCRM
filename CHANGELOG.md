@@ -7,6 +7,11 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 ## [Sin publicar] — Correcciones
 
 ### Corregido
+- **La restauración pedía la clave de `postgres` en cada conexión** (~9 veces por base,
+  ~90 en una restauración completa) porque `psql` la pregunta cada vez que no está en
+  `.pgpass`. Ahora se pide **una sola vez** al empezar y viaja a cada conexión por
+  `PGPASSWORD` mientras dura la restauración (sin dejarla en el entorno de la consola);
+  si ya está en `PGPASSWORD`/`.pgpass`, no se pregunta nada.
 - **Cualquier orden de `odontocrm` con UN SOLO argumento moría en Windows** con
   `PSArgumentException` («el valor del argumento "name" no es válido»): `restaurar --list`,
   `restaurar --all`, `logs clinical`, `whatsapp estado`, `licencia estado`… El recorte de
