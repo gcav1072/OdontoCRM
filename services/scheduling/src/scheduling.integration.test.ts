@@ -935,7 +935,7 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     ).rejects.toThrow(/No se puede confirmar/);
   }, 60_000);
 
-  it('el paciente cancela su cita y el ticket vuelve a la cola (ADR 0053)', async () => {
+  it('el paciente pospone su cita y el ticket vuelve a la cola (ADR 0053/0077)', async () => {
     const request = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
     const cita = await assignAppointment(
       schedulingHandle.db,
@@ -944,12 +944,13 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
       { config },
     );
 
-    // El bot cancela con un actor **sin roles** y por su canal (ADR 0053).
+    // El bot cancela con un actor **sin roles** y por su canal (ADR 0053). Posponer
+    // es el comportamiento de siempre (`devolverACola: true`, que además es el default).
     const bot = { ...admin, roles: [] as const };
     const cancelada = await cancelAppointment(
       schedulingHandle.db,
       cita.id,
-      { channel: 'telegram', config },
+      { channel: 'telegram', config, devolverACola: true },
       bot,
     );
     expect(cancelada.status).toBe('cancelada');
@@ -966,9 +967,10 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     expect(otraVez.cancelledAt).toBe(cancelada.cancelledAt);
     const historial = await getHistory(schedulingHandle.db, 'appointment', cita.id);
     expect(historial.filter((entrada) => entrada.toStatus === 'cancelada')).toHaveLength(1);
-    expect(historial.find((entrada) => entrada.toStatus === 'cancelada')?.reason).toContain(
-      'Telegram',
-    );
+    // El historial habla de «posponer»: el vocabulario cambió (ADR 0077).
+    const motivoCita = historial.find((entrada) => entrada.toStatus === 'cancelada')?.reason;
+    expect(motivoCita).toContain('pospuso');
+    expect(motivoCita).toContain('Telegram');
 
     // El ticket vuelve a la cola: la solicitud queda «en espera de cita» y deja
     // de mostrar la cita cancelada como cita vigente.
@@ -976,6 +978,13 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     const resumen = await getRequest(schedulingHandle.db, request.id);
     expect(resumen.appointmentDate).toBeNull();
     expect(resumen.appointmentTime).toBeNull();
+    const historialSolicitud = await getHistory(schedulingHandle.db, 'request', request.id);
+    const pospuesta = historialSolicitud.find((entrada) => entrada.toStatus === 'en_espera_cita');
+    expect(pospuesta).toBeDefined();
+    expect(pospuesta?.reason).toContain('vuelve a la cola');
+    expect((await waitingQueue(schedulingHandle.db)).some((item) => item.id === request.id)).toBe(
+      true,
+    );
 
     // La tarjeta ve las cancelaciones **del paciente** por su canal.
     const hoy = todayInClinic();
@@ -1026,6 +1035,89 @@ describeWithDatabases('agenda con PostgreSQL real', () => {
     });
     expect(soloPaciente.items.some((item) => item.id === porSecretaria.id)).toBe(false);
     expect(soloPaciente.items.some((item) => item.id === enSala.id)).toBe(false);
+  }, 60_000);
+
+  it('el paciente cancela definitivamente y la solicitud no vuelve a la cola (ADR 0077)', async () => {
+    const request = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
+    const cita = await assignAppointment(
+      schedulingHandle.db,
+      anAssignment(request.id, { date: activityDay, startTime: '20:00', slotKind: 'manual' }),
+      admin,
+      { config },
+    );
+    expect((await getRequestRow(schedulingHandle.db, request.id)).status).toBe('programada');
+
+    const bot = { ...admin, roles: [] as const };
+    const cancelada = await cancelAppointment(
+      schedulingHandle.db,
+      cita.id,
+      { channel: 'whatsapp', config, devolverACola: false },
+      bot,
+    );
+    expect(cancelada.status).toBe('cancelada');
+    expect(cancelada.cancelledChannel).toBe('whatsapp');
+
+    // La cita queda cancelada y la **solicitud también**: no vuelve a la cola y no
+    // se borra nada (el ticket y su historial siguen consultables).
+    const solicitud = await getRequestRow(schedulingHandle.db, request.id);
+    expect(solicitud.status).toBe('cancelada');
+    expect((await waitingQueue(schedulingHandle.db)).some((item) => item.id === request.id)).toBe(
+      false,
+    );
+
+    // Historial de las dos entidades, con el motivo de la acción definitiva.
+    const motivoCita = (await getHistory(schedulingHandle.db, 'appointment', cita.id)).find(
+      (entrada) => entrada.toStatus === 'cancelada',
+    )?.reason;
+    expect(motivoCita).toContain('canceló definitivamente');
+    expect(motivoCita).toContain('WhatsApp');
+    const motivoSolicitud = (await getHistory(schedulingHandle.db, 'request', request.id)).find(
+      (entrada) => entrada.toStatus === 'cancelada',
+    )?.reason;
+    expect(motivoSolicitud).toContain('no vuelve a la cola');
+
+    // Idempotente: una segunda pulsación no reescribe historial ni mueve la fecha.
+    const otraVez = await cancelAppointment(
+      schedulingHandle.db,
+      cita.id,
+      { channel: 'whatsapp', config, devolverACola: false },
+      bot,
+    );
+    expect(otraVez.cancelledAt).toBe(cancelada.cancelledAt);
+    expect(
+      (await getHistory(schedulingHandle.db, 'appointment', cita.id)).filter(
+        (entrada) => entrada.toStatus === 'cancelada',
+      ),
+    ).toHaveLength(1);
+    expect(
+      (await getHistory(schedulingHandle.db, 'request', request.id)).filter(
+        (entrada) => entrada.toStatus === 'cancelada',
+      ),
+    ).toHaveLength(1);
+  }, 60_000);
+
+  it('la secretaría sigue devolviendo el ticket a la cola (ADR 0077)', async () => {
+    // La ruta pública no manda el flag: el default `true` conserva el comportamiento
+    // histórico de la secretaría (ni el flag ni el canal se pueden forjar desde fuera).
+    const request = await createRequest(schedulingHandle.db, aRequest({ notes: MARK }), admin);
+    const cita = await assignAppointment(
+      schedulingHandle.db,
+      anAssignment(request.id, { date: activityDay, startTime: '20:30', slotKind: 'manual' }),
+      admin,
+      { config },
+    );
+
+    await transitionAppointment(schedulingHandle.db, cita.id, 'cancelada', secretary, {
+      config,
+      reason: 'la anuló la secretaría',
+    });
+
+    expect((await getRequestRow(schedulingHandle.db, request.id)).status).toBe('en_espera_cita');
+    const historialSolicitud = await getHistory(schedulingHandle.db, 'request', request.id);
+    expect(historialSolicitud.some((entrada) => entrada.toStatus === 'en_espera_cita')).toBe(true);
+    // Sin canal: no se puede atribuir a un paciente.
+    const cancelada = await getAppointment(schedulingHandle.db, cita.id);
+    expect(cancelada.cancelledChannel).toBeNull();
   }, 60_000);
 
   it('las novedades de citas cuentan lo que hizo el paciente por el bot (ADR 0057)', async () => {

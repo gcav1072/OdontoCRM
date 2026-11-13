@@ -1905,10 +1905,10 @@ const DICCIONARIO = {
   'programacion.notificar.confirmarUno': 'Preparar el aviso',
   'programacion.notificar.ok': 'Avisos preparados: {notified}. Omitidos: {skipped}.',
 
-  // Cancelaciones hechas por el paciente (ADR 0053)
+  // Cancelaciones hechas por el paciente (ADR 0053 / ADR 0077)
   'programacion.cancelaciones.titulo': 'Canceladas por el paciente',
   'programacion.cancelaciones.descripcion':
-    'Citas que canceló el propio paciente desde Telegram o WhatsApp. Al cancelar, su ticket vuelve a la cola de espera.',
+    'Citas que canceló el propio paciente desde Telegram o WhatsApp. Al posponer, su ticket vuelve a la cola de espera; al cancelar la cita definitivamente, la solicitud sale de la cola y no vuelve.',
   'programacion.cancelaciones.cargando': 'Cargando las cancelaciones…',
   'programacion.cancelaciones.error': 'No se pudieron cargar las cancelaciones.',
   'programacion.cancelaciones.vacio': 'Ningún paciente ha cancelado una cita en el período.',
@@ -2070,6 +2070,7 @@ const DICCIONARIO = {
   'notificaciones.conversaciones.estado.verificarIdentidad': 'Verificando la identidad',
   'notificaciones.conversaciones.estado.corregirMenu': 'Menú de corrección',
   'notificaciones.conversaciones.estado.confirmarDesvinculacion': 'Confirmación de desvinculación',
+  'notificaciones.conversaciones.estado.elegirAccionCita': 'Eligiendo qué hacer con la cita',
 
   // Bandeja
   'notificaciones.bandeja.titulo': 'Bandeja de envíos',
@@ -2218,7 +2219,11 @@ const DICCIONARIO = {
   'notificaciones.plantilla.cita_reprogramada': 'Cita reprogramada',
   'notificaciones.plantilla.cita_cancelada': 'Cita cancelada',
   'notificaciones.plantilla.cita_confirmada_paciente': 'Confirmación (paciente)',
-  'notificaciones.plantilla.cita_cancelada_paciente': 'Cancelación (paciente)',
+  'notificaciones.plantilla.cita_cancelada_paciente': 'Cancelación definitiva (paciente)',
+  'notificaciones.plantilla.cita_pospuesta_paciente': 'Cita pospuesta (paciente)',
+  'notificaciones.plantilla.cita_posponer_o_cancelar': 'Pregunta: posponer o cancelar',
+  'notificaciones.plantilla.confirmar_anular_solicitud': 'Confirmar anulación de la solicitud',
+  'notificaciones.plantilla.solicitud_anulada_paciente': 'Solicitud anulada (paciente)',
   'notificaciones.plantilla.cita_no_cancelable': 'Cita no cancelable',
   'notificaciones.plantilla.cita_cancelacion_fuera_de_plazo': 'Cancelación fuera de plazo',
   'notificaciones.plantilla.sin_citas': 'Sin citas próximas',
@@ -4100,6 +4105,8 @@ const BOT_STATE_LABELS: Readonly<Record<BotConversationState, string>> = {
   verificar_identidad: t('notificaciones.conversaciones.estado.verificarIdentidad'),
   corregir_menu: t('notificaciones.conversaciones.estado.corregirMenu'),
   confirmar_desvinculacion: t('notificaciones.conversaciones.estado.confirmarDesvinculacion'),
+  // v1.2.2: el bot pregunta si posponer o cancelar la cita definitivamente.
+  elegir_accion_cita: t('notificaciones.conversaciones.estado.elegirAccionCita'),
   esperando_confirmacion: t('notificaciones.conversaciones.estado.esperando', {
     paso: BOT_STEP_LABELS.confirmacion,
   }),
@@ -4130,6 +4137,10 @@ const NOMBRES_PLANTILLA: Readonly<Record<string, string>> = {
   cita_cancelada: t('notificaciones.plantilla.cita_cancelada'),
   cita_confirmada_paciente: t('notificaciones.plantilla.cita_confirmada_paciente'),
   cita_cancelada_paciente: t('notificaciones.plantilla.cita_cancelada_paciente'),
+  cita_pospuesta_paciente: t('notificaciones.plantilla.cita_pospuesta_paciente'),
+  cita_posponer_o_cancelar: t('notificaciones.plantilla.cita_posponer_o_cancelar'),
+  confirmar_anular_solicitud: t('notificaciones.plantilla.confirmar_anular_solicitud'),
+  solicitud_anulada_paciente: t('notificaciones.plantilla.solicitud_anulada_paciente'),
   cita_no_cancelable: t('notificaciones.plantilla.cita_no_cancelable'),
   cita_cancelacion_fuera_de_plazo: t('notificaciones.plantilla.cita_cancelacion_fuera_de_plazo'),
   sin_citas: t('notificaciones.plantilla.sin_citas'),

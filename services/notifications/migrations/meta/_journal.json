@@ -64,6 +64,13 @@
       "when": 1794580749857,
       "tag": "0008_v1_2_chatbot_recordatorios_canales",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794614400000,
+      "tag": "0009_v1_2_2_posponer_cancelar",
+      "breakpoints": true
     }
   ]
 }

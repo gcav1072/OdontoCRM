@@ -27,6 +27,10 @@ la sesión Signal cifrada en la base con vinculación por QR/código y la vincul
 paciente por `wa.me` con intenciones que aceptan argumento. La **0075** incorpora el
 **licenciamiento offline**: prueba de 30 días, licencias mensual/trimestral/anual y modo
 consulta cuando vencen; la **0076** añade las **licencias vitalicias** (sin vencimiento).
+La **0077** separa **posponer** (la cita se cancela y el ticket vuelve a la cola) de
+**cancelar la cita definitivamente** (la solicitud no vuelve a la cola), con el flag
+`devolverACola` en la ruta interna de la agenda y el alias heredado `cancelar_cita` =
+posponer durante una versión.
 
 > **Numeración de la Fase 11:** el plan de facturación
 > ([`../feat_billing.md`](../feat_billing.md)) numeraba sus cinco ADRs **0043–0047** porque daba por hecho
@@ -112,3 +116,4 @@ consulta cuando vencen; la **0076** añade las **licencias vitalicias** (sin ven
 | [0074](0074-vinculacion-por-wa-me-e-intenciones-con-argumento.md) | Vinculación del paciente por **`wa.me`** e intenciones con argumento en canales sin comandos (`vincular ABC123`, `estado #000123`); desvincular por canal | propuesta |
 | [0075](0075-licenciamiento-offline-y-modo-consulta.md) | Licenciamiento **offline** con JWT EdDSA firmado por el proveedor: prueba de 30 días, licencias mensual/trimestral/anual (revocar = no renovar), atadura a la instalación, modo consulta por permisos y bots de emisión/activación | propuesta |
 | [0076](0076-licencias-vitalicias.md) | Licencias **vitalicias** (sin vencimiento): `venceEn` nullable con coherencia por tipo, siempre vigentes, el modo consulta no llega por tiempo y el emisor las ofrece con `--tipo vitalicia` / `/vitalicia` | propuesta |
+| [0077](0077-posponer-vs-cancelar-cita-definitiva.md) | **Posponer** (la cita se cancela y el ticket vuelve a la cola, como siempre) y **cancelar la cita definitivamente** (la solicitud no vuelve a la cola) son acciones distintas: flag `devolverACola`, pregunta ante «cancelar» escrito, 3 botones, `cancelar_cita` = alias heredado de posponer durante una versión y KPI sin split (deuda) | aceptada (v1.2.2) |

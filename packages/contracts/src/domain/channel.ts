@@ -171,6 +171,13 @@ export const BOT_INTENTS = [
   'estado',
   'mi_ticket',
   'confirmar',
+  /**
+   * Posponer la cita (v1.2.2): libera la franja y devuelve el ticket a la lista de
+   * espera. Es exactamente el comportamiento que antes se llamaba «cancelar»; el
+   * vocabulario se separó porque «cancelar» pasó a ser la cancelación definitiva
+   * ([ADR 0077](../../../../docs/adr/0077-posponer-vs-cancelar-cita-definitiva.md)).
+   */
+  'posponer',
   'cancelar',
   /** Cambiar de paciente: desvincula **este** chat y permite vincular otro (v1.2). */
   'desvincular',
@@ -233,6 +240,26 @@ export const INTENT_PHRASES: Readonly<Record<BotIntent, readonly string[]>> = {
     'asistire',
     'voy a asistir',
     'asistencia confirmada',
+  ],
+  /**
+   * Posponer la cita (v1.2.2): la cita se libera y el ticket vuelve a la lista de
+   * espera. Las frases son las que la gente escribe cuando no puede ir ese día.
+   */
+  posponer: [
+    'posponer',
+    'posponer cita',
+    'posponer mi cita',
+    'pospuesta',
+    'otro dia',
+    'otro dia por favor',
+    'cambiar de dia',
+    'cambiar el dia',
+    'cambiar mi cita de dia',
+    'mover la cita',
+    'mover mi cita',
+    'no puedo ir',
+    'no puedo asistir',
+    'no podre ir',
   ],
   cancelar: [
     'cancelar',
@@ -322,8 +349,13 @@ export const BOT_COMMANDS: readonly BotCommand[] = [
   { comando: 'mi_ticket', descripcion: 'Recordarme mi ticket', intencion: 'mi_ticket' },
   { comando: 'confirmar', descripcion: 'Confirmar mi cita', intencion: 'confirmar' },
   {
+    comando: 'posponer',
+    descripcion: 'Posponer mi cita y volver a la lista',
+    intencion: 'posponer',
+  },
+  {
     comando: 'cancelar',
-    descripcion: 'Cancelar mi cita o solicitud',
+    descripcion: 'Cancelar mi cita o anular mi solicitud',
     intencion: 'cancelar',
     admiteArgumento: true,
   },

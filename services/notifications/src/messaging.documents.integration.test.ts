@@ -180,7 +180,7 @@ describeWithDatabase('documentos por chat y opciones de cita (PostgreSQL real)',
     expect(fallido?.lastError).toContain('anulado');
   });
 
-  it('en WhatsApp, el aviso de cita añade opciones numeradas y las guarda', async () => {
+  it('en WhatsApp, el aviso de cita añade las tres opciones numeradas y las guarda', async () => {
     const { patientId, direccion } = await conPaciente('whatsapp');
     const appointmentId = globalThis.crypto.randomUUID();
     await enqueue(handle.db, {
@@ -199,8 +199,11 @@ describeWithDatabase('documentos por chat y opciones de cita (PostgreSQL real)',
     await processQueue(handle.db, registry, config, { limit: 20 });
 
     const enviado = whatsapp.sent.find((mensaje) => mensaje.direccion === direccion);
+    // v1.2.2: confirmar, posponer (el ticket vuelve a la cola) o cancelar la cita
+    // definitivamente (ADR 0077).
     expect(enviado?.texto).toContain('1) Confirmar asistencia');
-    expect(enviado?.texto).toContain('2) Cancelar cita');
+    expect(enviado?.texto).toContain('2) Posponer (elegir otro día)');
+    expect(enviado?.texto).toContain('3) Cancelar la cita definitivamente');
 
     const [conversacion] = await handle.db
       .select()
@@ -209,8 +212,32 @@ describeWithDatabase('documentos por chat y opciones de cita (PostgreSQL real)',
     expect(conversacion?.state).toBe('inicio');
     expect(conversacion?.opciones).toEqual({
       '1': `confirmar_cita:${appointmentId}`,
-      '2': `cancelar_cita:${appointmentId}`,
+      '2': `posponer_cita:${appointmentId}`,
+      '3': `cancelar_definitiva:${appointmentId}`,
     });
+  });
+
+  it('en Telegram el recordatorio lleva tres botones y no un cuarto (v1.2.2)', async () => {
+    const { patientId, direccion } = await conPaciente('telegram');
+    const appointmentId = globalThis.crypto.randomUUID();
+    await enqueue(handle.db, {
+      patientId,
+      patientName: `Paciente ${MARK}`,
+      appointmentId,
+      templateKey: 'cita_recordatorio',
+      payload: {
+        appointment: { id: appointmentId, status: 'notificada' },
+        variables: {},
+      },
+      text: 'Recordatorio de tu cita.',
+      dedupeKey: `${MARK}:recordatorio:${appointmentId}`,
+      offerAppointmentActions: true,
+    });
+    await processQueue(handle.db, registry, config, { limit: 20 });
+
+    const enviado = telegram.sent.find((mensaje) => mensaje.direccion === direccion);
+    // WhatsApp Cloud API admite 3 botones como máximo; Telegram los dibuja igual.
+    expect(enviado?.botones).toEqual(['Confirmar', 'Posponer', 'Cancelar cita']);
   });
 
   it('no pisa las opciones de una conversación a medio formulario', async () => {

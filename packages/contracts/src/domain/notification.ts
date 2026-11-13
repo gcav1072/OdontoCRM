@@ -54,6 +54,12 @@ export const BOT_CONVERSATION_STATES = [
   'corregir_menu',
   /** Confirmación antes de desvincular este chat (v1.2). */
   'confirmar_desvinculacion',
+  /**
+   * El paciente escribió «cancelar» con una cita cancelable (v1.2.2): hay que
+   * preguntarle si quiere **posponer** (vuelve a la cola) o **cancelar la cita**
+   * definitivamente, recordando la cita elegida en `draft.pendingAppointmentId`.
+   */
+  'elegir_accion_cita',
   'esperando_confirmacion',
   'listo',
 ] as const;
@@ -114,6 +120,12 @@ export const botDraftSchema = z.object({
    * escrito a mano se resuelva como la opción correcta.
    */
   pendingUnlink: z.enum(['desvincular', 'desvincular_y_nueva']).nullable().default(null),
+  /**
+   * Cita sobre la que se está decidiendo en `elegir_accion_cita` (v1.2.2): con
+   * varias citas primero se elige cuál (`elegir_cita:<id>`) y después se pregunta
+   * «posponer o cancelar cita». Se guarda en el jsonb del borrador, sin migración.
+   */
+  pendingAppointmentId: z.uuid().nullable().default(null),
 });
 
 export type BotDraft = z.infer<typeof botDraftSchema>;
@@ -235,8 +247,25 @@ export const NOTIFICATION_TEMPLATE_KEYS = [
   'servicio_no_disponible',
   /** Respuesta al paciente que acaba de confirmar su cita (ADR 0052). */
   'cita_confirmada_paciente',
-  /** Respuesta al paciente que acaba de cancelar su cita (ADR 0053). */
+  /**
+   * Respuesta al paciente que acaba de **cancelar definitivamente** su cita
+   * (v1.2.2): la solicitud no vuelve a la lista de espera.
+   */
   'cita_cancelada_paciente',
+  /** Respuesta al paciente que acaba de **posponer** su cita (v1.2.2): vuelve a la cola. */
+  'cita_pospuesta_paciente',
+  /**
+   * Pregunta de decisión cuando el paciente escribe «cancelar» (v1.2.2): posponer
+   * (vuelve a la lista de espera) o cancelar la cita definitivamente.
+   */
+  'cita_posponer_o_cancelar',
+  /**
+   * El paciente escribió «cancelar» sin cita en pie pero con una solicitud en la
+   * lista de espera (v1.2.2): se confirma la anulación definitiva del ticket.
+   */
+  'confirmar_anular_solicitud',
+  /** Resultado de anular definitivamente una solicitud que estaba en la cola (v1.2.2). */
+  'solicitud_anulada_paciente',
   /** Cuando intenta cancelar una cita que ya no se puede cancelar por el bot. */
   'cita_no_cancelable',
   /**
@@ -316,7 +345,9 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
       'Esto es lo que puedo hacer:\n' +
       '«cita» — pedir una cita\n' +
       '«estado» — consultar tu solicitud\n' +
-      '«cancelar» — anular tu solicitud\n' +
+      '«confirmar» — confirmar tu cita\n' +
+      '«posponer» — pasar tu cita a otro día y volver a la lista de espera\n' +
+      '«cancelar» — posponer tu cita o cancelarla definitivamente\n' +
       '«mi ticket» — recordarte tu ticket\n\n' +
       'Escríbeme cualquiera de esas palabras y te guío paso a paso.',
     placeholders: [],
@@ -446,9 +477,11 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     key: 'cita_cancelada',
     channel: 'telegram',
     subject: 'Cita cancelada',
+    // Aviso de una cancelación hecha **por el consultorio** (la del bot lleva
+    // `skipNotice`): la franja se libera y el ticket vuelve a la lista de espera.
     body:
-      'Hola {paciente}: tu cita del {fecha} a las {hora} quedó cancelada.\n' +
-      'Si quieres otra fecha, escríbeme «cita» y te ayudo.',
+      'Hola {paciente}: tu cita del {fecha} a las {hora} quedó cancelada y tu solicitud vuelve a la lista de espera.\n' +
+      'Te avisaremos cuando te asignemos una fecha nueva.',
     placeholders: ['paciente', 'fecha', 'hora'],
   },
   {
@@ -491,18 +524,57 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     key: 'cita_cancelada_paciente',
     channel: 'telegram',
     subject: null,
+    // v1.2.2: esta respuesta es la de la **cancelación definitiva** (la solicitud
+    // sale de la lista de espera). La de posponer es `cita_pospuesta_paciente`.
     body:
-      'Entendido, {paciente}: tu cita del {fecha} a las {hora} quedó cancelada y vuelves a la lista de espera.\n' +
+      'Entendido, {paciente}: tu cita del {fecha} a las {hora} quedó cancelada definitivamente y tu solicitud ya no está en la lista de espera.\n' +
+      'Si más adelante necesitas otra cita, escríbeme «cita» y te ayudo.',
+    placeholders: ['paciente', 'fecha', 'hora'],
+  },
+  {
+    key: 'cita_pospuesta_paciente',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Entendido, {paciente}: tu cita del {fecha} a las {hora} quedó pospuesta y vuelves a la lista de espera.\n' +
       'Te avisaremos por aquí cuando te asignemos una fecha nueva.',
     placeholders: ['paciente', 'fecha', 'hora'],
+  },
+  {
+    key: 'cita_posponer_o_cancelar',
+    channel: 'telegram',
+    subject: null,
+    body:
+      '¿Qué quieres hacer con tu cita del {fecha} a las {hora}?\n' +
+      'Posponer: la dejamos para otro día y vuelves a la lista de espera.\n' +
+      'Cancelar cita: la anulamos definitivamente y tu solicitud no vuelve a la lista.',
+    placeholders: ['fecha', 'hora'],
+  },
+  {
+    key: 'confirmar_anular_solicitud',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Ahora mismo no tienes ninguna cita agendada: tu solicitud {ticket} está en la lista de espera.\n' +
+      '¿Quieres anularla definitivamente?',
+    placeholders: ['ticket'],
+  },
+  {
+    key: 'solicitud_anulada_paciente',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Tu solicitud {ticket} quedó anulada definitivamente y no vuelve a la lista de espera.\n' +
+      'Cuando quieras otra, escríbeme «cita».',
+    placeholders: ['ticket'],
   },
   {
     key: 'cita_no_cancelable',
     channel: 'telegram',
     subject: null,
     body:
-      'No puedo cancelar esa cita por aquí: {estado}.\n' +
-      'Si necesitas cambiarla, habla con el consultorio.',
+      'No puedo cambiar esa cita por aquí: {estado}.\n' +
+      'Si necesitas gestionarla, habla con el consultorio.',
     placeholders: ['estado'],
   },
   {
@@ -510,8 +582,8 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
     channel: 'telegram',
     subject: null,
     body:
-      '{paciente}: como ya nos confirmaste que vendrías, tu cita del {fecha} ya no se puede cancelar por aquí ' +
-      '(no es posible cancelar citas por aquí con un lapso menor a {dias} día (s)).\n' +
+      '{paciente}: como ya nos confirmaste que vendrías, tu cita del {fecha} ya no se puede posponer ni cancelar por aquí ' +
+      '(lapso menor a {dias} día(s)).\n' +
       'Llama al consultorio, por favor, y lo vemos juntos.',
     placeholders: ['paciente', 'fecha', 'dias'],
   },
@@ -672,7 +744,7 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
       '(falta {dias}).\n' +
       'Lugar: {lugar}\n' +
       'Ticket: {ticket}\n\n' +
-      'Por favor confirma tu asistencia o avísanos si no podrás asistir.',
+      'Puedes confirmar tu asistencia, posponer la cita para otro día o cancelarla definitivamente.',
     placeholders: ['paciente', 'clinica', 'fecha', 'hora', 'dias', 'lugar', 'ticket'],
   },
   {

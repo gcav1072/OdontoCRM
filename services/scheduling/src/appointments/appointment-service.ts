@@ -715,6 +715,18 @@ export interface TransitionOptions {
    * notificaciones **no** encole un `cita_cancelada` duplicado.
    */
   skipNotice?: boolean | undefined;
+  /**
+   * Qué hacer con el ticket de la solicitud al cancelar la cita (v1.2.2, ADR 0077):
+   *
+   *  - `true` (default) = **posponer**: el ticket vuelve a `en_espera_cita` y a la
+   *    cola, que es el comportamiento histórico de la cancelación del paciente;
+   *  - `false` = **cancelación definitiva**: si la cita era la última en pie, la
+   *    solicitud pasa a `cancelada` y no vuelve a la cola.
+   *
+   * Solo aplica a `to === 'cancelada'` y cuando la solicitud no tiene otra cita
+   * ocupando franja: una solicitud reprogramada conserva la cita nueva.
+   */
+  devolverACola?: boolean | undefined;
   /** Catálogo de odontólogos para rotular el evento (`dentistId → nombre`). */
   dentistCatalog?: DentistCatalog | undefined;
   config: SchedulingConfig;
@@ -851,9 +863,11 @@ export const transitionAppointment = async (
       actor,
     });
 
-    // Cancelar la cita devuelve el ticket a la cola: el paciente sigue esperando. Solo
-    // si **no le queda otra cita en pie**: una solicitud reprogramada puede tener ya la
-    // cita nueva, y devolverla a «en espera» la sacaría de la agenda por error.
+    // Cancelar la cita devuelve el ticket a la cola **si el paciente va a seguir
+    // esperando** (posponer, el comportamiento de siempre) o lo saca de ella en la
+    // cancelación definitiva (v1.2.2, ADR 0077). En los dos casos solo se toca la
+    // solicitud si **no le queda otra cita en pie**: una solicitud reprogramada puede
+    // tener ya la cita nueva, y devolverla a «en espera» la sacaría de la agenda por error.
     if (to === 'cancelada' && request !== null) {
       const otras = await tx
         .select({ id: appointments.id })
@@ -867,19 +881,38 @@ export const transitionAppointment = async (
         )
         .limit(1);
 
+      const devolverACola = options.devolverACola ?? true;
+
       if (otras.length === 0) {
-        await tx
-          .update(appointmentRequests)
-          .set({ status: 'en_espera_cita', updatedAt: new Date() })
-          .where(eq(appointmentRequests.id, request.id));
-        await writeHistory(tx, {
-          entityType: 'request',
-          entityId: request.id,
-          fromStatus: request.status as AppointmentStatus,
-          toStatus: 'en_espera_cita',
-          reason: options.reason ?? 'la cita se canceló y el paciente vuelve a la cola',
-          actor,
-        });
+        if (devolverACola) {
+          await tx
+            .update(appointmentRequests)
+            .set({ status: 'en_espera_cita', updatedAt: new Date() })
+            .where(eq(appointmentRequests.id, request.id));
+          await writeHistory(tx, {
+            entityType: 'request',
+            entityId: request.id,
+            fromStatus: request.status as AppointmentStatus,
+            toStatus: 'en_espera_cita',
+            reason: options.reason ?? 'la cita se pospuso y el paciente vuelve a la cola',
+            actor,
+          });
+        } else {
+          // Cancelación definitiva: la solicitud sale de la cola, pero no se borra
+          // nada físicamente (ADR 0077): queda `cancelada` con su historial.
+          await tx
+            .update(appointmentRequests)
+            .set({ status: 'cancelada', updatedAt: new Date() })
+            .where(eq(appointmentRequests.id, request.id));
+          await writeHistory(tx, {
+            entityType: 'request',
+            entityId: request.id,
+            fromStatus: request.status as AppointmentStatus,
+            toStatus: 'cancelada',
+            reason: 'el paciente canceló definitivamente la cita: la solicitud no vuelve a la cola',
+            actor,
+          });
+        }
       }
     }
 
@@ -895,7 +928,10 @@ export const transitionAppointment = async (
             entityId: id,
             action: AUDIT_ACTIONS_BY_STATUS[to as keyof typeof AUDIT_ACTIONS_BY_STATUS],
             summary: `${current.patientName}: ${from} → ${to}`,
-            changedFields: ['status'],
+            // Una cancelación deja rastro de cuándo y por dónde, además del estado
+            // (v1.2.2): sin eso la auditoría no distingue el posponer del cancelar.
+            changedFields:
+              to === 'cancelada' ? ['status', 'cancelledAt', 'cancelledChannel'] : ['status'],
             before: { status: from },
             after:
               to === 'atendido'
@@ -905,7 +941,15 @@ export const transitionAppointment = async (
                     forceAttendedReason: patch.forceAttendedReason ?? null,
                   }
                 : to === 'cancelada'
-                  ? { status: to, cancelledChannel: patch.cancelledChannel ?? null }
+                  ? {
+                      status: to,
+                      cancelledAt: now.toISOString(),
+                      cancelledChannel: patch.cancelledChannel ?? null,
+                      // `true` = posponer (vuelve a la cola); `false` = definitiva
+                      // (ADR 0077). El consumidor de reportes lo usa para no forzar
+                      // `en_espera_cita` en una solicitud que salió de la cola.
+                      devolverACola: options.devolverACola ?? true,
+                    }
                   : { status: to },
             reason: options.reason ?? options.forceReason ?? null,
             actor,
@@ -1061,6 +1105,12 @@ export interface CancelByPatientOptions {
   /** Por dónde canceló el paciente (`telegram`/`whatsapp`). */
   channel: Channel;
   reason?: string | null | undefined;
+  /**
+   * `true` (default) = posponer: el ticket vuelve a la cola. `false` = cancelación
+   * definitiva: la solicitud sale de la cola si no le queda otra cita en pie
+   * (v1.2.2, ADR 0077).
+   */
+  devolverACola?: boolean | undefined;
   /** Catálogo de odontólogos para rotular el evento (`dentistId → nombre`). */
   dentistCatalog?: DentistCatalog | undefined;
   config: SchedulingConfig;
@@ -1099,11 +1149,19 @@ export const cancelAppointment = async (
     );
   }
 
+  // v1.2.2 (ADR 0077): la misma ruta interna sirve a las dos acciones del bot. El
+  // historial de la cita dice cuál fue, sin depender de que el asistente mande motivo.
+  const devolverACola = options.devolverACola ?? true;
+  const defaultReason = devolverACola
+    ? `el paciente pospuso su cita por ${channelLabel(options.channel)}: el ticket vuelve a la cola`
+    : `el paciente canceló definitivamente su cita por ${channelLabel(options.channel)}`;
+
   return transitionAppointment(db, id, 'cancelada', actor, {
     config: options.config,
     ...(options.dentistCatalog === undefined ? {} : { dentistCatalog: options.dentistCatalog }),
-    reason: options.reason ?? `el paciente canceló por ${channelLabel(options.channel)}`,
+    reason: options.reason ?? defaultReason,
     channel: options.channel,
+    devolverACola,
     skipTransitionCheck: true,
     skipNotice: true,
     ...(options.now === undefined ? {} : { now: options.now }),

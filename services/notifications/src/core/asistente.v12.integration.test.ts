@@ -654,7 +654,8 @@ describeWithDatabase(
       await enviar(whatsapp, { direccion, texto: 'hola' });
       const bienvenida = whatsapp.sent.at(-1)?.texto ?? '';
       expect(bienvenida).toContain('1) Pedir una cita');
-      expect(bienvenida).toContain('4) Cancelar cita o solicitud');
+      // v1.2.2: una sola entrada de menú para posponer o cancelar (ADR 0077).
+      expect(bienvenida).toContain('4) Posponer o cancelar mi cita');
       expect(bienvenida).not.toContain('5) Cambiar de paciente');
 
       // «1» vale como «Pedir una cita».

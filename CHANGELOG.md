@@ -4,6 +4,52 @@ Todos los cambios relevantes de OdontoCRM. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 
+## [Sin publicar] — v1.2.2: «posponer» y «cancelar la cita» definitiva
+
+### Añadido
+- **Cancelar la cita definitivamente desde el bot**: la cita queda `cancelada` (libera franja y cupo)
+  y, si era la última en pie, la **solicitud pasa a `cancelada`** y no vuelve a la lista de espera.
+  Sin borrado físico: ticket, datos e historial siguen consultables
+  ([ADR 0077](docs/adr/0077-posponer-vs-cancelar-cita-definitiva.md)).
+- **Flag `devolverACola` (`boolean`, default `true`) en la ruta interna de cancelación de la agenda**:
+  `true` = posponer (el ticket vuelve a la cola, comportamiento histórico); `false` = cancelación
+  definitiva. La ruta pública de la secretaría no cambia y sigue devolviendo el ticket a la cola. El
+  evento `scheduling.appointment.cancelled` añade `after.devolverACola` y `after.cancelledAt`.
+- **Intención `posponer` y comando `/posponer`**, con frases naturales («posponer», «otro día»,
+  «cambiar de día», «mover la cita», «no puedo ir»…).
+- **Pregunta de decisión al escribir «cancelar»**: el bot no ejecuta; ofrece «Posponer» o «Cancelar
+  cita». Con varias citas, primero se elige cuál (`elegir_cita:<id>`), y sin cita en pie pero con
+  solicitud en cola, pregunta si anularla definitivamente (Sí/No). Estado nuevo
+  `elegir_accion_cita` + `draft.pendingAppointmentId` (en el jsonb, sin migración).
+- **Plantillas** `cita_pospuesta_paciente`, `cita_posponer_o_cancelar`, `confirmar_anular_solicitud`
+  y `solicitud_anulada_paciente`; `message_templates` migra los textos ya sembrados con
+  `0009_v1_2_2_posponer_cancelar.sql` (protegida por el texto anterior, no pisa personalizaciones).
+- **Reportes**: el consumidor lee `after.devolverACola` y proyecta `fact_request` como `cancelada`
+  (con `cancelledAt`) en la definitiva, en vez de forzar `en_espera_cita`.
+
+### Cambiado
+- La acción histórica de cancelar pasa a llamarse **posponer**: mismo efecto (cita `cancelada` y
+  ticket de vuelta a la cola), con los textos `cita_pospuesta_paciente` y «quedó pospuesta» en el
+  estado de la solicitud.
+- **Recordatorios y avisos** (`cita_recordatorio` y el aviso de cita): tres botones
+  `Confirmar` / `Posponer` / `Cancelar cita` en Telegram y Cloud API, y tres opciones numeradas en
+  Baileys. El recordatorio de una cita ya confirmada sigue siendo informativo, sin acciones.
+- `cita_cancelada_paciente` pasa a ser la respuesta de la **cancelación definitiva**; el aviso
+  `cita_cancelada` de la secretaría dice que el ticket vuelve a la lista de espera; el corte
+  ADR 0057 frena **las dos** acciones («ni posponer ni cancelar»); `ayuda` y el aviso de cita
+  explican la diferencia.
+- Menú rápido: una sola entrada `4) Posponer o cancelar mi cita`.
+
+### Notas
+- **Alias heredado**: los botones ya entregados con `cancelar_cita:<id>` siguen interpretándose como
+  **posponer** durante una versión (no se pueden distinguir de uno nuevo por su id). Se retirará
+  cuando no queden recordatorios entregados con el nombre viejo.
+- **KPI sin split (deuda)**: «Canceladas por el paciente» sigue contando posponer y definitiva
+  juntas; no hay `cancelledKind` ni cambios de fixtures. La tarjeta de la web sigue con el texto
+  «el ticket vuelve a la cola».
+- Documentación: ADR 0077 nueva, notas en las ADR 0028/0053/0057, `docs/v1.2_feat_chatbot.md`,
+  este CHANGELOG y el plan de pruebas manuales E2E.
+
 ## [Sin publicar] — Correcciones
 
 ### Corregido

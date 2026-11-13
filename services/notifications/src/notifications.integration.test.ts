@@ -74,12 +74,13 @@ const fakeClients = (): InternalClients & {
   requests: RequestSummary[];
   citas: AppointmentSummary[];
   confirmadas: { id: string; channel: string }[];
-  canceladas: { id: string; channel: string }[];
+  /** Con `devolverACola`: `true` = posponer; `false` = cancelación definitiva (ADR 0077). */
+  canceladas: { id: string; channel: string; devolverACola: boolean }[];
 } => {
   const requests: RequestSummary[] = [];
   const citas: AppointmentSummary[] = [];
   const confirmadas: { id: string; channel: string }[] = [];
-  const canceladas: { id: string; channel: string }[] = [];
+  const canceladas: { id: string; channel: string; devolverACola: boolean }[] = [];
   return {
     requests,
     citas,
@@ -166,12 +167,14 @@ const fakeClients = (): InternalClients & {
       encontrada.confirmedChannel = input.channel;
       return encontrada;
     },
-    // Cancelación del paciente (ADR 0053): imita la idempotencia de la agenda.
+    // Cancelación del paciente (ADR 0053): imita la idempotencia de la agenda. El
+    // flag `devolverACola` es la semántica de v1.2.2 (ADR 0077): true = posponer,
+    // false = cancelación definitiva.
     cancelAppointment: async (id, input) => {
       const encontrada = citas.find((cita) => cita.id === id);
       if (encontrada === undefined) throw new Error('la cita no existe');
       if (encontrada.status !== 'cancelada') {
-        canceladas.push({ id, channel: input.channel });
+        canceladas.push({ id, channel: input.channel, devolverACola: input.devolverACola ?? true });
         encontrada.status = 'cancelada';
         encontrada.cancelledAt = new Date().toISOString();
         encontrada.cancelledChannel = input.channel;
@@ -255,6 +258,41 @@ const unPaciente = (id: string, fullName: string): PatientSummary => ({
   hasGuardian: false,
   createdAt: new Date().toISOString(),
 });
+
+/**
+ * Solicitud de mentira: el ticket de la cola (v1.2.2).
+ *
+ * El contador es **de archivo** a propósito: el doble `clients` también vive a nivel
+ * de archivo y acumula solicitudes de todos los tests, así que dos fixtures con el
+ * mismo `ticket` harían que `findRequestByTicket` (que devuelve la primera
+ * coincidencia) encontrara la de un test anterior y no la que se está probando.
+ * Los tickets de `createRequest` empiezan en 1000, así que esta serie no choca.
+ */
+let siguienteTicketSolicitud = 2500;
+const unaSolicitud = (overrides: Partial<RequestSummary> = {}): RequestSummary => {
+  siguienteTicketSolicitud += 1;
+  return {
+    id: globalThis.crypto.randomUUID(),
+    ticket: formatTicket(siguienteTicketSolicitud).value,
+    ticketNumber: siguienteTicketSolicitud,
+    channel: 'telegram',
+    patientId: globalThis.crypto.randomUUID(),
+    patientName: `Paciente ${MARK}`,
+    patientDocument: 'V-12345678',
+    patientPhone: '+584121234567',
+    reason: 'control',
+    status: 'en_espera_cita',
+    priority: 0,
+    requestedAt: new Date().toISOString(),
+    notes: null,
+    waitingDays: 1,
+    appointmentId: null,
+    appointmentDate: null,
+    appointmentTime: null,
+    createdAt: new Date().toISOString(),
+    ...overrides,
+  };
+};
 
 /** Fecha `AAAA-MM-DD` a N días de hoy (calendario UTC, como el bot). */
 const enDias = (dias: number): string =>
@@ -393,7 +431,7 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
   }, 60_000);
 
-  it('el paciente cancela su cita por el botón y escribiendo «cancelar» (ADR 0053)', async () => {
+  it('el paciente pospone su cita con el botón nuevo y con el alias heredado (ADR 0053/0077)', async () => {
     const patientId = globalThis.crypto.randomUUID();
     const direccion = `${direccionBase}X`;
     await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
@@ -403,37 +441,241 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     const cita = unaCita({ patientId, date: fecha });
     clients.citas.push(cita);
 
-    // El botón «Cancelar» del aviso llega como acción del canal.
-    const porBoton = await enviar(telegram, { direccion, accion: `cancelar_cita:${cita.id}` });
-    expect(porBoton.action).toBe('cancelar_cita_cancelada');
-    expect(clients.canceladas.at(-1)).toEqual({ id: cita.id, channel: 'telegram' });
-    expect(telegram.sent.at(-1)?.texto).toContain('quedó cancelada');
+    // El botón nuevo de posponer: cita cancelada + ticket de vuelta a la cola.
+    const porBoton = await enviar(telegram, { direccion, accion: `posponer_cita:${cita.id}` });
+    expect(porBoton.action).toBe('posponer_cita_cancelada');
+    expect(clients.canceladas.at(-1)).toEqual({
+      id: cita.id,
+      channel: 'telegram',
+      devolverACola: true,
+    });
+    expect(telegram.sent.at(-1)?.texto).toContain('quedó pospuesta');
+    expect(telegram.sent.at(-1)?.texto).toContain('vuelves a la lista de espera');
 
-    // Volver a escribir «cancelar» no es un error: se le recuerda lo que ya hizo.
-    const otraVez = await enviar(telegram, { direccion, texto: 'cancelar' });
-    expect(otraVez.action).toBe('cancelar_cita_ya_estaba');
-    expect(clients.canceladas).toHaveLength(1);
+    // R1: los botones ya entregados llevan `cancelar_cita:<id>` con la semántica
+    // vieja (= posponer); se siguen entendiendo igual durante una versión.
+    const heredada = unaCita({ patientId, date: fecha, startTime: '10:00' });
+    clients.citas.push(heredada);
+    const alias = await enviar(telegram, { direccion, accion: `cancelar_cita:${heredada.id}` });
+    expect(alias.action).toBe('cancelar_cita_cancelada');
+    expect(clients.canceladas.at(-1)).toEqual({
+      id: heredada.id,
+      channel: 'telegram',
+      devolverACola: true,
+    });
 
-    // Una cita de **otro** paciente no se cancela con su botón: el identificador
-    // viaja por el chat, así que se comprueba que sea suya.
+    // Volver a pulsar no es un error: recuerdo idempotente, sin anuncio nuevo (R6).
+    const repetido = await enviar(telegram, { direccion, accion: `posponer_cita:${cita.id}` });
+    expect(repetido.action).toBe('posponer_cita_ya_estaba');
+    expect(telegram.sent.at(-1)?.texto).toContain('ya estaba cancelada');
+    expect(clients.canceladas.filter((item) => item.id === cita.id)).toHaveLength(1);
+
+    // Una cita de **otro** paciente no se pospone con un botón ajeno: el
+    // identificador viaja por el chat, así que se comprueba que sea suya.
     const ajena = unaCita({ patientId: globalThis.crypto.randomUUID(), date: fecha });
     clients.citas.push(ajena);
     const noEsSuya = await enviar(telegram, {
       direccion,
-      accion: `cancelar_cita:${ajena.id}`,
+      accion: `posponer_cita:${ajena.id}`,
     });
-    expect(noEsSuya.action).toBe('cancelar_cita_no_es_suya');
+    expect(noEsSuya.action).toBe('posponer_cita_no_es_suya');
     expect(clients.canceladas.some((item) => item.id === ajena.id)).toBe(false);
 
-    // En sala de espera el paciente ya está aquí: por el bot no se cancela.
+    // En sala de espera el paciente ya está aquí: por el bot no se cambia.
     const enSala = unaCita({ patientId, date: fecha, status: 'en_sala_espera' });
     clients.citas.push(enSala);
     const noCancelable = await enviar(telegram, {
       direccion,
-      accion: `cancelar_cita:${enSala.id}`,
+      accion: `posponer_cita:${enSala.id}`,
     });
-    expect(noCancelable.action).toBe('cancelar_cita_no_cancelable');
-    expect(telegram.sent.at(-1)?.texto).toContain('No puedo cancelar');
+    expect(noCancelable.action).toBe('posponer_cita_no_cancelable');
+    expect(telegram.sent.at(-1)?.texto).toContain('No puedo cambiar');
+
+    await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 60_000);
+
+  it('el paciente cancela la cita definitivamente con el botón nuevo (ADR 0077)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}X2`;
+    await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
+
+    const cita = unaCita({ patientId, date: enDias(4) });
+    clients.citas.push(cita);
+
+    // La acción nueva: la cita se cancela y la solicitud **no** vuelve a la cola.
+    const porBoton = await enviar(telegram, {
+      direccion,
+      accion: `cancelar_definitiva:${cita.id}`,
+    });
+    expect(porBoton.action).toBe('cancelar_definitiva_cancelada');
+    expect(clients.canceladas.at(-1)).toEqual({
+      id: cita.id,
+      channel: 'telegram',
+      devolverACola: false,
+    });
+    const texto = telegram.sent.at(-1)?.texto ?? '';
+    expect(texto).toContain('cancelada definitivamente');
+    expect(texto).toContain('ya no está en la lista de espera');
+
+    await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 60_000);
+
+  it('escribir «cancelar» no ejecuta: pregunta posponer o cancelar (v1.2.2)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}X3`;
+    await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
+
+    const cita = unaCita({ patientId, date: enDias(4) });
+    clients.citas.push(cita);
+
+    // `clients.canceladas` es un doble de **archivo** que acumula las cancelaciones
+    // de los tests anteriores; se compara contra la base, no contra cero.
+    const canceladasPrevias = clients.canceladas.length;
+
+    const pregunta = await enviar(telegram, { direccion, texto: 'cancelar' });
+    expect(pregunta.action).toBe('elegir_accion');
+    expect(telegram.sent.at(-1)?.texto).toContain('¿Qué quieres hacer con tu cita');
+    // Decisión 3: escribir «cancelar» **no** cancela nada por sí solo.
+    expect(clients.canceladas).toHaveLength(canceladasPrevias);
+    let conversation = await loadConversation(handle.db, 'telegram', direccion, null);
+    expect(conversation.state).toBe('elegir_accion_cita');
+    expect(conversation.draft.pendingAppointmentId).toBe(cita.id);
+
+    // En el turno siguiente basta con escribir «posponer».
+    const pospuesta = await enviar(telegram, { direccion, texto: 'posponer' });
+    expect(pospuesta.action).toBe('posponer_cita_cancelada');
+    expect(clients.canceladas.at(-1)).toEqual({
+      id: cita.id,
+      channel: 'telegram',
+      devolverACola: true,
+    });
+
+    // Y «cancelar» escrito **en la pregunta** sí elige la cancelación definitiva.
+    const otra = unaCita({ patientId, date: enDias(5) });
+    clients.citas.push(otra);
+    await enviar(telegram, { direccion, texto: 'cancelar' });
+    expect(telegram.sent.at(-1)?.texto).toContain('¿Qué quieres hacer con tu cita');
+    const definitiva = await enviar(telegram, { direccion, texto: 'cancelar' });
+    expect(definitiva.action).toBe('cancelar_definitiva_cancelada');
+    expect(clients.canceladas.at(-1)).toEqual({
+      id: otra.id,
+      channel: 'telegram',
+      devolverACola: false,
+    });
+    conversation = await loadConversation(handle.db, 'telegram', direccion, null);
+    expect(conversation.state).toBe('inicio');
+
+    await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 60_000);
+
+  it('con varias citas «cancelar» primero pregunta cuál y después la acción (v1.2.2)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}X4`;
+    await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
+
+    const primera = unaCita({ patientId, date: enDias(4), startTime: '09:00' });
+    const segunda = unaCita({ patientId, date: enDias(5), startTime: '10:00' });
+    clients.citas.push(primera, segunda);
+
+    const pregunta = await enviar(telegram, { direccion, texto: 'cancelar' });
+    expect(pregunta.action).toBe('elegir_cita');
+    expect(telegram.sent.at(-1)?.texto).toContain('varias citas');
+    let conversation = await loadConversation(handle.db, 'telegram', direccion, null);
+    expect(conversation.state).toBe('elegir_accion_cita');
+    expect(conversation.draft.pendingAppointmentId).toBeNull();
+
+    const elegida = await enviar(telegram, { direccion, accion: `elegir_cita:${segunda.id}` });
+    expect(elegida.action).toBe('elegir_accion');
+    expect(telegram.sent.at(-1)?.texto).toContain('¿Qué quieres hacer con tu cita');
+    conversation = await loadConversation(handle.db, 'telegram', direccion, null);
+    expect(conversation.draft.pendingAppointmentId).toBe(segunda.id);
+
+    const definitiva = await enviar(telegram, {
+      direccion,
+      accion: `cancelar_definitiva:${segunda.id}`,
+    });
+    expect(definitiva.action).toBe('cancelar_definitiva_cancelada');
+    expect(clients.canceladas.at(-1)).toEqual({
+      id: segunda.id,
+      channel: 'telegram',
+      devolverACola: false,
+    });
+
+    await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 60_000);
+
+  it('sin cita pero con solicitud en la cola, «cancelar» ofrece anularla (v1.2.2)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}X5`;
+    await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
+
+    const solicitud = unaSolicitud({ patientId, channel: 'telegram' });
+    clients.requests.push(solicitud);
+
+    const pregunta = await enviar(telegram, { direccion, texto: 'cancelar' });
+    expect(pregunta.action).toBe('elegir_anular_solicitud');
+    expect(telegram.sent.at(-1)?.texto).toContain('¿Quieres anularla definitivamente?');
+    // La pregunta no anula: hay que confirmar.
+    expect(solicitud.status).toBe('en_espera_cita');
+
+    const anulada = await enviar(telegram, { direccion, accion: 'anular_solicitud:si' });
+    expect(anulada.action).toBe('solicitud_anulada');
+    const texto = telegram.sent.at(-1)?.texto ?? '';
+    expect(texto).toContain('anulada definitivamente');
+    expect(texto).toContain('no vuelve a la lista de espera');
+    expect(solicitud.status).toBe('cancelada');
+
+    await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 60_000);
+
+  it('«cancelar #ticket» conserva su significado: anula la solicitud del ticket (v1.2.2)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}X7`;
+    await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
+
+    const solicitud = unaSolicitud({ patientId, channel: 'telegram' });
+    clients.requests.push(solicitud);
+    // El doble `clients` acumula solicitudes entre tests: si el ticket se repitiera,
+    // `findRequestByTicket` (primera coincidencia) devolvería otra y el bot respondería
+    // «ya estaba anulada» sin tocar la de este caso. El ticket tiene que ser único.
+    expect(clients.requests.filter((item) => item.ticket === solicitud.ticket)).toHaveLength(1);
+
+    const anulada = await enviar(telegram, {
+      direccion,
+      texto: `cancelar ${solicitud.ticket}`,
+    });
+    expect(anulada.action).toBe('cancelar');
+    // El ticket detrás de «cancelar» no pasa por la pregunta: anula la solicitud.
+    expect(solicitud.status).toBe('cancelada');
+    expect(telegram.sent.at(-1)?.texto).toContain('anulada definitivamente');
+
+    await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+    await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
+  }, 60_000);
+
+  it('el comando /posponer ejecuta directo, sin pregunta (v1.2.2)', async () => {
+    const patientId = globalThis.crypto.randomUUID();
+    const direccion = `${direccionBase}X6`;
+    await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
+
+    const cita = unaCita({ patientId, date: enDias(4) });
+    clients.citas.push(cita);
+
+    const resultado = await enviar(telegram, { direccion, texto: '/posponer' });
+    expect(resultado.action).toBe('posponer_cita_cancelada');
+    expect(clients.canceladas.at(-1)).toEqual({
+      id: cita.id,
+      channel: 'telegram',
+      devolverACola: true,
+    });
+    const texto = telegram.sent.at(-1)?.texto ?? '';
+    expect(texto).toContain('quedó pospuesta');
+    expect(texto).not.toContain('¿Qué quieres hacer');
 
     await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
@@ -484,7 +726,7 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     const resultado = await enviar(telegram, { direccion, texto: ticket });
     expect(resultado.action).toBe('estado_por_texto');
     const respuesta = telegram.sent.at(-1)?.texto ?? '';
-    expect(respuesta).toContain('quedó cancelada');
+    expect(respuesta).toContain('quedó pospuesta');
     expect(respuesta).toContain('EN ESPERA DE CITA');
     expect(respuesta).not.toContain('Tu cita es el');
 
@@ -492,7 +734,7 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
   }, 60_000);
 
-  it('el corte de cancelación frena al paciente que ya confirmó (ADR 0057)', async () => {
+  it('el corte de cancelación frena las dos acciones del paciente que ya confirmó (ADR 0057/0077)', async () => {
     const patientId = globalThis.crypto.randomUUID();
     const direccion = `${direccionBase}K`;
     await linkChat(handle.db, { patientId, canal: 'telegram', direccion });
@@ -500,7 +742,9 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     // La clínica fija un corte de 3 días (ADR 0057).
     await updateNotificationSettings(handle.db, { patientCancelCutoffDays: 3 }, null);
 
-    // **Dentro** del corte y ya confirmada: por chat no se cancela, hay que llamar.
+    // **Dentro** del corte y ya confirmada: ni posponer ni cancelar, hay que llamar.
+    // El corte aplica a las **dos** acciones (ADR 0077): el consultorio necesita el
+    // mismo margen para liberar la franja.
     const dentro = unaCita({
       patientId,
       date: enDias(2),
@@ -509,15 +753,22 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
       confirmedChannel: 'telegram',
     });
     clients.citas.push(dentro);
-    const bloqueada = await enviar(telegram, {
+    const bloqueadaDefinitiva = await enviar(telegram, {
       direccion,
-      accion: `cancelar_cita:${dentro.id}`,
+      accion: `cancelar_definitiva:${dentro.id}`,
     });
-    expect(bloqueada.action).toBe('cancelar_cita_bloqueada');
+    expect(bloqueadaDefinitiva.action).toBe('cancelar_definitiva_bloqueada');
     expect(clients.canceladas.some((item) => item.id === dentro.id)).toBe(false);
-    expect(telegram.sent.at(-1)?.texto).toContain('no se puede cancelar por aquí');
+    expect(telegram.sent.at(-1)?.texto).toContain('no se puede posponer ni cancelar por aquí');
 
-    // **Fuera** del corte (a 10 días) y confirmada: se cancela con normalidad.
+    const bloqueadaPosponer = await enviar(telegram, {
+      direccion,
+      accion: `posponer_cita:${dentro.id}`,
+    });
+    expect(bloqueadaPosponer.action).toBe('posponer_cita_bloqueada');
+    expect(clients.canceladas.some((item) => item.id === dentro.id)).toBe(false);
+
+    // **Fuera** del corte (a 10 días) y confirmada: las dos acciones funcionan.
     const fuera = unaCita({
       patientId,
       date: enDias(10),
@@ -526,19 +777,45 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
       confirmedChannel: 'telegram',
     });
     clients.citas.push(fuera);
-    const permitida = await enviar(telegram, { direccion, accion: `cancelar_cita:${fuera.id}` });
-    expect(permitida.action).toBe('cancelar_cita_cancelada');
-    expect(clients.canceladas.some((item) => item.id === fuera.id)).toBe(true);
+    const permitida = await enviar(telegram, {
+      direccion,
+      accion: `cancelar_definitiva:${fuera.id}`,
+    });
+    expect(permitida.action).toBe('cancelar_definitiva_cancelada');
+    expect(clients.canceladas.at(-1)).toEqual({
+      id: fuera.id,
+      channel: 'telegram',
+      devolverACola: false,
+    });
+
+    const fueraPosponer = unaCita({
+      patientId,
+      date: enDias(11),
+      status: 'confirmada',
+      confirmedAt: new Date().toISOString(),
+      confirmedChannel: 'telegram',
+    });
+    clients.citas.push(fueraPosponer);
+    const pospuesta = await enviar(telegram, {
+      direccion,
+      accion: `posponer_cita:${fueraPosponer.id}`,
+    });
+    expect(pospuesta.action).toBe('posponer_cita_cancelada');
+    expect(clients.canceladas.at(-1)).toEqual({
+      id: fueraPosponer.id,
+      channel: 'telegram',
+      devolverACola: true,
+    });
 
     // **Sin confirmar** y dentro del corte: el paciente no había prometido nada,
-    // así que se cancela igual (la guardia es solo para lo confirmado).
+    // así que se cambia igual (la guardia es solo para lo confirmado).
     const sinConfirmar = unaCita({ patientId, date: enDias(1), status: 'programada' });
     clients.citas.push(sinConfirmar);
     const libre = await enviar(telegram, {
       direccion,
-      accion: `cancelar_cita:${sinConfirmar.id}`,
+      accion: `posponer_cita:${sinConfirmar.id}`,
     });
-    expect(libre.action).toBe('cancelar_cita_cancelada');
+    expect(libre.action).toBe('posponer_cita_cancelada');
     expect(clients.canceladas.some((item) => item.id === sinConfirmar.id)).toBe(true);
 
     // Con el corte en 0 la regla queda apagada: la próxima confirmada se cancela.
@@ -575,44 +852,51 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     }
   }, 30_000);
 
-  it('la cancelación del bot no encola un «cita_cancelada» duplicado (ADR 0053)', async () => {
+  it('ni posponer ni cancelar definitivamente encolan un «cita_cancelada» duplicado (ADR 0053/0077)', async () => {
     // El asistente ya respondió al paciente en el mismo turno; el evento llega marcado
     // con `skipNotice` para que el consumidor **no** encole un segundo mensaje. El
     // bloque `notification` viaja intacto (lo leen pacientes, pantallas y reportes).
-    const appointmentId = globalThis.crypto.randomUUID();
-    const event = createDomainEvent({
-      topic: EVENT_TOPICS.appointmentCancelled,
-      aggregateId: appointmentId,
-      producer: 'scheduling',
-      payload: {
-        appointment: { id: appointmentId, date: '2026-12-01', status: 'cancelada' },
-        notification: {
-          appointmentId,
-          patientId: globalThis.crypto.randomUUID(),
-          patientName: `Paciente ${MARK}`,
-          patientPhone: null,
-          ticket: '#000900',
-          date: '2026-12-01',
-          startTime: '09:00',
-          endTime: '09:30',
-          place: 'Consultorio',
-          subject: 'Cita cancelada',
-          body: 'Hola: tu cita quedó cancelada.',
-          channel: 'telegram',
-          templateKey: 'cita_cancelada',
-          icsSequence: 0,
+    //
+    // Vale para las **dos** acciones: posponer (`devolverACola: true`) responde
+    // `cita_pospuesta_paciente` y la definitiva (`false`) responde
+    // `cita_cancelada_paciente`; ninguna encola `cita_cancelada` (ADR 0077).
+    for (const devolverACola of [true, false]) {
+      const appointmentId = globalThis.crypto.randomUUID();
+      const event = createDomainEvent({
+        topic: EVENT_TOPICS.appointmentCancelled,
+        aggregateId: appointmentId,
+        producer: 'scheduling',
+        payload: {
+          appointment: { id: appointmentId, date: '2026-12-01', status: 'cancelada' },
+          after: { status: 'cancelada', cancelledChannel: 'telegram', devolverACola },
+          notification: {
+            appointmentId,
+            patientId: globalThis.crypto.randomUUID(),
+            patientName: `Paciente ${MARK}`,
+            patientPhone: null,
+            ticket: '#000900',
+            date: '2026-12-01',
+            startTime: '09:00',
+            endTime: '09:30',
+            place: 'Consultorio',
+            subject: 'Cita cancelada',
+            body: 'Hola: tu cita quedó cancelada.',
+            channel: 'telegram',
+            templateKey: 'cita_cancelada',
+            icsSequence: 0,
+          },
+          skipNotice: true,
         },
-        skipNotice: true,
-      },
-    });
+      });
 
-    expect((await handleDomainEvent(handle.db, config, event)).status).toBe('ignorado');
+      expect((await handleDomainEvent(handle.db, config, event)).status).toBe('ignorado');
 
-    const filas = await handle.db
-      .select()
-      .from(notifications)
-      .where(eq(notifications.appointmentId, appointmentId));
-    expect(filas).toHaveLength(0);
+      const filas = await handle.db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.appointmentId, appointmentId));
+      expect(filas).toHaveLength(0);
+    }
   }, 30_000);
 
   it('si un servicio interno se cae, el paciente recibe aviso y sigue en su paso', async () => {
@@ -1063,6 +1347,13 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
       true,
     );
     expect(textoDelAviso.some((message) => message.texto.includes('«confirmar»'))).toBe(true);
+    // v1.2.2: el aviso nombra las dos formas de no poder ir (ADR 0077).
+    expect(textoDelAviso.some((message) => message.texto.includes('pospónla para otro día'))).toBe(
+      true,
+    );
+    expect(
+      textoDelAviso.some((message) => message.texto.includes('cancélala definitivamente')),
+    ).toBe(true);
     expect(telegram.sent.some((message) => message.documento !== undefined)).toBe(false);
 
     // El `.ics` quedó archivado y es un RFC 5545 válido con la hora en UTC.

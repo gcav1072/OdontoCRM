@@ -84,6 +84,8 @@ const STATE_LABEL: Readonly<Record<string, string>> = {
   corregir_menu: 'Corregir datos',
   /** v1.2: confirmación antes de desvincular este chat. */
   confirmar_desvinculacion: 'Confirmar desvinculación',
+  /** v1.2.2: el paciente tiene que elegir posponer o cancelar la cita definitivamente. */
+  elegir_accion_cita: 'Posponer o cancelar',
   esperando_confirmacion: 'Confirmación',
   listo: 'Listo',
 };
@@ -432,7 +434,8 @@ export const menuRapidoButtons = (vinculado: boolean): OutboundButton[] => [
   { etiqueta: 'Pedir una cita', accion: 'menu:nueva' },
   { etiqueta: 'Ver estado de mi cita', accion: 'menu:estado' },
   { etiqueta: 'Confirmar asistencia', accion: 'menu:confirmar' },
-  { etiqueta: 'Cancelar cita o solicitud', accion: 'menu:cancelar' },
+  // v1.2.2: una sola entrada para las dos acciones; el bot pregunta cuál (ADR 0077).
+  { etiqueta: 'Posponer o cancelar mi cita', accion: 'menu:cancelar' },
   ...(vinculado ? [{ etiqueta: 'Cambiar de paciente', accion: 'menu:desvincular' }] : []),
 ];
 
@@ -537,6 +540,8 @@ const ESTADOS_NAVEGABLES: ReadonlySet<string> = new Set([
   'confirmacion',
   'verificar_identidad',
   'confirmar_desvinculacion',
+  /** v1.2.2: «salir» abandona la pregunta de posponer/cancelar sin tocar la cita. */
+  'elegir_accion_cita',
 ]);
 
 /* ── Solicitudes activas y deduplicación entre chats (v1.2) ────────────────── */
@@ -1198,6 +1203,26 @@ const repetirPasoActual = async (
     case 'corregir_menu':
       await mostrarMenuCorreccion(services, conversacion, conversation, draft);
       return 'paso_corregir_menu';
+    case 'elegir_accion_cita': {
+      // v1.2.2: se repite la pregunta que quedó a medias (acción de la cita elegida
+      // o anulación de la solicitud), sin ejecutar nada.
+      if (draft.pendingAppointmentId !== null) {
+        const cita = await services.clients.getAppointment(draft.pendingAppointmentId);
+        if (cita === null) return null;
+        await preguntarAccionCita(services, conversacion, draft, cita);
+        return 'paso_elegir_accion_cita';
+      }
+      const vinculado = await channelByDireccion(
+        services.db,
+        conversacion.canal,
+        conversacion.direccion,
+      );
+      const solicitud =
+        vinculado === null ? null : await solicitudEnColaDePaciente(services, vinculado.patientId);
+      if (solicitud === null) return null;
+      await preguntarAnularSolicitud(services, conversacion, draft, solicitud);
+      return 'paso_confirmar_anular_solicitud';
+    }
     default:
       return null;
   }
@@ -1223,18 +1248,6 @@ const aplicarSexo = async (
   await askStep(services, conversacion, 'motivo');
 };
 
-/** «Cancelar» sin argumento: primero la cita; si no hay, la solicitud (ADR 0053). */
-const cancelarCitaOSolicitud = async (
-  services: AsistenteServices,
-  conversacion: Conversacion,
-  conversation: BotConversationRow,
-): Promise<string> => {
-  const resultado = await cancelarCita(services, conversacion, null, { avisarSinCitas: false });
-  if (resultado !== 'sin_citas') return `cancelar_cita_${resultado}`;
-  await cancelRequest(services, conversacion, ticketDe(conversation));
-  return 'cancelar';
-};
-
 /* ── Despacho de acciones e intenciones ────────────────────────────────────── */
 
 const despacharMenu = async (
@@ -1254,7 +1267,8 @@ const despacharMenu = async (
       return `confirmar_${resultado}`;
     }
     case 'cancelar':
-      return cancelarCitaOSolicitud(services, conversacion, conversation);
+      // v1.2.2: el menú ya no ejecuta; pregunta posponer o cancelar definitivamente.
+      return proponerDecisionCita(services, conversacion, conversation);
     case 'desvincular':
       return preguntarDesvinculacion(services, conversacion);
     default:
@@ -1333,9 +1347,60 @@ const despacharAccion = async (
       const resultado = await confirmarCita(services, conversacion, value === '' ? null : value);
       return `confirmar_${resultado}`;
     }
+    /**
+     * v1.2.2 (ADR 0077): las tres acciones de una cita. «Cancelar cita» ya no es
+     * posponer; el botón nuevo dice `cancelar_definitiva:<id>`. El nombre viejo
+     * (`cancelar_cita:<id>`) se queda como **alias heredado** de posponer durante
+     * una versión, porque hay recordatorios y avisos ya entregados que lo llevan y
+     * no se pueden distinguir de los nuevos por su id.
+     */
+    case 'posponer_cita': {
+      const resultado = await cancelarCitaEnModo(
+        services,
+        conversacion,
+        value === '' ? null : value,
+        'posponer',
+      );
+      return `posponer_cita_${resultado}`;
+    }
+    case 'cancelar_definitiva': {
+      const resultado = await cancelarCitaEnModo(
+        services,
+        conversacion,
+        value === '' ? null : value,
+        'definitiva',
+      );
+      return `cancelar_definitiva_${resultado}`;
+    }
     case 'cancelar_cita': {
-      const resultado = await cancelarCita(services, conversacion, value === '' ? null : value);
+      // Alias heredado: lo que la versión anterior llamaba «cancelar» era posponer.
+      const resultado = await cancelarCitaEnModo(
+        services,
+        conversacion,
+        value === '' ? null : value,
+        'posponer',
+      );
       return `cancelar_cita_${resultado}`;
+    }
+    case 'elegir_cita':
+      return elegirCitaParaAccion(services, conversacion, draft, value);
+    case 'anular_solicitud': {
+      if (value === 'si') {
+        const vinculado = await channelByDireccion(
+          services.db,
+          conversacion.canal,
+          conversacion.direccion,
+        );
+        if (vinculado === null) {
+          await reply(services, conversacion, 'sin_citas');
+          return 'sin_citas';
+        }
+        const anulada = await anularSolicitudEnCola(services, conversacion, vinculado.patientId);
+        return anulada ? 'solicitud_anulada' : 'sin_solicitud';
+      }
+      if (value !== 'no') return null;
+      await mantenerSolicitud(services, conversacion);
+      return 'solicitud_conservada';
     }
     default:
       return null;
@@ -1374,11 +1439,20 @@ const despacharIntencion = async (
       await showStatus(services, conversacion, ticketDe(conversation));
       return 'mi_ticket';
     case 'cancelar':
+      // «cancelar #000123» conserva su significado: anular **la solicitud** del
+      // ticket (definitiva; no hay nada que posponer). Sin argumento, v1.2.2: se
+      // pregunta posponer o cancelar la cita en vez de ejecutar directo.
       if (detectada.argumento !== '') {
         await cancelRequest(services, conversacion, detectada.argumento);
         return 'cancelar';
       }
-      return cancelarCitaOSolicitud(services, conversacion, conversation);
+      return proponerDecisionCita(services, conversacion, conversation);
+    case 'posponer': {
+      // El comando `/posponer` y sus frases ejecutan directo (no preguntan): es la
+      // acción de siempre, solo que con su nombre propio (v1.2.2, ADR 0077).
+      const resultado = await cancelarCitaEnModo(services, conversacion, null, 'posponer');
+      return `posponer_cita_${resultado}`;
+    }
     case 'confirmar': {
       const resultado = await confirmarCita(services, conversacion, null);
       return `confirmar_${resultado}`;
@@ -1511,12 +1585,18 @@ const showStatus = async (
   }
 
   let cita = describeRequest(found);
-  if (found.status === 'en_espera_cita') {
+  if (found.status === 'cancelada') {
+    // v1.2.2: también existe la **cancelación definitiva**; el resumen de la
+    // solicitud no debe seguir diciendo «estamos buscándole fecha».
+    cita = 'La solicitud quedó anulada; no vuelve a la lista de espera.';
+  } else if (found.status === 'en_espera_cita') {
     const cancelada = await citaCanceladaDeLaSolicitud(services, found.patientId, found.id);
     if (cancelada !== null) {
+      // v1.2.2: si la cita liberó la franja y el ticket volvió a la cola, eso es
+      // **posponer**; la cancelación definitiva no deja la solicitud en espera.
       cita = `La cita del ${fechaVe(cancelada.date)} a las ${formatTime12h(
         cancelada.startTime,
-      )} quedó cancelada. ${cita}`;
+      )} quedó pospuesta. ${cita}`;
     }
   }
 
@@ -1531,13 +1611,13 @@ const cancelRequest = async (
   services: AsistenteServices,
   conversacion: Conversacion,
   ticket: string | null,
-): Promise<void> => {
+): Promise<boolean> => {
   const parsed = ticket === null ? null : parseTicket(ticket);
   const found = parsed === null ? null : await services.clients.findRequestByTicket(parsed.value);
 
   if (found === null) {
     await reply(services, conversacion, 'sin_solicitud');
-    return;
+    return false;
   }
 
   if (found.status === 'cancelada') {
@@ -1546,7 +1626,7 @@ const cancelRequest = async (
       estado: estadoDe(found.status),
       cita: 'Ya estaba anulada.',
     });
-    return;
+    return false;
   }
 
   if (found.status !== 'en_espera_cita') {
@@ -1555,19 +1635,21 @@ const cancelRequest = async (
       estado: estadoDe(found.status),
       cita: 'Esta solicitud ya tiene cita asignada: llama al consultorio para cambiarla.',
     });
-    return;
+    return false;
   }
 
   const cancelled = await services.clients.cancelRequest(
     found.id,
-    `el paciente la anuló por ${CHANNEL_LABELS[conversacion.canal]}`,
+    `el paciente la anuló definitivamente por ${CHANNEL_LABELS[conversacion.canal]}`,
     conversacion.canal,
   );
-  await reply(services, conversacion, 'estado_solicitud', {
+  // v1.2.2: la solicitud anulada es definitiva y tiene su propia plantilla (la
+  // «queda anulada, no vuelve a la lista de espera»), en vez del estado genérico.
+  await reply(services, conversacion, 'solicitud_anulada_paciente', {
     ticket: cancelled.ticket,
-    estado: estadoDe(cancelled.status),
-    cita: 'Tu solicitud quedó anulada. Cuando quieras otra, escríbeme «nueva».',
   });
+  await saveConversation(services.db, conversacion, { state: 'inicio', draft: emptyDraft() });
+  return true;
 };
 
 /* ── Pasos del asistente ───────────────────────────────────────────────────── */
@@ -1694,8 +1776,25 @@ const confirmarCita = async (
   return 'elegir';
 };
 
-/* ── Cancelar la cita (ADR 0053) ───────────────────────────────────────────── */
+/* ── Posponer o cancelar la cita definitivamente (ADR 0053/0077) ───────────── */
 
+/** Las dos acciones del paciente sobre una cita ya agendada (v1.2.2). */
+type ModoAccionCita = 'posponer' | 'definitiva';
+
+/** Responde la **posposición** (v1.2.2): la cita se libera y el ticket vuelve a la cola. */
+const responderPospuesta = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  cita: AppointmentSummary,
+): Promise<void> => {
+  await reply(services, conversacion, 'cita_pospuesta_paciente', {
+    paciente: cita.patientName,
+    fecha: fechaVe(cita.date),
+    hora: formatTime12h(cita.startTime),
+  });
+};
+
+/** Responde la **cancelación definitiva**: la solicitud no vuelve a la lista de espera. */
 const responderCancelada = async (
   services: AsistenteServices,
   conversacion: Conversacion,
@@ -1708,23 +1807,36 @@ const responderCancelada = async (
   });
 };
 
-/** Cancela de verdad y responde. Devuelve `false` si la cita ya estaba cancelada. */
-const cancelarYResponder = async (
+/**
+ * Ejecuta la acción y responde. Devuelve `false` si la cita ya estaba cancelada
+ * (doble pulsación, R6): en ese caso no se anuncia como recién hecha.
+ */
+const ejecutarYResponder = async (
   services: AsistenteServices,
   conversacion: Conversacion,
   cita: AppointmentSummary,
+  modo: ModoAccionCita,
 ): Promise<boolean> => {
   if (cita.status === 'cancelada') {
-    // Volver a cancelar no es un error: se le recuerda lo que ya hizo.
-    await responderCancelada(services, conversacion, cita);
+    await recordarCitaCancelada(services, conversacion, cita);
     return false;
   }
 
   const cancelada = await services.clients.cancelAppointment(cita.id, {
     channel: conversacion.canal,
     reason: null,
+    // `true` (default) = posponer; `false` = cancelación definitiva (ADR 0077).
+    devolverACola: modo === 'posponer',
   });
-  await responderCancelada(services, conversacion, cancelada);
+  if (modo === 'posponer') await responderPospuesta(services, conversacion, cancelada);
+  else await responderCancelada(services, conversacion, cancelada);
+  // La pregunta de la que pudo venir el botón ya no tiene nada que decidir: se
+  // vuelve al inicio y se limpian las opciones numeradas del paso anterior.
+  await saveConversation(services.db, conversacion, {
+    state: 'inicio',
+    draft: emptyDraft(),
+    opciones: {},
+  });
   return true;
 };
 
@@ -1768,49 +1880,38 @@ const responderFueraDePlazo = async (
 };
 
 /**
- * El paciente dice que no puede asistir. Es la mitad conversacional de la cancelación
- * (ADR 0053), hermana de `confirmarCita`: el asistente busca **sus** citas próximas y
- * cancela la que corresponda; la agenda libera la franja y devuelve su ticket a la cola.
- *
- * Reglas:
- *  - si viene un `id` (de un botón o de una opción numerada), se comprueba que esa cita
- *    sea **suya** antes de tocar nada: el identificador viaja por el chat y nadie debe
- *    poder cancelar la cita de otro con un botón ajeno;
- *  - con **una** cita cancelable se cancela directamente; con **varias** se ofrecen
- *    numeradas (o como botones, si el canal los tiene);
- *  - sin ninguna, si ya tenía una cancelada se le recuerda —cancelar dos veces no es un
- *    error— y si no hay nada, se le dice que no hay nada que cancelar;
- *  - si la cita ya está en sala, llamada o en consulta, se le dice que por aquí ya no se
- *    puede cancelar.
- *
- * `avisarSinCitas: false` deja que el llamador (el comando «cancelar» sin argumento)
- * caiga a la cancelación de la **solicitud** sin mandar antes un «no tienes citas».
+ * Citas del paciente sobre las que el bot puede actuar ahora mismo, con las mismas
+ * guardias que aplica la agenda: `CANCELLABLE_STATUSES` (del contrato) y el corte
+ * ADR 0057. `null` cuando el chat no está vinculado a ninguna ficha.
  */
-const cancelarCita = async (
+interface ContextoAccionCita {
+  patientId: string;
+  citas: AppointmentSummary[];
+  /** Citas que hoy se pueden posponer o cancelar por aquí. */
+  permitidas: AppointmentSummary[];
+  /** Cita confirmada dentro del corte: ni posponer ni cancelar (ADR 0057). */
+  bloqueada: AppointmentSummary | null;
+  corteDias: number;
+  hoy: string;
+}
+
+const contextoAccionCita = async (
   services: AsistenteServices,
   conversacion: Conversacion,
-  id: string | null,
-  options: { avisarSinCitas?: boolean } = {},
-): Promise<ResultadoCancelar> => {
-  const avisarSinCitas = options.avisarSinCitas !== false;
-  const sinNada = async (): Promise<ResultadoCancelar> => {
-    if (avisarSinCitas) await reply(services, conversacion, 'sin_citas');
-    return 'sin_citas';
-  };
-
-  // Política de la clínica (ADR 0057): el corte solo frena a las citas **confirmadas**.
-  const ajustes = await getNotificationSettings(services.db);
-  const corteDias = ajustes.patientCancelCutoffDays;
-  const hoy = todayInClinic();
-
+): Promise<ContextoAccionCita | null> => {
   // El paciente se identifica por la dirección del canal, no por el `patientId` de la
-  // conversación: quien escribió «cancelar» puede tener el chat vinculado hace tiempo.
+  // conversación: quien escribe «cancelar» puede tener el chat vinculado hace tiempo.
   const vinculado = await channelByDireccion(
     services.db,
     conversacion.canal,
     conversacion.direccion,
   );
-  if (vinculado === null) return sinNada();
+  if (vinculado === null) return null;
+
+  // Política de la clínica (ADR 0057): el corte solo frena a las citas **confirmadas**.
+  const ajustes = await getNotificationSettings(services.db);
+  const corteDias = ajustes.patientCancelCutoffDays;
+  const hoy = todayInClinic();
 
   const { from, to } = ventanaDeCitas();
   const pagina = await services.clients.listAppointments({
@@ -1820,12 +1921,202 @@ const cancelarCita = async (
     pageSize: 20,
   });
   const citas = pagina.items;
+  // Las que el paciente todavía puede cambiar por aquí: las que no han llegado al
+  // consultorio. La lista es **la misma** que aplica la agenda (`CANCELLABLE_STATUSES`).
+  const cancelables = citas.filter((cita) => CANCELLABLE_STATUSES.includes(cita.status));
+  const permitidas = cancelables.filter((cita) => !bloqueadaPorCorte(cita, corteDias, hoy));
+  const bloqueada = cancelables.find((cita) => bloqueadaPorCorte(cita, corteDias, hoy)) ?? null;
+  return { patientId: vinculado.patientId, citas, permitidas, bloqueada, corteDias, hoy };
+};
+
+/** La solicitud **en la cola** del paciente, si tiene una (v1.2.2). */
+const solicitudEnColaDePaciente = async (
+  services: AsistenteServices,
+  patientId: string,
+): Promise<RequestSummary | null> => {
+  const solicitudes = await services.clients.listRequestsByPatient(patientId);
+  return solicitudes.find((solicitud) => solicitud.status === 'en_espera_cita') ?? null;
+};
+
+/**
+ * Recuerdo **idempotente** de una cita que ya estaba cancelada (R6): no se vuelve a
+ * anunciar como recién cancelada. Si la solicitud sigue en la cola —el caso de la
+ * posposición—, se le recuerda que puede anularla escribiendo «cancelar».
+ */
+const recordarCitaCancelada = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  cita: AppointmentSummary,
+): Promise<void> => {
+  let enCola = false;
+  if (cita.ticket !== null) {
+    try {
+      const solicitud = await services.clients.findRequestByTicket(cita.ticket);
+      enCola = solicitud?.status === 'en_espera_cita';
+    } catch {
+      // Sin la solicitud a mano, el recordatorio sigue siendo válido sin la pista.
+      enCola = false;
+    }
+  }
+  await reply(services, conversacion, 'estado_solicitud', {
+    ticket: cita.ticket ?? '—',
+    estado: estadoDe('cancelada'),
+    cita: enCola
+      ? 'Esa cita ya estaba cancelada. Si además quieres anular tu solicitud, escríbeme «cancelar».'
+      : 'Esa cita ya estaba cancelada.',
+  });
+  await saveConversation(services.db, conversacion, {
+    state: 'inicio',
+    draft: emptyDraft(),
+    opciones: {},
+  });
+};
+
+/**
+ * Los dos botones de la pregunta «¿posponer o cancelar?» (v1.2.2, ADR 0077).
+ *
+ * Los títulos caben en los 20 caracteres que admite WhatsApp Cloud API, y
+ * `cancelar_definitiva:<uuid>` mide 56 bytes: entra en los 64 de `callback_data`
+ * de Telegram. El nombre nuevo («cancelar_definitiva») es obligatorio porque
+ * `cancelar_cita:<id>` quedó como alias heredado de posponer (R1).
+ */
+export const botonesDecisionCita = (appointmentId: string): OutboundButton[] => [
+  { etiqueta: 'Posponer', accion: `posponer_cita:${appointmentId}` },
+  { etiqueta: 'Cancelar cita', accion: `cancelar_definitiva:${appointmentId}` },
+];
+
+/** Pregunta «posponer o cancelar definitivamente» para una cita concreta (v1.2.2). */
+const preguntarAccionCita = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  draft: BotDraft,
+  cita: AppointmentSummary,
+): Promise<void> => {
+  // La cita elegida queda en el borrador: así el «sí»/«no» o un «posponer» escrito
+  // a mano en el turno siguiente se resuelven sobre la misma cita.
+  await saveConversation(services.db, conversacion, {
+    state: 'elegir_accion_cita',
+    draft: { ...draft, pendingAppointmentId: cita.id },
+  });
+  await reply(
+    services,
+    conversacion,
+    'cita_posponer_o_cancelar',
+    { fecha: fechaVe(cita.date), hora: formatTime12h(cita.startTime) },
+    botonesDecisionCita(cita.id),
+  );
+};
+
+/**
+ * Pregunta de anulación de la **solicitud** cuando no hay ninguna cita en pie
+ * (v1.2.2). Se recuerda en `draft.pendingAppointmentId = null`: así el «sí» escrito
+ * a mano en el turno siguiente se resuelve como anulación y no como otra acción.
+ */
+const preguntarAnularSolicitud = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  draft: BotDraft,
+  solicitud: RequestSummary,
+): Promise<void> => {
+  await saveConversation(services.db, conversacion, {
+    state: 'elegir_accion_cita',
+    draft: { ...draft, pendingAppointmentId: null },
+  });
+  await reply(services, conversacion, 'confirmar_anular_solicitud', { ticket: solicitud.ticket }, [
+    { etiqueta: 'Sí, anular', accion: 'anular_solicitud:si' },
+    { etiqueta: 'No, dejarla', accion: 'anular_solicitud:no' },
+  ]);
+};
+
+/** Anula definitivamente la solicitud que está en la cola (v1.2.2). */
+const anularSolicitudEnCola = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  patientId: string,
+): Promise<boolean> => {
+  const solicitud = await solicitudEnColaDePaciente(services, patientId);
+  if (solicitud === null) {
+    await reply(services, conversacion, 'sin_citas');
+    return false;
+  }
+  const cancelada = await services.clients.cancelRequest(
+    solicitud.id,
+    `el paciente anuló definitivamente su solicitud por ${CHANNEL_LABELS[conversacion.canal]}`,
+    conversacion.canal,
+  );
+  await reply(services, conversacion, 'solicitud_anulada_paciente', {
+    ticket: cancelada.ticket,
+  });
+  await saveConversation(services.db, conversacion, {
+    state: 'inicio',
+    draft: emptyDraft(),
+    opciones: {},
+  });
+  return true;
+};
+
+/** El paciente decide **no** anular su solicitud: se le confirma que sigue en la cola. */
+const mantenerSolicitud = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+): Promise<void> => {
+  const vinculado = await channelByDireccion(
+    services.db,
+    conversacion.canal,
+    conversacion.direccion,
+  );
+  const solicitud =
+    vinculado === null ? null : await solicitudEnColaDePaciente(services, vinculado.patientId);
+  await saveConversation(services.db, conversacion, {
+    state: 'inicio',
+    draft: emptyDraft(),
+    opciones: {},
+  });
+  if (solicitud === null) {
+    await reply(services, conversacion, 'sin_citas');
+    return;
+  }
+  await reply(services, conversacion, 'estado_solicitud', {
+    ticket: solicitud.ticket,
+    estado: estadoDe(solicitud.status),
+    cita: 'Entendido: dejo tu solicitud como está, en la lista de espera.',
+  });
+};
+
+/**
+ * Ejecuta **posponer** o la **cancelación definitiva** con las mismas guardias de
+ * siempre (ADR 0053/0057), para el comando `/posponer`, sus frases y los botones.
+ *
+ * Reglas:
+ *  - si viene un `id` (de un botón o de una opción numerada), se comprueba que esa
+ *    cita sea **suya** antes de tocar nada: el identificador viaja por el chat y
+ *    nadie debe poder actuar sobre la cita de otro con un botón ajeno;
+ *  - con **una** cita permitida se ejecuta directamente; con **varias** se ofrecen
+ *    como botones (`posponer_cita:<id>` / `cancelar_definitiva:<id>`);
+ *  - una cita ya cancelada devuelve un recuerdo idempotente (R6), no un anuncio nuevo;
+ *  - el **corte** ADR 0057 frena las dos acciones, no solo la cancelación.
+ */
+const cancelarCitaEnModo = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  id: string | null,
+  modo: ModoAccionCita,
+): Promise<ResultadoCancelar> => {
+  const contexto = await contextoAccionCita(services, conversacion);
+  if (contexto === null) {
+    await reply(services, conversacion, 'sin_citas');
+    return 'sin_citas';
+  }
 
   if (id !== null) {
-    const suya = citas.find((cita) => cita.id === id);
+    const suya = contexto.citas.find((cita) => cita.id === id);
     if (suya === undefined) {
       await reply(services, conversacion, 'sin_citas');
       return 'no_es_suya';
+    }
+    if (suya.status === 'cancelada') {
+      await recordarCitaCancelada(services, conversacion, suya);
+      return 'ya_estaba';
     }
     if (!CANCELLABLE_STATUSES.includes(suya.status)) {
       await reply(services, conversacion, 'cita_no_cancelable', {
@@ -1833,53 +2124,158 @@ const cancelarCita = async (
       });
       return 'no_cancelable';
     }
-    // Ya confirmó y le quedan pocos días: por chat no se cancela, hay que llamar.
-    if (bloqueadaPorCorte(suya, corteDias, hoy)) {
-      await responderFueraDePlazo(services, conversacion, suya, corteDias);
+    // Ya confirmó y le quedan pocos días: por chat no se cambia, hay que llamar.
+    if (bloqueadaPorCorte(suya, contexto.corteDias, contexto.hoy)) {
+      await responderFueraDePlazo(services, conversacion, suya, contexto.corteDias);
       return 'bloqueada';
     }
-    return (await cancelarYResponder(services, conversacion, suya)) ? 'cancelada' : 'ya_estaba';
+    return (await ejecutarYResponder(services, conversacion, suya, modo))
+      ? 'cancelada'
+      : 'ya_estaba';
   }
 
-  // Las que el paciente todavía puede cancelar por aquí: las que no han llegado al
-  // consultorio. La lista es **la misma** que aplica la agenda (`CANCELLABLE_STATUSES`).
-  const cancelables = citas.filter((cita) => CANCELLABLE_STATUSES.includes(cita.status));
-  // Y, de esas, las que el corte de la clínica no bloquea (ADR 0057): las confirmadas
-  // que ya están dentro del plazo mínimo se ofrecen igualmente por chat.
-  const permitidas = cancelables.filter((cita) => !bloqueadaPorCorte(cita, corteDias, hoy));
-
+  const permitidas = contexto.permitidas;
   if (permitidas.length === 0) {
-    // Si lo único que había era una cita confirmada dentro del corte, se le dice por qué.
-    const bloqueada = cancelables.find((cita) => bloqueadaPorCorte(cita, corteDias, hoy));
-    if (bloqueada !== undefined) {
-      await responderFueraDePlazo(services, conversacion, bloqueada, corteDias);
+    // Lo único que había era una cita confirmada dentro del corte: se le dice por qué.
+    if (contexto.bloqueada !== null) {
+      await responderFueraDePlazo(services, conversacion, contexto.bloqueada, contexto.corteDias);
       return 'bloqueada';
     }
-    const yaCancelada = citas.find((cita) => cita.status === 'cancelada');
+    const yaCancelada = contexto.citas.find((cita) => cita.status === 'cancelada');
     if (yaCancelada !== undefined) {
-      await responderCancelada(services, conversacion, yaCancelada);
+      await recordarCitaCancelada(services, conversacion, yaCancelada);
       return 'ya_estaba';
     }
-    return sinNada();
+    await reply(services, conversacion, 'sin_citas');
+    return 'sin_citas';
   }
 
   if (permitidas.length === 1) {
     const unica = permitidas[0];
     if (unica !== undefined) {
-      return (await cancelarYResponder(services, conversacion, unica)) ? 'cancelada' : 'ya_estaba';
+      return (await ejecutarYResponder(services, conversacion, unica, modo))
+        ? 'cancelada'
+        : 'ya_estaba';
     }
   }
 
   await enviar(
     services,
     conversacion,
-    'Tienes varias citas próximas. Dime cuál quieres cancelar.',
+    modo === 'posponer'
+      ? 'Tienes varias citas próximas. Dime cuál quieres posponer.'
+      : 'Tienes varias citas próximas. Dime cuál quieres cancelar definitivamente.',
     permitidas.map((cita) => ({
       etiqueta: `${fechaVe(cita.date)} · ${formatTime12h(cita.startTime)}`,
-      accion: `cancelar_cita:${cita.id}`,
+      accion: `${modo === 'posponer' ? 'posponer_cita' : 'cancelar_definitiva'}:${cita.id}`,
     })),
   );
   return 'elegir';
+};
+
+/**
+ * Segunda mitad de la pregunta de decisión: con **varias** citas el paciente elige
+ * cuál (`elegir_cita:<id>`) y entonces se le pregunta la acción. Las guardias son las
+ * mismas de `cancelarCitaEnModo`: cita ajena, estado y corte ADR 0057.
+ */
+const elegirCitaParaAccion = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  draft: BotDraft,
+  id: string,
+): Promise<string | null> => {
+  if (id === '') return null;
+  const contexto = await contextoAccionCita(services, conversacion);
+  if (contexto === null) {
+    await reply(services, conversacion, 'sin_citas');
+    return 'sin_citas';
+  }
+  const cita = contexto.citas.find((candidata) => candidata.id === id);
+  if (cita === undefined) {
+    await reply(services, conversacion, 'sin_citas');
+    return 'no_es_suya';
+  }
+  if (cita.status === 'cancelada') {
+    await recordarCitaCancelada(services, conversacion, cita);
+    return 'ya_estaba';
+  }
+  if (!CANCELLABLE_STATUSES.includes(cita.status)) {
+    await reply(services, conversacion, 'cita_no_cancelable', { estado: estadoDe(cita.status) });
+    return 'no_cancelable';
+  }
+  if (bloqueadaPorCorte(cita, contexto.corteDias, contexto.hoy)) {
+    await responderFueraDePlazo(services, conversacion, cita, contexto.corteDias);
+    return 'bloqueada';
+  }
+  await preguntarAccionCita(services, conversacion, draft, cita);
+  return 'elegir_accion';
+};
+
+/**
+ * El paciente escribió «cancelar» (decisión 3 del encargo v1.2.2): el bot **no**
+ * cancela directo, pregunta «Posponer» o «Cancelar cita» (ADR 0077).
+ *
+ *  - con varias citas, primero se elige cuál (`elegir_cita:<id>`) y luego la acción;
+ *  - sin cita en pie pero con una solicitud en la cola, se pregunta si quiere anularla
+ *    definitivamente (posponer no aplica: ya está en la lista de espera);
+ *  - con una cita ya cancelada y sin nada más, recuerdo idempotente;
+ *  - sin cita ni solicitud, mensaje informativo.
+ */
+const proponerDecisionCita = async (
+  services: AsistenteServices,
+  conversacion: Conversacion,
+  conversation: BotConversationRow,
+): Promise<string> => {
+  const draft = toDraft(conversation);
+  const contexto = await contextoAccionCita(services, conversacion);
+  if (contexto === null) {
+    await reply(services, conversacion, 'sin_citas');
+    return 'sin_citas';
+  }
+
+  if (contexto.permitidas.length > 1) {
+    await enviar(
+      services,
+      conversacion,
+      'Tienes varias citas próximas. Dime cuál quieres posponer o cancelar.',
+      contexto.permitidas.map((cita) => ({
+        etiqueta: `${fechaVe(cita.date)} · ${formatTime12h(cita.startTime)}`,
+        accion: `elegir_cita:${cita.id}`,
+      })),
+    );
+    await saveConversation(services.db, conversacion, {
+      state: 'elegir_accion_cita',
+      draft: { ...draft, pendingAppointmentId: null },
+    });
+    return 'elegir_cita';
+  }
+
+  const unica = contexto.permitidas[0];
+  if (unica !== undefined) {
+    await preguntarAccionCita(services, conversacion, draft, unica);
+    return 'elegir_accion';
+  }
+
+  if (contexto.bloqueada !== null) {
+    await responderFueraDePlazo(services, conversacion, contexto.bloqueada, contexto.corteDias);
+    return 'bloqueada';
+  }
+
+  // Sin cita en pie: solo queda la solicitud en la cola (anulación definitiva).
+  const solicitud = await solicitudEnColaDePaciente(services, contexto.patientId);
+  if (solicitud !== null) {
+    await preguntarAnularSolicitud(services, conversacion, draft, solicitud);
+    return 'elegir_anular_solicitud';
+  }
+
+  const yaCancelada = contexto.citas.find((cita) => cita.status === 'cancelada');
+  if (yaCancelada !== undefined) {
+    await recordarCitaCancelada(services, conversacion, yaCancelada);
+    return 'ya_estaba';
+  }
+
+  await reply(services, conversacion, 'sin_citas');
+  return 'sin_citas';
 };
 
 /* ── Pasos del asistente ───────────────────────────────────────────────────── */
@@ -2503,6 +2899,21 @@ export const handleInbound = async (
     if (campo !== null) elegida = `corregir:${campo}`;
   }
 
+  // La pregunta «posponer o cancelar» (v1.2.2) se puede responder escribiendo: con
+  // una cita elegida, «posponer» / «cancelar» eligen la acción; en la anulación de la
+  // solicitud, «sí» / «no». No se vuelve a preguntar.
+  if (elegida === null && conversation.state === 'elegir_accion_cita') {
+    const pendiente = draft.pendingAppointmentId;
+    if (pendiente === null) {
+      const decision = confirmacionDesdeTexto(texto);
+      if (decision !== null) elegida = `anular_solicitud:${decision}`;
+    } else {
+      const intencion = detectIntent(texto, { comandos: capacidades.comandos }).intencion;
+      if (intencion === 'posponer') elegida = `posponer_cita:${pendiente}`;
+      else if (intencion === 'cancelar') elegida = `cancelar_definitiva:${pendiente}`;
+    }
+  }
+
   if (elegida !== null) {
     const [kind = '', value = ''] = elegida.split(':');
     const action = await despacharAccion(services, conversacion, conversation, draft, kind, value);
@@ -2575,6 +2986,11 @@ export const handleInbound = async (
     case 'corregir_menu':
       await mostrarMenuCorreccion(services, conversacion, conversation, draft);
       return { ...conversacion, handled: true, action: 'corregir_menu' };
+    case 'elegir_accion_cita': {
+      // Texto que no elige ninguna acción: se repite la pregunta sin tocar la cita.
+      const action = await repetirPasoActual(services, conversacion, conversation, draft);
+      return { ...conversacion, handled: true, action: action ?? 'elegir_accion_cita' };
+    }
     case 'confirmacion':
       // Texto no reconocido con el resumen delante: se repite el resumen.
       await mostrarResumen(services, conversacion, draft);

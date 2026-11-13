@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   abbreviateName,
+  botonesDecisionCita,
   coincideVerificacion,
   confirmacionDesdeTexto,
   corregirCampoDesdeTexto,
@@ -177,10 +178,27 @@ describe('menú rápido', () => {
       'menu:confirmar',
       'menu:cancelar',
     ]);
+    // v1.2.2: una sola entrada para las dos acciones (ADR 0077).
+    expect(botones[3]?.etiqueta).toBe('Posponer o cancelar mi cita');
   });
 
   it('un chat vinculado añade «Cambiar de paciente»', () => {
     const botones = menuRapidoButtons(true);
     expect(botones.at(-1)).toEqual({ etiqueta: 'Cambiar de paciente', accion: 'menu:desvincular' });
+  });
+
+  it('la pregunta posponer/cancelar usa las acciones nuevas y cabe en los límites', () => {
+    const citaId = '00000000-0000-4000-8000-000000000000';
+    const botones = botonesDecisionCita(citaId);
+    expect(botones.map((boton) => boton.accion)).toEqual([
+      `posponer_cita:${citaId}`,
+      `cancelar_definitiva:${citaId}`,
+    ]);
+    for (const boton of botones) {
+      // Cloud API no acepta títulos de más de 20 caracteres; Telegram `callback_data`
+      // de más de 64 bytes (el de la definitiva mide 56).
+      expect(boton.etiqueta.length).toBeLessThanOrEqual(20);
+      expect(Buffer.byteLength(boton.accion, 'utf8')).toBeLessThanOrEqual(64);
+    }
   });
 });

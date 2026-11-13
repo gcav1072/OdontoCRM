@@ -109,6 +109,26 @@ describe('intenciones del asistente', () => {
     expect(detectIntent('nueva cita para mañana', sinComandos).intencion).toBeNull();
   });
 
+  it('reconoce «posponer» como intención propia (v1.2.2)', () => {
+    expect(detectIntent('/posponer', conComandos)).toMatchObject({
+      intencion: 'posponer',
+      comando: true,
+    });
+    for (const frase of [
+      'posponer',
+      'Posponer mi cita',
+      'otro día',
+      'cambiar de día',
+      'mover la cita',
+      'no puedo ir',
+    ]) {
+      expect(detectIntent(frase, sinComandos).intencion).toBe('posponer');
+    }
+    // «cancelar» no cambia de intención: el bot pregunta antes de actuar, no ejecuta.
+    expect(detectIntent('cancelar', sinComandos).intencion).toBe('cancelar');
+    expect(detectIntent('cancelar mi cita', sinComandos).intencion).toBe('cancelar');
+  });
+
   it('no inventa intenciones donde no las hay', () => {
     expect(detectIntent('María Pérez', sinComandos).intencion).toBeNull();
     expect(detectIntent('0412-1234567', sinComandos).intencion).toBeNull();

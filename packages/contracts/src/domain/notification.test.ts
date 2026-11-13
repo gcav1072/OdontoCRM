@@ -156,6 +156,7 @@ describe('borrador de la conversación', () => {
     expect(empty.verifyAttempts).toBe(0);
     expect(empty.flow).toBeNull();
     expect(empty.pendingUnlink).toBeNull();
+    expect(empty.pendingAppointmentId).toBeNull();
 
     const editando = botDraftSchema.parse({
       editingSingleField: true,
@@ -167,6 +168,15 @@ describe('borrador de la conversación', () => {
     expect(editando.flow).toBe('nueva');
     expect(botDraftSchema.safeParse({ verifyAttempts: 4 }).success).toBe(false);
     expect(botDraftSchema.safeParse({ flow: 'otra' }).success).toBe(false);
+  });
+
+  it('recuerda la cita elegida al preguntar «posponer o cancelar» (v1.2.2)', () => {
+    const cita = '00000000-0000-4000-8000-000000000010';
+    const draft = botDraftSchema.parse({ pendingAppointmentId: cita });
+    expect(draft.pendingAppointmentId).toBe(cita);
+    // Tiene que ser un uuid o null: aquí se guarda el id de una cita, no texto libre.
+    expect(botDraftSchema.safeParse({ pendingAppointmentId: 'la del martes' }).success).toBe(false);
+    expect(botDraftSchema.parse({ pendingAppointmentId: null }).pendingAppointmentId).toBeNull();
   });
 });
 
@@ -186,7 +196,12 @@ describe('v1.2: pasos del asistente', () => {
   });
 
   it('los estados nuevos del flujo existen', () => {
-    for (const estado of ['verificar_identidad', 'corregir_menu', 'confirmar_desvinculacion']) {
+    for (const estado of [
+      'verificar_identidad',
+      'corregir_menu',
+      'confirmar_desvinculacion',
+      'elegir_accion_cita',
+    ]) {
       expect(BOT_CONVERSATION_STATES).toContain(estado);
     }
   });
@@ -244,6 +259,70 @@ describe('v1.2: pasos del asistente', () => {
     expect(texto).toContain('mañana');
     expect(texto).toContain('#000123');
     expect(texto).not.toContain('{');
+  });
+});
+
+describe('v1.2.2: posponer vs cancelar la cita definitivamente (ADR 0077)', () => {
+  const bodyOf = (key: string): string =>
+    DEFAULT_MESSAGE_TEMPLATES.find((template) => template.key === key)?.body ?? '';
+
+  it('el catálogo trae las plantillas nuevas y la respuesta de posponer', () => {
+    const keys = DEFAULT_MESSAGE_TEMPLATES.map((template) => template.key);
+    for (const key of [
+      'cita_pospuesta_paciente',
+      'cita_posponer_o_cancelar',
+      'confirmar_anular_solicitud',
+      'solicitud_anulada_paciente',
+    ]) {
+      expect(keys).toContain(key);
+    }
+  });
+
+  it('la respuesta de cancelar es la definitiva y la de posponer devuelve a la cola', () => {
+    // La diferencia se tiene que leer en el texto: el paciente no puede recibir
+    // «vuelves a la lista de espera» cuando su solicitud salió de la cola.
+    const definitiva = renderMessage(bodyOf('cita_cancelada_paciente'), {
+      paciente: 'María',
+      fecha: '15/05/2026',
+      hora: '9:30 a. m.',
+    });
+    expect(definitiva).toContain('cancelada definitivamente');
+    expect(definitiva).toContain('ya no está en la lista de espera');
+    expect(definitiva).not.toContain('vuelves a la lista de espera');
+
+    const pospuesta = renderMessage(bodyOf('cita_pospuesta_paciente'), {
+      paciente: 'María',
+      fecha: '15/05/2026',
+      hora: '9:30 a. m.',
+    });
+    expect(pospuesta).toContain('quedó pospuesta');
+    expect(pospuesta).toContain('vuelves a la lista de espera');
+  });
+
+  it('la pregunta de decisión nombra posponer y cancelar con la fecha de la cita', () => {
+    const pregunta = bodyOf('cita_posponer_o_cancelar');
+    expect(pregunta).toContain('{fecha}');
+    expect(pregunta).toContain('{hora}');
+    expect(pregunta).toContain('Posponer');
+    expect(pregunta).toContain('Cancelar cita');
+    // El aviso de secretaría sí devuelve el ticket a la cola.
+    expect(bodyOf('cita_cancelada')).toContain('vuelve a la lista de espera');
+  });
+
+  it('la anulación de una solicitud en cola se pregunta y se confirma', () => {
+    expect(bodyOf('confirmar_anular_solicitud')).toContain('{ticket}');
+    expect(bodyOf('confirmar_anular_solicitud')).toContain('anularla definitivamente');
+    expect(bodyOf('solicitud_anulada_paciente')).toContain('{ticket}');
+    expect(bodyOf('solicitud_anulada_paciente')).toContain('no vuelve a la lista de espera');
+  });
+
+  it('los avisos que cambian de vocabulario hablan de las dos acciones', () => {
+    expect(bodyOf('cita_recordatorio')).toContain('posponer la cita');
+    expect(bodyOf('cita_recordatorio')).toContain('cancelarla definitivamente');
+    expect(bodyOf('cita_cancelacion_fuera_de_plazo')).toContain('no se puede posponer ni cancelar');
+    expect(bodyOf('cita_no_cancelable')).toContain('gestionarla');
+    expect(bodyOf('ayuda')).toContain('«posponer»');
+    expect(bodyOf('ayuda')).toContain('«cancelar»');
   });
 });
 

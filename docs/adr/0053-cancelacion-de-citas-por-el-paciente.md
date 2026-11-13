@@ -1,6 +1,13 @@
 # ADR 0053 — El paciente cancela su cita
 
 - **Fecha:** 2026-10-08 · **Estado:** aceptada
+- **Nota (v1.2.2):** lo que este ADR llama «cancelar» (la cita se cancela y el ticket vuelve a la
+  cola) pasa a llamarse **posponer**; la **cancelación definitiva** es una acción nueva
+  ([ADR 0077](0077-posponer-vs-cancelar-cita-definitiva.md)): la solicitud también queda
+  `cancelada` y no vuelve a la cola. Las guardias (`CANCELLABLE_STATUSES`, cita ajena, idempotencia
+  y `skipNotice`) siguen vigentes para las dos; `cita_cancelada_paciente` pasa a ser la respuesta
+  de la definitiva y aparece `cita_pospuesta_paciente` para posponer. El vocabulario de este
+  documento se conserva como histórico.
 - **Relacionada:** [ADR 0012](0012-maquina-de-estados.md) (máquina de estados),
   [ADR 0028](0028-cancelar-devuelve-el-ticket.md) (cancelar devuelve el ticket),
   [ADR 0029](0029-nucleo-conversacional-y-adaptadores.md) (núcleo conversacional y adaptadores),

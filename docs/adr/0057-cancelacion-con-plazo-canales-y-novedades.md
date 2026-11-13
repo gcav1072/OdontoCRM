@@ -1,6 +1,11 @@
 # ADR 0057 — La cancelación del paciente tiene plazo, la bandeja dice el nombre y el inicio cuenta las novedades
 
 - **Fecha:** 2026-10-09 · **Estado:** aceptada
+- **Nota (v1.2.2):** el corte de días (`patientCancelCutoffDays`) frena **las dos** acciones del
+  paciente sobre una cita ya confirmada —posponer y cancelar la cita definitivamente—, porque las
+  dos liberan la franja y el consultorio necesita el mismo margen
+  ([ADR 0077](0077-posponer-vs-cancelar-cita-definitiva.md)). El texto
+  `cita_cancelacion_fuera_de_plazo` pasa a decir «ni posponer ni cancelar».
 - **Relacionada:** [ADR 0029](0029-nucleo-conversacional-y-adaptadores.md) (núcleo conversacional y adaptadores),
   [ADR 0041](0041-el-evento-lleva-lo-que-el-consumidor-necesita.md) (el evento lleva lo que el consumidor necesita),
   [ADR 0052](0052-confirmacion-de-citas-por-el-paciente.md) (el paciente confirma su cita),

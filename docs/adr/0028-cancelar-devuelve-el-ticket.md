@@ -1,6 +1,12 @@
 # ADR 0028 — Cancelar una cita devuelve el ticket a la cola
 
 - **Fecha:** 2026-10-03 · **Estado:** aceptada
+- **Nota (v1.2.2):** esta decisión describe lo que desde el
+  [ADR 0077](0077-posponer-vs-cancelar-cita-definitiva.md) se llama **posponer**. La
+  **cancelación definitiva** es una acción nueva: la cita también pasa a `cancelada`, pero la
+  solicitud pasa a `cancelada` en vez de volver a la cola. El motor de estados sigue siendo el mismo
+  (`devolverACola` decide el destino del ticket); el vocabulario «cancelar» de este documento se
+  conserva como histórico.
 
 ## Contexto
 

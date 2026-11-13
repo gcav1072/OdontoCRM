@@ -151,6 +151,12 @@ const appointmentPayloadSchema = z.object({
       forceAttendedReason: z.string().nullish(),
       /** Canal por el que canceló el paciente (ADR 0053); nulo si la canceló la secretaría. */
       cancelledChannel: z.string().nullish(),
+      /**
+       * `true` = posponer (el ticket vuelve a la cola); `false` = cancelación
+       * definitiva (ADR 0077). Los eventos anteriores a v1.2.2 no lo traen: se
+       * interpretan como posponer, que era la única semántica.
+       */
+      devolverACola: z.boolean().nullish(),
     })
     .partial()
     .nullish(),
@@ -550,13 +556,16 @@ const planificarCita = (event: DomainEvent): Planificacion => {
       if (event.eventType === EVENT_TOPICS.appointmentCancelled) {
         const requestId = appointment.requestId;
         if (requestId !== null && requestId !== undefined) {
-          // Cancelar la cita devuelve el ticket a la cola (lo hace la agenda): el
-          // embudo tiene que verlo igual.
+          // v1.2.2 (ADR 0077): el flag dice qué hizo la agenda con el ticket. Si no
+          // viene (evento viejo) era posponer; con `false` la cancelación es
+          // definitiva y la solicitud **no** vuelve a la cola: el embudo mentiría si
+          // la pintara en espera.
+          const devolverACola = carga.after?.devolverACola !== false;
           await tx
             .update(factRequest)
             .set({
-              status: 'en_espera_cita',
-              cancelledAt: null,
+              status: devolverACola ? 'en_espera_cita' : 'cancelada',
+              cancelledAt: devolverACola ? null : ocurrido,
               lastEventAt: masReciente(factRequest.lastEventAt, ocurrido),
             })
             .where(eq(factRequest.requestId, requestId));

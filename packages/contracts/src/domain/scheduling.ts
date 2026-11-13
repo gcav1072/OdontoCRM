@@ -614,6 +614,17 @@ export const cancelAppointmentBotSchema = z.object({
    * rechazaría el `null` con un 400 que dejaba al paciente sin poder cancelar.
    */
   reason: z.string().trim().max(300).nullish(),
+  /**
+   * Qué hacer con el ticket de la solicitud (v1.2.2):
+   *  - `true` (default) = **posponer**: la solicitud vuelve a `en_espera_cita` y a
+   *    la cola, que es el comportamiento de siempre de la cancelación del paciente;
+   *  - `false` = **cancelación definitiva**: si la cita era la última en pie, la
+   *    solicitud pasa a `cancelada` y no vuelve a la cola.
+   *
+   * El default `true` mantiene compatibles a los clientes antiguos y a la ruta
+   * pública de la secretaría, que no lo mandan.
+   */
+  devolverACola: z.boolean().default(true),
 });
 
 export type CancelAppointmentBotInput = z.infer<typeof cancelAppointmentBotSchema>;
@@ -823,13 +834,13 @@ export const APPOINTMENT_CONFIRMATION_TEMPLATE = {
   subject: 'Confirmación de tu cita',
   // Ojo con la puntuación: la hora en 12 h ya termina en «a. m.» o «p. m.».
   //
-  // El aviso **invita a responder** (ADR 0052): «confirmar» si asistirá o «cancelar»
-  // si no puede, que es la petición de la ADR 0053. No dice «quedó confirmada»: avisar
-  // y confirmar son hechos distintos.
+  // El aviso **invita a responder** (ADR 0052): «confirmar» si asistirá; y desde
+  // v1.2.2 aclara las dos formas de no poder ir (ADR 0077): posponer (el ticket
+  // vuelve a la lista de espera) o cancelar la cita definitivamente.
   body:
     'Hola {paciente}: te esperamos el {fecha} a las {hora}\n' +
     'Lugar: {lugar}\n' +
-    'Tu ticket es {ticket}. Responde «confirmar» (o pulsa el botón) para avisarnos de que asistirás; si no puedes, aprieta (cancelar) o escribe cancelar para revocarte la cita.',
+    'Tu ticket es {ticket}. Responde «confirmar» (o pulsa el botón) para avisarnos de que asistirás; si no puedes, pospónla para otro día o cancélala definitivamente.',
 } as const;
 
 /**

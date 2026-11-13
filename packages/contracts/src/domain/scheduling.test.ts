@@ -421,6 +421,25 @@ describe('confirmar y cancelar por el bot (ADR 0052/0053)', () => {
     expect(confirmAppointmentSchema.safeParse({ note: null }).success).toBe(false);
     expect(cancelAppointmentBotSchema.safeParse({}).success).toBe(false);
   });
+
+  it('`devolverACola` decide el destino del ticket y por defecto es true (v1.2.2)', () => {
+    // Default true: posponer (la solicitud vuelve a la cola), como siempre.
+    expect(cancelAppointmentBotSchema.parse({ channel: 'telegram' }).devolverACola).toBe(true);
+    expect(
+      cancelAppointmentBotSchema.parse({ channel: 'telegram', reason: null }).devolverACola,
+    ).toBe(true);
+    // false: cancelación definitiva, la solicitud no vuelve a la cola.
+    expect(
+      cancelAppointmentBotSchema.parse({ channel: 'whatsapp', devolverACola: false }).devolverACola,
+    ).toBe(false);
+    // Solo booleano: un «no»/«0» de un cliente no puede cambiar la semántica por accidente.
+    expect(
+      cancelAppointmentBotSchema.safeParse({ channel: 'telegram', devolverACola: 'no' }).success,
+    ).toBe(false);
+    expect(
+      cancelAppointmentBotSchema.safeParse({ channel: 'telegram', devolverACola: 0 }).success,
+    ).toBe(false);
+  });
 });
 
 describe('plantilla del aviso al paciente', () => {
@@ -447,6 +466,9 @@ describe('plantilla del aviso al paciente', () => {
     expect(texto).toContain('Tu ticket es #000123');
     // El aviso pide confirmar (ADR 0052): avisar y confirmar son dos hechos distintos.
     expect(texto).toContain('Responde «confirmar»');
+    // Y desde v1.2.2 nombra las dos formas de no poder ir (ADR 0077).
+    expect(texto).toContain('pospónla para otro día');
+    expect(texto).toContain('cancélala definitivamente');
     expect(texto).not.toContain('m..');
     expect(texto).not.toContain('{');
   });

@@ -11,7 +11,7 @@ import { loadNotificationsConfig, type NotificationsConfig } from './config.js';
 import { createNotificationsDatabase } from './db/client.js';
 import { botConversations, notifications, patientChannels } from './db/schema.js';
 import type { AppointmentInternalFilters, InternalClients } from './internal-client.js';
-import { linkChat, notificationByDedupe, todayInClinic } from './messaging.js';
+import { linkChat, notificationByDedupe, renderMessageFor, todayInClinic } from './messaging.js';
 import { addCalendarDays, reminderDedupeKey, runAppointmentReminders } from './reminders.js';
 import { updateNotificationSettings } from './settings.js';
 
@@ -194,6 +194,22 @@ describeWithDatabase('recordatorios automáticos (PostgreSQL real)', () => {
     expect(variables['dias']).toBe('mañana');
     expect(variables['hora']).toBe(formatTime12h(cita.startTime));
     expect(aviso?.payload['offerActions']).toBe(true);
+
+    // v1.2.2: el texto del recordatorio ofrece las **tres** acciones del paciente
+    // (confirmar, posponer o cancelar definitivamente), que es lo que los botones y
+    // las opciones numeradas ejecutan (ADR 0077).
+    const cuerpo = await renderMessageFor(handle.db, 'cita_recordatorio', {
+      paciente: cita.patientName,
+      clinica: config.CLINIC_NAME ?? '',
+      fecha: cita.date.split('-').reverse().join('/'),
+      hora: formatTime12h(cita.startTime),
+      dias: 'mañana',
+      lugar: config.CLINIC_ADDRESS ?? '',
+      ticket: cita.ticket ?? '—',
+    });
+    expect(cuerpo).toContain('confirmar tu asistencia');
+    expect(cuerpo).toContain('posponer la cita para otro día');
+    expect(cuerpo).toContain('cancelarla definitivamente');
 
     // Un segundo barrido (reinicio, ciclo siguiente) no duplica.
     const segunda = await runAppointmentReminders(handle.db, fakeClients(citas), {

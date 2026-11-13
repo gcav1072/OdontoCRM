@@ -196,13 +196,17 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
 - **Resultado esperado:** Las $3$ citas reciben tickets consecutivos ordenados ($1, 2, 3$); el sistema bloquea la sobreasignación cuando el cupo de la franja se agota.
 
 #### `AGE-03` — Máquina de estados, reprogramación y devolución del ticket al cancelar
-- **Rutas / Componentes:** `AppointmentActionDialog.tsx`, `RescheduleAppointmentDialog.tsx`, `AppointmentHistoryDialog.tsx`, `RequestCancelDialog.tsx` (ADR `0012`, `0028`).
+- **Rutas / Componentes:** `AppointmentActionDialog.tsx`, `RescheduleAppointmentDialog.tsx`, `AppointmentHistoryDialog.tsx`, `RequestCancelDialog.tsx` (ADR `0012`, `0028`, `0077`).
 - **Pasos de prueba:**
   - [x] Cancelar la cita que tenía asignado el ticket número $2$ del día.
   - [x] Asignar inmediatamente una nueva cita para otro paciente en ese mismo día y franja liberada.
   - [x] Reprogramar otra cita activa hacia una fecha distinta con `RescheduleAppointmentDialog.tsx`.
   - [x] Abrir `AppointmentHistoryDialog.tsx` en ambas citas.
 - **Resultado esperado:** Al cancelar la cita, el cupo se libera y **el número de ticket se devuelve/reutiliza** según `0028-cancelar-devuelve-el-ticket.md`; el historial de la cita muestra cada transición de estado con fecha y usuario responsable.
+- **Nota v1.2.2 (ADR 0077):** la cancelación de la **secretaría** (esta pantalla) sigue
+  devolviendo el ticket a la cola: la ruta pública no manda `devolverACola` y el default es `true`
+  (= posponer). La **cancelación definitiva** —la solicitud no vuelve a la cola— solo existe por el
+  bot de pacientes y su rastro se comprueba en `NOT-03`.
 
 #### `AGE-04` — Notificación en lote de la jornada
 - **Rutas / Componentes:** `NotifyBatchDialog.tsx` (ADR `0010`).
@@ -354,18 +358,24 @@ Antes de iniciar la ejecución manual en el navegador, ejecuta y verifica los si
   - [x] Vincular el canal de mensajería de un paciente (`PatientChannelCard.tsx`).
   - [x] Enviar `/ayuda` o texto libre al bot para recibir el menú interactivo (`0003_ayuda_con_menu_de_comandos.sql`).
   - [x] Confirmar una cita próxima (`0004_cita_confirmada_invita.sql`).
-- **Resultado esperado:** El bot responde coherentemente, invita a agregar el evento al calendario o cancelar si es necesario (`0005_cita_invita_cancelar.sql`), actualiza la cita a **Confirmada** y registra la traza en `BotConversationsCard.tsx`.
+- **Resultado esperado:** El bot responde coherentemente, invita a agregar el evento al calendario o **posponer/cancelar** si es necesario (`0009_v1_2_2_posponer_cancelar.sql`, ADR `0077`), actualiza la cita a **Confirmada** y registra la traza en `BotConversationsCard.tsx`.
 
-#### `NOT-03` — Cancelación por el Paciente con Plazo Límite y Gestión de Novedades
-- **Rutas / Componentes:** `CancellationPolicyCard.tsx`, `PatientCancellationsCard.tsx`, `ContactedDialog.tsx` (ADR `0053`, `0057`).
+#### `NOT-03` — Posponer, cancelar la cita definitivamente y plazo límite (ADR `0053`, `0057`, `0077`)
+- **Rutas / Componentes:** `CancellationPolicyCard.tsx`, `PatientCancellationsCard.tsx`, `ContactedDialog.tsx`, `asistente.ts` (ADR `0053`, `0057`, `0077`).
 - **Pasos de prueba:**
   - [x] En `CancellationPolicyCard.tsx`, configurar una ventana mínima de cancelación (ej. $24\text{ h}$ antes de la cita).
-  - [x] Intentar cancelar desde el bot una cita programada para dentro de $2\text{ h}$ (tiempo $\le 24\text{ h}$).
-  - [x] Cancelar desde el bot una cita programada para dentro de $48\text{ h}$ (tiempo $\ge 24\text{ h}$).
+  - [ ] Escribir «cancelar» al bot con **una** cita cancelable: comprobar que **no ejecuta** y pregunta «Posponer / Cancelar cita»; elegir **Posponer** y verificar que la cita se cancela y el ticket **vuelve a la cola** (mensaje «quedó pospuesta»).
+  - [ ] Sin cita (o con la cita ya pospuesta) y con la solicitud en la cola, escribir «cancelar»: el bot pregunta si anular la solicitud; confirmar **Sí** y comprobar que la solicitud queda `cancelada` y **no** vuelve a la lista.
+  - [ ] Pulsar el botón **Cancelar cita** del recordatorio de otra cita: la solicitud pasa a `cancelada` sin volver a la cola (mensaje «cancelada definitivamente»).
+  - [ ] Con **varias** citas cancelables, escribir «cancelar» y comprobar que primero pregunta cuál (y después la acción).
+  - [ ] Intentar cancelar **desde el bot** una cita confirmada dentro del plazo (ej. $2\text{ h}$): el corte debe frenar **posponer y cancelar definitiva**.
+  - [ ] Intentar cambiar **desde el bot** una cita programada para dentro de $48\text{ h}$ (tiempo $\ge 24\text{ h}$): las dos acciones funcionan.
   - [x] Ir a `SchedulingPage.tsx` / `NotificationsPage.tsx`, ubicar la novedad en `PatientCancellationsCard.tsx` y marcar al paciente como contactado en `ContactedDialog.tsx`.
 - **Resultado esperado:**
-  - El bot impide la cancelación libre fuera de plazo indicando los canales de contacto directo con la clínica.
-  - La cancelación en plazo libera el cupo/ticket y crea un registro de novedad pendiente hasta que el personal lo gestione en `ContactedDialog.tsx`.
+  - El bot impide **posponer o cancelar** fuera de plazo indicando los canales de contacto directo con la clínica.
+  - **Posponer** libera el cupo y devuelve el ticket a la lista de espera; **cancelar la cita** libera el cupo y deja la solicitud `cancelada` (sin borrado físico y sin volver a la cola).
+  - Las dos acciones crean un registro de novedad pendiente en `PatientCancellationsCard.tsx` hasta que el personal lo gestione en `ContactedDialog.tsx`; el KPI «Canceladas por el paciente» las cuenta juntas en esta versión (deuda de la ADR `0077`).
+  - El aviso `cita_cancelada` de la cola no se duplica en ningún camino (las dos acciones del bot responden en el mismo turno con `skipNotice`).
 
 #### `NOT-04` — Historial de Envíos y Reintento Manual
 - **Rutas / Componentes:** `NotificationsTable.tsx`, `NotificationDetailDialog.tsx`, `RetryNotificationDialog.tsx`.
@@ -722,7 +732,8 @@ Estos casos se ejecutan con un **número de prueba** y un teléfono real; no usa
 - [ ] **WA-02 · Vincular por código.** Cerrar sesión y volver a vincular con código; escribir el código en el teléfono. La sesión queda `conectado`.
 - [ ] **WA-03 · Conversación completa.** Escribir «cita» desde otro teléfono, recorrer los 7 pasos y recibir el ticket. Comprobar que las opciones llegan numeradas (sin botones).
 - [ ] **WA-04 · Aviso con .ics.** Programar una cita y recibir el texto con la invitación a confirmar y el archivo `cita-<ticket>.ics`; abrirlo en Android e iOS.
-- [ ] **WA-05 · Confirmar y cancelar escribiendo.** Responder «confirmar» y luego «cancelar»; la cita cambia de estado y la bandeja lo refleja.
+- [ ] **WA-05 · Confirmar, posponer y cancelar escribiendo (v1.2.2).** Responder «confirmar» y comprobar que la cita queda confirmada. Escribir «cancelar» y comprobar que el bot **pregunta** «1) Posponer / 2) Cancelar la cita definitivamente» (no ejecuta); responder «1» y verificar que el ticket vuelve a la cola. En otra cita, responder «2» y verificar que la solicitud queda cancelada y **no** vuelve a la cola. La bandeja y `/programacion` reflejan las dos acciones; el alias heredado `cancelar_cita:<id>` sigue posponiendo.
+- [ ] **WA-05b · Recordatorio con tres acciones (v1.2.2).** Con una cita notificada, comprobar que el recordatorio de Baileys llega con las tres opciones numeradas (`1) Confirmar asistencia`, `2) Posponer (elegir otro día)`, `3) Cancelar la cita definitivamente`) y que el recordatorio de una cita ya confirmada llega **sin** acciones.
 - [ ] **WA-06 · Vinculación por wa.me.** Generar el enlace de WhatsApp de un paciente y abrirlo desde su teléfono; el código `VINCULAR ...` queda asociado a su ficha.
 - [ ] **WA-07 · Desvincular desde el teléfono.** Cerrar la sesión en WhatsApp (Dispositivos vinculados). El panel pasa a `sesión cerrada`, llega la alerta al bot de administración y el aviso de cita cae a manual.
 - [ ] **WA-08 · Reconexión.** Cortar la red del servidor 30 s y restaurarla; el estado pasa por `reconectando` y vuelve a `conectado` sin reiniciar el servicio.

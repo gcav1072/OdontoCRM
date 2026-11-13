@@ -142,10 +142,14 @@ export interface InternalClients {
    * El **paciente cancela** su cita desde el bot (ADR 0053). Va por la ruta interna,
    * como la confirmación. El canal dice por dónde canceló y se guarda: es lo que
    * distingue una cancelación del paciente de una de la secretaría.
+   *
+   * `devolverACola` (v1.2.2, ADR 0077) es la semántica: `true` —el default— es
+   * **posponer** (el ticket vuelve a la cola) y `false` es la **cancelación
+   * definitiva** (la solicitud sale de la cola si no le queda otra cita en pie).
    */
   cancelAppointment: (
     id: string,
-    input: { channel: Channel; reason?: string | null },
+    input: { channel: Channel; reason?: string | null; devolverACola?: boolean },
   ) => Promise<AppointmentSummary>;
 }
 
@@ -519,7 +523,15 @@ export const createInternalClients = (config: NotificationsConfig): InternalClie
           config,
           config.SCHEDULING_URL,
           `/internal/v1/appointments/${id}/cancel`,
-          { method: 'POST', body: { channel: input.channel, reason: input.reason ?? null } },
+          {
+            method: 'POST',
+            body: {
+              channel: input.channel,
+              reason: input.reason ?? null,
+              // Default explícito: el cuerpo viejo sin el flag era posponer (ADR 0077).
+              devolverACola: input.devolverACola ?? true,
+            },
+          },
         ),
       // Cancelar también es **idempotente** en la agenda: repetir por un corte de red
       // es seguro (el paciente vería el mismo «entendido» y no habría doble historial).

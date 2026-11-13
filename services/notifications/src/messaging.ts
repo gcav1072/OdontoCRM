@@ -15,6 +15,7 @@ import {
   type MessageTemplate,
   type NotificationFilters,
   type NotificationRecord,
+  type OutboundButton,
   type OutboundDocument,
   type Paginated,
 } from '@odontocrm/contracts';
@@ -1085,14 +1086,30 @@ const captionFor = (text: string): string =>
     : `${text.slice(0, DOCUMENT_CAPTION_MAX_CHARS - 1)}…`;
 
 /**
+ * Las **tres acciones** del paciente sobre su cita (v1.2.2, ADR 0077): confirmar,
+ * posponer (el ticket vuelve a la lista de espera) o cancelar la cita
+ * definitivamente. Van en el **código** y no en la plantilla a propósito: el
+ * consultorio puede editar el texto sin quedarse sin los botones.
+ *
+ * `cancelar_definitiva:<uuid>` mide 56 bytes: cabe en los 64 de `callback_data`
+ * de Telegram. Son **tres justos**, el máximo de WhatsApp Cloud API (con cuatro,
+ * el adaptador mandaría el texto sin opciones).
+ */
+export const appointmentActionButtons = (appointmentId: string): OutboundButton[] => [
+  { etiqueta: 'Confirmar', accion: `confirmar_cita:${appointmentId}` },
+  { etiqueta: 'Posponer', accion: `posponer_cita:${appointmentId}` },
+  { etiqueta: 'Cancelar cita', accion: `cancelar_definitiva:${appointmentId}` },
+];
+
+/**
  * Opciones numeradas en los avisos proactivos para canales **sin botones** (v1.2,
  * §2.3.4): el paciente de Baileys no tiene botones que pulsar, así que el aviso de
- * cita termina en «1) Confirmar asistencia / 2) Cancelar» y el mapa se guarda en
- * `bot_conversations.opciones` para entender su «1».
+ * cita termina en «1) Confirmar asistencia / 2) Posponer… / 3) Cancelar…» y el mapa
+ * se guarda en `bot_conversations.opciones` para entender su «1».
  *
  * **No se pisa una conversación a medio formulario**: si el paciente está rellenando
  * el alta, sobrescribir sus opciones rompería el paso en curso. En ese caso el texto
- * ya invita a escribir «confirmar» o «cancelar».
+ * ya invita a escribir «confirmar», «posponer» o «cancelar».
  */
 const withAppointmentOptions = async (
   db: NotificationsDb,
@@ -1114,7 +1131,11 @@ const withAppointmentOptions = async (
 
   const numeradas = numberedOptions([
     { etiqueta: 'Confirmar asistencia', accion: `confirmar_cita:${row.appointmentId}` },
-    { etiqueta: 'Cancelar cita', accion: `cancelar_cita:${row.appointmentId}` },
+    { etiqueta: 'Posponer (elegir otro día)', accion: `posponer_cita:${row.appointmentId}` },
+    {
+      etiqueta: 'Cancelar la cita definitivamente',
+      accion: `cancelar_definitiva:${row.appointmentId}`,
+    },
   ]);
   const opciones = Object.fromEntries(numeradas.acciones);
 
@@ -1278,15 +1299,13 @@ export const processQueue = async (
           await adapter.enviar({
             direccion: recipient,
             texto: text,
-            // Dos botones: confirmar o cancelar la cita (ADR 0052/0053). Van en el
+            // Tres botones: confirmar, posponer o cancelar la cita definitivamente
+            // (v1.2.2, ADR 0077; antes eran dos y «cancelar» era posponer). Van en el
             // **código** y no en la plantilla a propósito: el consultorio puede editar
             // el texto sin quedarse sin los botones. Solo llegan a los canales que
             // declaran `botones: true` (Telegram y Cloud API); Baileys usa el texto
             // con las opciones numeradas del núcleo.
-            botones: [
-              { etiqueta: 'Confirmar', accion: `confirmar_cita:${appointment.id}` },
-              { etiqueta: 'Cancelar', accion: `cancelar_cita:${appointment.id}` },
-            ],
+            botones: appointmentActionButtons(appointment.id),
           });
         } else {
           await adapter.enviar({
@@ -1312,9 +1331,19 @@ export const processQueue = async (
         });
         messageId = attachment.idMensaje;
       } else {
+        /**
+         * Aviso sin `.ics` (el recordatorio automático, por ejemplo). Si ofrece las
+         * acciones de la cita y el canal tiene botones, estas viajan aquí: sin este
+         * ramal el recordatorio de Telegram solo tendría texto (v1.2.2, ADR 0077).
+         */
+        const ofrecerAcciones = row.payload['offerActions'] === true;
+        const citaId = row.appointmentId;
         const message = await adapter.enviar({
           direccion: recipient,
           texto: await withAppointmentOptions(db, row, recipient, text, adapter),
+          ...(ofrecerAcciones && citaId !== null && adapter.capacidades.botones
+            ? { botones: appointmentActionButtons(citaId) }
+            : {}),
         });
         messageId = message.idMensaje;
       }

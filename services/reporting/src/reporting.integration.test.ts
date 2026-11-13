@@ -820,6 +820,84 @@ describeConBases('reporting: read model por eventos, reportes y exportación', (
     expect(resumen.refreshedAt).not.toBeNull();
   }, 60_000);
 
+  /**
+   * v1.2.2 (ADR 0077): el bot puede **posponer** (el ticket vuelve a la cola) o
+   * **cancelar la cita definitivamente** (la solicitud sale de la cola). El evento
+   * lleva `after.devolverACola`, y el consumidor no puede forzar `en_espera_cita`
+   * como hacía con la única semántica anterior: mentiría en el embudo.
+   */
+  it('la cancelación definitiva proyecta la solicitud como cancelada (ADR 0077)', async () => {
+    const proyectarCancelacion = async (
+      solicitudId: string,
+      citaId: string,
+      devolverACola: boolean,
+    ): Promise<void> => {
+      await applyDomainEvent(
+        { db: db() },
+        eventoSolicitud({
+          requestId: solicitudId,
+          ticketNumber: 501,
+          patientId: ana.id,
+          occurredAt: `${DIA_3}T09:00:00.000Z`,
+        }),
+      );
+      await applyDomainEvent(
+        { db: db() },
+        eventoCita({
+          appointmentId: citaId,
+          requestId: solicitudId,
+          patientId: ana.id,
+          date: DIA_3,
+          startTime: '16:00',
+          occurredAt: `${DIA_3}T09:10:00.000Z`,
+          topic: EVENT_TOPICS.appointmentScheduled,
+          status: 'programada',
+        }),
+      );
+      const aplicado = await applyDomainEvent(
+        { db: db() },
+        eventoCita({
+          appointmentId: citaId,
+          requestId: solicitudId,
+          patientId: ana.id,
+          date: DIA_3,
+          startTime: '16:00',
+          occurredAt: `${DIA_3}T10:00:00.000Z`,
+          topic: EVENT_TOPICS.appointmentCancelled,
+          status: 'cancelada',
+          // Igual que publica la agenda desde v1.2.2 (ADR 0077).
+          after: { status: 'cancelada', cancelledChannel: 'whatsapp', devolverACola },
+          reason: 'el paciente canceló su cita por WhatsApp',
+        }),
+      );
+      expect(aplicado.estado).toBe('aplicado');
+    };
+
+    const solicitudDefinitiva = globalThis.crypto.randomUUID();
+    const citaDefinitiva = globalThis.crypto.randomUUID();
+    await proyectarCancelacion(solicitudDefinitiva, citaDefinitiva, false);
+
+    const definitiva = (
+      await db().select().from(factRequest).where(eq(factRequest.requestId, solicitudDefinitiva))
+    )[0];
+    expect(definitiva?.status).toBe('cancelada');
+    expect(definitiva?.cancelledAt).not.toBeNull();
+    const citaCancelada = await leerCita(citaDefinitiva);
+    expect(citaCancelada?.status).toBe('cancelada');
+    expect(citaCancelada?.cancelledChannel).toBe('whatsapp');
+
+    // Y `devolverACola: true` (posponer) sigue devolviendo el ticket a la cola.
+    const solicitudPospuesta = globalThis.crypto.randomUUID();
+    const citaPospuesta = globalThis.crypto.randomUUID();
+    await proyectarCancelacion(solicitudPospuesta, citaPospuesta, true);
+
+    const pospuesta = (
+      await db().select().from(factRequest).where(eq(factRequest.requestId, solicitudPospuesta))
+    )[0];
+    expect(pospuesta?.status).toBe('en_espera_cita');
+    expect(pospuesta?.cancelledAt).toBeNull();
+  }, 40_000);
+
   /* ── 3. Idempotencia ─────────────────────────────────────────────────────── */
 
   it('un evento aplicado dos veces no duplica la fila', async () => {

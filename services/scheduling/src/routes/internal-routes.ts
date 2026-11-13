@@ -176,6 +176,10 @@ export const registerInternalRoutes = (
    * `cancelAppointment` salta la máquina de estados por rol y aplica su propia guardia
    * de estado. El **canal** viaja en el cuerpo y se guarda: es lo que distingue una
    * cancelación del paciente de una de la secretaría.
+   *
+   * `devolverACola` (v1.2.2, ADR 0077) decide la semántica: `true` —el default— es
+   * **posponer** (el ticket vuelve a la cola) y `false` es la **cancelación
+   * definitiva** (la solicitud sale de la cola si no le queda otra cita en pie).
    */
   app.post('/internal/v1/appointments/:id/cancel', async (request, reply) => {
     const { id } = parseOrThrow(idParamsSchema, request.params);
@@ -186,6 +190,7 @@ export const registerInternalRoutes = (
       {
         channel: input.channel,
         reason: input.reason ?? null,
+        devolverACola: input.devolverACola,
         config: services.config,
         dentistCatalog: services.dentistCatalog,
       },
