@@ -499,6 +499,9 @@ export const collectPayment = async (
             paymentId: pago.id,
             receiptNumber: receiptLabel,
             invoiceId,
+            // El paciente se toma de la factura (el pago no lo guarda): lo necesita el
+            // envío automático del recibo por chat para saber a quién escribirle.
+            patientId: factura.patientId,
             amountCentsUsd,
             tenderedAmount: input.tenderedAmount,
             tenderedCurrency: moneda,

@@ -34,6 +34,7 @@ import { createNotificationsDatabase } from './db/client.js';
 import { createDocumentLoader } from './documents.js';
 import { createInternalClients } from './internal-client.js';
 import { ensureDefaultTemplates, processQueue } from './messaging.js';
+import { runAppointmentReminders } from './reminders.js';
 import { createNotificationsServer } from './server.js';
 import type { NotificationsServices } from './services.js';
 
@@ -154,7 +155,7 @@ const main = async (): Promise<void> => {
     async (events) => {
       for (const event of events) {
         try {
-          const result = await handleDomainEvent(database.db, config, event);
+          const result = await handleDomainEvent(database.db, config, event, { clients });
           if (result.status === 'encolado' || result.status === 'reintentado') {
             app.log.info(
               {
@@ -262,6 +263,36 @@ const main = async (): Promise<void> => {
     void runQueue();
   }, config.QUEUE_INTERVAL_MS);
   queueTimer.unref?.();
+
+  /**
+   * **Recordatorios automáticos** (v1.2): barrido periódico de la agenda dentro de la
+   * ventana diurna configurada. Un barrido temprano al arrancar recupera los
+   * recordatorios de un día en el que el servidor estuvo apagado; la idempotencia la
+   * da el `dedupeKey` de cada cita, así que repetir el barrido no duplica avisos.
+   * Con la guarda de reentrada, un ciclo lento (limitador de Baileys) no se pisa.
+   */
+  let remindersRunning = false;
+  const runReminders = async (): Promise<void> => {
+    if (remindersRunning) return;
+    remindersRunning = true;
+    try {
+      const resultado = await runAppointmentReminders(database.db, clients);
+      if (resultado.status === 'ok' && resultado.encoladas > 0) {
+        app.log.info(resultado, 'Recordatorios de cita encolados');
+      }
+    } catch (error) {
+      services.lastError = error instanceof Error ? error.message : String(error);
+      // Un fallo del barrido no tumba el servicio: el siguiente ciclo lo reintenta.
+      app.log.warn({ err: error }, 'Falló el barrido de recordatorios (se reintenta solo)');
+    } finally {
+      remindersRunning = false;
+    }
+  };
+  void runReminders();
+  const remindersTimer = setInterval(() => {
+    void runReminders();
+  }, config.REMINDERS_INTERVAL_MS);
+  remindersTimer.unref?.();
 
   /**
    * Los adaptadores empujan los mensajes al **mismo núcleo**: Telegram sondea por
@@ -447,6 +478,7 @@ const main = async (): Promise<void> => {
   app.addHook('onClose', async () => {
     clearInterval(queueTimer);
     clearInterval(canalesTimer);
+    clearInterval(remindersTimer);
     await deadLetters.stop();
     await canales.registry.stop();
     await outbox.stop();

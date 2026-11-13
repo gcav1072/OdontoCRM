@@ -155,6 +155,7 @@ describe('borrador de la conversación', () => {
     expect(empty.editingSingleField).toBe(false);
     expect(empty.verifyAttempts).toBe(0);
     expect(empty.flow).toBeNull();
+    expect(empty.pendingUnlink).toBeNull();
 
     const editando = botDraftSchema.parse({
       editingSingleField: true,

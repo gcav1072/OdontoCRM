@@ -120,6 +120,13 @@ export const notificationsEnvSchema = baseEnvSchema
     QUEUE_INTERVAL_MS: z.coerce.number().int().min(250).max(60_000).default(5_000),
     /** Envíos que se procesan por ciclo. */
     QUEUE_BATCH_SIZE: z.coerce.number().int().min(1).max(200).default(20),
+    /**
+     * Cada cuánto se **barre la agenda** en busca de recordatorios `N` días antes
+     * (v1.2). No es un cron a hora fija a propósito: si el consultorio apaga el
+     * servidor de noche, el primer ciclo del día recupera el recordatorio. La
+     * ventana diurna y los días se configuran en `notification_settings`.
+     */
+    REMINDERS_INTERVAL_MS: z.coerce.number().int().min(60_000).max(3_600_000).default(600_000),
 
     ANTI_FLOOD_MAX_MESSAGES: z.coerce
       .number()

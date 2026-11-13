@@ -108,6 +108,12 @@ export const botDraftSchema = z.object({
    * tras verificar, debe seguir al Paso 6 (motivo) o terminar en `inicio`.
    */
   flow: z.enum(['nueva', 'vincular']).nullable().default(null),
+  /**
+   * Qué desvinculación está pendiente de confirmar (v1.2): la del comando
+   * `desvincular` o la de «otra persona» al pedir cita. Permite que un «sí» o «no»
+   * escrito a mano se resuelva como la opción correcta.
+   */
+  pendingUnlink: z.enum(['desvincular', 'desvincular_y_nueva']).nullable().default(null),
 });
 
 export type BotDraft = z.infer<typeof botDraftSchema>;
@@ -265,6 +271,12 @@ export const NOTIFICATION_TEMPLATE_KEYS = [
   'corregir_menu',
   /** «salir» / «reiniciar» en mitad del flujo. */
   'proceso_cancelado',
+  /** La intención `vincular` en un chat que ya está vinculado. */
+  'ya_vinculado',
+  /** `vincular` sin código y el documento no corresponde a ninguna ficha. */
+  'vincular_no_encontrado',
+  /** Se confirmó que **no** se desvincula el chat: se sigue con el paciente de siempre. */
+  'desvinculacion_cancelada',
   // ── v1.2: recordatorios automáticos ───────────────────────────────────────
   /** Recordatorio `N` días antes de la cita. */
   'cita_recordatorio',
@@ -624,6 +636,31 @@ export const DEFAULT_MESSAGE_TEMPLATES: readonly DefaultTemplate[] = [
       'Proceso cancelado. No se borró ninguna cita ya agendada.\n' +
       'Cuando quieras empezar de nuevo, escríbeme «cita».',
     placeholders: [],
+  },
+  {
+    key: 'ya_vinculado',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'Este chat ya está vinculado a {paciente}.\n' +
+      'Si quieres cambiar de paciente, escríbeme «desvincular».',
+    placeholders: ['paciente'],
+  },
+  {
+    key: 'vincular_no_encontrado',
+    channel: 'telegram',
+    subject: null,
+    body:
+      'No encontré ninguna ficha con ese documento.\n' +
+      'Si quieres pedir una cita, escríbeme «cita» y te registro.',
+    placeholders: [],
+  },
+  {
+    key: 'desvinculacion_cancelada',
+    channel: 'telegram',
+    subject: null,
+    body: 'Entendido: seguimos con {paciente}. No se cambió nada.',
+    placeholders: ['paciente'],
   },
   // ── v1.2: recordatorios automáticos ────────────────────────────────────────
   {

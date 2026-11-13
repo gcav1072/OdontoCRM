@@ -2,16 +2,21 @@ import type { AppointmentStatus } from '@odontocrm/contracts';
 import { EVENT_TOPICS, type DomainEvent } from '@odontocrm/events';
 import { outboxEvents, toOutboxInsert } from '@odontocrm/db';
 import { createDomainEvent } from '@odontocrm/events';
+import { ConflictError, NotFoundError } from '@odontocrm/kernel';
 
 import type { NotificationsConfig } from './config.js';
 import type { NotificationsDb } from './db/client.js';
+import { sendDocumentNotification } from './documents.js';
+import type { InternalClients } from './internal-client.js';
 import {
   enqueue,
+  findChannel,
   notificationByDedupe,
   renderMessageFor,
   retryNotification,
   type EnqueueInput,
 } from './messaging.js';
+import { getNotificationSettings } from './settings.js';
 
 /** Datos que viajan en el evento de agenda para poder avisar al paciente. */
 interface NotificationPayload {
@@ -58,6 +63,54 @@ export interface ConsumeResult {
   templateKey?: string;
 }
 
+/** Documento digital que anuncia un evento de emisión (Req 5, v1.2). */
+interface DocumentoDeEvento {
+  kind: 'prescription' | 'invoice' | 'receipt';
+  entityId: string;
+  /** `null` en `paymentReceived` viejo: se resuelve con los metadatos del cobro. */
+  patientId: string | null;
+}
+
+const registro = (valor: unknown): valor is Record<string, unknown> =>
+  typeof valor === 'object' && valor !== null && !Array.isArray(valor);
+
+/**
+ * ¿Este evento anuncia un documento que se puede mandar por chat? (Req 5)
+ *
+ * Es **aditivo**: los temas ya publicados por clinical/billing no cambian de forma.
+ * Si el paciente no tiene chat o el consultorio no activó el envío automático, el
+ * evento se ignora y no se crea una fila `skipped_no_channel` en la bandeja: el
+ * envío automático es un extra silencioso, no una tarea de secretaría.
+ */
+const documentoDeEvento = (event: DomainEvent): DocumentoDeEvento | null => {
+  if (event.eventType === EVENT_TOPICS.prescriptionIssued) {
+    const prescription = event.payload['prescription'];
+    if (!registro(prescription)) return null;
+    const id = prescription['id'];
+    const patientId = prescription['patientId'];
+    if (typeof id !== 'string' || typeof patientId !== 'string') return null;
+    return { kind: 'prescription', entityId: id, patientId };
+  }
+  if (event.eventType === EVENT_TOPICS.invoiceIssued) {
+    const invoice = event.payload['invoice'];
+    if (!registro(invoice)) return null;
+    const id = invoice['invoiceId'];
+    const patientId = invoice['patientId'];
+    if (typeof id !== 'string' || typeof patientId !== 'string') return null;
+    return { kind: 'invoice', entityId: id, patientId };
+  }
+  if (event.eventType === EVENT_TOPICS.paymentReceived) {
+    const payment = event.payload['payment'];
+    if (!registro(payment)) return null;
+    const id = payment['paymentId'];
+    if (typeof id !== 'string') return null;
+    const patientId =
+      typeof payment['patientId'] === 'string' ? (payment['patientId'] as string) : null;
+    return { kind: 'receipt', entityId: id, patientId };
+  }
+  return null;
+};
+
 /**
  * Traduce los eventos de agenda en avisos para el paciente.
  *
@@ -77,7 +130,57 @@ export const handleDomainEvent = async (
   db: NotificationsDb,
   config: NotificationsConfig,
   event: DomainEvent,
+  deps: { clients?: InternalClients } = {},
 ): Promise<ConsumeResult> => {
+  // ── v1.2 · Envío automático opcional de documentos (Req 5) ────────────────
+  const documento = documentoDeEvento(event);
+  if (documento !== null) {
+    const settings = await getNotificationSettings(db);
+    if (!settings.autoSendDocuments) return { status: 'ignorado' };
+    const clients = deps.clients;
+    if (clients === undefined) return { status: 'ignorado' };
+
+    let patientId = documento.patientId;
+    if (patientId === null) {
+      // `paymentReceived` puede venir de un emisor anterior a v1.2: se resuelve el
+      // paciente por los metadatos del cobro (factura padre).
+      const meta = await clients.getPaymentMeta(documento.entityId);
+      patientId = meta?.patientId ?? null;
+    }
+    if (patientId === null) return { status: 'ignorado' };
+    // **Regla anti-ruido estricta**: sin chat vinculado no se encola ni se deja una
+    // fila de llamada manual; el envío automático solo actúa cuando puede cumplirse.
+    if ((await findChannel(db, patientId)) === null) return { status: 'ignorado' };
+
+    const resultado = await (async () => {
+      try {
+        return await sendDocumentNotification(db, clients, {
+          kind: documento.kind,
+          entityId: documento.entityId,
+          patientId,
+          // Idempotencia por evento: un reintento de la cola de eventos no vuelve a
+          // encolar el mismo documento.
+          clientRequestId: event.eventId,
+        });
+      } catch (error) {
+        // El documento pudo anularse entre la emisión y el consumo: no es un fallo
+        // del consumidor ni debe reintentarse; simplemente no se envía.
+        if (error instanceof NotFoundError || error instanceof ConflictError) return null;
+        throw error;
+      }
+    })();
+    if (resultado === null) return { status: 'ignorado' };
+    return {
+      status: resultado.status === 'queued' ? 'encolado' : 'duplicado',
+      templateKey:
+        documento.kind === 'prescription'
+          ? 'documento_recipe'
+          : documento.kind === 'invoice'
+            ? 'documento_factura'
+            : 'documento_recibo',
+    };
+  }
+
   const templatesByTopic: Partial<
     Record<string, { key: string; attachIcs: boolean; needsClinic: boolean; manual?: boolean }>
   > = {
@@ -179,6 +282,14 @@ export const handleDomainEvent = async (
       : `cita:${payload.appointmentId}:${template.key}:${String(payload.icsSequence)}`,
     text,
     attachIcs: template.attachIcs,
+    /**
+     * En canales sin botones, el aviso de cita termina con las opciones numeradas de
+     * confirmar/cancelar (v1.2, §2.3.4). No se ofrecen en una cancelación ni en el
+     * reenvío de una cita que el paciente ya confirmó (no tiene sentido pedirle que
+     * vuelva a confirmar).
+     */
+    offerAppointmentActions:
+      template.attachIcs && (status === 'programada' || status === 'notificada' || status === null),
   };
 
   const record = await enqueue(db, input);

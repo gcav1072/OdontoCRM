@@ -15,6 +15,7 @@ import { registerBillingRoutes } from './routes/billing-routes.js';
 import { registerBookRoutes } from './routes/book-routes.js';
 import { registerDocumentRoutes } from './routes/document-routes.js';
 import { registerFormRoutes } from './routes/form-routes.js';
+import { registerInternalRoutes } from './routes/internal-routes.js';
 import { registerRateRoutes } from './routes/rate-routes.js';
 import type { BillingServices } from './services.js';
 import { createBillingPatientLookup } from './shared/patient-client.js';
@@ -80,6 +81,9 @@ export const createBillingServer = async (
   registerBookRoutes(app, services);
   registerDocumentRoutes(app, services);
   registerFormRoutes(app, services);
+  // Rutas internas al final, como en los demás servicios: las usa el envío de
+  // documentos por chat y exigen el secreto compartido (no pasan por el gateway).
+  registerInternalRoutes(app, services);
 
   return app;
 };
