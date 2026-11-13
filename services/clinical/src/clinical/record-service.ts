@@ -1,15 +1,21 @@
 import {
   clinicalAlerts,
   clinicalSectionSchemaFor,
+  clinicalSessionContentSchema,
   completedClinicalSections,
   missingSignatureSections,
+  sessionProcedureText,
+  syncPlanWithDiagnosis,
+  treatmentPlanSectionSchema,
   type AcceptConsentInput,
   type ClinicalAmendment,
   type ClinicalConsent,
+  type ClinicalEvolutionSessionSummary,
   type ClinicalPatientSnapshot,
   type ClinicalRecordDetail,
   type ClinicalRecordSummary,
   type ClinicalSectionKey,
+  type ClinicalSessionDetail,
   type CreateAmendmentInput,
 } from '@odontocrm/contracts';
 import { EVENT_TOPICS } from '@odontocrm/events';
@@ -28,6 +34,7 @@ import {
 } from '../db/schema.js';
 import type { ActorContext } from '../shared/context.js';
 import { auditPayload, publish } from '../shared/events.js';
+import { listClosedSessionsChronological } from './session-service.js';
 
 type SectionsMap = Partial<Record<ClinicalSectionKey, Record<string, unknown>>>;
 
@@ -132,6 +139,29 @@ const toConsent = (row: MedicalRecordConsentRow | null): ClinicalConsent | null 
         notes: row.notes,
       };
 
+/**
+ * Una sesión cerrada, resumida para la **evolución automática** de la historia (v1.2).
+ *
+ * El contenido se normaliza con `clinicalSessionContentSchema.parse` a propósito: una
+ * fila guardada antes del recambio de esquemas (por ejemplo con `exam.oclusion`) no
+ * puede romper la lectura de la historia; el esquema descarta lo que ya no existe y
+ * rellena con `null` los campos nuevos (`observaciones`).
+ */
+const toEvolutionSession = (session: ClinicalSessionDetail): ClinicalEvolutionSessionSummary => {
+  const content = clinicalSessionContentSchema.parse(session.content);
+  return {
+    id: session.id,
+    sessionNumber: session.sessionNumber,
+    // La fecha que documenta la visita es la de cierre; una sesión cerrada siempre la
+    // tiene, pero si faltara se usa la de apertura para no perder la cronología.
+    fecha: session.closedAt ?? session.openedAt,
+    diagnostico: content.diagnostico,
+    tratamientos: content.procedimientos.map(sessionProcedureText),
+    // `notasInternas` queda fuera: no es evolución, es la libreta del consultorio.
+    observaciones: content.observaciones,
+  };
+};
+
 const toSummary = (
   row: MedicalRecordRow,
   sections: SectionsMap,
@@ -157,10 +187,14 @@ const buildDetail = async (
   row: MedicalRecordRow,
   patient: ClinicalPatientSnapshot | null = null,
 ): Promise<ClinicalRecordDetail> => {
-  const [sections, amendments, consent] = await Promise.all([
+  const [sections, amendments, consent, closedSessions] = await Promise.all([
     loadSections(db, row.id),
     loadAmendments(db, row.id),
     loadConsent(db, row.id),
+    // La evolución se **proyecta** de las sesiones cerradas (ADR 0034): no vive en las
+    // secciones guardadas, así que las consultas posteriores a la firma también salen
+    // en el resumen sin tocar el documento firmado.
+    listClosedSessionsChronological(db, row.patientId),
   ]);
 
   return {
@@ -169,6 +203,7 @@ const buildDetail = async (
     sections,
     amendments: amendments.map(toAmendment),
     consent: toConsent(consent),
+    evolutionSessions: closedSessions.map(toEvolutionSession),
   };
 };
 
@@ -270,10 +305,49 @@ const changedTopLevelFields = (
         (field) => JSON.stringify(before[field] ?? null) !== JSON.stringify(after[field] ?? null),
       );
 
+/** Compara contenido ya validado (el esquema ya aplicó `default` y limpieza). */
+const sameContent = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+
+/** Contenido guardado de una sección, con los `default` del esquema ya aplicados. */
+const storedSectionOf = (
+  sections: SectionsMap,
+  sectionKey: ClinicalSectionKey,
+): Record<string, unknown> =>
+  parseOrThrow(
+    clinicalSectionSchemaFor(sectionKey),
+    sections[sectionKey] ?? {},
+    'La sección tiene datos inválidos',
+  ) as Record<string, unknown>;
+
 /**
- * Guarda una sección (solo en borrador). La transición queda en el outbox en la
- * misma transacción que el dato, así que la auditoría no puede quedar
- * desincronizada de la historia.
+ * El plan de tratamiento que **corresponde** a un diagnóstico (v1.2.1).
+ *
+ * Es la función pura del contrato —la misma que aplica la pantalla mientras el doctor
+ * escribe—, así que el servidor no puede quedarse con un vínculo distinto al de la
+ * interfaz: abre un procedimiento por ítem de diagnóstico (en su orden), conserva lo
+ * ya escrito (descripción, prioridad, presupuesto), **re-deriva la pieza** del
+ * diagnóstico, elimina los enlaces huérfanos y deja los procedimientos libres
+ * intactos al final. El sincronizador acepta borradores; aquí se valida al persistir.
+ */
+const planSyncedWithDiagnosis = (
+  diagnosis: Record<string, unknown> | undefined,
+  plan: Record<string, unknown> | undefined,
+): Record<string, unknown> =>
+  parseOrThrow(
+    treatmentPlanSectionSchema,
+    syncPlanWithDiagnosis(diagnosis, plan),
+    'La sección tiene datos inválidos',
+  ) as Record<string, unknown>;
+
+/**
+ * Guarda una sección (solo en borrador) **junto con lo que arrastra**.
+ *
+ * En v1.2.1 el diagnóstico y el plan de tratamiento son las dos caras del mismo dato:
+ * guardar el diagnóstico deja abiertos sus procedimientos enlazados en el plan, y
+ * guardar el plan sanea los enlaces huérfanos y re-deriva la pieza. Las dos escrituras
+ * van en la **misma transacción** que el evento del outbox, así que la base no puede
+ * quedar a medias ni la auditoría desincronizada de la historia.
  */
 export const saveSection = async (
   db: ClinicalDb,
@@ -289,7 +363,7 @@ export const saveSection = async (
     });
   }
 
-  const clean = parseOrThrow(
+  const parsed = parseOrThrow(
     clinicalSectionSchemaFor(sectionKey),
     content,
     'La sección tiene datos inválidos',
@@ -299,29 +373,65 @@ export const saveSection = async (
     .select()
     .from(medicalRecordSections)
     .where(eq(medicalRecordSections.recordId, recordId));
-  const previous = previousRows.find((row) => row.sectionKey === sectionKey)?.content;
+  const stored: SectionsMap = {};
+  for (const row of previousRows) stored[row.sectionKey as ClinicalSectionKey] = row.content;
 
+  // La otra mitad del vínculo solo se lee cuando este guardado la necesita; los
+  // `default` del esquema cubren las filas guardadas antes de v1.2.1 (sin `items` o
+  // sin `diagnosticoId`).
+  let clean = parsed;
+  /** Secciones derivadas que viajan en la misma transacción (v1.2.1). */
+  const synced: Partial<Record<ClinicalSectionKey, Record<string, unknown>>> = {};
+
+  if (sectionKey === 'plan_tratamiento') {
+    // Guardar el plan no escribe lo que llegó tal cual: primero se sanea contra el
+    // diagnóstico vigente (huérfanos fuera y pieza re-derivada del ítem).
+    const currentDiagnosis = storedSectionOf(stored, 'diagnostico');
+    clean = planSyncedWithDiagnosis(currentDiagnosis, parsed);
+  } else if (sectionKey === 'diagnostico') {
+    const currentPlan = storedSectionOf(stored, 'plan_tratamiento');
+    const nextPlan = planSyncedWithDiagnosis(parsed, currentPlan);
+    // Solo si el vínculo cambia algo: el autoguardado del diagnóstico tiene que seguir
+    // siendo silencioso cuando no hay nada que reescribir ni que auditar.
+    if (!sameContent(nextPlan, currentPlan)) synced['plan_tratamiento'] = nextPlan;
+  }
+
+  const previous = stored[sectionKey];
   const changedFields = changedTopLevelFields(previous, clean);
-  // Sin cambios no se escribe ni se audita: la historia no se ensucia con
-  // guardados vacíos del formulario.
-  if (previous !== undefined && changedFields.length === 0) {
+  const sectionChanged = previous === undefined || changedFields.length > 0;
+  const syncedKeys = Object.keys(synced) as ClinicalSectionKey[];
+  // Sin cambios no se escribe ni se audita: la historia no se ensucia con guardados
+  // vacíos del formulario. Al guardar el diagnóstico hay que mirar **también** el plan,
+  // que puede necesitar sincronizarse aunque el diagnóstico llegue igual que estaba.
+  if (!sectionChanged && syncedKeys.length === 0) {
     return buildDetail(db, record);
   }
 
-  // El perfil clínico se calcula con **todas** las secciones: la anamnesis puede
-  // venir de este guardado y el resto de los anteriores (Fase 9).
-  const sections: SectionsMap = {};
-  for (const row of previousRows) sections[row.sectionKey as ClinicalSectionKey] = row.content;
-  sections[sectionKey] = clean;
+  // El perfil clínico se calcula con **todas** las secciones, ya sincronizadas: la
+  // anamnesis puede venir de este guardado y el resto de los anteriores (Fase 9).
+  const sections: SectionsMap = { ...stored, [sectionKey]: clean, ...synced };
 
   const updated = await db.transaction(async (tx) => {
-    await tx
-      .insert(medicalRecordSections)
-      .values({ recordId, sectionKey, content: clean, updatedBy: actor.actorId })
-      .onConflictDoUpdate({
-        target: [medicalRecordSections.recordId, medicalRecordSections.sectionKey],
-        set: { content: clean, updatedBy: actor.actorId, updatedAt: new Date() },
-      });
+    for (const write of [
+      { sectionKey, content: clean },
+      ...syncedKeys.map((key) => ({
+        sectionKey: key,
+        content: synced[key] as Record<string, unknown>,
+      })),
+    ]) {
+      await tx
+        .insert(medicalRecordSections)
+        .values({
+          recordId,
+          sectionKey: write.sectionKey,
+          content: write.content,
+          updatedBy: actor.actorId,
+        })
+        .onConflictDoUpdate({
+          target: [medicalRecordSections.recordId, medicalRecordSections.sectionKey],
+          set: { content: write.content, updatedBy: actor.actorId, updatedAt: new Date() },
+        });
+    }
 
     const rows = await tx
       .update(medicalRecords)
@@ -339,16 +449,23 @@ export const saveSection = async (
         ...auditPayload({
           entityId: recordId,
           action: 'medical_record_updated',
-          summary: `Historia clínica: sección «${sectionKey}» actualizada`,
-          changedFields,
+          summary: `Historia clínica: sección «${sectionKey}» actualizada${
+            syncedKeys.length === 0 ? '' : ' (plan de tratamiento sincronizado)'
+          }`,
+          // Si el diagnóstico no cambió y el plan sí, lo que cambió es el plan: se
+          // declara en vez de mandar una lista de campos vacía.
+          changedFields: sectionChanged ? changedFields : syncedKeys,
           before: previous ?? null,
           after: clean,
           reason: null,
           actor,
         }),
-        // Qué sección se tocó (la auditoría y el read model lo agradecen: el
-        // `after` solo trae el contenido, sin decir de qué parte es).
+        // Qué sección se tocó (la auditoría y el read model lo agradecen: el `after`
+        // solo trae el contenido, sin decir de qué parte es).
         sectionKey,
+        // El guardado del diagnóstico arrastra el plan, pero es **una sola**
+        // transición: un único evento, con las secciones derivadas declaradas.
+        ...(syncedKeys.length === 0 ? {} : { sectionsSynced: syncedKeys }),
         profile: profileOf(row, sections),
       },
     });

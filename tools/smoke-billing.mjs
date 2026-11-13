@@ -350,7 +350,8 @@ const guardada = await call(`/api/v1/clinical/sessions/${sessionId}`, {
         tejidosBlandos: 'normal',
         encias: 'normal',
         sondaje: null,
-        oclusion: 'normal',
+        relacionMolar: 'tipo_i',
+        relacionCanina: 'tipo_i',
         higiene: 'buena',
         hallazgos: 'Caries oclusal profunda en la 36',
       },
@@ -359,6 +360,7 @@ const guardada = await call(`/api/v1/clinical/sessions/${sessionId}`, {
       ],
       materiales: [],
       diagnostico: 'Caries oclusal en la pieza 36',
+      observaciones: 'La paciente tolera el procedimiento sin incidencias.',
       indicaciones: 'No comer del lado derecho por 24 horas.',
       proximaCitaFecha: null,
       proximaCitaNota: null,
@@ -370,6 +372,16 @@ check(
   'la sesión se guarda con su procedimiento del catálogo',
   guardada.status === 200 && guardada.body?.content?.procedimientos?.length === 1,
   `status ${guardada.status} · ${JSON.stringify(guardada.body).slice(0, 160)}`,
+);
+check(
+  'la sesión guarda la relación molar/canina y sus observaciones',
+  guardada.body?.content?.exam?.relacionMolar === 'tipo_i' &&
+    guardada.body?.content?.exam?.relacionCanina === 'tipo_i' &&
+    guardada.body?.content?.observaciones ===
+      'La paciente tolera el procedimiento sin incidencias.',
+  `relación ${String(guardada.body?.content?.exam?.relacionMolar)} · observaciones ${String(
+    guardada.body?.content?.observaciones,
+  ).slice(0, 40)}`,
 );
 
 const cerrada = await call(`/api/v1/clinical/sessions/${sessionId}/close`, {

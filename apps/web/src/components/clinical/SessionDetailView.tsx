@@ -9,6 +9,7 @@ import {
   sessionProcedureLine,
   sessionStatusLabel,
 } from '../../lib/clinical-session';
+import { clinicalOptionLabel } from '../../lib/clinical';
 import { formatDate, formatDateTime } from '../../lib/format';
 import { t } from '../../lib/i18n';
 
@@ -66,10 +67,25 @@ export const SessionDetailView = ({
     unidad: campo.unit,
   })).filter((fila) => fila.valor !== null && fila.valor !== undefined);
 
+  /**
+   * La relación molar/canina se guarda como código (`tipo_i`…): en la lectura se
+   * traduce con el catálogo compartido, nunca se enseña el código crudo. Vacío es
+   * «sin dato» y la fila se omite.
+   */
+  const opcionRelacion = (valor: string | null): string | null =>
+    valor === null || valor === '' ? null : clinicalOptionLabel('relacion', valor);
+
   const examen: { etiqueta: string; valor: string | null }[] = [
     { etiqueta: t('clinica.campo.tejidosBlandos'), valor: content.exam.tejidosBlandos },
     { etiqueta: t('clinica.campo.encias'), valor: content.exam.encias },
-    { etiqueta: t('clinica.campo.oclusion'), valor: content.exam.oclusion },
+    {
+      etiqueta: t('clinica.campo.relacionMolar'),
+      valor: opcionRelacion(content.exam.relacionMolar),
+    },
+    {
+      etiqueta: t('clinica.campo.relacionCanina'),
+      valor: opcionRelacion(content.exam.relacionCanina),
+    },
     { etiqueta: t('clinica.campo.higiene'), valor: content.exam.higiene },
     { etiqueta: t('clinica.campo.sondaje'), valor: content.exam.sondaje },
   ].filter((fila) => fila.valor !== null && fila.valor !== '');
@@ -201,6 +217,16 @@ export const SessionDetailView = ({
 
       <Bloque titulo={t('clinica.sesion.campo.indicaciones')}>
         <Parrafo valor={content.indicaciones} />
+      </Bloque>
+
+      {/* Observaciones de la sesión: contenido clínico que se imprime en la evolución
+          (a diferencia de las notas internas). Vacío se lee como «—». */}
+      <Bloque titulo={t('clinica.sesion.campo.observaciones')}>
+        {content.observaciones === null || content.observaciones.trim() === '' ? (
+          <p className="text-sm text-ink-subtle">{t('comun.sinDato')}</p>
+        ) : (
+          <p className="text-sm whitespace-pre-line text-ink">{content.observaciones}</p>
+        )}
       </Bloque>
 
       {content.proximaCitaFecha !== null && (

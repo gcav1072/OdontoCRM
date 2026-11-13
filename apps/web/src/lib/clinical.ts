@@ -4,7 +4,7 @@ import {
   CLINICAL_SIGNATURE_SECTIONS,
   DENTAL_HISTORY_ITEMS,
   DENTAL_VISIT_FREQUENCIES,
-  OCCLUSION_STATES,
+  OCLUSAL_RELATION_STATES,
   ORAL_HEALTH_STATES,
   ORAL_HYGIENE_LEVELS,
   REGION_EVALUATIONS,
@@ -30,7 +30,9 @@ export type ClinicalFieldSpec =
   | { kind: 'checkbox'; name: string; labelKey: string }
   | { kind: 'select'; name: string; labelKey: string; group: string; options: readonly string[] }
   | { kind: 'catalog'; name: string; labelKey: string; group: string; codes: readonly string[] }
-  | { kind: 'procedures'; name: string; labelKey: string };
+  | { kind: 'procedures'; name: string; labelKey: string }
+  /** Lista de hallazgos del diagnóstico (v1.2): cada uno con su UUID y piezas. */
+  | { kind: 'diagnosis_items'; name: string; labelKey: string };
 
 export const CLINICAL_SECTION_ORDER: readonly ClinicalSectionKey[] = CLINICAL_SECTION_KEYS;
 
@@ -191,10 +193,17 @@ export const CLINICAL_SECTION_FIELDS: Readonly<
     { kind: 'text', name: 'sondaje', labelKey: 'clinica.campo.sondaje', maxLength: 200 },
     {
       kind: 'select',
-      name: 'oclusion',
-      labelKey: 'clinica.campo.oclusion',
-      group: 'oclusion',
-      options: OCCLUSION_STATES,
+      name: 'relacionMolar',
+      labelKey: 'clinica.campo.relacionMolar',
+      group: 'relacion',
+      options: OCLUSAL_RELATION_STATES,
+    },
+    {
+      kind: 'select',
+      name: 'relacionCanina',
+      labelKey: 'clinica.campo.relacionCanina',
+      group: 'relacion',
+      options: OCLUSAL_RELATION_STATES,
     },
     {
       kind: 'select',
@@ -217,20 +226,7 @@ export const CLINICAL_SECTION_FIELDS: Readonly<
     { kind: 'textarea', name: 'observaciones', labelKey: 'clinica.campo.observaciones', rows: 3 },
   ],
   diagnostico: [
-    {
-      kind: 'text',
-      name: 'principal',
-      labelKey: 'clinica.campo.diagnosticoPrincipal',
-      maxLength: 500,
-      required: true,
-    },
-    {
-      kind: 'textarea',
-      name: 'secundarios',
-      labelKey: 'clinica.campo.diagnosticosSecundarios',
-      rows: 3,
-    },
-    { kind: 'textarea', name: 'porPieza', labelKey: 'clinica.campo.diagnosticoPorPieza', rows: 2 },
+    { kind: 'diagnosis_items', name: 'items', labelKey: 'clinica.campo.diagnosticos' },
     {
       kind: 'select',
       name: 'saludBucalGeneral',
@@ -262,8 +258,12 @@ export const CLINICAL_SECTION_FIELDS: Readonly<
     { kind: 'textarea', name: 'observaciones', labelKey: 'clinica.campo.observaciones', rows: 2 },
   ],
   evolucion: [
-    { kind: 'textarea', name: 'resumen', labelKey: 'clinica.campo.resumen', rows: 5 },
-    { kind: 'textarea', name: 'observaciones', labelKey: 'clinica.campo.observaciones', rows: 2 },
+    {
+      kind: 'textarea',
+      name: 'observaciones',
+      labelKey: 'clinica.evolucion.manual',
+      rows: 5,
+    },
   ],
 };
 
@@ -279,6 +279,7 @@ export const emptyClinicalSection = (key: ClinicalSectionKey): Record<string, un
         content[field.name] = { items: [], otros: null };
         break;
       case 'procedures':
+      case 'diagnosis_items':
         content[field.name] = [];
         break;
       default:
@@ -295,6 +296,48 @@ export const sectionContentFor = (
 ): Record<string, unknown> => ({
   ...emptyClinicalSection(key),
   ...(saved ?? {}),
+});
+
+/* ── Ítems del diagnóstico (v1.2) ─────────────────────────────────────────── */
+
+/** Un hallazgo del diagnóstico tal como vive en el borrador del formulario. */
+export interface DiagnosisItemDraft {
+  id: string;
+  descripcion: string;
+  piezas: string | null;
+}
+
+const asText = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+/**
+ * Lee la lista de ítems del diagnóstico de un contenido sin validar (el servidor
+ * la valida; la interfaz la usa mientras el médico escribe).
+ */
+export const asDiagnosisItems = (value: unknown): DiagnosisItemDraft[] =>
+  Array.isArray(value)
+    ? value.map((item) => {
+        const row = (typeof item === 'object' && item !== null ? item : {}) as Record<
+          string,
+          unknown
+        >;
+        const id = asText(row['id']);
+        const piezas = asText(row['piezas']);
+        return {
+          id,
+          descripcion: asText(row['descripcion']),
+          piezas: piezas === '' ? null : piezas,
+        };
+      })
+    : [];
+
+/**
+ * Ítem de diagnóstico nuevo. El UUID (`crypto.randomUUID`) es lo que lo ata a su
+ * procedimiento del plan: la sincronización se apoya en él para no duplicar filas.
+ */
+export const newDiagnosisItem = (): DiagnosisItemDraft => ({
+  id: crypto.randomUUID(),
+  descripcion: '',
+  piezas: null,
 });
 
 /* ── Etiquetas (todas salen de `i18n`) ─────────────────────────────────────── */

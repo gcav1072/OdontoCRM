@@ -76,15 +76,23 @@ const contenidoConProcedimientos = (): ClinicalSessionContent =>
     ...clinicalSessionContentSchema.parse({}),
     motivo: 'Control de la obturación de la 26',
     vitals: { taSistolica: 120, taDiastolica: 80, fc: 72, temperatura: 36.5, spo2: 98, peso: 68.4 },
-    exam: { encias: 'normal', higiene: 'buena' },
+    // v1.2: la relación oclusal se registra por separado en molar y canina.
+    exam: {
+      encias: 'normal',
+      relacionMolar: 'tipo_i',
+      relacionCanina: 'tipo_ii',
+      higiene: 'buena',
+    },
     procedimientos: [
       { code: 'obturacion_resina', toothNumber: 26, surfaces: ['occlusal', 'mesial'] },
       { code: 'profilaxis' },
     ],
     materiales: [{ code: 'resina_compuesta', cantidad: '1 tubo' }],
     diagnostico: 'Caries oclusal en 26',
+    observaciones: 'Paciente sin dolor al terminar; se indica control en seis meses.',
     indicaciones: 'No comer hasta que pase el efecto de la anestesia',
     proximaCitaNota: 'Control en seis meses',
+    notasInternas: 'Nota interna que no se imprime.',
   });
 
 describeWithDatabases('sesiones clínicas: numeración, autoguardado y cierre', () => {
@@ -226,6 +234,12 @@ describeWithDatabases('sesiones clínicas: numeración, autoguardado y cierre', 
     const detalle = await getSessionDetail(handle.db, sessionId);
     expect(detalle.content.vitals.taSistolica).toBe(120);
     expect(detalle.content.procedimientos[0]?.surfaces).toEqual(['occlusal', 'mesial']);
+    // v1.2: relación molar/canina y observaciones viajan en el contenido guardado.
+    expect(detalle.content.exam.relacionMolar).toBe('tipo_i');
+    expect(detalle.content.exam.relacionCanina).toBe('tipo_ii');
+    expect(detalle.content.observaciones).toBe(
+      'Paciente sin dolor al terminar; se indica control en seis meses.',
+    );
   }, 40_000);
 
   it('no se cierra una sesión vacía y, cerrada, no se edita', async () => {

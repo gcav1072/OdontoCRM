@@ -132,8 +132,15 @@ export const PatientWorkspace = ({
   const sesiones = sesionesQuery.data?.items ?? [];
   const sesionAbierta = sesiones.find((session) => session.status === 'borrador') ?? null;
 
+  /**
+   * Al abrir/cerrar/corregir una sesión cambian dos cosas: la lista de sesiones y
+   * el detalle de la historia, que proyecta la evolución de las sesiones cerradas
+   * (`evolutionSessions`). Se invalidan las dos claves para que al volver a
+   * «Historia clínica → Evolución» el resumen ya esté al día (cambio 4).
+   */
   const recargarSesiones = (): void => {
     void queryClient.invalidateQueries({ queryKey: sesionesKey });
+    void queryClient.invalidateQueries({ queryKey });
   };
 
   const abrir = useMutation({

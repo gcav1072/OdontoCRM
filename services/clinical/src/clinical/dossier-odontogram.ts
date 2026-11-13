@@ -274,6 +274,22 @@ const dentitionCaption = (dentition: Dentition): string =>
       : 'Dentición permanente';
 
 /**
+ * Rótulo de cada banda del papel: **solo** «Maxilar» o «Mandibular», sin la orientación
+ * de caras de la pantalla interactiva (vestibular arriba/abajo), que aquí solo distrae
+ * en el papel. Cuando la banda es de dentición **temporal** —la principal de un
+ * paciente de leche o las bandas primarias de la mixta— el rótulo lleva su rango FDI
+ * (`55–65` arriba, `85–75` abajo) para que no se confunda con la arcada permanente.
+ */
+const archCaption = (arch: 'upper' | 'lower', temporal: boolean): string =>
+  temporal
+    ? arch === 'upper'
+      ? 'Maxilar · temporal (55–65)'
+      : 'Mandibular · temporal (85–75)'
+    : arch === 'upper'
+      ? 'Maxilar'
+      : 'Mandibular';
+
+/**
  * Sección del odontograma del dossier: el dibujo anatómico, la leyenda de colores y
  * los contadores. Sin odontograma devuelve `empty: true` y el texto que lo dice —el
  * dossier sale igual, con el hueco explicado en vez de un dibujo en blanco.
@@ -302,7 +318,9 @@ export const odontogramSection = (input: {
       layout.upper,
       layout.width,
       input.findings,
-      'Arcada superior · vestibular arriba',
+      // En la dentición de leche la banda principal **es** la temporal: el rótulo
+      // lleva su rango FDI. En la mixta la principal es la permanente.
+      archCaption('upper', dentition === 'temporal'),
       prostheses,
       'maxilar',
       layout,
@@ -311,7 +329,7 @@ export const odontogramSection = (input: {
       layout.lower,
       layout.width,
       input.findings,
-      'Arcada inferior · vestibular abajo',
+      archCaption('lower', dentition === 'temporal'),
       prostheses,
       'mandibula',
       layout,
@@ -327,7 +345,7 @@ export const odontogramSection = (input: {
             layout.upperPrimary,
             layout.width,
             input.findings,
-            'Dentición temporal · arcada superior',
+            archCaption('upper', true),
             [],
             'maxilar',
             layout,
@@ -336,7 +354,7 @@ export const odontogramSection = (input: {
             layout.lowerPrimary,
             layout.width,
             input.findings,
-            'Dentición temporal · arcada inferior',
+            archCaption('lower', true),
             [],
             'mandibula',
             layout,

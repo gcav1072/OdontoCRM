@@ -1,6 +1,6 @@
 import {
   CLINICAL_STATES,
-  OCCLUSION_STATES,
+  OCLUSAL_RELATION_STATES,
   ORAL_HYGIENE_LEVELS,
   REGION_EVALUATIONS,
   SESSION_MATERIALS,
@@ -81,7 +81,8 @@ export const SESSION_EXAM_FIELDS = {
   selects: [
     { name: 'tejidosBlandos', group: 'evaluacion', options: REGION_EVALUATIONS },
     { name: 'encias', group: 'evaluacion', options: REGION_EVALUATIONS },
-    { name: 'oclusion', group: 'oclusion', options: OCCLUSION_STATES },
+    { name: 'relacionMolar', group: 'relacion', options: OCLUSAL_RELATION_STATES },
+    { name: 'relacionCanina', group: 'relacion', options: OCLUSAL_RELATION_STATES },
     { name: 'higiene', group: 'higiene', options: ORAL_HYGIENE_LEVELS },
   ],
 } as const;

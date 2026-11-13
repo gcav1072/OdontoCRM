@@ -194,6 +194,19 @@ const filaDiagnostico = (content: ClinicalSessionContent): string => {
 };
 
 /**
+ * Observaciones de la sesión (v1.2), en su **propia fila** bajo la sesión y solo si
+ * tienen texto: la evolución se lee mejor con la anotación separada del diagnóstico.
+ *
+ * `notasInternas` no se imprime nunca —son la libreta del consultorio, no el historial
+ * del paciente— y por eso no se tocan aquí.
+ */
+const filaObservaciones = (content: ClinicalSessionContent): string => {
+  const observaciones = content.observaciones;
+  if (typeof observaciones !== 'string' || observaciones.trim() === '') return '';
+  return `<tr class="sesion-observaciones"><td></td><td colspan="3" class="detalle">Observaciones: ${escapeHtml(observaciones)}</td></tr>`;
+};
+
+/**
  * Tabla de hallazgos: **lo que el dibujo no dice**.
  *
  * El SVG del odontograma enseña las caras teñidas por estado, pero no el *nombre* de la
@@ -270,7 +283,7 @@ export const dossierHtml = async (input: DossierDocumentInput): Promise<string> 
         <td class="num">${sesion.closedAt === null ? '—' : escapeHtml(shortDate(sesion.closedAt))}</td>
         <td>${filaProcedimientos(sesion.content)}</td>
         <td class="detalle">${filaDiagnostico(sesion.content)}</td>
-      </tr>`,
+      </tr>${filaObservaciones(sesion.content)}`,
     )
     .join('');
 

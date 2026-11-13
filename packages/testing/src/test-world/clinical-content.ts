@@ -9,6 +9,7 @@ import {
   type ClinicalSectionKey,
   type ClinicalSessionContent,
   type MedicationRoute,
+  type OclusalRelation,
   type SessionMaterial,
   type SessionMaterialCode,
   type SessionProcedure,
@@ -16,6 +17,8 @@ import {
   type Sex,
   type ToothSurface,
 } from '@odontocrm/contracts';
+
+import { deterministicUuid } from './ids.js';
 
 /**
  * Contenido clínico del mundo de prueba (Fase 10, ADR 0020).
@@ -63,7 +66,12 @@ export type TestClinicalProfile = (typeof TEST_CLINICAL_PROFILES)[number];
 /* ── Ayudantes de redacción ────────────────────────────────────────────────── */
 
 type Region = 'normal' | 'alterado' | 'no_evaluado';
-type Oclusion =
+/**
+ * Rasgo oclusal que describe el perfil en lenguaje clínico. No se guarda tal cual: de
+ * él se derivan la **relación molar** y la **canina** (clase de Angle) y el detalle de
+ * la maloclusión sigue escrito en `hallazgos`.
+ */
+type RasgoOclusal =
   'normal' | 'apinamiento' | 'mordida_abierta' | 'mordida_cruzada' | 'sobremordida' | 'sin_dato';
 type Higiene = 'buena' | 'regular' | 'deficiente';
 type SaludBucal = 'buena' | 'regular' | 'deficiente' | 'sin_dato';
@@ -127,13 +135,53 @@ const sondajeTexto = (teeth: readonly number[]): string | null =>
     ? null
     : teeth.map((tooth, index) => `${String(tooth)}: ${String(3 + (index % 3))} mm`).join(', ');
 
+/**
+ * Relación de Angle (molar y canina) que acompaña a un rasgo oclusal del perfil.
+ *
+ * El apiñamiento o la mordida abierta no son clases de Angle por sí mismos: su detalle
+ * sigue en `hallazgos` y aquí solo se registra la clase con la que cursan (I normal, II
+ * distoclusión, III mesioclusión). `sin_dato` es «no explorado».
+ */
+const relacionOclusal = (
+  rasgo: RasgoOclusal,
+): { relacionMolar: OclusalRelation; relacionCanina: OclusalRelation } => {
+  switch (rasgo) {
+    case 'normal':
+    case 'apinamiento':
+      return { relacionMolar: 'tipo_i', relacionCanina: 'tipo_i' };
+    case 'mordida_abierta':
+    case 'sobremordida':
+      return { relacionMolar: 'tipo_ii', relacionCanina: 'tipo_ii' };
+    case 'mordida_cruzada':
+      return { relacionMolar: 'tipo_iii', relacionCanina: 'tipo_iii' };
+    case 'sin_dato':
+      return { relacionMolar: 'sin_dato', relacionCanina: 'sin_dato' };
+  }
+};
+
 /* ── Historia clínica por perfil ───────────────────────────────────────────── */
+
+/** Un ítem de diagnóstico del perfil: el `id` determinista se asigna al construir la sección. */
+type DiagnosisItem = { descripcion: string; piezas: string | null };
+
+const diagnosticoItem = (descripcion: string, piezas: string | null = null): DiagnosisItem => ({
+  descripcion,
+  piezas,
+});
 
 type PlanItem = {
   descripcion: string;
   prioridad: Prioridad;
   pieza: string | null;
   presupuesto: number | null;
+  /**
+   * Índice del ítem de diagnóstico al que responde el procedimiento (`null` = libre).
+   *
+   * El contrato abre **un** procedimiento enlazado por ítem de diagnóstico (y exige
+   * que esté descrito antes de firmar), así que cada `PlanItem` enlazado apunta a un
+   * índice distinto y los libres van con `null` al final.
+   */
+  diagnostico: number | null;
 };
 
 type RecordContent = {
@@ -174,16 +222,16 @@ type RecordContent = {
     tejidosBlandos: Region;
     encias: Region;
     sondaje: string | null;
-    oclusion: Oclusion;
+    /** Relación de Angle del lado molar (v1.2: ya no hay «oclusión» genérica). */
+    relacionMolar: OclusalRelation;
+    relacionCanina: OclusalRelation;
     higiene: Higiene;
     hallazgos: string;
     observaciones: string | null;
   };
   estudios: { seleccion: Casillas; observaciones: string | null };
   diagnostico: {
-    principal: string;
-    secundarios: string | null;
-    porPieza: string | null;
+    items: DiagnosisItem[];
     saludBucalGeneral: SaludBucal;
     observaciones: string | null;
   };
@@ -198,16 +246,22 @@ type RecordContent = {
     alternativasInformadas: string;
     observaciones: string | null;
   };
-  evolucion: { resumen: string; observaciones: string | null };
+  /** Cuadro manual de la evolución (el resumen de sesiones se proyecta al leer). */
+  evolucion: { observaciones: string };
 };
 
 type RecordContext = { age: number; wording: Wording };
 
+/**
+ * Un procedimiento del plan. `diagnostico` es el índice del ítem de diagnóstico al que
+ * responde (0 por defecto: lo habitual es que el primer tratamiento sea para el primer
+ * diagnóstico) y `null` marca los procedimientos adicionales libres.
+ */
 const planItem = (
   descripcion: string,
   prioridad: Prioridad,
-  pieza: string | null = null,
-): PlanItem => ({ descripcion, prioridad, pieza, presupuesto: null });
+  diagnostico: number | null = 0,
+): PlanItem => ({ descripcion, prioridad, pieza: null, presupuesto: null, diagnostico });
 
 /**
  * Contenido de la historia por perfil. Cada perfil es una función porque el texto
@@ -257,7 +311,7 @@ const RECORD_BUILDERS: Readonly<
       tejidosBlandos: 'normal',
       encias: 'normal',
       sondaje: 'Sondaje de 2 mm generalizado, sin sangrado',
-      oclusion: 'normal',
+      ...relacionOclusal('normal'),
       higiene: 'buena',
       hallazgos:
         'Mucosa oral húmeda y rosada, sin lesiones. Dentición permanente completa, sin caries activas ni restauraciones deficientes.',
@@ -269,9 +323,7 @@ const RECORD_BUILDERS: Readonly<
         'Radiografía panorámica de control: sin lesiones periapicales ni pérdida ósea horizontal.',
     },
     diagnostico: {
-      principal: 'Paciente en buen estado de salud bucal, sin lesiones activas',
-      secundarios: null,
-      porPieza: null,
+      items: [diagnosticoItem('Paciente en buen estado de salud bucal, sin lesiones activas')],
       saludBucalGeneral: 'buena',
       observaciones: 'Se indica control semestral y refuerzo de la técnica de higiene oral.',
     },
@@ -290,9 +342,8 @@ const RECORD_BUILDERS: Readonly<
       observaciones: null,
     },
     evolucion: {
-      resumen:
-        'Se completa la evaluación clínica de rutina, se realiza la profilaxis y se refuerzan las medidas preventivas.',
-      observaciones: 'Paciente sin molestias al finalizar la consulta.',
+      observaciones:
+        'Se completa la evaluación clínica de rutina, se realiza la profilaxis y se refuerzan las medidas preventivas. Paciente sin molestias al finalizar la consulta.',
     },
   }),
 
@@ -343,7 +394,7 @@ const RECORD_BUILDERS: Readonly<
         tejidosBlandos: 'normal',
         encias: 'alterado',
         sondaje: temporal ? null : 'Sondaje de 2 a 3 mm, sin pérdida de inserción',
-        oclusion: temporal ? 'normal' : 'apinamiento',
+        ...relacionOclusal(temporal ? 'normal' : 'apinamiento'),
         higiene: 'deficiente',
         hallazgos: temporal
           ? 'Molares temporales con lesiones de caries oclusales y proximales; esmalte con hipomineralización en incisivos superiores; gingivitis marginal leve.'
@@ -362,11 +413,15 @@ const RECORD_BUILDERS: Readonly<
           'Las aletas de mordida muestran lesiones proximales que no se ven clínicamente, sin compromiso pulpar aparente.',
       },
       diagnostico: {
-        principal: temporal
-          ? 'Caries de la infancia temprana en dentición temporal'
-          : 'Caries dental activa en dentición permanente (lesiones oclusales y proximales)',
-        secundarios: 'Gingivitis asociada a placa bacteriana',
-        porPieza: null,
+        items: [
+          diagnosticoItem(
+            temporal
+              ? 'Caries de la infancia temprana en dentición temporal'
+              : 'Caries dental activa en dentición permanente (lesiones oclusales y proximales)',
+            'sectores posteriores',
+          ),
+          diagnosticoItem('Gingivitis asociada a placa bacteriana'),
+        ],
         saludBucalGeneral: 'deficiente',
         observaciones: temporal
           ? 'Riesgo cariogénico alto: se refuerza la higiene supervisada y el control de la dieta.'
@@ -378,9 +433,11 @@ const RECORD_BUILDERS: Readonly<
             `${procedureLabel(temporal ? 'obturacion_ionomero' : 'obturacion_resina')} en las piezas afectadas`,
             'alta',
           ),
-          planItem(procedureLabel('profilaxis'), 'media'),
-          planItem(procedureLabel('aplicacion_fluor'), 'media'),
-          planItem(procedureLabel('control_postoperatorio'), 'baja'),
+          planItem(procedureLabel('profilaxis'), 'media', 1),
+          // Los adicionales no responden a un diagnóstico: se conservan tal cual los
+          // escriba el doctor (`diagnosticoId: null`).
+          planItem(procedureLabel('aplicacion_fluor'), 'media', null),
+          planItem(procedureLabel('control_postoperatorio'), 'baja', null),
         ],
         alternativas:
           'Si alguna lesión compromete la pulpa se valorará tratamiento de conducto o exodoncia de la pieza.',
@@ -398,10 +455,9 @@ const RECORD_BUILDERS: Readonly<
           : 'El paciente comprende y acepta el plan de tratamiento.',
       },
       evolucion: {
-        resumen: temporal
-          ? 'Se evalúa al menor, se confirma el plan restaurador por sesiones y se refuerzan las medidas de higiene.'
-          : 'Se evalúa el estado de las restauraciones y las lesiones activas, y se organiza el plan restaurador por sesiones.',
-        observaciones: 'Se cita para continuar el plan de tratamiento.',
+        observaciones: temporal
+          ? 'Se evalúa al menor, se confirma el plan restaurador por sesiones y se refuerzan las medidas de higiene. Se cita para continuar el plan de tratamiento.'
+          : 'Se evalúa el estado de las restauraciones y las lesiones activas, y se organiza el plan restaurador por sesiones. Se cita para continuar el plan de tratamiento.',
       },
     };
   },
@@ -455,7 +511,7 @@ const RECORD_BUILDERS: Readonly<
         sondaje: adolescente
           ? 'Sondaje de 2 a 3 mm generalizado, con sangrado al sondaje'
           : 'Sondaje de 3 a 5 mm en sectores posteriores, con sangrado y recesión leve',
-        oclusion: 'apinamiento',
+        ...relacionOclusal('apinamiento'),
         higiene: 'deficiente',
         hallazgos: adolescente
           ? 'Encías eritematosas y edematizadas con sangrado al sondaje; cálculo supragingival en sectores anteroinferiores.'
@@ -469,11 +525,18 @@ const RECORD_BUILDERS: Readonly<
           : 'Radiografía panorámica con pérdida ósea horizontal leve en sectores posteriores.',
       },
       diagnostico: {
-        principal: adolescente
-          ? 'Gingivitis asociada a placa bacteriana, generalizada'
-          : 'Periodontitis crónica generalizada leve a moderada',
-        secundarios: adolescente ? 'Apiñamiento dentario leve' : 'Bruxismo y apiñamiento dentario',
-        porPieza: null,
+        items: [
+          diagnosticoItem(
+            adolescente
+              ? 'Gingivitis asociada a placa bacteriana, generalizada'
+              : 'Periodontitis crónica generalizada leve a moderada',
+            'sectores posteriores',
+          ),
+          diagnosticoItem(
+            adolescente ? 'Apiñamiento dentario leve' : 'Bruxismo y apiñamiento dentario',
+            'sectores anteriores',
+          ),
+        ],
         saludBucalGeneral: 'regular',
         observaciones: adolescente
           ? 'El cuadro es reversible con higiene y control periódico.'
@@ -482,8 +545,15 @@ const RECORD_BUILDERS: Readonly<
       plan: {
         procedimientos: [
           planItem(procedureLabel('detartraje'), 'alta'),
-          planItem(procedureLabel('profilaxis'), 'media'),
-          planItem(procedureLabel('control_postoperatorio'), 'media'),
+          planItem(
+            adolescente
+              ? 'Control del apiñamiento y valoración ortodóntica'
+              : 'Férula de descarga nocturna para el bruxismo',
+            'media',
+            1,
+          ),
+          planItem(procedureLabel('profilaxis'), 'media', null),
+          planItem(procedureLabel('control_postoperatorio'), 'media', null),
         ],
         alternativas:
           'Si el sangrado y la profundidad de sondaje persisten se indicará antibioticoterapia y evaluación periodontal especializada.',
@@ -498,9 +568,8 @@ const RECORD_BUILDERS: Readonly<
         observaciones: 'Se entrega por escrito la técnica de higiene indicada.',
       },
       evolucion: {
-        resumen:
-          'Se realiza la evaluación periodontal, se explica el diagnóstico y se inicia el plan de detartrajes con instrucciones de higiene.',
-        observaciones: 'Se refuerza la suspensión del tabaquismo.',
+        observaciones:
+          'Se realiza la evaluación periodontal, se explica el diagnóstico y se inicia el plan de detartrajes con instrucciones de higiene. Se refuerza la suspensión del tabaquismo.',
       },
     };
   },
@@ -547,7 +616,7 @@ const RECORD_BUILDERS: Readonly<
         tejidosBlandos: 'alterado',
         encias: 'alterado',
         sondaje: 'Sondaje de 3 a 4 mm en sectores posteriores, con sangrado',
-        oclusion: 'normal',
+        ...relacionOclusal('normal'),
         higiene: 'regular',
         hallazgos:
           'Encías con inflamación marginal y cálculo supragingival; xerostomía leve; restauraciones con márgenes desadaptados en sectores posteriores.',
@@ -560,9 +629,15 @@ const RECORD_BUILDERS: Readonly<
           'Se solicitan glicemia en ayunas y hemoglobina glicosilada recientes; la panorámica muestra pérdida ósea horizontal leve.',
       },
       diagnostico: {
-        principal: 'Enfermedad periodontal asociada a diabetes mellitus tipo 2',
-        secundarios: 'Caries dental activa en piezas posteriores',
-        porPieza: null,
+        items: [
+          diagnosticoItem(
+            'Enfermedad periodontal asociada a diabetes mellitus tipo 2',
+            'sectores posteriores',
+          ),
+          // La caries va como ítem aparte para no mezclar dos hallazgos con planes
+          // distintos: cada uno abre su procedimiento enlazado.
+          diagnosticoItem('Caries dental activa en piezas posteriores', 'sectores posteriores'),
+        ],
         saludBucalGeneral: 'regular',
         observaciones:
           'El control metabólico condiciona la cicatrización y el pronóstico periodontal.',
@@ -570,8 +645,8 @@ const RECORD_BUILDERS: Readonly<
       plan: {
         procedimientos: [
           planItem(procedureLabel('detartraje'), 'alta'),
-          planItem(`${procedureLabel('obturacion_resina')} en las piezas afectadas`, 'alta'),
-          planItem(procedureLabel('control_postoperatorio'), 'media'),
+          planItem(`${procedureLabel('obturacion_resina')} en las piezas afectadas`, 'alta', 1),
+          planItem(procedureLabel('control_postoperatorio'), 'media', null),
         ],
         alternativas:
           'Si la glicemia no está controlada se postergarán los procedimientos quirúrgicos hasta la evaluación médica.',
@@ -587,9 +662,8 @@ const RECORD_BUILDERS: Readonly<
         observaciones: 'Se entregan recomendaciones de higiene adaptadas al paciente diabético.',
       },
       evolucion: {
-        resumen:
-          'Se evalúa el estado periodontal y las restauraciones, se refuerza el control metabólico y se inicia el plan por sesiones.',
-        observaciones: 'Se solicita reporte médico actualizado.',
+        observaciones:
+          'Se evalúa el estado periodontal y las restauraciones, se refuerza el control metabólico y se inicia el plan por sesiones. Se solicita reporte médico actualizado.',
       },
     };
   },
@@ -633,7 +707,7 @@ const RECORD_BUILDERS: Readonly<
       tejidosBlandos: 'normal',
       encias: 'alterado',
       sondaje: 'Sondaje de 2 a 3 mm, sin sangrado',
-      oclusion: 'normal',
+      ...relacionOclusal('normal'),
       higiene: 'regular',
       hallazgos:
         'Gingivitis marginal leve; cálculo supragingival; restauraciones de amalgama con márgenes desadaptados y caries recurrente en sectores posteriores.',
@@ -645,9 +719,10 @@ const RECORD_BUILDERS: Readonly<
         'La panorámica muestra restauraciones en molares y pérdida ósea horizontal leve; las aletas confirman caries recurrente.',
     },
     diagnostico: {
-      principal: 'Caries dental recurrente en piezas posteriores; paciente hipertenso controlado',
-      secundarios: 'Gingivitis leve asociada a placa bacteriana',
-      porPieza: null,
+      items: [
+        diagnosticoItem('Caries dental recurrente en piezas posteriores', 'sectores posteriores'),
+        diagnosticoItem('Gingivitis leve asociada a placa bacteriana'),
+      ],
       saludBucalGeneral: 'regular',
       observaciones:
         'Se evita el uso de antiinflamatorios no esteroideos por la hipertensión; se indica analgesia con paracetamol.',
@@ -658,8 +733,8 @@ const RECORD_BUILDERS: Readonly<
           `Reemplazo de las restauraciones desadaptadas por ${procedureLabel('obturacion_resina').toLowerCase()}`,
           'alta',
         ),
-        planItem(procedureLabel('detartraje'), 'media'),
-        planItem(procedureLabel('control_postoperatorio'), 'baja'),
+        planItem(procedureLabel('detartraje'), 'media', 1),
+        planItem(procedureLabel('control_postoperatorio'), 'baja', null),
       ],
       alternativas:
         'Se plantea la alternativa de obturaciones con amalgama si el aislamiento del campo no es adecuado.',
@@ -674,9 +749,8 @@ const RECORD_BUILDERS: Readonly<
       observaciones: null,
     },
     evolucion: {
-      resumen:
-        'Se registra la tensión arterial, se evalúan las restauraciones y se inicia el plan de reemplazo por sesiones.',
-      observaciones: 'Paciente estable durante la consulta.',
+      observaciones:
+        'Se registra la tensión arterial, se evalúan las restauraciones y se inicia el plan de reemplazo por sesiones. Paciente estable durante la consulta.',
     },
   }),
 
@@ -721,7 +795,7 @@ const RECORD_BUILDERS: Readonly<
       tejidosBlandos: 'alterado',
       encias: 'alterado',
       sondaje: null,
-      oclusion: 'normal',
+      ...relacionOclusal('normal'),
       higiene: 'regular',
       hallazgos:
         'Pieza posterior con destrucción coronaria y restos radiculares; encía adyacente eritematosa con supuración al sondaje; sin lesiones en el resto de la mucosa.',
@@ -733,9 +807,14 @@ const RECORD_BUILDERS: Readonly<
         'La periapical muestra lesión periapical en la pieza afectada; la panorámica descarta otros focos.',
     },
     diagnostico: {
-      principal: 'Infección odontogénica localizada en pieza no restaurable',
-      secundarios: 'Alergia a la penicilina documentada',
-      porPieza: null,
+      // La alergia no es un ítem de diagnóstico: es un antecedente que ya viaja como
+      // alerta clínica y en las observaciones de la sección.
+      items: [
+        diagnosticoItem(
+          'Infección odontogénica localizada en pieza no restaurable',
+          'pieza posterior',
+        ),
+      ],
       saludBucalGeneral: 'regular',
       observaciones:
         'Se contraindica toda la familia de las penicilinas; de requerirse antibiótico se indicará azitromicina.',
@@ -743,7 +822,7 @@ const RECORD_BUILDERS: Readonly<
     plan: {
       procedimientos: [
         planItem(procedureLabel('extraccion_simple'), 'alta'),
-        planItem(procedureLabel('control_postoperatorio'), 'media'),
+        planItem(procedureLabel('control_postoperatorio'), 'media', null),
       ],
       alternativas:
         'Se explica la alternativa de intentar conservar la pieza con endodoncia, con pronóstico reservado por la destrucción coronaria.',
@@ -759,9 +838,7 @@ const RECORD_BUILDERS: Readonly<
       observaciones: 'Se confirma la alergia antes de firmar el consentimiento.',
     },
     evolucion: {
-      resumen:
-        'Se evalúa la urgencia, se confirma la alergia a la penicilina y se programa la exodoncia de la pieza no restaurable.',
-      observaciones: `Paciente ${wording.oa === 'a' ? 'informada' : 'informado'} del plan y de las alternativas.`,
+      observaciones: `Se evalúa la urgencia, se confirma la alergia a la penicilina y se programa la exodoncia de la pieza no restaurable. Paciente ${wording.oa === 'a' ? 'informada' : 'informado'} del plan y de las alternativas.`,
     },
   }),
 
@@ -805,7 +882,7 @@ const RECORD_BUILDERS: Readonly<
       tejidosBlandos: 'normal',
       encias: 'alterado',
       sondaje: 'Sondaje de 2 a 3 mm, sin sangrado espontáneo',
-      oclusion: 'normal',
+      ...relacionOclusal('normal'),
       higiene: 'regular',
       hallazgos:
         'Pieza posterior con destrucción coronaria y movilidad grado II; encías con leve eritema marginal, sin sangrado espontáneo.',
@@ -817,9 +894,13 @@ const RECORD_BUILDERS: Readonly<
         'La periapical confirma la pérdida ósea de la pieza; se solicita INR y hematología completa antes del procedimiento.',
     },
     diagnostico: {
-      principal: 'Pieza dentaria no restaurable en paciente anticoagulado con riesgo hemorrágico',
-      secundarios: 'Gingivitis leve asociada a placa bacteriana',
-      porPieza: null,
+      items: [
+        diagnosticoItem(
+          'Pieza dentaria no restaurable en paciente anticoagulado con riesgo hemorrágico',
+          'pieza posterior',
+        ),
+        diagnosticoItem('Gingivitis leve asociada a placa bacteriana'),
+      ],
       saludBucalGeneral: 'regular',
       observaciones:
         'La exodoncia se realizará con hemostasia local y sin suspender el anticoagulante, previa coordinación con cardiología.',
@@ -827,8 +908,9 @@ const RECORD_BUILDERS: Readonly<
     plan: {
       procedimientos: [
         planItem(procedureLabel('extraccion_simple'), 'alta'),
-        planItem(procedureLabel('retiro_sutura'), 'media'),
-        planItem(procedureLabel('control_postoperatorio'), 'media'),
+        planItem(procedureLabel('profilaxis'), 'media', 1),
+        planItem(procedureLabel('retiro_sutura'), 'media', null),
+        planItem(procedureLabel('control_postoperatorio'), 'media', null),
       ],
       alternativas:
         'Se explica la alternativa de posponer la exodoncia hasta ajustar el tratamiento anticoagulante, con el riesgo de progresión de la infección.',
@@ -844,9 +926,8 @@ const RECORD_BUILDERS: Readonly<
       observaciones: 'El paciente comprende que no debe suspender la warfarina por su cuenta.',
     },
     evolucion: {
-      resumen:
-        'Se verifica el INR, se evalúa la pieza no restaurable y se programa la exodoncia con control de la hemostasia.',
-      observaciones: 'Se entregan indicaciones postoperatorias por escrito.',
+      observaciones:
+        'Se verifica el INR, se evalúa la pieza no restaurable y se programa la exodoncia con control de la hemostasia. Se entregan indicaciones postoperatorias por escrito.',
     },
   }),
 
@@ -894,7 +975,7 @@ const RECORD_BUILDERS: Readonly<
         tejidosBlandos: 'normal',
         encias: 'alterado',
         sondaje: temporal ? null : 'Sondaje de 2 mm generalizado, sin sangrado',
-        oclusion: temporal ? 'mordida_abierta' : 'apinamiento',
+        ...relacionOclusal(temporal ? 'mordida_abierta' : 'apinamiento'),
         higiene: 'regular',
         hallazgos: temporal
           ? 'Dentición temporal completa; molares temporales con lesiones de caries oclusales; gingivitis marginal leve; mordida abierta anterior asociada a hábito de succión.'
@@ -907,13 +988,17 @@ const RECORD_BUILDERS: Readonly<
           'Las aletas de mordida muestran lesiones oclusales sin compromiso pulpar; se toman fotografías clínicas para el seguimiento.',
       },
       diagnostico: {
-        principal: temporal
-          ? 'Caries de la infancia temprana en molares temporales'
-          : 'Caries dental en dentición mixta',
-        secundarios: temporal
-          ? 'Gingivitis asociada a placa bacteriana; hábito de succión'
-          : 'Gingivitis asociada a placa bacteriana; apiñamiento leve',
-        porPieza: null,
+        items: [
+          diagnosticoItem(
+            temporal
+              ? 'Caries de la infancia temprana en molares temporales'
+              : 'Caries dental en dentición mixta',
+            temporal ? 'molares temporales' : 'premolares y molares',
+          ),
+          // El hábito de succión sigue descrito en los hallazgos: como diagnóstico de
+          // plan solo queda la gingivitis, que sí tiene tratamiento asociado.
+          diagnosticoItem('Gingivitis asociada a placa bacteriana'),
+        ],
         saludBucalGeneral: 'regular',
         observaciones:
           'Riesgo cariogénico alto por dieta cariogénica y cepillado supervisado una sola vez al día.',
@@ -921,9 +1006,9 @@ const RECORD_BUILDERS: Readonly<
       plan: {
         procedimientos: [
           planItem(`${procedureLabel('obturacion_ionomero')} en las piezas afectadas`, 'alta'),
-          planItem(procedureLabel('aplicacion_fluor'), 'media'),
-          planItem(procedureLabel('sellante'), 'media'),
-          planItem(procedureLabel('control_postoperatorio'), 'baja'),
+          planItem(`${procedureLabel('aplicacion_fluor')} y control de placa`, 'media', 1),
+          planItem(procedureLabel('sellante'), 'media', null),
+          planItem(procedureLabel('control_postoperatorio'), 'baja', null),
         ],
         alternativas:
           'Si la lesión compromete la pulpa se valorará pulpotomía o corona temporal (acero) en molares temporales; nunca coronas de porcelana en dentición temporal.',
@@ -939,9 +1024,8 @@ const RECORD_BUILDERS: Readonly<
         observaciones: `El representante de ${wording.sujeto} comprende y acepta el plan de tratamiento.`,
       },
       evolucion: {
-        resumen:
-          'Se evalúa al menor, se confirma el plan restaurador y preventivo, y se refuerzan la higiene supervisada y el control de la dieta.',
-        observaciones: 'Se cita para continuar el plan por sesiones.',
+        observaciones:
+          'Se evalúa al menor, se confirma el plan restaurador y preventivo, y se refuerzan la higiene supervisada y el control de la dieta. Se cita para continuar el plan por sesiones.',
       },
     };
   },
@@ -986,7 +1070,7 @@ const RECORD_BUILDERS: Readonly<
       tejidosBlandos: 'alterado',
       encias: 'alterado',
       sondaje: 'Sondaje de 3 mm en piezas remanentes',
-      oclusion: 'sin_dato',
+      ...relacionOclusal('sin_dato'),
       higiene: 'regular',
       hallazgos:
         'Edentulismo parcial con rebordes alveolares reabsorbidos; hiperplasia fibrosa del vestíbulo por la prótesis desadaptada; piezas remanentes con movilidad y cálculo.',
@@ -998,10 +1082,12 @@ const RECORD_BUILDERS: Readonly<
         'Panorámica con reabsorción ósea horizontal y senos maxilares neumatizados; se toman modelos de estudio para la nueva prótesis.',
     },
     diagnostico: {
-      principal: 'Edentulismo parcial con prótesis removible desadaptada',
-      secundarios:
-        'Hiperplasia fibrosa por prótesis; hipertensión arterial controlada; piezas remanentes no restaurables',
-      porPieza: null,
+      items: [
+        diagnosticoItem('Piezas remanentes no restaurables', 'piezas remanentes'),
+        diagnosticoItem('Edentulismo parcial con prótesis removible desadaptada'),
+      ],
+      // La hiperplasia fibrosa y la hipertensión controlada quedan como contexto en
+      // las observaciones: no abren un procedimiento propio en el plan.
       saludBucalGeneral: 'regular',
       observaciones:
         'Se indica la exodoncia de las piezas no recuperables antes de confeccionar la prótesis definitiva.',
@@ -1009,8 +1095,8 @@ const RECORD_BUILDERS: Readonly<
     plan: {
       procedimientos: [
         planItem(procedureLabel('extraccion_simple'), 'alta'),
-        planItem(procedureLabel('protesis_removible'), 'media'),
-        planItem(procedureLabel('control_postoperatorio'), 'media'),
+        planItem(procedureLabel('protesis_removible'), 'media', 1),
+        planItem(procedureLabel('control_postoperatorio'), 'media', null),
       ],
       alternativas:
         'Se plantean la rehabilitación con prótesis parcial removible nueva y, como alternativa, el tratamiento con implantes, de mayor costo.',
@@ -1026,9 +1112,8 @@ const RECORD_BUILDERS: Readonly<
       observaciones: 'El paciente y su familia comprenden el plan y aceptan la prótesis removible.',
     },
     evolucion: {
-      resumen:
-        'Se evalúa el estado de la prótesis y de las piezas remanentes, se indica la exodoncia de las no recuperables y se planifica la nueva prótesis.',
-      observaciones: 'Se explican los cuidados de la prótesis y la higiene de los rebordes.',
+      observaciones:
+        'Se evalúa el estado de la prótesis y de las piezas remanentes, se indica la exodoncia de las no recuperables y se planifica la nueva prótesis. Se explican los cuidados de la prótesis y la higiene de los rebordes.',
     },
   }),
 };
@@ -1053,6 +1138,11 @@ const ocupacionFor = (
  * El motivo que escribió el paciente en su solicitud viaja **textual** dentro del
  * relato (la historia clínica es, antes que nada, un documento legal): lo que
  * cambia por perfil es la lectura clínica que lo acompaña.
+ *
+ * Los ítems de diagnóstico nacen con un `id` **determinista** (`deterministicUuid`, el
+ * mismo generador que el resto del mundo) y cada procedimiento del plan queda enlazado
+ * al suyo por `diagnosticoId`: así el vínculo diagnóstico↔plan que exige v1.2.1 viaja
+ * ya armado en los datos sembrados y `seed:verify` sigue siendo reproducible.
  */
 export const buildRecordSections = (input: {
   profile: TestClinicalProfile;
@@ -1067,6 +1157,32 @@ export const buildRecordSections = (input: {
     `${capitalizar(wording.sujeto)} refiere, con sus propias palabras: «${input.reason}». ${contenido.lectura}`,
     1000,
   );
+
+  // Los ids de los ítems salen del perfil y del paciente, no de un contador global: la
+  // misma entrada produce siempre la misma historia (regla 2 del módulo).
+  const diagnosisItems = contenido.diagnostico.items.map((item, index) => ({
+    id: deterministicUuid(
+      'record_diagnosis',
+      `${input.profile}:${input.fullName}:${String(index)}`,
+    ),
+    descripcion: item.descripcion,
+    piezas: item.piezas,
+  }));
+  const diagnosticoIdAt = (index: number): string | null => diagnosisItems[index]?.id ?? null;
+
+  const planProcedures = contenido.plan.procedimientos.map((item) => {
+    const diagnosticoId = item.diagnostico === null ? null : diagnosticoIdAt(item.diagnostico);
+    return {
+      diagnosticoId,
+      descripcion: item.descripcion,
+      prioridad: item.prioridad,
+      // En los enlazados la pieza la manda el diagnóstico (regla v1.2.1); los libres
+      // conservan la suya (hoy vacía, la escribe el doctor en el plan).
+      pieza:
+        item.diagnostico === null ? item.pieza : (diagnosisItems[item.diagnostico]?.piezas ?? null),
+      presupuesto: item.presupuesto,
+    };
+  });
 
   return {
     identificacion: {
@@ -1091,18 +1207,24 @@ export const buildRecordSections = (input: {
       estudios: { ...contenido.estudios.seleccion },
       observaciones: contenido.estudios.observaciones,
     },
-    diagnostico: { ...contenido.diagnostico },
+    diagnostico: {
+      items: diagnosisItems,
+      saludBucalGeneral: contenido.diagnostico.saludBucalGeneral,
+      observaciones: contenido.diagnostico.observaciones,
+    },
     plan_tratamiento: {
       ...contenido.plan,
-      procedimientos: contenido.plan.procedimientos.map((item) => ({ ...item })),
+      procedimientos: planProcedures,
     },
     consentimiento: { ...contenido.consentimiento },
     evolucion: {
-      resumen: limitar(
-        `${capitalizar(wording.sujeto)} acude a consulta y refiere: «${input.reason}». ${contenido.evolucion.resumen}`,
+      // El contrato v1.2.1 deja un único cuadro manual de evolución: el texto de la
+      // consulta y la nota del doctor se funden ahí (el resumen de sesiones se proyecta
+      // al leer la historia, no se guarda).
+      observaciones: limitar(
+        `${capitalizar(wording.sujeto)} acude a consulta y refiere: «${input.reason}». ${contenido.evolucion.observaciones}`,
         2000,
       ),
-      observaciones: contenido.evolucion.observaciones,
     },
   };
 };
@@ -1215,6 +1337,8 @@ type SessionBlueprint = {
   procedimientos: SessionProcedure[];
   materiales: SessionMaterial[];
   diagnostico: string;
+  /** Observaciones de la sesión (v1.2): se imprimen en la evolución de la historia. */
+  observaciones: string;
   indicaciones: string;
   proximaCitaNota: string;
   notasInternas: string;
@@ -1237,7 +1361,7 @@ const SESSION_BUILDERS: Readonly<
       ...emptySessionExam(),
       tejidosBlandos: 'normal',
       encias: 'normal',
-      oclusion: 'normal',
+      ...relacionOclusal('normal'),
       higiene: 'buena',
       hallazgos:
         'Mucosa oral sin lesiones; sin cálculo visible; dentición sin caries activas ni restauraciones deficientes.',
@@ -1248,6 +1372,8 @@ const SESSION_BUILDERS: Readonly<
     indicaciones:
       'Mantenga el cepillado después de cada comida y el uso de hilo dental. Regrese a control en seis meses.',
     proximaCitaNota: 'Control semestral',
+    observaciones:
+      'Paciente sin molestias al finalizar la consulta; encías sin sangrado al sondaje.',
     notasInternas: 'Se refuerza la técnica de cepillado.',
   }),
 
@@ -1261,7 +1387,7 @@ const SESSION_BUILDERS: Readonly<
       tejidosBlandos: 'normal',
       encias: 'alterado',
       sondaje: pediatrico ? null : 'Sondaje de 2 a 3 mm, sin pérdida de inserción',
-      oclusion: pediatrico ? 'normal' : 'apinamiento',
+      ...relacionOclusal(pediatrico ? 'normal' : 'apinamiento'),
       higiene: 'deficiente',
       hallazgos: pediatrico
         ? 'Molares temporales con lesiones de caries oclusales y proximales; esmalte con hipomineralización en incisivos; gingivitis marginal leve.'
@@ -1285,6 +1411,9 @@ const SESSION_BUILDERS: Readonly<
       ? 'Supervise el cepillado dos veces al día con crema fluorada y reduzca los jugos y las golosinas entre comidas.'
       : 'Evite alimentos duros sobre las restauraciones durante 24 horas y mantenga el cepillado con hilo dental.',
     proximaCitaNota: 'Control de restauraciones en 15 días',
+    observaciones: pediatrico
+      ? 'El representante queda informado del plan y de la técnica de cepillado supervisado.'
+      : 'Paciente tolera el procedimiento sin incidencias; se refuerza la higiene.',
     notasInternas: 'Riesgo cariogénico alto: se refuerzan la higiene y el control de la dieta.',
   }),
 
@@ -1297,7 +1426,7 @@ const SESSION_BUILDERS: Readonly<
       tejidosBlandos: 'normal',
       encias: 'alterado',
       sondaje: sondajeTexto(teeth),
-      oclusion: 'apinamiento',
+      ...relacionOclusal('apinamiento'),
       higiene: 'deficiente',
       hallazgos:
         'Cálculo supragingival y placa bacteriana en sectores posteriores; encías eritematosas con sangrado al sondaje.',
@@ -1311,6 +1440,8 @@ const SESSION_BUILDERS: Readonly<
     indicaciones:
       'Cepille con técnica de Bass modificada tres veces al día y use hilo dental; evite los alimentos pegajosos.',
     proximaCitaNota: 'Control periodontal en 15 días',
+    observaciones:
+      'Se refuerza la técnica de cepillado de Bass; encías con sangrado leve al sondaje esperado.',
     notasInternas: 'Se instruye en técnica de cepillado y se entrega cepillo periodontal.',
   }),
 
@@ -1323,7 +1454,7 @@ const SESSION_BUILDERS: Readonly<
       tejidosBlandos: 'alterado',
       encias: 'alterado',
       sondaje: 'Sondaje de 3 a 4 mm en sectores posteriores, con sangrado',
-      oclusion: 'normal',
+      ...relacionOclusal('normal'),
       higiene: 'regular',
       hallazgos:
         'Encías con inflamación marginal y cálculo supragingival; xerostomía leve; restauraciones con márgenes desadaptados.',
@@ -1340,6 +1471,8 @@ const SESSION_BUILDERS: Readonly<
     indicaciones:
       'Mantenga el control metabólico y el cepillado tres veces al día; acuda a control periodontal cada tres meses.',
     proximaCitaNota: 'Control a los 15 días',
+    observaciones:
+      'Paciente estable durante la consulta; se recuerda mantener el control metabólico.',
     notasInternas:
       'Se recomienda interconsulta con su médico tratante antes de procedimientos quirúrgicos.',
   }),
@@ -1353,7 +1486,7 @@ const SESSION_BUILDERS: Readonly<
       tejidosBlandos: 'normal',
       encias: 'alterado',
       sondaje: 'Sondaje de 2 a 3 mm, sin sangrado',
-      oclusion: 'normal',
+      ...relacionOclusal('normal'),
       higiene: 'regular',
       hallazgos:
         'Cálculo supragingival leve; restauraciones de amalgama con márgenes desadaptados y caries recurrente en sectores posteriores.',
@@ -1370,6 +1503,8 @@ const SESSION_BUILDERS: Readonly<
     indicaciones:
       'No suspenda su medicación antihipertensiva y mantenga el cepillado con hilo dental después de cada comida.',
     proximaCitaNota: 'Control en 15 días',
+    observaciones:
+      'Tensión arterial controlada durante el procedimiento; paciente sin incidencias.',
     notasInternas: 'Se toma la tensión arterial al inicio y al final de la consulta.',
   }),
 
@@ -1381,7 +1516,7 @@ const SESSION_BUILDERS: Readonly<
       ...emptySessionExam(),
       tejidosBlandos: 'alterado',
       encias: 'alterado',
-      oclusion: 'normal',
+      ...relacionOclusal('normal'),
       higiene: 'regular',
       hallazgos:
         'Pieza posterior con destrucción coronaria y restos radiculares; encía adyacente eritematosa con supuración al sondaje.',
@@ -1398,6 +1533,8 @@ const SESSION_BUILDERS: Readonly<
     indicaciones:
       'Mantenga la gasa mordida 30 minutos; no escupa, no fume ni use pajita durante 24 horas. Si el sangrado no cede o aparece fiebre, acuda de inmediato.',
     proximaCitaNota: 'Control postoperatorio en 7 días',
+    observaciones:
+      'Se confirma la alergia a la penicilina antes de prescribir; paciente sin incidencias.',
     notasInternas:
       'Alergia a la penicilina verificada en la historia. Si requiere antibiótico se indicará azitromicina.',
   }),
@@ -1414,7 +1551,7 @@ const SESSION_BUILDERS: Readonly<
         tejidosBlandos: 'normal',
         encias: 'alterado',
         sondaje: 'Sondaje de 2 a 3 mm, sin sangrado espontáneo',
-        oclusion: 'normal',
+        ...relacionOclusal('normal'),
         higiene: 'regular',
         hallazgos: primera
           ? 'Pieza posterior con destrucción coronaria y movilidad grado II; encías con eritema marginal leve, sin sangrado espontáneo.'
@@ -1439,6 +1576,9 @@ const SESSION_BUILDERS: Readonly<
         ? 'Mantenga la gasa mordida 45 minutos; no escupa, no fume ni haga esfuerzos durante 24 horas. Continúe la warfarina según indicación de cardiología y acuda si el sangrado no cede.'
         : 'Mantenga la zona limpia con enjuagues suaves de solución fisiológica y vuelva al control indicado.',
       proximaCitaNota: primera ? 'Control postoperatorio en 7 días' : 'Alta del postoperatorio',
+      observaciones: primera
+        ? 'Hemostasia lograda con gasa y sutura; sin sangrado activo al retirarse.'
+        : 'Alvéolo en cicatrización favorable; sin signos de infección.',
       notasInternas: primera
         ? 'Se verificó el INR antes del procedimiento y se coordinó con cardiología. Hemostasia con gasa, sutura y frío local.'
         : 'Se revisa la hemostasia y se refuerzan las indicaciones de higiene.',
@@ -1457,7 +1597,7 @@ const SESSION_BUILDERS: Readonly<
         tejidosBlandos: primera ? 'alterado' : 'normal',
         encias: 'alterado',
         sondaje: primera ? sondajeTexto(teeth) : 'Sondaje de 3 mm en piezas remanentes',
-        oclusion: 'sin_dato',
+        ...relacionOclusal('sin_dato'),
         higiene: 'regular',
         hallazgos: primera
           ? 'Edentulismo parcial con rebordes reabsorbidos; hiperplasia fibrosa del vestíbulo por prótesis desadaptada; piezas remanentes con movilidad y cálculo.'
@@ -1484,6 +1624,9 @@ const SESSION_BUILDERS: Readonly<
       proximaCitaNota: primera
         ? 'Control postoperatorio en 7 días'
         : 'Prueba de la prótesis en 15 días',
+      observaciones: primera
+        ? 'Se ajusta la prótesis antigua y se indican los cuidados hasta la nueva.'
+        : 'Prueba de la prótesis sin zonas de presión; se ajustan los apoyos.',
       notasInternas: primera
         ? 'Se ajusta la prótesis actual mientras se completa el plan quirúrgico.'
         : 'Se verifican la oclusión y los apoyos de la prótesis en prueba.',
@@ -1498,7 +1641,7 @@ const SESSION_BUILDERS: Readonly<
       ...emptySessionExam(),
       tejidosBlandos: 'normal',
       encias: 'alterado',
-      oclusion: pediatrico ? 'mordida_abierta' : 'apinamiento',
+      ...relacionOclusal(pediatrico ? 'mordida_abierta' : 'apinamiento'),
       higiene: 'regular',
       hallazgos: pediatrico
         ? 'Molares temporales con lesiones de caries oclusales; gingivitis marginal leve; mordida abierta anterior asociada a hábito de succión.'
@@ -1521,6 +1664,8 @@ const SESSION_BUILDERS: Readonly<
     indicaciones:
       'Supervise el cepillado dos veces al día con crema fluorada; reduzca los jugos y las golosinas entre comidas.',
     proximaCitaNota: 'Control en 3 meses',
+    observaciones:
+      'El representante comprende las indicaciones de higiene y dieta; menor colaborador durante la consulta.',
     notasInternas:
       'Se explica al representante la técnica de cepillado y la importancia de la dieta. No se indican coronas de porcelana en dentición temporal.',
   }),
@@ -1569,6 +1714,9 @@ export const buildSessionContent = (input: {
     procedimientos: blueprint.procedimientos,
     materiales: blueprint.materiales,
     diagnostico: limitar(blueprint.diagnostico, 1000),
+    // v1.2: las observaciones de la sesión son contenido clínico que se imprime en la
+    // evolución de la historia; `notasInternas` sigue siendo la libreta del consultorio.
+    observaciones: limitar(blueprint.observaciones, 1000),
     indicaciones: limitar(blueprint.indicaciones, 2000),
     proximaCitaFecha: null,
     proximaCitaNota: limitar(blueprint.proximaCitaNota, 300),

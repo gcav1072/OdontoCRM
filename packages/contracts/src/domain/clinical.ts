@@ -164,14 +164,14 @@ export const DENTAL_VISIT_FREQUENCIES = [
 
 export const ORAL_HYGIENE_LEVELS = ['buena', 'regular', 'deficiente'] as const;
 
-export const OCCLUSION_STATES = [
-  'normal',
-  'apinamiento',
-  'mordida_abierta',
-  'mordida_cruzada',
-  'sobremordida',
-  'sin_dato',
-] as const;
+/**
+ * Relación oclusal de Angle, registrada por separado en el lado **molar** y en el
+ * **canino** (v1.2): cada uno es un campo único con `Tipo I`, `Tipo II`, `Tipo III`
+ * o `sin_dato`. `sin_dato` significa «no explorado» y **no** cuenta como hallazgo
+ * evaluado: elegirlo no da la sección por completa.
+ */
+export const OCLUSAL_RELATION_STATES = ['tipo_i', 'tipo_ii', 'tipo_iii', 'sin_dato'] as const;
+export type OclusalRelation = (typeof OCLUSAL_RELATION_STATES)[number];
 
 export const TREATMENT_PRIORITIES = ['alta', 'media', 'baja'] as const;
 
@@ -264,7 +264,8 @@ export const intraoralExamSectionSchema = z.object({
   tejidosBlandos: z.enum(REGION_EVALUATIONS).nullable().default(null),
   encias: z.enum(REGION_EVALUATIONS).nullable().default(null),
   sondaje: optionalText(200),
-  oclusion: z.enum(OCCLUSION_STATES).nullable().default(null),
+  relacionMolar: z.enum(OCLUSAL_RELATION_STATES).nullable().default(null),
+  relacionCanina: z.enum(OCLUSAL_RELATION_STATES).nullable().default(null),
   higiene: z.enum(ORAL_HYGIENE_LEVELS).nullable().default(null),
   hallazgos: optionalText(1000),
   observaciones: optionalText(1000),
@@ -275,36 +276,68 @@ export const complementaryExamSectionSchema = z.object({
   observaciones: optionalText(1000),
 });
 
-export const diagnosisSectionSchema = z.object({
-  principal: z
+/**
+ * Un **ítem de diagnóstico** (v1.2): el diagnóstico ya no es un párrafo principal
+ * con secundarios sueltos, sino una lista de hallazgos. Cada ítem tiene su
+ * descripción obligatoria y unas piezas **opcionales** (texto libre, porque un
+ * mismo hallazgo puede afectar a varias: «16, 26»). El `id` es lo que lo ata a su
+ * procedimiento del plan de tratamiento.
+ *
+ * Aquí la descripción sí exige 3 caracteres: es la forma que valida el servidor al
+ * **guardar**; mientras se escribe, la interfaz mantiene el borrador y pospone el
+ * autoguardado hasta que el ítem es válido.
+ */
+export const diagnosisItemSchema = z.object({
+  id: z.uuid(),
+  descripcion: z
     .string()
     .overwrite(cleanText)
-    .pipe(z.string().min(3, 'Escribe el diagnóstico principal').max(500)),
-  secundarios: optionalText(1000),
-  porPieza: optionalText(1000),
+    .pipe(z.string().min(3, 'Describe el diagnóstico').max(500)),
+  piezas: optionalText(60),
+});
+
+export type DiagnosisItem = z.infer<typeof diagnosisItemSchema>;
+
+export const diagnosisSectionSchema = z.object({
+  items: z.array(diagnosisItemSchema).max(40).default([]),
   saludBucalGeneral: z.enum(ORAL_HEALTH_STATES).nullable().default(null),
   observaciones: optionalText(1000),
 });
 
+export type DiagnosisSection = z.infer<typeof diagnosisSectionSchema>;
+
+/**
+ * Un procedimiento del plan de tratamiento.
+ *
+ * `diagnosticoId` lo une a su ítem de diagnóstico (los ítems **libres** van con
+ * `null`). En los enlazados la pieza la manda el diagnóstico —se copia siempre
+ * desde `diagnosisItem.piezas`—; el campo se conserva en el plan porque es lo que
+ * se imprime junto al procedimiento.
+ *
+ * La descripción admite vacío **en borrador** (`default('')`): un ítem recién
+ * abierto desde un diagnóstico nace por completar y el autoguardado no puede dar
+ * 400. La firma exige que todos los procedimientos tengan texto
+ * (`clinicalSectionIsComplete`).
+ */
+export const treatmentPlanProcedureSchema = z.object({
+  diagnosticoId: z.uuid().nullable().default(null),
+  descripcion: z.string().overwrite(cleanText).pipe(z.string().max(200)).default(''),
+  prioridad: z.enum(TREATMENT_PRIORITIES).default('media'),
+  pieza: optionalText(60),
+  presupuesto: z.coerce.number().min(0).max(1_000_000).nullable().default(null),
+});
+
+export type TreatmentPlanProcedure = z.infer<typeof treatmentPlanProcedureSchema>;
+
 export const treatmentPlanSectionSchema = z.object({
-  procedimientos: z
-    .array(
-      z.object({
-        descripcion: z
-          .string()
-          .overwrite(cleanText)
-          .pipe(z.string().min(3, 'Describe el procedimiento').max(200)),
-        prioridad: z.enum(TREATMENT_PRIORITIES).default('media'),
-        pieza: optionalText(12),
-        presupuesto: z.coerce.number().min(0).max(1_000_000).nullable().default(null),
-      }),
-    )
-    .max(40)
-    .default([]),
+  /** 40 vinculados (máximo de diagnósticos) + 40 libres: el tope no corta el vínculo. */
+  procedimientos: z.array(treatmentPlanProcedureSchema).max(80).default([]),
   alternativas: optionalText(1000),
   aceptacionPaciente: z.boolean().nullable().default(null),
   observaciones: optionalText(1000),
 });
+
+export type TreatmentPlanSection = z.infer<typeof treatmentPlanSectionSchema>;
 
 export const consentSectionSchema = z.object({
   riesgosInformados: optionalText(1500),
@@ -312,9 +345,13 @@ export const consentSectionSchema = z.object({
   observaciones: optionalText(1000),
 });
 
+/**
+ * Evolución clínica (v1.2): el **resumen automático** de las sesiones cerradas se
+ * proyecta al leer la historia (`evolutionSessions`) y no se guarda aquí; esta
+ * sección solo guarda el **cuadro manual** que el doctor escribe al final.
+ */
 export const evolutionSectionSchema = z.object({
-  resumen: optionalText(2000),
-  observaciones: optionalText(1000),
+  observaciones: optionalText(2000),
 });
 
 /** Esquema de contenido de cada sección, por clave. */
@@ -485,6 +522,25 @@ export const clinicalPatientSnapshotSchema = z.object({
 
 export type ClinicalPatientSnapshot = z.infer<typeof clinicalPatientSnapshotSchema>;
 
+/**
+ * Una sesión clínica **cerrada**, resumida para la evolución de la historia (v1.2).
+ *
+ * No se guarda en `medical_record_sections`: se **proyecta** al leer el detalle de
+ * la historia para que las consultas posteriores a la firma también aparezcan en
+ * la evolución (ADR 0034: lo firmado es inmutable, la evolución sigue viva).
+ */
+export const clinicalEvolutionSessionSummarySchema = z.object({
+  id: z.uuid(),
+  sessionNumber: z.number().int().positive(),
+  /** ISO de la sesión: `closedAt`, que es cuando quedó documentada. */
+  fecha: z.string(),
+  diagnostico: z.string().nullable(),
+  tratamientos: z.array(z.string()),
+  observaciones: z.string().nullable(),
+});
+
+export type ClinicalEvolutionSessionSummary = z.infer<typeof clinicalEvolutionSessionSummarySchema>;
+
 export const clinicalRecordSummarySchema = z.object({
   id: z.uuid(),
   patientId: z.uuid(),
@@ -508,6 +564,12 @@ export const clinicalRecordDetailSchema = clinicalRecordSummarySchema.extend({
   sections: z.partialRecord(clinicalSectionKeySchema, z.record(z.string(), z.unknown())),
   amendments: z.array(clinicalAmendmentSchema),
   consent: clinicalConsentSchema.nullable(),
+  /**
+   * Evolución automática (v1.2): las sesiones cerradas, en orden cronológico, con
+   * diagnóstico, tratamientos y observaciones. Es una proyección de
+   * `clinical_sessions`, no parte de las secciones guardadas.
+   */
+  evolutionSessions: z.array(clinicalEvolutionSessionSummarySchema).default([]),
 });
 
 export type ClinicalRecordDetail = z.infer<typeof clinicalRecordDetailSchema>;
@@ -550,8 +612,40 @@ const hasText = (value: unknown): boolean => typeof value === 'string' && value.
 
 type SectionContent = Record<string, unknown>;
 
+/**
+ * ¿El campo de un examen regional tiene un hallazgo? `no_evaluado` (no se miró) y
+ * `sin_dato` (no hay dato que registrar) **no** son hallazgos: elegir la opción del
+ * selector no da la sección por completa.
+ */
 const isEvaluated = (value: unknown): boolean =>
-  typeof value === 'string' && value !== 'no_evaluado';
+  typeof value === 'string' && value !== 'no_evaluado' && value !== 'sin_dato';
+
+/** ¿El texto tiene la sustancia mínima que exigen los esquemas de diagnóstico y plan? */
+const hasMinimumText = (value: unknown): boolean =>
+  typeof value === 'string' && value.trim().length >= 3;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const diagnosisItemsOf = (
+  content: Record<string, unknown> | undefined,
+): Record<string, unknown>[] => {
+  const items = content?.['items'];
+  return Array.isArray(items) ? items.filter(isRecord) : [];
+};
+
+const planProceduresOf = (
+  content: Record<string, unknown> | undefined,
+): Record<string, unknown>[] => {
+  const procedimientos = content?.['procedimientos'];
+  return Array.isArray(procedimientos) ? procedimientos.filter(isRecord) : [];
+};
+
+const diagnosisItemIsComplete = (item: Record<string, unknown>): boolean =>
+  hasMinimumText(item['descripcion']);
+
+const planProcedureIsComplete = (procedure: Record<string, unknown>): boolean =>
+  hasMinimumText(procedure['descripcion']);
 
 /**
  * ¿La sección tiene contenido suficiente? Es la misma regla que aplica el
@@ -594,7 +688,8 @@ export const clinicalSectionIsComplete = (
     case 'examen_intraoral':
       return (
         ['tejidosBlandos', 'encias'].some((field) => isEvaluated(content[field])) ||
-        isEvaluated(content['oclusion']) ||
+        isEvaluated(content['relacionMolar']) ||
+        isEvaluated(content['relacionCanina']) ||
         isEvaluated(content['higiene']) ||
         hasText(content['sondaje']) ||
         hasText(content['hallazgos']) ||
@@ -603,25 +698,146 @@ export const clinicalSectionIsComplete = (
     case 'examenes_complementarios':
       return selectionHasContent(content['estudios']) || hasText(content['observaciones']);
     case 'diagnostico':
-      return hasText(content['principal']);
+      // Un diagnóstico es una lista de hallazgos: sin ítems (o con alguno sin
+      // describir) la sección no está lista para firmar.
+      return (
+        Array.isArray(content['items']) &&
+        content['items'].length > 0 &&
+        content['items'].every((item) => isRecord(item) && diagnosisItemIsComplete(item))
+      );
     case 'plan_tratamiento': {
+      // Los procedimientos vinculados nacen vacíos a propósito (se completan aquí),
+      // así que la sección no está completa hasta que **todos** tengan descripción.
       const procedimientos = content['procedimientos'];
-      return Array.isArray(procedimientos) && procedimientos.length > 0;
+      return (
+        Array.isArray(procedimientos) &&
+        procedimientos.length > 0 &&
+        procedimientos.every(
+          (procedure) => isRecord(procedure) && planProcedureIsComplete(procedure),
+        )
+      );
     }
     case 'consentimiento':
       return hasText(content['riesgosInformados']) || hasText(content['alternativasInformadas']);
     case 'evolucion':
-      return hasText(content['resumen']) || hasText(content['observaciones']);
+      // Solo el cuadro manual: el resumen de sesiones se proyecta al leer.
+      return hasText(content['observaciones']);
     default:
       return false;
   }
 };
 
+const isTreatmentPriority = (value: unknown): value is (typeof TREATMENT_PRIORITIES)[number] =>
+  typeof value === 'string' && (TREATMENT_PRIORITIES as readonly string[]).includes(value);
+
+const procedureDescriptionOf = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+const procedureBudgetOf = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const procedurePieceOf = (value: unknown): string | null =>
+  typeof value === 'string' && value.trim() !== '' ? value : null;
+
+/**
+ * Sincroniza el **plan de tratamiento** con los ítems del diagnóstico (v1.2).
+ *
+ * Es una función **pura** y la usan los dos lados para que la pantalla y el
+ * servidor no se separen nunca:
+ *  - Los diagnósticos son la fuente de verdad de la lista: cada ítem abre (y
+ *    conserva) **un** procedimiento enlazado, en el mismo orden.
+ *  - Del procedimiento enlazado se respeta lo que el doctor ya escribió
+ *    (`descripcion`, `prioridad`, `presupuesto`); la **pieza** siempre se copia
+ *    del diagnóstico, que es quien la manda.
+ *  - Los ítems nuevos nacen **por completar**: descripción vacía, prioridad media.
+ *  - Los enlaces huérfanos (diagnóstico borrado) se eliminan; los procedimientos
+ *    libres (`diagnosticoId: null`) se preservan intactos al final de la lista.
+ *
+ * Acepta borradores sin validar (`Record<string, unknown>`) porque la interfaz la
+ * aplica mientras el médico escribe; el servidor valida después el resultado con
+ * `treatmentPlanSectionSchema`.
+ */
+export const syncPlanWithDiagnosis = (
+  diagnosis: Record<string, unknown> | undefined,
+  plan: Record<string, unknown> | undefined,
+): Record<string, unknown> => {
+  const items = diagnosisItemsOf(diagnosis);
+  const previousProcedures = planProceduresOf(plan);
+
+  const previousLinked = new Map<string, Record<string, unknown>>();
+  const previousFree: Record<string, unknown>[] = [];
+  for (const procedure of previousProcedures) {
+    const diagnosticoId = procedure['diagnosticoId'];
+    if (typeof diagnosticoId === 'string' && diagnosticoId !== '') {
+      // Dos filas con el mismo enlace no deberían existir; se conserva la primera.
+      if (!previousLinked.has(diagnosticoId)) previousLinked.set(diagnosticoId, procedure);
+    } else {
+      previousFree.push(procedure);
+    }
+  }
+
+  const linkedProcedures: Record<string, unknown>[] = [];
+  for (const item of items) {
+    const id = item['id'];
+    if (typeof id !== 'string' || id === '') continue;
+    const previous = previousLinked.get(id);
+    linkedProcedures.push({
+      diagnosticoId: id,
+      descripcion: procedureDescriptionOf(previous?.['descripcion']),
+      prioridad: isTreatmentPriority(previous?.['prioridad']) ? previous['prioridad'] : 'media',
+      // La pieza la manda el diagnóstico: el plan no la edita por su cuenta.
+      pieza: procedurePieceOf(item['piezas']),
+      presupuesto: procedureBudgetOf(previous?.['presupuesto']),
+    });
+  }
+
+  const freeProcedures = previousFree.map((procedure) => ({
+    diagnosticoId: null,
+    descripcion: procedureDescriptionOf(procedure['descripcion']),
+    prioridad: isTreatmentPriority(procedure['prioridad']) ? procedure['prioridad'] : 'media',
+    pieza: procedurePieceOf(procedure['pieza']),
+    presupuesto: procedureBudgetOf(procedure['presupuesto']),
+  }));
+
+  return { ...(plan ?? {}), procedimientos: [...linkedProcedures, ...freeProcedures] };
+};
+
+/**
+ * ¿Cada ítem de diagnóstico tiene su procedimiento del plan **con texto**?
+ *
+ * La sincronización los crea, pero el servidor no se fía: una petición fuera de
+ * orden o un borrador antiguo podrían dejar un diagnóstico sin tratamiento.
+ */
+const planCoversDiagnosis = (
+  sections: Partial<Record<ClinicalSectionKey, SectionContent | undefined>>,
+): boolean => {
+  const diagnosis = sections['diagnostico'];
+  if (diagnosis === undefined || diagnosis === null) return true;
+  const procedures = planProceduresOf(sections['plan_tratamiento']);
+  return diagnosisItemsOf(diagnosis).every((item) => {
+    // Un ítem todavía incompleto lo reporta la propia sección `diagnostico`.
+    if (!diagnosisItemIsComplete(item)) return true;
+    const id = item['id'];
+    if (typeof id !== 'string' || id === '') return false;
+    return procedures.some(
+      (procedure) => procedure['diagnosticoId'] === id && planProcedureIsComplete(procedure),
+    );
+  });
+};
+
 /** Secciones obligatorias que todavía no están completas. */
 export const missingSignatureSections = (
   sections: Partial<Record<ClinicalSectionKey, SectionContent | undefined>>,
-): ClinicalSectionKey[] =>
-  CLINICAL_SIGNATURE_SECTIONS.filter((key) => !clinicalSectionIsComplete(key, sections[key]));
+): ClinicalSectionKey[] => {
+  const missing: ClinicalSectionKey[] = CLINICAL_SIGNATURE_SECTIONS.filter(
+    (key) => !clinicalSectionIsComplete(key, sections[key]),
+  );
+  // El plan puede estar «completo» con sus ítems libres y, aun así, un diagnóstico
+  // enlazado seguir sin tratamiento: eso también bloquea la firma.
+  if (!missing.includes('plan_tratamiento') && !planCoversDiagnosis(sections)) {
+    missing.push('plan_tratamiento');
+  }
+  return missing;
+};
 
 /** Secciones con contenido (para el resumen de la historia). */
 export const completedClinicalSections = (

@@ -2567,19 +2567,22 @@ const DICCIONARIO = {
   'clinica.seccion.examen_extraoral': 'Examen extraoral',
   'clinica.seccion.examen_extraoral.ayuda': 'Tejidos blandos, ganglios, ATM y musculatura.',
   'clinica.seccion.examen_intraoral': 'Examen intraoral',
-  'clinica.seccion.examen_intraoral.ayuda': 'Tejidos blandos, encías, oclusión e higiene.',
+  'clinica.seccion.examen_intraoral.ayuda':
+    'Tejidos blandos, encías, relación molar/canina e higiene.',
   'clinica.seccion.examenes_complementarios': 'Exámenes complementarios',
   'clinica.seccion.examenes_complementarios.ayuda':
     'Radiografías, modelos, fotografías y análisis de laboratorio.',
   'clinica.seccion.diagnostico': 'Diagnóstico',
-  'clinica.seccion.diagnostico.ayuda': 'Diagnóstico presuntivo y definitivo, general y por pieza.',
+  'clinica.seccion.diagnostico.ayuda':
+    'Hallazgos del diagnóstico; cada uno abre su tratamiento en el plan.',
   'clinica.seccion.plan_tratamiento': 'Plan de tratamiento',
   'clinica.seccion.plan_tratamiento.ayuda':
     'Procedimientos por prioridad clínica, alternativas y aceptación del paciente.',
   'clinica.seccion.consentimiento': 'Consentimiento informado',
   'clinica.seccion.consentimiento.ayuda': 'Riesgos y alternativas que se informaron al paciente.',
   'clinica.seccion.evolucion': 'Evolución clínica',
-  'clinica.seccion.evolucion.ayuda': 'Resumen de la atención de esta visita.',
+  'clinica.seccion.evolucion.ayuda':
+    'Resumen automático de las sesiones cerradas y notas manuales de la evolución.',
 
   'clinica.estado.borrador': 'Borrador',
   'clinica.estado.firmada': 'Firmada',
@@ -2605,18 +2608,17 @@ const DICCIONARIO = {
   'clinica.campo.hallazgos': 'Hallazgos',
   'clinica.campo.encias': 'Encías',
   'clinica.campo.sondaje': 'Profundidad de sondaje',
-  'clinica.campo.oclusion': 'Oclusión dental',
+  'clinica.campo.relacionMolar': 'Relación molar',
+  'clinica.campo.relacionCanina': 'Relación canina',
   'clinica.campo.higiene': 'Higiene oral',
-  'clinica.campo.diagnosticoPrincipal': 'Diagnóstico principal',
-  'clinica.campo.diagnosticosSecundarios': 'Diagnósticos secundarios',
-  'clinica.campo.diagnosticoPorPieza': 'Diagnóstico por pieza',
+  'clinica.campo.diagnosticos': 'Diagnósticos',
   'clinica.campo.saludBucalGeneral': 'Estado de salud bucal general',
   'clinica.campo.procedimientos': 'Procedimientos propuestos',
   'clinica.campo.alternativas': 'Alternativas presentadas',
   'clinica.campo.aceptacionPaciente': 'El paciente aceptó el plan',
   'clinica.campo.riesgosInformados': 'Riesgos informados',
   'clinica.campo.alternativasInformadas': 'Alternativas informadas',
-  'clinica.campo.resumen': 'Resumen de la evolución',
+  'clinica.evolucion.manual': 'Observaciones / evolución manual',
 
   'clinica.catalogo.otros.etiqueta': 'Especifica cuáles',
   'clinica.catalogo.otros.placeholder': 'Escríbelo aquí para que quede en la historia',
@@ -2707,12 +2709,10 @@ const DICCIONARIO = {
   'clinica.opcion.evaluacion.normal': 'Normal',
   'clinica.opcion.evaluacion.alterado': 'Alterado',
   'clinica.opcion.evaluacion.no_evaluado': 'No evaluado',
-  'clinica.opcion.oclusion.normal': 'Normal',
-  'clinica.opcion.oclusion.apinamiento': 'Apiñamiento',
-  'clinica.opcion.oclusion.mordida_abierta': 'Mordida abierta',
-  'clinica.opcion.oclusion.mordida_cruzada': 'Mordida cruzada',
-  'clinica.opcion.oclusion.sobremordida': 'Sobremordida',
-  'clinica.opcion.oclusion.sin_dato': 'Sin dato',
+  'clinica.opcion.relacion.tipo_i': 'Tipo I',
+  'clinica.opcion.relacion.tipo_ii': 'Tipo II',
+  'clinica.opcion.relacion.tipo_iii': 'Tipo III',
+  'clinica.opcion.relacion.sin_dato': 'Sin dato',
   'clinica.opcion.higiene.buena': 'Buena',
   'clinica.opcion.higiene.regular': 'Regular',
   'clinica.opcion.higiene.deficiente': 'Deficiente',
@@ -2752,6 +2752,42 @@ const DICCIONARIO = {
   'clinica.plan.pieza': 'Pieza',
   'clinica.plan.presupuesto': 'Presupuesto',
   'clinica.plan.agregarProcedimiento': 'Agregar procedimiento',
+  'clinica.plan.agregarProcedimientoAdicional': 'Agregar procedimiento adicional',
+  'clinica.plan.diagnosticoVinculado': 'Diagnóstico: {descripcion}',
+  'clinica.plan.diagnosticoPendienteDescripcion': 'Diagnóstico pendiente de describir',
+  'clinica.plan.piezasVinculadas': 'Pieza(s): {piezas}',
+  'clinica.plan.pendientePorCompletar': 'Pendiente por completar',
+  'clinica.plan.tratamientoPlaceholder': 'Indica el tratamiento para este diagnóstico',
+  'clinica.plan.avisoCorto': 'Cada procedimiento necesita al menos 3 caracteres para guardarse.',
+  'clinica.plan.diagnosticoPendiente':
+    'Termina el diagnóstico pendiente (mínimo 3 caracteres) antes de guardar el plan: cada procedimiento se enlaza a su diagnóstico.',
+
+  'clinica.diagnostico.sinItems':
+    'Todavía no hay diagnósticos. Agrega el primero para que su tratamiento aparezca en el plan.',
+  'clinica.diagnostico.descripcion': 'Descripción del diagnóstico',
+  'clinica.diagnostico.descripcionPlaceholder': 'Por ejemplo: caries oclusal',
+  'clinica.diagnostico.piezas': 'Piezas',
+  'clinica.diagnostico.piezasPlaceholder': 'Opcional: 16, 26…',
+  'clinica.diagnostico.agregar': 'Agregar diagnóstico',
+  'clinica.diagnostico.avisoCorto':
+    'Cada diagnóstico necesita al menos 3 caracteres para guardarse.',
+  'clinica.diagnostico.confirmarTitulo': '¿Eliminar diagnóstico y su plan asociado?',
+  'clinica.diagnostico.confirmarTexto':
+    'Este diagnóstico ya tiene un tratamiento cargado en el Plan de tratamiento («{descripcion}»). Si continúas, ese ítem del plan también se eliminará.',
+  'clinica.diagnostico.confirmarAccion': 'Eliminar ambos',
+
+  'clinica.evolucion.resumen.titulo': 'Resumen de sesiones clínicas cerradas',
+  'clinica.evolucion.resumen.ayuda':
+    'Se arma solo con las sesiones cerradas, en orden cronológico. No se edita aquí y se mantiene actualizado aunque la historia ya esté firmada.',
+  'clinica.evolucion.sinSesiones':
+    'Aún no hay sesiones clínicas cerradas. Cuando cierres una, su resumen aparecerá aquí.',
+  'clinica.evolucion.sinDiagnostico': 'Sin diagnóstico registrado',
+  'clinica.evolucion.sinTratamientos': 'Sin procedimientos registrados',
+  'clinica.evolucion.sesionNumero': 'Sesión #{numero}',
+  'clinica.evolucion.fechaSesion': 'Fecha · Sesión',
+  'clinica.evolucion.diagnostico': 'Diagnóstico',
+  'clinica.evolucion.tratamientos': 'Tratamientos',
+  'clinica.evolucion.observaciones': 'Observaciones',
 
   'clinica.form.titulo': 'Historia clínica',
   'clinica.form.paso': 'Paso {actual} de {total}',
@@ -2875,7 +2911,8 @@ const DICCIONARIO = {
   'clinica.sesion.sinDato': 'Sin dato',
   'clinica.sesion.campo.tejidosBlandos': 'Tejidos blandos',
   'clinica.sesion.campo.encias': 'Encías',
-  'clinica.sesion.campo.oclusion': 'Oclusión',
+  'clinica.sesion.campo.relacionMolar': 'Relación molar',
+  'clinica.sesion.campo.relacionCanina': 'Relación canina',
   'clinica.sesion.campo.higiene': 'Higiene oral',
   'clinica.sesion.campo.sondaje': 'Sondaje periodontal',
   'clinica.sesion.campo.sondajePlaceholder': '16: 3 mm, 26: 5 mm',
@@ -2908,6 +2945,7 @@ const DICCIONARIO = {
   'clinica.sesion.campo.anamnesis': 'Anamnesis breve y cambios relevantes',
   'clinica.sesion.campo.diagnostico': 'Diagnóstico de la sesión',
   'clinica.sesion.campo.indicaciones': 'Indicaciones postoperatorias',
+  'clinica.sesion.campo.observaciones': 'Observaciones de la sesión',
   'clinica.sesion.campo.proximaCitaFecha': 'Próxima cita sugerida',
   'clinica.sesion.campo.proximaCitaNota': 'Para qué la próxima cita',
   'clinica.sesion.campo.notasInternas': 'Notas internas (no se imprimen)',
@@ -3267,6 +3305,16 @@ const DICCIONARIO = {
     'Maxilar · vestibular arriba · palatino abajo · mesial hacia la línea media',
   'odonto.arcada.inferior.orientacion':
     'Mandíbula · lingual arriba · vestibular abajo · mesial hacia la línea media',
+  /**
+   * Rótulos **exclusivos del imprimible** (v1.2.1 §3.2): en el papel solo se nombra la
+   * arcada, sin la orientación de caras —esa ayuda se queda en la pantalla interactiva,
+   * que sigue usando las claves `*.orientacion` de arriba—. Cuando lo dibujado es
+   * dentición temporal se conservan los números FDI de la arcada de leche.
+   */
+  'odonto.imprimir.arcada.superior': 'Maxilar',
+  'odonto.imprimir.arcada.inferior': 'Mandibular',
+  'odonto.imprimir.arcada.superior.temporal': 'Maxilar · temporal (55–65)',
+  'odonto.imprimir.arcada.inferior.temporal': 'Mandibular · temporal (85–75)',
 
   // Texto accesible de una pieza: «Pieza 16, caries oclusal pendiente».
   'odonto.pieza.sana': 'Pieza {pieza} sana',

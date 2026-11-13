@@ -1,10 +1,15 @@
-import type { ClinicalRecordDetail, ClinicalSectionKey } from '@odontocrm/contracts';
+import type {
+  ClinicalEvolutionSessionSummary,
+  ClinicalRecordDetail,
+  ClinicalSectionKey,
+} from '@odontocrm/contracts';
 import { Badge } from '@odontocrm/ui';
 
 import { formatDate } from '../../lib/format';
 import {
   CLINICAL_SECTION_FIELDS,
   CLINICAL_SECTION_ORDER,
+  asDiagnosisItems,
   clinicalAlertLabel,
   clinicalCatalogItemLabel,
   clinicalCatalogTitle,
@@ -14,6 +19,7 @@ import {
   clinicalSectionLabel,
   clinicalStatusLabel,
   type ClinicalFieldSpec,
+  type DiagnosisItemDraft,
 } from '../../lib/clinical';
 import { t } from '../../lib/i18n';
 import { MarcaDeAgua } from '../print/MarcaDeAgua';
@@ -21,7 +27,15 @@ import { MembreteDocumento } from '../print/MembreteDocumento';
 
 const asText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
-const formatFieldValue = (field: ClinicalFieldSpec, value: unknown): string => {
+/** Texto «Pieza(s): …» de un ítem de diagnóstico, o `null` si no tiene piezas. */
+const piezasLabel = (piezas: string | null): string | null =>
+  piezas === null || piezas.trim() === '' ? null : `${t('clinica.diagnostico.piezas')}: ${piezas}`;
+
+const formatFieldValue = (
+  field: ClinicalFieldSpec,
+  value: unknown,
+  diagnosisItems: readonly DiagnosisItemDraft[] = [],
+): string => {
   switch (field.kind) {
     case 'checkbox':
       return value === true ? t('comun.si') : t('comun.no');
@@ -45,19 +59,40 @@ const formatFieldValue = (field: ClinicalFieldSpec, value: unknown): string => {
       if (otros !== '') parts.push(`${clinicalCatalogItemLabel(field.group, 'otros')}: ${otros}`);
       return parts.length === 0 ? t('comun.sinDato') : parts.join(', ');
     }
-    case 'procedures': {
-      if (!Array.isArray(value) || value.length === 0) return t('comun.sinDato');
-      return value
+    case 'diagnosis_items': {
+      const items = asDiagnosisItems(value).filter((item) => item.descripcion.trim() !== '');
+      if (items.length === 0) return t('comun.sinDato');
+      return items
         .map((item) => {
-          const row = (typeof item === 'object' && item !== null ? item : {}) as Record<
-            string,
-            unknown
-          >;
+          const piezas = piezasLabel(item.piezas);
+          return piezas === null ? item.descripcion : `${item.descripcion} (${piezas})`;
+        })
+        .join('; ');
+    }
+    case 'procedures': {
+      // Un procedimiento nacido de un diagnóstico está «por completar» hasta que
+      // tiene descripción: no se imprime como si fuera un tratamiento.
+      const procedimientos = (Array.isArray(value) ? value : []).filter(
+        (item) => typeof item === 'object' && item !== null && asText(item['descripcion']) !== '',
+      );
+      if (procedimientos.length === 0) return t('comun.sinDato');
+      return procedimientos
+        .map((item) => {
+          const row = item as Record<string, unknown>;
           const descripcion = asText(row['descripcion']);
           const prioridad = asText(row['prioridad']);
-          const pieza = asText(row['pieza']);
           const presupuesto = typeof row['presupuesto'] === 'number' ? row['presupuesto'] : null;
+          const diagnosticoId = asText(row['diagnosticoId']);
+          const diagnostico =
+            diagnosticoId === ''
+              ? undefined
+              : diagnosisItems.find((diagnosticoItem) => diagnosticoItem.id === diagnosticoId);
+          // La pieza la manda el diagnóstico; el plan solo la conserva impresa.
+          const pieza = asText(row['pieza']) || (diagnostico?.piezas ?? '');
           const detalles = [
+            diagnostico === undefined
+              ? null
+              : t('clinica.plan.diagnosticoVinculado', { descripcion: diagnostico.descripcion }),
             prioridad === '' ? null : clinicalPriorityLabel(prioridad),
             pieza === '' ? null : `${t('clinica.plan.pieza')} ${pieza}`,
             presupuesto === null ? null : `${presupuesto}`,
@@ -76,9 +111,10 @@ const formatFieldValue = (field: ClinicalFieldSpec, value: unknown): string => {
 const hasAnyValue = (
   fields: readonly ClinicalFieldSpec[],
   content: Record<string, unknown>,
+  diagnosisItems: readonly DiagnosisItemDraft[] = [],
 ): boolean =>
   fields.some((field) => {
-    const formatted = formatFieldValue(field, content[field.name]);
+    const formatted = formatFieldValue(field, content[field.name], diagnosisItems);
     return formatted !== t('comun.sinDato') && formatted !== t('comun.no');
   });
 
@@ -96,15 +132,101 @@ const TITULO = { color: 'var(--brand-primary)' } as const;
 const LINEA = { borderColor: 'var(--brand-line)' } as const;
 const LINEA_SUAVE = { borderColor: 'var(--brand-line-soft)' } as const;
 
+/** Lista de hallazgos del diagnóstico impresa (descripción + piezas). */
+const DiagnosisItemsDocumentList = ({ value }: { value: unknown }) => {
+  const items = asDiagnosisItems(value).filter((item) => item.descripcion.trim() !== '');
+  if (items.length === 0) return <>{t('comun.sinDato')}</>;
+  return (
+    <ol className="list-inside list-decimal space-y-1">
+      {items.map((item) => {
+        const piezas = piezasLabel(item.piezas);
+        return (
+          <li key={item.id === '' ? item.descripcion : item.id}>
+            <span>{item.descripcion}</span>
+            {piezas !== null && <span style={TINTA_MUTED}> · {piezas}</span>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+};
+
+/**
+ * Tabla cronológica de las sesiones cerradas (cambio 4). Se imprime incluso si
+ * la historia ya está firmada: el resumen de sesiones es una proyección viva y
+ * no forma parte del contenido firmado (ADR 0034).
+ */ const EvolutionSessionsTable = ({
+  sessions,
+}: {
+  sessions: readonly ClinicalEvolutionSessionSummary[];
+}) => (
+  <table className="mt-2 w-full border-collapse text-sm">
+    <thead>
+      <tr className="border-b text-left" style={LINEA_SUAVE}>
+        <th className="py-1 pr-2 font-semibold" style={TINTA_MUTED}>
+          {t('clinica.evolucion.fechaSesion')}
+        </th>
+        <th className="py-1 pr-2 font-semibold" style={TINTA_MUTED}>
+          {t('clinica.evolucion.diagnostico')}
+        </th>
+        <th className="py-1 pr-2 font-semibold" style={TINTA_MUTED}>
+          {t('clinica.evolucion.tratamientos')}
+        </th>
+        <th className="py-1 font-semibold" style={TINTA_MUTED}>
+          {t('clinica.evolucion.observaciones')}
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {sessions.map((session) => (
+        <tr key={session.id} className="border-b align-top" style={LINEA_SUAVE}>
+          <td className="py-1 pr-2 whitespace-nowrap">
+            {formatDate(session.fecha)}
+            <br />
+            <span style={TINTA_MUTED}>
+              {t('clinica.evolucion.sesionNumero', { numero: session.sessionNumber })}
+            </span>
+          </td>
+          <td className="py-1 pr-2 whitespace-pre-wrap">
+            {session.diagnostico ?? t('comun.sinDato')}
+          </td>
+          <td className="py-1 pr-2">
+            {session.tratamientos.length === 0 ? (
+              t('comun.sinDato')
+            ) : (
+              <ul className="list-inside list-disc">
+                {session.tratamientos.map((tratamiento, index) => (
+                  <li key={`${session.id}-${index}`}>{tratamiento}</li>
+                ))}
+              </ul>
+            )}
+          </td>
+          <td className="py-1 whitespace-pre-wrap">
+            {session.observaciones ?? t('comun.sinDato')}
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+);
+
 /**
  * Historia clínica en formato de documento (A4): la misma vista sirve para la
  * impresión que para leer el historial en pantalla. No lleva controles: los
  * pone quien la use.
  */
 export const MedicalRecordDocument = ({ record }: { record: ClinicalRecordDetail }) => {
+  const evolutionSessions = record.evolutionSessions ?? [];
+  const diagnosisItems = asDiagnosisItems(record.sections['diagnostico']?.['items']);
+
   const sections = CLINICAL_SECTION_ORDER.filter((key) => {
+    // La evolución se imprime siempre que haya sesiones cerradas, aunque el
+    // cuadro manual esté vacío.
+    if (key === 'evolucion' && evolutionSessions.length > 0) return true;
     const content = record.sections[key];
-    return content !== undefined && hasAnyValue(CLINICAL_SECTION_FIELDS[key], content);
+    return (
+      content !== undefined && hasAnyValue(CLINICAL_SECTION_FIELDS[key], content, diagnosisItems)
+    );
   });
 
   return (
@@ -169,31 +291,73 @@ export const MedicalRecordDocument = ({ record }: { record: ClinicalRecordDetail
         )}
 
         <div className="mt-6 space-y-6">
-          {sections.map((key: ClinicalSectionKey) => (
-            <section key={key} className="break-inside-avoid">
-              <h2
-                className="border-b pb-1 text-base font-semibold"
-                style={{ ...TITULO, ...LINEA_SUAVE }}
-              >
-                {clinicalSectionLabel(key)}
-              </h2>
-              <dl className="mt-2 space-y-1 text-sm">
-                {CLINICAL_SECTION_FIELDS[key].map((field) => {
-                  const value = formatFieldValue(field, record.sections[key]?.[field.name]);
-                  return (
-                    <div key={field.name} className="grid grid-cols-[minmax(8rem,14rem)_1fr] gap-2">
-                      <dt style={TINTA_MUTED}>{clinicalFieldLabel(field.labelKey)}</dt>
-                      <dd className="whitespace-pre-wrap">
-                        {field.kind === 'catalog' && value !== t('comun.sinDato')
-                          ? `${clinicalCatalogTitle(field.group)}: ${value}`
-                          : value}
-                      </dd>
-                    </div>
-                  );
-                })}
-              </dl>
-            </section>
-          ))}
+          {sections.map((key: ClinicalSectionKey) => {
+            // En la evolución el cuadro manual solo se imprime si se llenó; la
+            // sección puede estar visible solo por las sesiones cerradas.
+            const campos = CLINICAL_SECTION_FIELDS[key].filter(
+              (field) =>
+                key !== 'evolucion' ||
+                formatFieldValue(field, record.sections[key]?.[field.name], diagnosisItems) !==
+                  t('comun.sinDato'),
+            );
+
+            return (
+              <section key={key} className="break-inside-avoid">
+                <h2
+                  className="border-b pb-1 text-base font-semibold"
+                  style={{ ...TITULO, ...LINEA_SUAVE }}
+                >
+                  {clinicalSectionLabel(key)}
+                </h2>
+
+                {key === 'evolucion' && (
+                  <>
+                    <h3 className="mt-2 text-sm font-semibold">
+                      {t('clinica.evolucion.resumen.titulo')}
+                    </h3>
+                    {evolutionSessions.length === 0 ? (
+                      <p className="mt-1 text-sm" style={TINTA_MUTED}>
+                        {t('clinica.evolucion.sinSesiones')}
+                      </p>
+                    ) : (
+                      <EvolutionSessionsTable sessions={evolutionSessions} />
+                    )}
+                  </>
+                )}
+
+                {campos.length > 0 && (
+                  <dl className="mt-2 space-y-1 text-sm">
+                    {campos.map((field) => {
+                      const value = formatFieldValue(
+                        field,
+                        record.sections[key]?.[field.name],
+                        diagnosisItems,
+                      );
+                      return (
+                        <div
+                          key={field.name}
+                          className="grid grid-cols-[minmax(8rem,14rem)_1fr] gap-2"
+                        >
+                          <dt style={TINTA_MUTED}>{clinicalFieldLabel(field.labelKey)}</dt>
+                          <dd className="whitespace-pre-wrap">
+                            {field.kind === 'diagnosis_items' ? (
+                              <DiagnosisItemsDocumentList
+                                value={record.sections[key]?.[field.name]}
+                              />
+                            ) : field.kind === 'catalog' && value !== t('comun.sinDato') ? (
+                              `${clinicalCatalogTitle(field.group)}: ${value}`
+                            ) : (
+                              value
+                            )}
+                          </dd>
+                        </div>
+                      );
+                    })}
+                  </dl>
+                )}
+              </section>
+            );
+          })}
         </div>
 
         {record.consent && (

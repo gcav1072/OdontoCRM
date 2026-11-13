@@ -181,7 +181,11 @@ const Arch = ({
    * dientes salían más grandes y se desalineaban con la de arriba.
    */
   width: number;
-  /** Qué arcada es y hacia dónde mira cada cara: sin esto el papel se malinterpreta. */
+  /**
+   * Qué arcada es. En el papel **no** se describe la orientación de las caras: eso es
+   * una ayuda de la pantalla interactiva (v1.2.1 §3.2). En dentición temporal el rótulo
+   * conserva además los números FDI de la arcada de leche.
+   */
   caption: string;
   /** Corona de fondo en cada pieza. */
   showPieces: boolean;
@@ -359,6 +363,14 @@ export const OdontogramStaticChart = ({
   const layout = archLayout(dentition ?? boca.dentition);
   const prostheses = boca.prostheses ?? [];
 
+  /**
+   * Rótulos de impresión (v1.2.1 §3.2): el papel solo dice la arcada, sin orientación de
+   * caras. La arcada **principal** solo es la temporal cuando la dentición es
+   * `temporal`; en `mixta` la principal es la permanente y las bandas primarias son las
+   * de leche, que siempre llevan su FDI.
+   */
+  const esTemporal = layout.dentition === 'temporal';
+
   return (
     <div className="mx-auto max-w-[20cm] space-y-4">
       <Arch
@@ -369,7 +381,11 @@ export const OdontogramStaticChart = ({
         prostheses={prostheses}
         size={toothSize}
         width={layout.width}
-        caption={t('odonto.arcada.superior.orientacion')}
+        caption={
+          esTemporal
+            ? t('odonto.imprimir.arcada.superior.temporal')
+            : t('odonto.imprimir.arcada.superior')
+        }
         showPieces={showPieces}
       />
       <Arch
@@ -380,7 +396,11 @@ export const OdontogramStaticChart = ({
         prostheses={prostheses}
         size={toothSize}
         width={layout.width}
-        caption={t('odonto.arcada.inferior.orientacion')}
+        caption={
+          esTemporal
+            ? t('odonto.imprimir.arcada.inferior.temporal')
+            : t('odonto.imprimir.arcada.inferior')
+        }
         showPieces={showPieces}
       />
       {/* Dentición mixta (ADR 0051): las piezas de leche, en su banda y en la ranura
@@ -396,7 +416,7 @@ export const OdontogramStaticChart = ({
           prostheses={[]}
           size={toothSize}
           width={layout.width}
-          caption={`${t('odonto.arcada.superior.temporal')} · ${t('odonto.arcada.superior.orientacion')}`}
+          caption={t('odonto.imprimir.arcada.superior.temporal')}
           showPieces={showPieces}
         />
       )}
@@ -409,7 +429,7 @@ export const OdontogramStaticChart = ({
           prostheses={[]}
           size={toothSize}
           width={layout.width}
-          caption={`${t('odonto.arcada.inferior.temporal')} · ${t('odonto.arcada.inferior.orientacion')}`}
+          caption={t('odonto.imprimir.arcada.inferior.temporal')}
           showPieces={showPieces}
         />
       )}

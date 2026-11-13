@@ -1,14 +1,18 @@
-import { Button, Checkbox, Field, Input, Select, Textarea, cn } from '@odontocrm/ui';
+import { Badge, Button, Checkbox, Dialog, Field, Input, Select, Textarea, cn } from '@odontocrm/ui';
 import { Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 
 import {
   CLINICAL_PRIORITIES,
+  asDiagnosisItems,
   clinicalCatalogItemLabel,
   clinicalCatalogTitle,
   clinicalFieldLabel,
   clinicalOptionLabel,
   clinicalPriorityLabel,
+  newDiagnosisItem,
   type ClinicalFieldSpec,
+  type DiagnosisItemDraft,
 } from '../../lib/clinical';
 import { t } from '../../lib/i18n';
 
@@ -18,7 +22,12 @@ export interface CatalogValue {
   otros: string | null;
 }
 
+/**
+ * Un procedimiento del plan tal como vive en el borrador (v1.2): `diagnosticoId`
+ * lo une a su hallazgo del diagnóstico; los ítems libres van con `null`.
+ */
 export interface ProcedureValue {
+  diagnosticoId: string | null;
   descripcion: string;
   prioridad: string;
   pieza: string | null;
@@ -41,14 +50,17 @@ const asCatalog = (value: unknown): CatalogValue => {
   };
 };
 
-const asProcedures = (value: unknown): ProcedureValue[] =>
+/** Lee los procedimientos del plan de un contenido sin validar. */
+export const asProcedures = (value: unknown): ProcedureValue[] =>
   Array.isArray(value)
     ? value.map((item) => {
         const row = (typeof item === 'object' && item !== null ? item : {}) as Record<
           string,
           unknown
         >;
+        const diagnosticoId = asText(row['diagnosticoId']);
         return {
+          diagnosticoId: diagnosticoId === '' ? null : diagnosticoId,
           descripcion: asText(row['descripcion']),
           prioridad: asText(row['prioridad']) || 'media',
           pieza: asText(row['pieza']) || null,
@@ -129,70 +141,79 @@ export const CatalogChecklist = ({
   );
 };
 
-const ProcedureList = ({
+/**
+ * Lista de hallazgos del diagnóstico (cambio 3, v1.2).
+ *
+ * Cada fila es un ítem con su UUID; agregarlo abre **en el acto** su
+ * procedimiento en el plan (lo hace la sincronización del formulario). Quitar un
+ * ítem cuyo procedimiento ya tiene tratamiento cargado pide confirmación: se
+ * borran los dos, porque el plan no puede quedar apuntando a un diagnóstico que
+ * ya no existe.
+ */
+const DiagnosisItemList = ({
   value,
+  planProcedures,
   onChange,
   disabled,
 }: {
-  value: ProcedureValue[];
-  onChange: (rows: ProcedureValue[]) => void;
+  value: DiagnosisItemDraft[];
+  planProcedures: readonly ProcedureValue[];
+  onChange: (rows: DiagnosisItemDraft[]) => void;
   disabled: boolean;
 }) => {
-  const update = (index: number, patch: Partial<ProcedureValue>): void => {
+  const [porBorrar, setPorBorrar] = useState<DiagnosisItemDraft | null>(null);
+
+  const procedimientoEnlazado = (id: string): ProcedureValue | undefined =>
+    planProcedures.find((row) => row.diagnosticoId === id);
+
+  const actualizar = (index: number, patch: Partial<DiagnosisItemDraft>): void => {
     onChange(value.map((row, position) => (position === index ? { ...row, ...patch } : row)));
   };
+
+  const pedirBorrado = (item: DiagnosisItemDraft): void => {
+    const enlazado = procedimientoEnlazado(item.id);
+    const conContenido =
+      enlazado !== undefined &&
+      (enlazado.descripcion.trim() !== '' || enlazado.presupuesto !== null);
+    if (conContenido) setPorBorrar(item);
+    else onChange(value.filter((row) => row.id !== item.id));
+  };
+
+  const confirmarBorrado = (): void => {
+    if (porBorrar === null) return;
+    onChange(value.filter((row) => row.id !== porBorrar.id));
+    setPorBorrar(null);
+  };
+
+  const planDescripcion =
+    porBorrar === null ? '' : (procedimientoEnlazado(porBorrar.id)?.descripcion ?? '');
 
   return (
     <div className="space-y-3">
       {value.length === 0 && (
-        <p className="text-sm text-ink-subtle">{t('clinica.plan.sinProcedimientos')}</p>
+        <p className="text-sm text-ink-subtle">{t('clinica.diagnostico.sinItems')}</p>
       )}
-      {value.map((row, index) => (
+      {value.map((item, index) => (
         <div
-          key={index}
-          className="grid grid-cols-1 gap-3 rounded-control border border-border p-3 @2xl:grid-cols-[minmax(0,1fr)_8rem_6rem_8rem_auto]"
+          key={item.id === '' ? `diagnostico-${index}` : item.id}
+          className="grid grid-cols-1 gap-3 rounded-control border border-border p-3 @2xl:grid-cols-[minmax(0,1fr)_12rem_auto]"
         >
-          <Field label={t('clinica.plan.descripcion')}>
+          <Field label={t('clinica.diagnostico.descripcion')} required>
             <Input
-              value={row.descripcion}
+              value={item.descripcion}
               disabled={disabled}
-              maxLength={200}
-              onChange={(event) => update(index, { descripcion: event.target.value })}
+              maxLength={500}
+              placeholder={t('clinica.diagnostico.descripcionPlaceholder')}
+              onChange={(event) => actualizar(index, { descripcion: event.target.value })}
             />
           </Field>
-          <Field label={t('clinica.plan.prioridad')}>
-            <Select
-              value={row.prioridad}
-              disabled={disabled}
-              onChange={(event) => update(index, { prioridad: event.target.value })}
-            >
-              {CLINICAL_PRIORITIES.map((priority) => (
-                <option key={priority} value={priority}>
-                  {clinicalPriorityLabel(priority)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t('clinica.plan.pieza')}>
+          <Field label={t('clinica.diagnostico.piezas')}>
             <Input
-              value={row.pieza ?? ''}
+              value={item.piezas ?? ''}
               disabled={disabled}
-              maxLength={12}
-              onChange={(event) => update(index, { pieza: event.target.value || null })}
-            />
-          </Field>
-          <Field label={t('clinica.plan.presupuesto')}>
-            <Input
-              type="number"
-              min={0}
-              step="0.01"
-              value={row.presupuesto ?? ''}
-              disabled={disabled}
-              onChange={(event) =>
-                update(index, {
-                  presupuesto: event.target.value === '' ? null : Number(event.target.value),
-                })
-              }
+              maxLength={60}
+              placeholder={t('clinica.diagnostico.piezasPlaceholder')}
+              onChange={(event) => actualizar(index, { piezas: event.target.value || null })}
             />
           </Field>
           <div className="flex items-end">
@@ -201,7 +222,7 @@ const ProcedureList = ({
               variant="ghost"
               size="sm"
               disabled={disabled}
-              onClick={() => onChange(value.filter((_, position) => position !== index))}
+              onClick={() => pedirBorrado(item)}
               leadingIcon={<Trash2 className="size-4" aria-hidden />}
             >
               {t('comun.quitar')}
@@ -215,14 +236,224 @@ const ProcedureList = ({
         size="sm"
         disabled={disabled}
         leadingIcon={<Plus className="size-4" aria-hidden />}
+        onClick={() => onChange([...value, newDiagnosisItem()])}
+      >
+        {t('clinica.diagnostico.agregar')}
+      </Button>
+
+      <Dialog
+        open={porBorrar !== null}
+        onClose={() => setPorBorrar(null)}
+        title={t('clinica.diagnostico.confirmarTitulo')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPorBorrar(null)}>
+              {t('comun.cancelar')}
+            </Button>
+            <Button variant="danger" onClick={confirmarBorrado}>
+              {t('clinica.diagnostico.confirmarAccion')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-ink-muted">
+          {t('clinica.diagnostico.confirmarTexto', { descripcion: planDescripcion })}
+        </p>
+      </Dialog>
+    </div>
+  );
+};
+
+/**
+ * Lista de procedimientos del plan distinguiendo los **vinculados** a un
+ * diagnóstico (pieza fijada por el diagnóstico, sin botón de quitar: se gestiona
+ * desde la lista de diagnósticos) de los **libres** (todos los campos
+ * editables).
+ */
+const ProcedureList = ({
+  value,
+  diagnosisItems,
+  onChange,
+  disabled,
+}: {
+  value: ProcedureValue[];
+  diagnosisItems: readonly DiagnosisItemDraft[];
+  onChange: (rows: ProcedureValue[]) => void;
+  disabled: boolean;
+}) => {
+  // El plan siempre va «vinculados en orden del diagnóstico + libres al final»:
+  // así lo deja la sincronización del contrato y así se edita aquí.
+  const ordenados = [
+    ...value.filter((row) => row.diagnosticoId !== null),
+    ...value.filter((row) => row.diagnosticoId === null),
+  ];
+
+  const actualizar = (index: number, patch: Partial<ProcedureValue>): void => {
+    onChange(ordenados.map((row, position) => (position === index ? { ...row, ...patch } : row)));
+  };
+
+  const vinculos = ordenados.filter((row) => row.diagnosticoId !== null);
+  const libres = ordenados.filter((row) => row.diagnosticoId === null);
+
+  return (
+    <div className="space-y-3">
+      {ordenados.length === 0 && (
+        <p className="text-sm text-ink-subtle">{t('clinica.plan.sinProcedimientos')}</p>
+      )}
+
+      {vinculos.map((row, index) => {
+        const item = diagnosisItems.find((diagnostico) => diagnostico.id === row.diagnosticoId);
+        const piezas = item?.piezas ?? row.pieza;
+        const pendiente = row.descripcion.trim() === '';
+        const diagnosticoDescripcion =
+          item === undefined || item.descripcion.trim() === ''
+            ? t('clinica.plan.diagnosticoPendienteDescripcion')
+            : item.descripcion;
+        return (
+          <div
+            key={row.diagnosticoId ?? `vinculado-${index}`}
+            className="rounded-control border border-border p-3"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="info">
+                {t('clinica.plan.diagnosticoVinculado', { descripcion: diagnosticoDescripcion })}
+              </Badge>
+              {piezas !== null && piezas !== '' && (
+                <Badge variant="neutral">{t('clinica.plan.piezasVinculadas', { piezas })}</Badge>
+              )}
+              {pendiente && (
+                <Badge variant="warning">{t('clinica.plan.pendientePorCompletar')}</Badge>
+              )}
+            </div>
+            <div className="mt-2 grid grid-cols-1 gap-3 @2xl:grid-cols-[minmax(0,1fr)_9rem_8rem]">
+              <Field label={t('clinica.plan.descripcion')}>
+                <Input
+                  value={row.descripcion}
+                  disabled={disabled}
+                  maxLength={200}
+                  placeholder={t('clinica.plan.tratamientoPlaceholder')}
+                  aria-invalid={pendiente || undefined}
+                  onChange={(event) => actualizar(index, { descripcion: event.target.value })}
+                />
+              </Field>
+              <Field label={t('clinica.plan.prioridad')}>
+                <Select
+                  value={row.prioridad}
+                  disabled={disabled}
+                  onChange={(event) => actualizar(index, { prioridad: event.target.value })}
+                >
+                  {CLINICAL_PRIORITIES.map((priority) => (
+                    <option key={priority} value={priority}>
+                      {clinicalPriorityLabel(priority)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label={t('clinica.plan.presupuesto')}>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={row.presupuesto ?? ''}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    actualizar(index, {
+                      presupuesto: event.target.value === '' ? null : Number(event.target.value),
+                    })
+                  }
+                />
+              </Field>
+            </div>
+          </div>
+        );
+      })}
+
+      {libres.map((row, index) => {
+        const posicion = vinculos.length + index;
+        return (
+          <div
+            key={row.diagnosticoId ?? `libre-${index}`}
+            className="grid grid-cols-1 gap-3 rounded-control border border-border p-3 @2xl:grid-cols-[minmax(0,1fr)_8rem_6rem_8rem_auto]"
+          >
+            <Field label={t('clinica.plan.descripcion')}>
+              <Input
+                value={row.descripcion}
+                disabled={disabled}
+                maxLength={200}
+                onChange={(event) => actualizar(posicion, { descripcion: event.target.value })}
+              />
+            </Field>
+            <Field label={t('clinica.plan.prioridad')}>
+              <Select
+                value={row.prioridad}
+                disabled={disabled}
+                onChange={(event) => actualizar(posicion, { prioridad: event.target.value })}
+              >
+                {CLINICAL_PRIORITIES.map((priority) => (
+                  <option key={priority} value={priority}>
+                    {clinicalPriorityLabel(priority)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={t('clinica.plan.pieza')}>
+              <Input
+                value={row.pieza ?? ''}
+                disabled={disabled}
+                maxLength={60}
+                onChange={(event) => actualizar(posicion, { pieza: event.target.value || null })}
+              />
+            </Field>
+            <Field label={t('clinica.plan.presupuesto')}>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={row.presupuesto ?? ''}
+                disabled={disabled}
+                onChange={(event) =>
+                  actualizar(posicion, {
+                    presupuesto: event.target.value === '' ? null : Number(event.target.value),
+                  })
+                }
+              />
+            </Field>
+            <div className="flex items-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={disabled}
+                onClick={() => onChange(ordenados.filter((_, position) => position !== posicion))}
+                leadingIcon={<Trash2 className="size-4" aria-hidden />}
+              >
+                {t('comun.quitar')}
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled={disabled}
+        leadingIcon={<Plus className="size-4" aria-hidden />}
         onClick={() =>
           onChange([
-            ...value,
-            { descripcion: '', prioridad: 'media', pieza: null, presupuesto: null },
+            ...ordenados,
+            {
+              diagnosticoId: null,
+              descripcion: '',
+              prioridad: 'media',
+              pieza: null,
+              presupuesto: null,
+            },
           ])
         }
       >
-        {t('clinica.plan.agregarProcedimiento')}
+        {t('clinica.plan.agregarProcedimientoAdicional')}
       </Button>
     </div>
   );
@@ -233,6 +464,10 @@ export interface ClinicalSectionFieldsProps {
   content: Record<string, unknown>;
   onChange: (name: string, value: unknown) => void;
   disabled?: boolean;
+  /** Ítems del diagnóstico vigentes: el plan muestra el vínculo y su pieza. */
+  diagnosisItems?: readonly DiagnosisItemDraft[];
+  /** Procedimientos del plan: el diagnóstico los consulta antes de borrar. */
+  planProcedures?: readonly ProcedureValue[];
 }
 
 /** Pinta los campos de una sección a partir de su declaración. */
@@ -241,6 +476,8 @@ export const ClinicalSectionFields = ({
   content,
   onChange,
   disabled = false,
+  diagnosisItems = [],
+  planProcedures = [],
 }: ClinicalSectionFieldsProps) => (
   <div className="space-y-5">
     {fields.map((field) => {
@@ -335,6 +572,21 @@ export const ClinicalSectionFields = ({
               <div className="mt-2">
                 <ProcedureList
                   value={asProcedures(value)}
+                  diagnosisItems={diagnosisItems}
+                  disabled={disabled}
+                  onChange={(rows) => onChange(field.name, rows)}
+                />
+              </div>
+            </div>
+          );
+        case 'diagnosis_items':
+          return (
+            <div key={field.name}>
+              <p className="text-sm font-medium text-ink">{clinicalFieldLabel(field.labelKey)}</p>
+              <div className="mt-2">
+                <DiagnosisItemList
+                  value={asDiagnosisItems(value)}
+                  planProcedures={planProcedures}
                   disabled={disabled}
                   onChange={(rows) => onChange(field.name, rows)}
                 />

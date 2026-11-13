@@ -440,6 +440,14 @@ if (typeof recordId !== 'string') {
   process.exit(1);
 }
 
+/**
+ * UUIDs de los ítems de diagnóstico (v1.2.1): el plan de tratamiento se enlaza a
+ * ellos por `diagnosticoId`. Se generan con `crypto.randomUUID()`, el mismo
+ * generador que usa la interfaz al pulsar «Agregar diagnóstico».
+ */
+const diagnosticoCariesId = crypto.randomUUID();
+const diagnosticoGingivitisId = crypto.randomUUID();
+
 /** Secciones que la firma exige (plan §6 y `CLINICAL_SIGNATURE_SECTIONS`). */
 const secciones = {
   motivo_consulta: {
@@ -469,21 +477,51 @@ const secciones = {
     tejidosBlandos: 'normal',
     encias: 'alterado',
     sondaje: null,
-    oclusion: 'normal',
+    relacionMolar: 'tipo_i',
+    relacionCanina: 'tipo_ii',
     higiene: 'regular',
     hallazgos: 'Caries oclusal en la pieza 36',
     observaciones: null,
   },
   diagnostico: {
-    principal: 'Caries oclusal en la pieza 36',
-    secundarios: null,
-    porPieza: '36: caries oclusal',
+    items: [
+      {
+        id: diagnosticoCariesId,
+        descripcion: 'Caries oclusal en las piezas 36 y 46',
+        piezas: '36, 46',
+      },
+      {
+        id: diagnosticoGingivitisId,
+        descripcion: 'Gingivitis localizada en el sector anterosuperior',
+        piezas: null,
+      },
+    ],
     saludBucalGeneral: 'regular',
-    observaciones: null,
+    observaciones: `${MARK}: control de placa y reevaluación en 15 días`,
   },
   plan_tratamiento: {
     procedimientos: [
-      { descripcion: 'Obturación con resina en la pieza 36', prioridad: 'alta', pieza: '36' },
+      {
+        descripcion: 'Obturación con resina en las piezas 36 y 46',
+        prioridad: 'alta',
+        pieza: '36, 46',
+        presupuesto: 120,
+        diagnosticoId: diagnosticoCariesId,
+      },
+      {
+        descripcion: 'Detartraje y alisado radicular',
+        prioridad: 'media',
+        pieza: null,
+        presupuesto: null,
+        diagnosticoId: diagnosticoGingivitisId,
+      },
+      {
+        descripcion: 'Profilaxis y control semestral',
+        prioridad: 'baja',
+        pieza: null,
+        presupuesto: null,
+        diagnosticoId: null,
+      },
     ],
     alternativas: null,
     aceptacionPaciente: true,
@@ -491,6 +529,7 @@ const secciones = {
   },
 };
 
+const seccionesGuardadas = {};
 let ultimaSeccion = null;
 for (const [clave, content] of Object.entries(secciones)) {
   ultimaSeccion = await call(`/api/v1/clinical/records/${recordId}/sections/${clave}`, {
@@ -498,6 +537,7 @@ for (const [clave, content] of Object.entries(secciones)) {
     body: JSON.stringify({ content }),
   });
   if (ultimaSeccion.status !== 200) break;
+  seccionesGuardadas[clave] = ultimaSeccion;
 }
 check(
   'las secciones de la historia se guardan',
@@ -510,6 +550,21 @@ check(
   'la anamnesis deja sus alertas clínicas (diabetes y penicilina)',
   alertas.includes('diabetes') && alertas.includes('alergia_penicilina'),
   alertas.join(', ') || '(sin alertas)',
+);
+
+const procedimientosDelPlan =
+  seccionesGuardadas.plan_tratamiento?.body?.sections?.plan_tratamiento?.procedimientos ?? [];
+check(
+  'el diagnóstico se guarda por ítems y el plan queda enlazado por diagnóstico',
+  (seccionesGuardadas.diagnostico?.body?.sections?.diagnostico?.items ?? []).some(
+    (item) => item.id === diagnosticoCariesId,
+  ) &&
+    procedimientosDelPlan.filter((procedimiento) => procedimiento.diagnosticoId !== null).length ===
+      2 &&
+    procedimientosDelPlan.some((procedimiento) => procedimiento.diagnosticoId === null),
+  `status ${String(seccionesGuardadas.plan_tratamiento?.status)} · procedimientos ${String(
+    procedimientosDelPlan.length,
+  )}`,
 );
 
 const consentimiento = await call(`/api/v1/clinical/records/${recordId}/consent`, {
@@ -575,7 +630,8 @@ const guardada = await call(`/api/v1/clinical/sessions/${sessionId}`, {
         tejidosBlandos: 'normal',
         encias: 'alterado',
         sondaje: null,
-        oclusion: 'normal',
+        relacionMolar: 'tipo_i',
+        relacionCanina: 'tipo_ii',
         higiene: 'regular',
         hallazgos: 'Caries oclusal profunda en la 36',
       },
@@ -584,6 +640,8 @@ const guardada = await call(`/api/v1/clinical/sessions/${sessionId}`, {
       ],
       materiales: [{ code: 'resina_compuesta', cantidad: '1' }],
       diagnostico: 'Caries oclusal en la pieza 36',
+      observaciones:
+        'Se revisa la relación molar (tipo I) y canina (tipo II) en la misma consulta.',
       indicaciones: 'No comer del lado derecho por 24 horas.',
       proximaCitaFecha: null,
       proximaCitaNota: null,
@@ -595,6 +653,15 @@ check(
   'la sesión se guarda con su procedimiento del catálogo',
   guardada.status === 200 && guardada.body?.content?.procedimientos?.length === 1,
   `status ${guardada.status}`,
+);
+check(
+  'la sesión guarda la relación molar/canina y sus observaciones',
+  guardada.body?.content?.exam?.relacionMolar === 'tipo_i' &&
+    guardada.body?.content?.exam?.relacionCanina === 'tipo_ii' &&
+    guardada.body?.content?.observaciones?.startsWith('Se revisa la relación molar') === true,
+  `relación ${String(guardada.body?.content?.exam?.relacionMolar)}/${String(
+    guardada.body?.content?.exam?.relacionCanina,
+  )}`,
 );
 
 /* ── 6) Récipe emitido con dos medicamentos ────────────────────────────────── */

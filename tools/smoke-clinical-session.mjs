@@ -126,7 +126,8 @@ const sesionCompleta = {
     tejidosBlandos: 'normal',
     encias: 'normal',
     sondaje: '16: 3 mm',
-    oclusion: 'normal',
+    relacionMolar: 'tipo_i',
+    relacionCanina: 'tipo_ii',
     higiene: 'buena',
     hallazgos: 'Restauración en buen estado',
   },
@@ -142,6 +143,8 @@ const sesionCompleta = {
   ],
   materiales: [{ code: 'resina_compuesta', detalle: null, cantidad: '1 tubo' }],
   diagnostico: 'Caries oclusal en 26',
+  observaciones:
+    'Paciente colabora durante la consulta; se revisa la relación molar en la próxima cita.',
   indicaciones: 'No comer hasta que pase el efecto de la anestesia',
   proximaCitaFecha: null,
   proximaCitaNota: 'Control en seis meses',
@@ -327,6 +330,15 @@ check(
 check(
   'las caras van con la pieza del procedimiento',
   guardado.body?.content?.procedimientos?.[0]?.surfaces?.join(',') === 'occlusal,mesial',
+);
+check(
+  'el examen del día guarda la relación molar/canina y las observaciones',
+  guardado.body?.content?.exam?.relacionMolar === 'tipo_i' &&
+    guardado.body?.content?.exam?.relacionCanina === 'tipo_ii' &&
+    guardado.body?.content?.observaciones?.startsWith('Paciente colabora') === true,
+  `relación ${String(guardado.body?.content?.exam?.relacionMolar)}/${String(
+    guardado.body?.content?.exam?.relacionCanina,
+  )}`,
 );
 
 // Guardar un documento parcial se rechaza: no puede borrar lo que ya estaba.

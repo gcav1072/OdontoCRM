@@ -115,7 +115,7 @@ const ExamBlock = ({ props }: { props: SessionFormProps }) => {
   return (
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="text-sm font-medium text-ink">{t('clinica.sesion.examen')}</legend>
-      <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @6xl:grid-cols-4">
+      <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @6xl:grid-cols-5">
         {SESSION_EXAM_FIELDS.selects.map((field) => {
           const value = content.exam[field.name as keyof typeof content.exam];
           return (
@@ -523,6 +523,16 @@ export const SessionForm = (props: SessionFormProps) => {
           onChange={(value) => onChange({ ...content, indicaciones: value })}
         />
       </div>
+
+      {/* Las observaciones de la sesión son contenido clínico que se imprime en la
+          evolución: van antes y separadas de las notas internas, que no se imprimen. */}
+      <AreaField
+        label={t('clinica.sesion.campo.observaciones')}
+        value={content.observaciones}
+        rows={3}
+        disabled={disabled}
+        onChange={(value) => onChange({ ...content, observaciones: value })}
+      />
 
       <div className="grid gap-3 @5xl:grid-cols-3">
         <Field label={t('clinica.sesion.campo.proximaCitaFecha')}>

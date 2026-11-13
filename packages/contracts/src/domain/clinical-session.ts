@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { optionalDate, optionalNumber, optionalText } from '../common/optional.js';
-import { OCCLUSION_STATES, ORAL_HYGIENE_LEVELS, REGION_EVALUATIONS } from './clinical.js';
+import { OCLUSAL_RELATION_STATES, ORAL_HYGIENE_LEVELS, REGION_EVALUATIONS } from './clinical.js';
 import { CLINICAL_SESSION_STATUSES } from './enums.js';
 import {
   surfaceLabelFor,
@@ -175,7 +175,10 @@ export const clinicalSessionExamSchema = z.object({
   encias: z.enum(REGION_EVALUATIONS).nullable().default(null),
   /** Profundidad de sondaje por pieza, en texto libre («16: 3 mm, 26: 5 mm»). */
   sondaje: optionalText(300),
-  oclusion: z.enum(OCCLUSION_STATES).nullable().default(null),
+  /** Relación oclusal de Angle del lado molar: Tipo I/II/III o sin dato. */
+  relacionMolar: z.enum(OCLUSAL_RELATION_STATES).nullable().default(null),
+  /** Relación oclusal de Angle del lado canino: Tipo I/II/III o sin dato. */
+  relacionCanina: z.enum(OCLUSAL_RELATION_STATES).nullable().default(null),
   higiene: z.enum(ORAL_HYGIENE_LEVELS).nullable().default(null),
   hallazgos: optionalText(2000),
 });
@@ -186,7 +189,8 @@ export const emptySessionExam = (): ClinicalSessionExam => ({
   tejidosBlandos: null,
   encias: null,
   sondaje: null,
-  oclusion: null,
+  relacionMolar: null,
+  relacionCanina: null,
   higiene: null,
   hallazgos: null,
 });
@@ -287,6 +291,12 @@ export const clinicalSessionContentSchema = z
     diagnostico: optionalText(1000),
     /** Indicaciones postoperatorias que se le dan al paciente. */
     indicaciones: optionalText(2000),
+    /**
+     * Observaciones de la sesión (v1.2): cuerpo de texto libre que se imprime en la
+     * evolución de la historia clínica. Es distinto de `notasInternas`, que nunca
+     * se imprime para el paciente.
+     */
+    observaciones: optionalText(1000),
     /** Próxima cita sugerida: fecha y nota («control de endodoncia»). */
     proximaCitaFecha: optionalDate,
     proximaCitaNota: optionalText(300),
@@ -320,6 +330,7 @@ export const emptyClinicalSessionContent = (): ClinicalSessionContent => ({
   materiales: [],
   diagnostico: null,
   indicaciones: null,
+  observaciones: null,
   proximaCitaFecha: null,
   proximaCitaNota: null,
   proximaCitaAppointmentId: null,
@@ -334,13 +345,21 @@ export const clinicalSessionHasContent = (content: ClinicalSessionContent): bool
   hasText(content.anamnesis) ||
   hasText(content.diagnostico) ||
   hasText(content.indicaciones) ||
+  // Las observaciones de la sesión son contenido clínico y se imprimen: una sesión
+  // que solo las tiene no se descarta por vacía. No habilitan el cierre por sí
+  // solas (`clinicalSessionCanClose` sigue pidiendo motivo, procedimientos o
+  // diagnóstico): un «observaciones» suelto no documenta una consulta.
+  hasText(content.observaciones) ||
   hasText(content.notasInternas) ||
   hasText(content.proximaCitaNota) ||
   content.proximaCitaFecha !== null ||
   content.procedimientos.length > 0 ||
   content.materiales.length > 0 ||
   Object.values(content.vitals).some((value) => value !== null) ||
-  Object.values(content.exam).some((value) => value !== null && value !== '');
+  // `sin_dato` es «no explorado»: no convierte la sesión en una sesión con examen.
+  Object.values(content.exam).some(
+    (value) => value !== null && value !== '' && value !== 'sin_dato',
+  );
 
 /**
  * ¿Se puede cerrar? Una sesión sin motivo, sin procedimientos y sin diagnóstico

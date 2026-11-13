@@ -1,5 +1,6 @@
 import {
   acceptConsentSchema,
+  clinicalSessionContentSchema,
   createAmendmentSchema,
   hasPenicillinAllergy,
   missingSignatureSections,
@@ -28,11 +29,13 @@ import * as identitySchema from '../../identity/dist/db/schema.js';
 import {
   acceptConsent,
   createAmendment,
+  getRecordDetail,
   openRecord,
   registerPrint,
   saveSection,
   signRecord,
 } from './clinical/record-service.js';
+import { closeSession, openSession, saveSession } from './clinical/session-service.js';
 import { loadClinicalConfig } from './config.js';
 import { createClinicalDatabase } from './db/client.js';
 import { medicalRecords } from './db/schema.js';
@@ -71,6 +74,14 @@ const actor = {
 
 const patientId = globalThis.crypto.randomUUID();
 
+/**
+ * UUIDs de los ítems de diagnóstico (v1.2.1). El plan de tratamiento se enlaza a ellos
+ * por `diagnosticoId`; el servidor los valida como cualquier uuid real.
+ */
+const diagnosticoCariesId = globalThis.crypto.randomUUID();
+const diagnosticoGingivitisId = globalThis.crypto.randomUUID();
+const diagnosticoNuevoId = globalThis.crypto.randomUUID();
+
 const seccionesCompletas = {
   motivo_consulta: { relato: 'Dolor en el molar inferior derecho desde hace tres días' },
   anamnesis: {
@@ -88,9 +99,52 @@ const seccionesCompletas = {
     atm: 'normal',
     musculatura: 'normal',
   },
-  examen_intraoral: { encias: 'alterado', hallazgos: 'Sangrado leve al sondaje' },
-  diagnostico: { principal: 'Pulpitis irreversible en 46' },
-  plan_tratamiento: { procedimientos: [{ descripcion: 'Endodoncia 46', prioridad: 'alta' }] },
+  examen_intraoral: {
+    encias: 'alterado',
+    relacionMolar: 'tipo_i',
+    relacionCanina: 'tipo_ii',
+    hallazgos: 'Sangrado leve al sondaje',
+  },
+  diagnostico: {
+    items: [
+      { id: diagnosticoCariesId, descripcion: 'Pulpitis irreversible en 46', piezas: '46' },
+      {
+        id: diagnosticoGingivitisId,
+        descripcion: 'Gingivitis marginal localizada',
+        piezas: 'sector anterosuperior',
+      },
+    ],
+    saludBucalGeneral: 'regular',
+    observaciones: null,
+  },
+  plan_tratamiento: {
+    procedimientos: [
+      {
+        diagnosticoId: diagnosticoCariesId,
+        descripcion: 'Endodoncia 46',
+        prioridad: 'alta',
+        pieza: '46',
+        presupuesto: null,
+      },
+      {
+        diagnosticoId: diagnosticoGingivitisId,
+        descripcion: 'Detartraje y control de placa',
+        prioridad: 'media',
+        pieza: 'sector anterosuperior',
+        presupuesto: null,
+      },
+      {
+        diagnosticoId: null,
+        descripcion: 'Profilaxis y control semestral',
+        prioridad: 'baja',
+        pieza: null,
+        presupuesto: null,
+      },
+    ],
+    alternativas: null,
+    aceptacionPaciente: null,
+    observaciones: null,
+  },
 } as const;
 
 const consentimiento: AcceptConsentInput = acceptConsentSchema.parse({
@@ -235,6 +289,172 @@ describeWithDatabases('historia clínica: auditoría por outbox y reglas de firm
     ]);
   }, 40_000);
 
+  it('guardar el diagnóstico abre en el plan un procedimiento por ítem, sin perder los libres', async () => {
+    const guardado = await saveSection(
+      handle.db,
+      recordId,
+      'diagnostico',
+      {
+        items: [
+          { id: diagnosticoCariesId, descripcion: 'Pulpitis irreversible en 46', piezas: '46' },
+          {
+            id: diagnosticoGingivitisId,
+            descripcion: 'Gingivitis marginal localizada',
+            piezas: 'sector anterosuperior',
+          },
+          {
+            id: diagnosticoNuevoId,
+            descripcion: 'Caries oclusal en la 36',
+            piezas: '36',
+          },
+        ],
+        saludBucalGeneral: 'regular',
+        observaciones: null,
+      },
+      actor,
+    );
+
+    const procedimientos = (guardado.sections['plan_tratamiento']?.['procedimientos'] ??
+      []) as Array<Record<string, unknown>>;
+    const enlazados = procedimientos.filter(
+      (procedimiento) => procedimiento['diagnosticoId'] !== null,
+    );
+    // Un procedimiento por ítem, en el orden del diagnóstico y con su pieza.
+    expect(enlazados.map((procedimiento) => procedimiento['diagnosticoId'])).toEqual([
+      diagnosticoCariesId,
+      diagnosticoGingivitisId,
+      diagnosticoNuevoId,
+    ]);
+    expect(enlazados.map((procedimiento) => procedimiento['pieza'])).toEqual([
+      '46',
+      'sector anterosuperior',
+      '36',
+    ]);
+    // Los ya escritos se conservan; el ítem nuevo nace por completar (descripción vacía).
+    expect(enlazados.map((procedimiento) => procedimiento['descripcion'])).toEqual([
+      'Endodoncia 46',
+      'Detartraje y control de placa',
+      '',
+    ]);
+    expect(enlazados[2]?.['prioridad']).toBe('media');
+    // El procedimiento libre sigue intacto al final.
+    expect(
+      procedimientos
+        .filter((procedimiento) => procedimiento['diagnosticoId'] === null)
+        .map((procedimiento) => procedimiento['descripcion']),
+    ).toEqual(['Profilaxis y control semestral']);
+  }, 40_000);
+
+  it('la firma se bloquea mientras un diagnóstico no tenga su tratamiento descrito', async () => {
+    const bloqueada = await signRecord(handle.db, recordId, actor).catch((error: unknown) => error);
+    expect(bloqueada).toBeInstanceOf(ConflictError);
+    expect((bloqueada as ConflictError).extensions['missingSections']).toContain(
+      'plan_tratamiento',
+    );
+  }, 40_000);
+
+  it('guardar el plan sanea enlaces huérfanos y borrar un diagnóstico elimina su procedimiento', async () => {
+    const completado = await saveSection(
+      handle.db,
+      recordId,
+      'plan_tratamiento',
+      {
+        procedimientos: [
+          {
+            diagnosticoId: diagnosticoCariesId,
+            descripcion: 'Endodoncia 46',
+            prioridad: 'alta',
+            pieza: '46',
+            presupuesto: 250,
+          },
+          {
+            diagnosticoId: diagnosticoGingivitisId,
+            descripcion: 'Detartraje y control de placa',
+            prioridad: 'media',
+            pieza: 'sector anterosuperior',
+            presupuesto: null,
+          },
+          {
+            diagnosticoId: diagnosticoNuevoId,
+            descripcion: 'Obturación oclusal en la 36',
+            prioridad: 'media',
+            pieza: '36',
+            presupuesto: 90,
+          },
+        ],
+        alternativas: null,
+        aceptacionPaciente: null,
+        observaciones: null,
+      },
+      actor,
+    );
+    const planCompleto = (completado.sections['plan_tratamiento']?.['procedimientos'] ??
+      []) as Array<Record<string, unknown>>;
+    expect(planCompleto).toHaveLength(3);
+    // La pieza la sigue mandando el diagnóstico, no el plan que llegó.
+    expect(planCompleto[0]?.['pieza']).toBe('46');
+
+    // Una petición fuera de orden con un `diagnosticoId` que ya no existe se descarta.
+    const saneado = await saveSection(
+      handle.db,
+      recordId,
+      'plan_tratamiento',
+      {
+        procedimientos: [
+          ...planCompleto,
+          {
+            diagnosticoId: globalThis.crypto.randomUUID(),
+            descripcion: 'Procedimiento de un diagnóstico borrado',
+            prioridad: 'media',
+            pieza: null,
+            presupuesto: null,
+          },
+        ],
+        alternativas: null,
+        aceptacionPaciente: null,
+        observaciones: null,
+      },
+      actor,
+    );
+    const planSaneado = (saneado.sections['plan_tratamiento']?.['procedimientos'] ?? []) as Array<
+      Record<string, unknown>
+    >;
+    expect(planSaneado).toHaveLength(3);
+    expect(
+      planSaneado.some((procedimiento) =>
+        String(procedimiento['descripcion']).includes('diagnóstico borrado'),
+      ),
+    ).toBe(false);
+
+    // Al borrar el ítem de diagnóstico, su procedimiento enlazado se va con él.
+    const borrado = await saveSection(
+      handle.db,
+      recordId,
+      'diagnostico',
+      {
+        items: [
+          { id: diagnosticoCariesId, descripcion: 'Pulpitis irreversible en 46', piezas: '46' },
+          {
+            id: diagnosticoGingivitisId,
+            descripcion: 'Gingivitis marginal localizada',
+            piezas: 'sector anterosuperior',
+          },
+        ],
+        saludBucalGeneral: 'regular',
+        observaciones: null,
+      },
+      actor,
+    );
+    const planTrasBorrar = (borrado.sections['plan_tratamiento']?.['procedimientos'] ??
+      []) as Array<Record<string, unknown>>;
+    expect(planTrasBorrar).toHaveLength(2);
+    expect(
+      planTrasBorrar.some((procedimiento) => procedimiento['diagnosticoId'] === diagnosticoNuevoId),
+    ).toBe(false);
+    // La historia vuelve a estar en condiciones de firmarse.
+    expect(borrado.missingSections).toEqual([]);
+  }, 60_000);
+
   it('la historia guardada detecta la alergia y queda auditada sección a sección', async () => {
     const detalle = await acceptConsent(handle.db, recordId, consentimiento, actor).then(() =>
       signRecord(handle.db, recordId, actor),
@@ -262,7 +482,7 @@ describeWithDatabases('historia clínica: auditoría por outbox y reglas de firm
       handle.db,
       recordId,
       'diagnostico',
-      { principal: 'Otro diagnóstico' },
+      { items: [], saludBucalGeneral: null, observaciones: null },
       actor,
     ).catch((error: unknown) => error);
     expect(edicion).toBeInstanceOf(ConflictError);
@@ -289,4 +509,52 @@ describeWithDatabases('historia clínica: auditoría por outbox y reglas de firm
     );
     expect(rows.map((row) => row.action)).toContain('medical_record_printed');
   }, 40_000);
+
+  it('la evolución proyecta las sesiones cerradas aunque la historia ya esté firmada', async () => {
+    const contenido = clinicalSessionContentSchema.parse({
+      motivo: 'Control de la endodoncia de la 46',
+      procedimientos: [{ code: 'control_postoperatorio', toothNumber: 46 }],
+      diagnostico: 'Evolución favorable, sin dolor',
+      observaciones: 'Paciente sin dolor a la percusión; se indica control en seis meses.',
+    });
+
+    const abierta = await openSession(
+      handle.db,
+      patientId,
+      { appointmentId: null, motivo: 'Control de la endodoncia de la 46' },
+      actor,
+    );
+    await saveSession(handle.db, abierta.detail.id, { content: contenido });
+    const cerrada = await closeSession(
+      handle.db,
+      abierta.detail.id,
+      { confirm: true, closureNote: 'Control cerrado en la prueba' },
+      actor,
+    );
+    expect(cerrada.status).toBe('cerrada');
+
+    // Una segunda sesión que sigue abierta no puede aparecer en la evolución.
+    const borrador = await openSession(
+      handle.db,
+      patientId,
+      { appointmentId: null, motivo: 'Sesión que sigue abierta' },
+      actor,
+    );
+
+    const detalle = await getRecordDetail(handle.db, recordId);
+    expect(detalle.status).toBe('firmada');
+    const resumen = detalle.evolutionSessions.find((session) => session.id === abierta.detail.id);
+    expect(resumen).toBeDefined();
+    expect(resumen?.sessionNumber).toBe(1);
+    expect(resumen?.fecha).toBe(cerrada.closedAt);
+    expect(resumen?.diagnostico).toBe('Evolución favorable, sin dolor');
+    expect(resumen?.tratamientos).toEqual(['Control postoperatorio · pieza 46']);
+    expect(resumen?.observaciones).toBe(
+      'Paciente sin dolor a la percusión; se indica control en seis meses.',
+    );
+    // La sesión sin cerrar todavía no es evolución.
+    expect(detalle.evolutionSessions.some((session) => session.id === borrador.detail.id)).toBe(
+      false,
+    );
+  }, 60_000);
 });

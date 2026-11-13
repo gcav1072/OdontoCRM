@@ -332,7 +332,7 @@ describe('el documento se lee como la boca del paciente', () => {
     expect(boca).toContain('>31</text>');
   });
 
-  it('la línea media separa los cuadrantes y cada arcada dice su orientación', () => {
+  it('la línea media separa los cuadrantes y cada arcada se rotula sin orientación de caras', () => {
     const boca = documento(detalle({}));
     const mapa = casillas(boca);
     const x = (pieza: number): number => Number((mapa.get(pieza) ?? '0|').split('|')[0]);
@@ -341,9 +341,14 @@ describe('el documento se lee como la boca del paciente', () => {
     expect(x(21) - x(11)).toBeGreaterThan(x(11) - x(12));
     expect(x(31) - x(41)).toBeGreaterThan(x(41) - x(42));
 
-    // Y el papel explica hacia dónde mira cada cara.
-    expect(boca).toContain('vestibular arriba');
-    expect(boca).toContain('lingual arriba');
+    // v1.2.1 §3.2: el imprimible solo nombra la arcada. La orientación de caras
+    // («vestibular arriba», «lingual arriba»…) es una ayuda exclusiva de la pantalla
+    // interactiva y no debe filtrarse al papel.
+    expect(boca).toContain('>Maxilar<');
+    expect(boca).toContain('>Mandibular<');
+    expect(boca).not.toContain('vestibular arriba');
+    expect(boca).not.toContain('lingual arriba');
+    expect(boca.toLowerCase()).not.toContain('orientacion');
   });
 });
 
@@ -392,22 +397,28 @@ describe('el historial de cambios en el informe (casilla de la impresión)', () 
 });
 
 describe('la banda de piezas temporales solo sale si hay cambios en ellas', () => {
-  const CAPTION = 'Arcada superior · temporal';
+  // v1.2.1 §3.2: rótulos del imprimible, sin la descripción de orientación de caras.
+  const SUPERIOR_TEMPORAL = 'Maxilar · temporal (55–65)';
+  const INFERIOR_TEMPORAL = 'Mandibular · temporal (85–75)';
 
   it('en una boca permanente no se dibuja la banda temporal', () => {
     const boca = documento(detalle({ '16': [hallazgo({ toothNumber: 16 })] }));
-    expect(boca).not.toContain(CAPTION);
+    expect(boca).not.toContain(SUPERIOR_TEMPORAL);
+    expect(boca).not.toContain(INFERIOR_TEMPORAL);
   });
 
   it('una boca mixta sin hallazgos en piezas de leche no imprime la banda temporal', () => {
     // Puede pasar al corregir la captura: quedan permanentes y una temporal superada.
     const boca = documento(detalle({ '16': [hallazgo({ toothNumber: 16 })] }, 'mixta'));
-    expect(boca).not.toContain(CAPTION);
-    // La arcada permanente sí está: el informe no se queda sin diagrama.
-    expect(boca).toContain('Maxilar · vestibular arriba');
+    expect(boca).not.toContain(SUPERIOR_TEMPORAL);
+    expect(boca).not.toContain(INFERIOR_TEMPORAL);
+    // La arcada permanente sí está, y ya solo dice la arcada (sin orientación de caras).
+    expect(boca).toContain('>Maxilar<');
+    expect(boca).toContain('>Mandibular<');
+    expect(boca).not.toContain('vestibular arriba');
   });
 
-  it('un hallazgo en una pieza de leche hace salir la banda temporal', () => {
+  it('un hallazgo en una pieza de leche hace salir la banda temporal con su FDI', () => {
     const boca = documento(
       detalle(
         {
@@ -417,9 +428,32 @@ describe('la banda de piezas temporales solo sale si hay cambios en ellas', () =
         'mixta',
       ),
     );
-    expect(boca).toContain(CAPTION);
-    expect(boca).toContain('Arcada inferior · temporal');
+    expect(boca).toContain(SUPERIOR_TEMPORAL);
+    expect(boca).toContain(INFERIOR_TEMPORAL);
     // Y la pieza de leche con su número, en su banda.
     expect(boca).toContain('>55</text>');
+  });
+
+  it('en dentición temporal las bandas principales se rotulan como temporales', () => {
+    const boca = documento(
+      detalle(
+        {
+          '55': [hallazgo({ toothNumber: 55, surface: 'occlusal', condition: 'caries' })],
+          '85': [hallazgo({ toothNumber: 85, surface: 'occlusal', condition: 'caries' })],
+        },
+        'temporal',
+      ),
+    );
+
+    // Toda la boca es de leche: las dos bandas principales llevan el FDI temporal.
+    expect(boca).toContain(`>${SUPERIOR_TEMPORAL}<`);
+    expect(boca).toContain(`>${INFERIOR_TEMPORAL}<`);
+    expect(boca).toContain('>55</text>');
+    expect(boca).toContain('>85</text>');
+
+    // Ni rastro de la orientación de caras en el papel.
+    expect(boca).not.toContain('vestibular arriba');
+    expect(boca).not.toContain('lingual arriba');
+    expect(boca.toLowerCase()).not.toContain('orientacion');
   });
 });

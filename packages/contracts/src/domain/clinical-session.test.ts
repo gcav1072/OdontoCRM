@@ -122,8 +122,47 @@ describe('documento de la sesión', () => {
   it('la sesión vacía es válida y estable', () => {
     const parsed = clinicalSessionContentSchema.parse(contenidoBase);
     expect(parsed).toEqual(contenidoBase);
+    expect(parsed.observaciones).toBeNull();
+    expect(parsed.exam.relacionMolar).toBeNull();
+    expect(parsed.exam.relacionCanina).toBeNull();
     expect(clinicalSessionHasContent(parsed)).toBe(false);
     expect(clinicalSessionCanClose(parsed)).toBe(false);
+  });
+
+  it('el examen del día registra relación molar y canina; «sin dato» no es contenido', () => {
+    const conRelacion = clinicalSessionContentSchema.parse({
+      ...contenidoBase,
+      exam: { relacionMolar: 'tipo_ii', relacionCanina: 'tipo_i' },
+    });
+    expect(conRelacion.exam.relacionMolar).toBe('tipo_ii');
+    expect(conRelacion.exam.relacionCanina).toBe('tipo_i');
+    expect(clinicalSessionHasContent(conRelacion)).toBe(true);
+
+    const sinDato = clinicalSessionContentSchema.parse({
+      ...contenidoBase,
+      exam: { relacionMolar: 'sin_dato', relacionCanina: 'sin_dato' },
+    });
+    expect(clinicalSessionHasContent(sinDato)).toBe(false);
+  });
+
+  it('un borrador anterior con `oclusion` se normaliza al leer', () => {
+    const legacy = clinicalSessionContentSchema.parse({
+      ...contenidoBase,
+      exam: { oclusion: 'mordida_abierta' },
+    });
+    expect(legacy.exam).not.toHaveProperty('oclusion');
+    expect(legacy.exam.relacionMolar).toBeNull();
+    expect(legacy.exam.relacionCanina).toBeNull();
+  });
+
+  it('las observaciones son contenido pero no habilitan el cierre', () => {
+    const conObservaciones = clinicalSessionContentSchema.parse({
+      ...contenidoBase,
+      observaciones: 'El paciente refiere mejoría del dolor',
+    });
+    expect(conObservaciones.observaciones).toBe('El paciente refiere mejoría del dolor');
+    expect(clinicalSessionHasContent(conObservaciones)).toBe(true);
+    expect(clinicalSessionCanClose(conObservaciones)).toBe(false);
   });
 
   it('una sesión con motivo ya se puede cerrar', () => {

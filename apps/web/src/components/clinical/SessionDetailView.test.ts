@@ -40,6 +40,11 @@ const SESION: ClinicalSessionDetail = {
     diagnostico: 'Caries oclusal en 16',
     indicaciones: 'No masticar duro durante 24 horas.',
     notasInternas: 'El paciente prefiere citas por la tarde.',
+    exam: {
+      ...emptyClinicalSessionContent().exam,
+      relacionMolar: 'tipo_i',
+      relacionCanina: 'tipo_iii',
+    },
     procedimientos: [
       {
         code: 'obturacion_resina',
@@ -123,5 +128,60 @@ describe('lectura de una sesión clínica', () => {
 
     expect(html).toContain('Sesión enmendada');
     expect(html).toContain('Se corrigió la pieza tratada');
+  });
+
+  it('traduce la relación molar y canina, en lugar de enseñar el código crudo', () => {
+    const html = renderToStaticMarkup(createElement(SessionDetailView, { sesion: SESION }));
+
+    expect(html).toContain('Relación molar');
+    expect(html).toContain('Relación canina');
+    expect(html).toContain('Tipo I');
+    expect(html).toContain('Tipo III');
+    // El código del contrato no se enseña nunca tal cual.
+    expect(html).not.toContain('tipo_i');
+    expect(html).not.toContain('tipo_iii');
+  });
+
+  it('una relación sin dato no se lista como si se hubiera explorado', () => {
+    const sinRelacion: ClinicalSessionDetail = {
+      ...SESION,
+      content: {
+        ...SESION.content,
+        exam: {
+          ...SESION.content.exam,
+          relacionMolar: null,
+          relacionCanina: null,
+        },
+      },
+    };
+
+    const html = renderToStaticMarkup(createElement(SessionDetailView, { sesion: sinRelacion }));
+
+    expect(html).not.toContain('Relación molar');
+    expect(html).not.toContain('Relación canina');
+  });
+
+  it('muestra las observaciones de la sesión y un guion cuando no las hay', () => {
+    expect(renderToStaticMarkup(createElement(SessionDetailView, { sesion: SESION }))).toContain(
+      'Observaciones de la sesión',
+    );
+    // Sin observaciones el bloque no se queda en blanco: escribe el guion.
+    expect(renderToStaticMarkup(createElement(SessionDetailView, { sesion: SESION }))).toContain(
+      '>—</p>',
+    );
+
+    const conObservaciones: ClinicalSessionDetail = {
+      ...SESION,
+      content: {
+        ...SESION.content,
+        observaciones: 'Evoluciona sin dolor; control en siete días.',
+      },
+    };
+    const html = renderToStaticMarkup(
+      createElement(SessionDetailView, { sesion: conObservaciones }),
+    );
+
+    expect(html).toContain('Observaciones de la sesión');
+    expect(html).toContain('Evoluciona sin dolor; control en siete días.');
   });
 });

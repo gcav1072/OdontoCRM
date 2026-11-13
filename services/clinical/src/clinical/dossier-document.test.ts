@@ -85,6 +85,8 @@ const base = (): DossierDocumentInput => ({
           },
         ],
         diagnostico: 'Pulpitis irreversible',
+        observaciones: 'Paciente estable; se indica control en siete días.',
+        notasInternas: 'Nota interna: no imprimir en el dossier.',
       }),
     },
   ],
@@ -200,6 +202,28 @@ describe('el dossier del expediente', () => {
     expect(html).toContain('Endodoncia multirradicular');
   });
 
+  it('la evolución muestra las observaciones de la sesión y nunca las notas internas', async () => {
+    const html = await dossierHtml(base());
+    expect(html).toContain('Observaciones: Paciente estable; se indica control en siete días.');
+    // Las notas internas son para el consultorio: no salen en el papel del paciente.
+    expect(html).not.toContain('no imprimir en el dossier');
+  });
+
+  it('una sesión sin observaciones no añade una fila vacía a la evolución', async () => {
+    const html = await dossierHtml({
+      ...base(),
+      sessions: [
+        {
+          sessionNumber: 2,
+          closedAt: '2026-10-08T15:00:00.000Z',
+          content: contenido({ diagnostico: 'Control sin hallazgos nuevos' }),
+        },
+      ],
+    });
+    expect(html).toContain('Control sin hallazgos nuevos');
+    expect(html).not.toContain('Observaciones:');
+  });
+
   it('la farmacia trae el récipe, sus medicamentos y su código de verificación', async () => {
     const html = await dossierHtml(base());
     expect(html).toContain('RX-000007');
@@ -207,12 +231,18 @@ describe('el dossier del expediente', () => {
     expect(html).toContain('ABCDE-FGHJK');
   });
 
-  it('el odontograma se dibuja en SVG y la tabla de hallazgos nombra la condición', async () => {
+  it('el odontograma se dibuja en SVG con los rótulos del papel, sin orientación de caras', async () => {
     const html = await dossierHtml(base());
-    // Las dos arcadas, con las piezas y sus números.
-    expect(html).toContain('Arcada superior');
-    expect(html).toContain('Arcada inferior');
+    // Las dos arcadas, con sus rótulos y las piezas.
+    expect(html).toContain('<figcaption>Maxilar</figcaption>');
+    expect(html).toContain('<figcaption>Mandibular</figcaption>');
     expect(html).toContain('>26</text>');
+    // El papel no lleva la ayuda de orientación de caras de la pantalla interactiva, y
+    // una boca permanente no debe rotular ninguna banda como temporal.
+    expect(html).not.toContain('vestibular arriba');
+    expect(html).not.toContain('vestibular abajo');
+    expect(html).not.toContain('Maxilar · temporal');
+    expect(html).not.toContain('Mandibular · temporal');
     // La caries tiene cara (oclusal) y la endodoncia es de pieza completa.
     expect(html).toContain('Oclusal');
     expect(html).toContain('Pieza completa');
@@ -306,6 +336,24 @@ describe('el dossier del expediente', () => {
     expect(html).not.toContain('<svg viewBox');
   });
 
+  it('la dentición temporal rotula las dos bandas con su rango FDI', async () => {
+    const html = await dossierHtml({
+      ...base(),
+      odontogram: {
+        dentition: 'temporal',
+        findings: { '55': [hallazgoTemporal()] },
+      },
+    });
+    // Las bandas principales son las de leche: su rótulo lleva el rango FDI.
+    expect(html).toContain('<figcaption>Maxilar · temporal (55–65)</figcaption>');
+    expect(html).toContain('<figcaption>Mandibular · temporal (85–75)</figcaption>');
+    // Y no se rotula como arcada permanente, ni se repite la orientación de caras.
+    expect(html).not.toContain('<figcaption>Maxilar</figcaption>');
+    expect(html).not.toContain('<figcaption>Mandibular</figcaption>');
+    expect(html).not.toContain('vestibular arriba');
+    expect(html).not.toContain('vestibular abajo');
+  });
+
   it('la dentición mixta dibuja las bandas temporales cuando hay piezas de leche capturadas', async () => {
     const html = await dossierHtml({
       ...base(),
@@ -315,7 +363,13 @@ describe('el dossier del expediente', () => {
       },
     });
     expect(html).toContain('Dentición mixta');
-    expect(html).toContain('Dentición temporal · arcada superior');
+    // La arcada principal es la permanente, y las bandas de leche llevan su FDI.
+    expect(html).toContain('<figcaption>Maxilar</figcaption>');
+    expect(html).toContain('<figcaption>Mandibular</figcaption>');
+    expect(html).toContain('<figcaption>Maxilar · temporal (55–65)</figcaption>');
+    expect(html).toContain('<figcaption>Mandibular · temporal (85–75)</figcaption>');
+    expect(html).not.toContain('vestibular arriba');
+    expect(html).not.toContain('vestibular abajo');
   });
 
   it('una dentición mixta sin hallazgos de leche no dibuja bandas temporales vacías', async () => {
@@ -325,7 +379,9 @@ describe('el dossier del expediente', () => {
     });
     // Sigue diciendo que la boca es mixta, pero no pinta una banda que nadie capturó.
     expect(html).toContain('Dentición mixta');
-    expect(html).not.toContain('Dentición temporal · arcada superior');
+    expect(html).toContain('<figcaption>Maxilar</figcaption>');
+    expect(html).not.toContain('Maxilar · temporal');
+    expect(html).not.toContain('Mandibular · temporal');
   });
 
   it('escapa lo que viene de los datos (nombres que podrían traer HTML)', async () => {

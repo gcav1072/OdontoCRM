@@ -263,6 +263,82 @@ describe('historia clínica del mundo de prueba', () => {
   });
 });
 
+describe('diagnóstico por ítems y plan de tratamiento enlazado (v1.2)', () => {
+  const itemsDe = (secciones: Record<string, Record<string, unknown>>): Record<string, unknown>[] =>
+    (secciones['diagnostico']?.['items'] ?? []) as Record<string, unknown>[];
+
+  const procedimientosDe = (
+    secciones: Record<string, Record<string, unknown>>,
+  ): Record<string, unknown>[] =>
+    (secciones['plan_tratamiento']?.['procedimientos'] ?? []) as Record<string, unknown>[];
+
+  it('cada ítem de diagnóstico abre un procedimiento enlazado, descrito y con su pieza', () => {
+    for (const caso of CASOS) {
+      const secciones = seccionesDe(caso);
+      const items = itemsDe(secciones);
+      const procedimientos = procedimientosDe(secciones);
+      expect(items.length, caso.profile).toBeGreaterThan(0);
+
+      for (const item of items) {
+        const enlazados = procedimientos.filter(
+          (procedimiento) => procedimiento['diagnosticoId'] === item['id'],
+        );
+        // Un ítem de diagnóstico = un procedimiento del plan (regla del contrato).
+        expect(enlazados, `${caso.profile} · ${String(item['descripcion'])}`).toHaveLength(1);
+        const enlazado = enlazados[0] as Record<string, unknown>;
+        expect(String(enlazado['descripcion']).trim().length, caso.profile).toBeGreaterThanOrEqual(
+          3,
+        );
+        // La pieza del procedimiento enlazado la manda el diagnóstico.
+        expect(enlazado['pieza'], caso.profile).toBe(item['piezas']);
+      }
+    }
+  });
+
+  it('los ids de los ítems son deterministas y no se repiten dentro de la historia', () => {
+    for (const caso of CASOS) {
+      const items = itemsDe(seccionesDe(caso));
+      const ids = items.map((item) => String(item['id']));
+      expect(new Set(ids).size, caso.profile).toBe(ids.length);
+      // La misma entrada vuelve a producir exactamente los mismos ids.
+      expect(itemsDe(seccionesDe(caso)).map((item) => String(item['id']))).toEqual(ids);
+    }
+  });
+
+  it('los perfiles con varios diagnósticos conservan procedimientos libres (diagnosticoId null)', () => {
+    const conLibres = CASOS.filter((caso) =>
+      procedimientosDe(seccionesDe(caso)).some(
+        (procedimiento) => procedimiento['diagnosticoId'] === null,
+      ),
+    ).map((caso) => caso.profile);
+
+    // Ambos casos del contrato quedan cubiertos por los datos sembrados: enlazados y libres.
+    expect(conLibres).toEqual(
+      expect.arrayContaining(['caries_multiple', 'periodontal', 'anticoagulado', 'pediatrico']),
+    );
+  });
+
+  it('el examen intraoral registra relación molar y canina (ya no «oclusión»)', () => {
+    for (const caso of CASOS) {
+      const examen = seccionesDe(caso)['examen_intraoral'] ?? {};
+      expect(examen['relacionMolar'], caso.profile).not.toBeNull();
+      expect(examen['relacionCanina'], caso.profile).not.toBeNull();
+      expect(examen, caso.profile).not.toHaveProperty('oclusion');
+    }
+  });
+});
+
+describe('observaciones de la sesión (v1.2)', () => {
+  it('cada sesión del mundo trae observaciones clínicas, distintas de las notas internas', () => {
+    for (const caso of CASOS) {
+      const contenido = sesionDe(caso);
+      expect(typeof contenido.observaciones, caso.profile).toBe('string');
+      expect(String(contenido.observaciones).trim().length, caso.profile).toBeGreaterThan(20);
+      expect(contenido.observaciones, caso.profile).not.toBe(contenido.notasInternas);
+    }
+  });
+});
+
 describe('alertas clínicas por perfil', () => {
   it('cada perfil produce exactamente las alertas esperadas', () => {
     for (const caso of CASOS) {
