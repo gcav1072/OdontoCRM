@@ -7,6 +7,13 @@ fases: cada fase termina con sus commits atómicos y su etiqueta `fase-N`.
 ## [Sin publicar] — Correcciones
 
 ### Corregido
+- **Restaurar en Windows dejaba las bases y las tablas a nombre de `postgres`**, así que
+  las migraciones de cada servicio fallaban al arrancar con `42501 permission denied`
+  (pasó en la recuperación del 2026-11-13). Ahora, como en Fedora, la base y el
+  `pg_restore` usan el **rol del servicio** como propietario (`ROLE_<base>` en
+  `backup.env`, o el nombre de la base) con `--no-owner --role`, y se verifica que las
+  tablas quedaron del rol. De paso, `ANALYZE` se ejecuta dentro de la base restaurada y
+  un error de SQL ya no se ignora: la restauración se para en vez de dejar la base a medias.
 - **La restauración pedía la clave de `postgres` en cada conexión** (~9 veces por base,
   ~90 en una restauración completa) porque `psql` la pregunta cada vez que no está en
   `.pgpass`. Ahora se pide **una sola vez** al empezar y viaja a cada conexión por

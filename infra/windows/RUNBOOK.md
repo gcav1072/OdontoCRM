@@ -170,6 +170,11 @@ conectarían). Si lo necesitas, añade `--con-config`. Sin `--yes` solo dice qu�
 > descifra. Y un respaldo hecho antes de que el almacén entrara en la copia diaria **no lo trae**
 > (`--include-storage`): compruébalo antes de dar el desastre por resuelto.
 
+> **Las bases restauradas quedan con el rol del servicio como propietario** (no con
+> `postgres`): si no, las migraciones fallan con `42501` al arrancar. `recuperar` ya lo
+> hace y lo verifica tabla por tabla; `ROLE_<base>` en `backup.env` permite indicar otro
+> nombre de rol.
+
 **Paso a paso** (si prefieres verlo, o si `recuperar` falló en algo):
 
 ```powershell

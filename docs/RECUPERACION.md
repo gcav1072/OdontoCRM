@@ -245,6 +245,9 @@ odontocrm recuperar --from E:\2026-10-12 --yes                        # Windows
 `recuperar` hace, en orden:
 
 1. **Para** los servicios. *PostgreSQL se queda arriba*: la restauración necesita conectarse.
+   Las bases se recrean con el **rol del servicio** como propietario (`ROLE_<base>` en
+   `backup.env`, o el nombre de la base) y se restauran con `--no-owner --role`; sin eso las
+   migraciones del servicio fallan con `42501 permission denied`.
 2. **Restaura las bases**, cada una con la verificación previa del restaurador (ensaya en una base
    temporal y, solo si entra, sustituye la buena) y conservando la anterior como
    `<base>__antes_de_restaurar_<fecha>`.

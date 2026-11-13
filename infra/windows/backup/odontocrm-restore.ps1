@@ -10,9 +10,11 @@
 #   4. Solo si la verificación pasa, restaura sobre la base definitiva:
 #        · cierra las conexiones abiertas,
 #        · con --keep-old RENOMBRA la base actual a <base>__antes_de_restaurar_<fecha>,
-#        · la recrea con el rol del servicio como propietario,
-#        · restaura con --no-owner,
-#        · ejecuta ANALYZE.
+#        · la recrea con el ROL DEL SERVICIO como propietario (ROLE_<base> en backup.env,
+#          o el nombre de la base),
+#        · restaura con --no-owner --role=<rol>, así las tablas quedan del servicio y sus
+#          migraciones pueden aplicar (si quedan de postgres fallan con 42501),
+#        · ejecuta ANALYZE dentro de la base y verifica la propiedad de las tablas.
 #   5. Informa qué se hizo y con qué código termina.
 #
 # USO
@@ -145,8 +147,13 @@ function ConEntorno {
   }
 }
 
-function Ejecutar-Sql { param([string]$Sql)
-  ConEntorno (Env-PgAdmin) { & $psql -X -q -v ON_ERROR_STOP=1 -d postgres -c $Sql } | Out-Null
+# Ejecuta SQL como administrador. `-Base` elige la base (ANALYZE se ejecuta DENTRO de la
+# base restaurada: `ANALYZE base` desde postgres busca una TABLA llamada así y fallaba).
+# Un error aborta la restauración: antes se ignoraba y se seguía con la base a medias.
+function Ejecutar-Sql {
+  param([string]$Sql, [string]$Base = 'postgres')
+  ConEntorno (Env-PgAdmin) { & $psql -X -q -v ON_ERROR_STOP=1 -d $Base -c $Sql } | Out-Null
+  if ($LASTEXITCODE -ne 0) { Morir "falló una orden de la restauración en «$Base»: $Sql" }
 }
 
 function Test-VolcadoRapido {
@@ -159,6 +166,25 @@ function Test-VolcadoRapido {
   if ($LASTEXITCODE -ne 0) { Escribir-Error "${Etiqueta}: catálogo ilegible"; return $false }
   Escribir-Ok "${Etiqueta}: volcado válido"
   return $true
+}
+
+# ── Rol propietario de cada base ──────────────────────────────────────────
+# Espejo de Fedora: ROLE_<base> en backup.env, o el nombre de la base. Las bases y las
+# tablas restauradas tienen que quedar a nombre del ROL DEL SERVICIO: si se restauran
+# como `postgres`, las migraciones del servicio fallan con 42501 (permission denied)
+# aunque el dueño de la base sea postgres (pasó en la restauración del 2026-11-13).
+function RolDeBase {
+  param([string]$Base)
+  $rol = Get-ValorEnv -Archivo $configFile -Clave "ROLE_$Base"
+  if ($rol) { return $rol.Trim() }
+  return $Base
+}
+
+function Test-RolExiste {
+  param([string]$Rol)
+  $rolSql = $Rol -replace "'", "''"
+  $r = ConEntorno (Env-PgAdmin) { & $psql -X -t -A -d postgres -c "SELECT 1 FROM pg_roles WHERE rolname = '$rolSql'" }
+  return (([string]($r | Select-Object -First 1)).Trim() -eq '1')
 }
 
 # ── Clave del administrador de PostgreSQL: una sola vez ───────────────────
@@ -226,18 +252,26 @@ foreach ($base in $DbList) {
 
   $temp = "$base$VerifySuffix"
   $anteriorNombre = "$base$($OldSuffix)_$((Get-Date).ToString('yyyyMMddHHmmss'))"
+  $rol = RolDeBase $base
 
   if ($DryRun) {
-    Escribir-Detalle "[dry-run] restauraría a $temp para verificar, y luego sobre $base"
+    Escribir-Detalle "[dry-run] base temporal $temp y luego $base, AMBAS con owner «$rol»"
+    Escribir-Detalle "[dry-run] pg_restore --no-owner --role=$rol (las tablas quedan del servicio)"
     if ($KeepOld) { Escribir-Detalle "[dry-run] con --keep-old renombraría $base → $anteriorNombre" }
     continue
   }
 
+  if (-not (Test-RolExiste $rol)) {
+    Escribir-Error "${base}: no existe el rol «$rol» para dejarlo como propietario"
+    Escribir-Detalle "revisa ROLE_$base en $configFile (o crea el rol con 20-aprovisionar.ps1)"
+    $fallos++; continue
+  }
+
   # ── 1. Verificación en una base temporal (no toca la real) ─────────────────
   Escribir-Detalle "verificando en $temp (la base real no se toca)…"
-  Ejecutar-Sql "DROP DATABASE IF EXISTS $temp"
-  Ejecutar-Sql "CREATE DATABASE $temp"
-  ConEntorno (Env-PgAdmin) { & $pgRestore --no-owner --dbname=$temp $dump *> $null }
+  Ejecutar-Sql "DROP DATABASE IF EXISTS `"$temp`""
+  Ejecutar-Sql "CREATE DATABASE `"$temp`" OWNER `"$rol`""
+  ConEntorno (Env-PgAdmin) { & $pgRestore --no-owner "--role=$rol" "--dbname=$temp" $dump *> $null }
   if ($LASTEXITCODE -ne 0) {
     Escribir-Error "${base}: la restauración de prueba falló: NO se tocó la base real"
     $fallos++; continue
@@ -253,17 +287,32 @@ foreach ($base in $DbList) {
   Escribir-Detalle 'cerrando conexiones y sustituyendo la base…'
   Ejecutar-Sql "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$base' AND pid <> pg_backend_pid()"
   if ($KeepOld) {
-    Ejecutar-Sql "ALTER DATABASE $base RENAME TO $anteriorNombre"
+    Ejecutar-Sql "ALTER DATABASE `"$base`" RENAME TO `"$anteriorNombre`""
     Escribir-Ok "${base}: la base anterior quedó como $anteriorNombre"
   }
   else {
-    Ejecutar-Sql "DROP DATABASE IF EXISTS $base WITH (FORCE)"
+    Ejecutar-Sql "DROP DATABASE IF EXISTS `"$base`" WITH (FORCE)"
   }
-  Ejecutar-Sql "CREATE DATABASE $base"
-  ConEntorno (Env-PgAdmin) { & $pgRestore --no-owner --dbname=$base $dump *> $null }
+  Ejecutar-Sql "CREATE DATABASE `"$base`" OWNER `"$rol`""
+  ConEntorno (Env-PgAdmin) { & $pgRestore --no-owner "--role=$rol" "--dbname=$base" $dump *> $null }
   if ($LASTEXITCODE -ne 0) { Escribir-Error "${base}: falló la restauración sobre la base real"; $fallos++; continue }
-  Ejecutar-Sql "ANALYZE $base"
+  # ANALYZE va DENTRO de la base restaurada (no como tabla desde postgres).
+  Ejecutar-Sql 'ANALYZE' -Base $base
   Escribir-Ok "${base}: restaurada"
+
+  # Comprobación de propiedad, como en Fedora: si las tablas no quedaron del rol del
+  # servicio, las migraciones fallarán con 42501 y conviene verlo aquí, no al arrancar.
+  $rolSql = $rol -replace "'", "''"
+  $ajenas = ConEntorno (Env-PgAdmin) {
+    & $psql -X -t -A -v ON_ERROR_STOP=1 -d $base -c "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND pg_get_userbyid(c.relowner) <> '$rolSql'"
+  }
+  $cuantas = 0
+  [void][int]::TryParse((([string]($ajenas | Select-Object -First 1))).Trim(), [ref]$cuantas)
+  if ($cuantas -gt 0) {
+    Escribir-Aviso "${base}: $cuantas tabla(s) no quedaron a nombre de «$rol»; las migraciones podrían fallar"
+    Escribir-Detalle "se arregla revisando ROLE_$base en $configFile y repitiendo la restauración"
+  }
+  else { Escribir-Ok "${base}: propiedad verificada (tablas del rol $rol)" }
 
   if (-not $KeepVerify) { Ejecutar-Sql "DROP DATABASE IF EXISTS $temp" }
 }
