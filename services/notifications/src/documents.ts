@@ -143,15 +143,28 @@ export const sendDocumentNotification = async (
     `ventana-${String(Math.floor(Date.now() / (DOCUMENT_SEND_DEDUPE_WINDOW_SECONDS * 1000)))}`;
   const dedupeKey = `documento:${input.kind}:${input.entityId}:${input.patientId}:${bucket}`;
 
+  // El nombre del paciente vive en el servicio de pacientes; el texto de la
+  // plantilla (`documento_recipe` / `documento_factura` / `documento_recibo`) lo
+  // necesita para saludarlo. Si no se puede resolver, se usa un texto genérico.
+  const paciente = await (async (): Promise<string | null> => {
+    try {
+      const resumen = await clients.listPatientSummaries([input.patientId]);
+      return resumen[0]?.fullName ?? null;
+    } catch {
+      return null;
+    }
+  })();
+
   const record = await enqueue(db, {
     patientId: input.patientId,
-    patientName: null,
+    patientName: paciente,
     templateKey: PLANTILLA_POR_TIPO[input.kind],
     channel: vinculado.canal,
-    // El texto se re-renderiza al enviar con el nombre del consultorio actual.
+    // El texto se re-renderiza al enviar con el nombre del consultorio actual: el
+    // aviso pudo encolarse antes de que el titular completara el registro.
     payload: {
-      variables: { numero: documento.numero },
-      needsClinic: true,
+      variables: { paciente: paciente ?? '', numero: documento.numero },
+      needsClinic: paciente !== null,
       documento: {
         kind: input.kind,
         entityId: input.entityId,
@@ -159,7 +172,8 @@ export const sendDocumentNotification = async (
         filename: documento.filename,
       },
     },
-    text: TEXTO_POR_TIPO[input.kind],
+    // Sin nombre no se arriesga un saludo en blanco: texto corto y sin marcadores.
+    ...(paciente === null ? { text: TEXTO_POR_TIPO[input.kind] } : {}),
     dedupeKey,
     document: {
       kind: input.kind,

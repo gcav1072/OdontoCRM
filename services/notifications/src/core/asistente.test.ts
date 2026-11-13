@@ -1,6 +1,17 @@
+import { botDraftSchema, type BotDraft } from '@odontocrm/contracts';
 import { describe, expect, it } from 'vitest';
 
-import { confirmacionDesdeTexto, sexoDesdeTexto } from './asistente.js';
+import {
+  abbreviateName,
+  coincideVerificacion,
+  confirmacionDesdeTexto,
+  corregirCampoDesdeTexto,
+  estadoAnterior,
+  menuRapidoButtons,
+  sexoDesdeTexto,
+} from './asistente.js';
+
+const borrador = (datos: Record<string, unknown> = {}): BotDraft => botDraftSchema.parse(datos);
 
 /**
  * El paso «Sexo» acepta la letra además del número de la opción.
@@ -59,5 +70,117 @@ describe('confirmación final por texto', () => {
     expect(confirmacionDesdeTexto('María Pérez')).toBeNull();
     expect(confirmacionDesdeTexto('quiero una cita')).toBeNull();
     expect(confirmacionDesdeTexto('')).toBeNull();
+  });
+});
+
+/**
+ * v1.2 — Verificación ligera de identidad (2.º chat): el nombre se abrevia y la
+ * prueba es la fecha de nacimiento o los últimos 4 dígitos del teléfono.
+ */
+describe('nombre abreviado y verificación de identidad', () => {
+  it.each([
+    ['María Pérez', 'María P.'],
+    ['  maría   pérez garcía ', 'maría P.'],
+    ['Ana', 'Ana'],
+    ['', ''],
+  ])('«%s» se abrevia como «%s»', (nombre, esperado) => {
+    expect(abbreviateName(nombre)).toBe(esperado);
+  });
+
+  const candidato = { birthDate: '1990-05-15', phone: '+584121234567' };
+
+  it('acierta con la fecha de nacimiento en cualquiera de sus formatos', () => {
+    expect(coincideVerificacion('15/05/1990', candidato)).toBe(true);
+    expect(coincideVerificacion('15-05-1990', candidato)).toBe(true);
+    expect(coincideVerificacion('15.5.90', candidato)).toBe(true);
+  });
+
+  it('acierta con los últimos 4 dígitos del teléfono', () => {
+    expect(coincideVerificacion('4567', candidato)).toBe(true);
+    expect(coincideVerificacion(' 4567 ', candidato)).toBe(true);
+  });
+
+  it('falla con una fecha distinta, pocos dígitos o datos ausentes', () => {
+    expect(coincideVerificacion('16/05/1990', candidato)).toBe(false);
+    expect(coincideVerificacion('456', candidato)).toBe(false);
+    expect(coincideVerificacion('9999', candidato)).toBe(false);
+    expect(coincideVerificacion('15/05/1990', { birthDate: null, phone: null })).toBe(false);
+  });
+});
+
+/**
+ * v1.2 — Menú de corrección: un paciente ya registrado solo puede cambiar el
+ * motivo o empezar de nuevo; un alta a medias puede corregir cualquier campo.
+ */
+describe('menú de corrección', () => {
+  it.each([
+    ['teléfono', 'telefono'],
+    ['cedula', 'documento'],
+    ['documento', 'documento'],
+    ['fecha de nacimiento', 'nacimiento'],
+    ['sexo', 'sexo'],
+    ['motivo', 'motivo'],
+    ['corregir todo', 'todo'],
+    ['reiniciar', 'todo'],
+    ['volver', 'volver'],
+    ['atrás', 'volver'],
+  ] as const)('para un paciente nuevo, «%s» → %s', (texto, esperado) => {
+    expect(corregirCampoDesdeTexto(texto, false)).toBe(esperado);
+  });
+
+  it('un paciente existente solo puede corregir el motivo o empezar de cero', () => {
+    expect(corregirCampoDesdeTexto('motivo', true)).toBe('motivo');
+    expect(corregirCampoDesdeTexto('todo', true)).toBe('todo');
+    // «Cambiar de cédula» es «corregir todo» con la ficha soltada.
+    expect(corregirCampoDesdeTexto('cédula', true)).toBe('todo');
+    expect(corregirCampoDesdeTexto('volver', true)).toBe('volver');
+    expect(corregirCampoDesdeTexto('nombre', true)).toBeNull();
+    expect(corregirCampoDesdeTexto('teléfono', true)).toBeNull();
+  });
+
+  it('no confunde un texto cualquiera con una corrección', () => {
+    expect(corregirCampoDesdeTexto('María Pérez', false)).toBeNull();
+    expect(corregirCampoDesdeTexto('', false)).toBeNull();
+  });
+});
+
+/** v1.2 — «volver» retrocede un paso en el orden nuevo, conservando el borrador. */
+describe('paso anterior del flujo', () => {
+  it.each([
+    ['documento', 'documento'],
+    ['nombre', 'documento'],
+    ['telefono', 'nombre'],
+    ['nacimiento', 'telefono'],
+    ['representante', 'nacimiento'],
+    ['motivo', 'sexo'],
+  ] as const)('desde «%s» vuelve a «%s»', (estado, esperado) => {
+    expect(estadoAnterior(estado, borrador())).toBe(esperado);
+  });
+
+  it('el sexo vuelve al representante si lo hay y, si no, al nacimiento', () => {
+    expect(estadoAnterior('sexo', borrador({ guardianName: 'Laura' }))).toBe('representante');
+    expect(estadoAnterior('sexo', borrador())).toBe('nacimiento');
+  });
+
+  it('en el inicio no hay paso anterior', () => {
+    expect(estadoAnterior('inicio', borrador())).toBeNull();
+  });
+});
+
+/** v1.2 — Menú rápido de bienvenida y ayuda. */
+describe('menú rápido', () => {
+  it('un chat sin vincular ofrece 4 acciones y no «Cambiar de paciente»', () => {
+    const botones = menuRapidoButtons(false);
+    expect(botones.map((boton) => boton.accion)).toEqual([
+      'menu:nueva',
+      'menu:estado',
+      'menu:confirmar',
+      'menu:cancelar',
+    ]);
+  });
+
+  it('un chat vinculado añade «Cambiar de paciente»', () => {
+    const botones = menuRapidoButtons(true);
+    expect(botones.at(-1)).toEqual({ etiqueta: 'Cambiar de paciente', accion: 'menu:desvincular' });
   });
 });

@@ -103,12 +103,12 @@ export const runAppointmentReminders = async (
     : REMINDER_STATUSES;
 
   let page = 1;
-  let totalPages = 1;
+  let hayMas = true;
   let evaluadas = 0;
   let encoladas = 0;
   let duplicadas = 0;
 
-  do {
+  while (hayMas) {
     const pagina: Paginated<AppointmentSummary> = await clients.listAppointments({
       from: targetDate,
       to: targetDate,
@@ -151,9 +151,9 @@ export const runAppointmentReminders = async (
       }
     }
 
-    totalPages = pagina.totalPages;
+    hayMas = page < pagina.totalPages;
     page += 1;
-  } while (page <= totalPages);
+  }
 
   return { status: 'ok', targetDate, hour, evaluadas, encoladas, duplicadas };
 };

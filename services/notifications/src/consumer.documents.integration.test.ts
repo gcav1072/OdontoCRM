@@ -37,6 +37,12 @@ describeWithDatabase('envío automático de documentos por evento (PostgreSQL re
 
   const clients = (): InternalClients =>
     ({
+      listPatientSummaries: async () => [
+        {
+          id: patientIds[0] ?? globalThis.crypto.randomUUID(),
+          fullName: `Paciente ${MARK}`,
+        },
+      ],
       getInvoiceMeta: async (id: string): Promise<InvoiceDocumentMeta | null> =>
         id === invoiceId
           ? {

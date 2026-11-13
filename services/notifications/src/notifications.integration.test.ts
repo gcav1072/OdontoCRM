@@ -294,12 +294,12 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     return handleInbound(services, inbound);
   };
 
-  /** Recorre los 7 pasos por el adaptador indicado. */
+  /** Recorre los 7 pasos por el adaptador indicado (v1.2: el alta empieza por la CI). */
   const recorrerPasos = async (adapter: SimulatedAdapter, direccion: string): Promise<void> => {
     await enviar(adapter, { direccion, texto: 'quiero una cita' });
-    await enviar(adapter, { direccion, texto: '  maría   pérez 123 ' });
     await enviar(adapter, { direccion, accion: 'doc:V' });
     await enviar(adapter, { direccion, texto: '12.345.678' });
+    await enviar(adapter, { direccion, texto: '  maría   pérez 123 ' });
     await enviar(adapter, { direccion, texto: '0412-1234567' });
     await enviar(adapter, { direccion, texto: '15/05/1990' });
     await enviar(adapter, { direccion, accion: 'sexo:F' });
@@ -618,7 +618,6 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
   it('si un servicio interno se cae, el paciente recibe aviso y sigue en su paso', async () => {
     const direccion = `${direccionBase}9`;
     await enviar(telegram, { direccion, texto: 'quiero una cita' });
-    await enviar(telegram, { direccion, texto: 'Gabriel Astudillo' });
     await enviar(telegram, { direccion, accion: 'doc:V' });
 
     // El servicio de pacientes se está reiniciando: nadie escucha en su puerto.
@@ -684,26 +683,29 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
 
     // El canal queda vinculado con su dirección: por ahí saldrán los avisos.
     const linked = await findChannel(handle.db, created?.patientId ?? '');
-    expect(linked).toEqual({ canal: 'telegram', direccion });
+    expect(linked).toMatchObject({ canal: 'telegram', direccion });
   }, 60_000);
 
   it('en un canal sin botones las opciones van numeradas y el «2» sirve de botón', async () => {
     const direccion = `${direccionBase}1`;
     await enviar(whatsapp, { direccion, texto: 'cita' });
-    await enviar(whatsapp, { direccion, texto: 'María Pérez' });
 
-    // Paso 2: el documento. WhatsApp no tiene botones, así que se numeran.
+    // Paso 1: el documento. WhatsApp no tiene botones, así que se numeran.
     const pedirDocumento = whatsapp.sent.at(-1);
+    expect(pedirDocumento?.texto).toContain('Paso 1 de 7');
     expect(pedirDocumento?.texto).toContain('1) V');
     expect(pedirDocumento?.texto).toContain('4) SC');
 
     await enviar(whatsapp, { direccion, texto: '2' });
-    const conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
+    let conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
     // El «2» valió como el botón «E» y el paso avanzó con ese tipo de documento.
     expect(conversation.draft['docType']).toBe('E');
     expect(conversation.state).toBe('documento');
 
     await enviar(whatsapp, { direccion, texto: '87654321' });
+    conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
+    expect(conversation.state).toBe('nombre');
+    await enviar(whatsapp, { direccion, texto: 'María Pérez' });
     await enviar(whatsapp, { direccion, texto: '0414-0000000' });
     await enviar(whatsapp, { direccion, texto: '20/01/1985' });
 
@@ -716,21 +718,24 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     expect(conSexo.state).toBe('motivo');
 
     await enviar(whatsapp, { direccion, texto: `Limpieza dental ${MARK}` });
-    // La confirmación también va numerada: 1 = Confirmar.
-    expect(whatsapp.sent.at(-1)?.texto).toContain('1) Confirmar');
+    // La confirmación también va numerada: 1 = Confirmar, 2 = Corregir (v1.2).
+    const resumen = whatsapp.sent.at(-1)?.texto ?? '';
+    expect(resumen).toContain('1) Confirmar');
+    expect(resumen).toContain('Documento: E-87654321');
     await enviar(whatsapp, { direccion, texto: '1' });
 
     const created = clients.requests.at(-1);
     expect(created?.patientName).toBe('María Pérez');
     expect(created?.channel).toBe('whatsapp');
     const linked = await findChannel(handle.db, created?.patientId ?? '');
-    expect(linked).toEqual({ canal: 'whatsapp', direccion });
+    expect(linked).toMatchObject({ canal: 'whatsapp', direccion });
   }, 60_000);
 
-  it('el alta de un documento duplicado conserva la ficha elegida hasta el final', async () => {
+  it('un documento duplicado exige verificar la identidad y conserva la ficha elegida', async () => {
     const patientId = globalThis.crypto.randomUUID();
     const direccion = `${direccionBase}Y`;
-    const original = clients.findPatientByDocument;
+    const originalFind = clients.findPatientByDocument;
+    const originalSummaries = clients.listPatientSummaries;
     clients.findPatientByDocument = async () => ({
       id: patientId,
       fullName: 'María Pérez',
@@ -741,31 +746,44 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
       birthDate: '1990-05-15',
       sex: 'F',
     });
+    clients.listPatientSummaries = async (ids) =>
+      ids.includes(patientId) ? [unPaciente(patientId, 'María Pérez')] : [];
 
     try {
       await enviar(whatsapp, { direccion, texto: 'cita' });
-      await enviar(whatsapp, { direccion, texto: 'María Pérez' });
       await enviar(whatsapp, { direccion, accion: 'doc:V' });
       await enviar(whatsapp, { direccion, texto: '87654321' });
 
+      // v1.2: la CI existe y el chat no está vinculado → verificación de identidad con
+      // el nombre abreviado y el documento enmascarado (no se filtran los datos).
       let conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
-      expect(conversation.state).toBe('confirmacion');
+      expect(conversation.state).toBe('verificar_identidad');
       expect(conversation.patientId).toBe(patientId);
+      const verificacion = whatsapp.sent.at(-1)?.texto ?? '';
+      expect(verificacion).toContain('María P.');
+      expect(verificacion).toContain('V-•••••321');
 
-      // «sí» escrito vale lo mismo que el número 1 de la opción.
-      await enviar(whatsapp, { direccion, texto: 'sí' });
+      // La fecha de nacimiento del candidato acredita la identidad.
+      await enviar(whatsapp, { direccion, texto: '15/05/1990' });
       conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
       expect(conversation.state).toBe('motivo');
-      // La conversación no se reinicia: el `patientId` elegido sigue ahí.
+      // La conversación no se reinicia: el `patientId` verificado sigue ahí.
       expect(conversation.patientId).toBe(patientId);
+      expect(conversation.draft['fullName']).toBe('María Pérez');
+
+      // El chat quedó vinculado a la ficha verificada.
+      const canal = await findChannel(handle.db, patientId);
+      expect(canal).toMatchObject({ canal: 'whatsapp', direccion });
 
       await enviar(whatsapp, { direccion, texto: `Limpieza dental ${MARK}` });
       // Y «confirmar» escrito vale lo mismo que el número 1 del resumen final.
       await enviar(whatsapp, { direccion, texto: 'confirmar' });
       expect(clients.requests.at(-1)?.patientId).toBe(patientId);
     } finally {
-      clients.findPatientByDocument = original;
+      clients.findPatientByDocument = originalFind;
+      clients.listPatientSummaries = originalSummaries;
       await handle.db.delete(botConversations).where(eq(botConversations.direccion, direccion));
+      await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
     }
   }, 60_000);
 
@@ -810,6 +828,12 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     try {
       const inicio = await enviar(whatsapp, { direccion, texto: 'cita' });
       expect(inicio.action).toBe('nueva');
+      // v1.2: un chat vinculado primero pregunta si la cita es para él o para otra
+      // persona; el «1» numerado vale como «Para mí».
+      expect(whatsapp.sent.at(-1)?.texto).toContain('vinculado a María Pérez');
+      expect(whatsapp.sent.at(-1)?.texto).toContain('1) Para mí');
+      await enviar(whatsapp, { direccion, texto: '1' });
+
       const conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
       expect(conversation.state).toBe('motivo');
       expect(conversation.draft['fullName']).toBe('María Pérez');
@@ -841,25 +865,42 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
 
     expect(porTelegram.canal).toBe('telegram');
     expect(porWhatsapp.canal).toBe('whatsapp');
-    expect(porTelegram.state).toBe('nombre');
-    expect(porWhatsapp.state).toBe('nombre');
+    // v1.2: el alta arranca en el documento (Paso 1) en ambos canales.
+    expect(porTelegram.state).toBe('documento');
+    expect(porWhatsapp.state).toBe('documento');
   }, 60_000);
 
-  it('un mensaje inválido no avanza y explica el error', async () => {
+  it('un mensaje inválido no avanza y explica el error (en una sola burbuja)', async () => {
     const direccion = `${direccionBase}3`;
     await enviar(whatsapp, { direccion, texto: 'cita' });
+
+    // Paso 1: sin tipo elegido, «123456» no es un documento.
     await enviar(whatsapp, { direccion, texto: '123456' });
     let conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
-    expect(conversation.state).toBe('nombre');
+    expect(conversation.state).toBe('documento');
+    const errorDocumento = whatsapp.sent.at(-1)?.texto ?? '';
+    expect(errorDocumento).toContain('elige el tipo de documento');
+    expect(errorDocumento).toContain('Paso 1 de 7');
 
-    await enviar(whatsapp, { direccion, texto: 'Ana Gómez' });
     await enviar(whatsapp, { direccion, accion: 'doc:V' });
     await enviar(whatsapp, { direccion, texto: '123' });
     conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
     expect(conversation.state).toBe('documento');
     expect(conversation.draft['docNumber']).toBeNull();
 
+    // Paso 2: un nombre con números no pasa.
     await enviar(whatsapp, { direccion, texto: '87654321' });
+    conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
+    expect(conversation.state).toBe('nombre');
+    await enviar(whatsapp, { direccion, texto: '123456' });
+    conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
+    expect(conversation.state).toBe('nombre');
+    expect(conversation.draft['fullName']).toBeNull();
+    const errorNombre = whatsapp.sent.at(-1)?.texto ?? '';
+    expect(errorNombre).toContain('Escribe tu nombre');
+    expect(errorNombre).toContain('Paso 2 de 7');
+
+    await enviar(whatsapp, { direccion, texto: 'Ana Gómez' });
     await enviar(whatsapp, { direccion, texto: '0414-0000000' });
     await enviar(whatsapp, { direccion, texto: '31/02/1990' });
     conversation = await loadConversation(handle.db, 'whatsapp', direccion, null);
@@ -880,7 +921,7 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     // Y por el camino del adaptador (el que usa el servicio en marcha) tampoco.
     await telegram.deliver({ direccion, texto: 'cita', eventoId });
     const conversation = await loadConversation(handle.db, 'telegram', direccion, null);
-    expect(conversation.state).toBe('nombre');
+    expect(conversation.state).toBe('documento');
   }, 60_000);
 
   it('el anti-flood corta a los 10 mensajes por minuto', async () => {
@@ -904,7 +945,7 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     expect(result.action).toBe('vinculado');
 
     const channel = await findChannel(handle.db, patientId);
-    expect(channel).toEqual({ canal: 'telegram', direccion });
+    expect(channel).toMatchObject({ canal: 'telegram', direccion });
 
     const conversation = await loadConversation(handle.db, 'telegram', direccion, null);
     expect(conversation.patientId).toBe(patientId);
@@ -1480,7 +1521,7 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
   }, 30_000);
 
-  it('con los dos canales vinculados, el aviso prefiere WhatsApp (D16)', async () => {
+  it('con los dos canales vinculados manda el chat principal; sin principal, WhatsApp (D16)', async () => {
     const patientId = globalThis.crypto.randomUUID();
     await linkChat(handle.db, {
       patientId,
@@ -1493,8 +1534,17 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
       direccion: `${direccionBase}R`,
     });
 
+    // El primer vínculo del paciente queda como principal y ese es el destino (v1.2).
+    const principal = await findChannel(handle.db, patientId);
+    expect(principal).toMatchObject({ canal: 'telegram', direccion: `${direccionBase}Q` });
+
+    // Si ninguno está marcado, la preferencia de canal (D16) elige WhatsApp.
+    await handle.db
+      .update(patientChannels)
+      .set({ isPrimary: false })
+      .where(eq(patientChannels.patientId, patientId));
     const canal = await findChannel(handle.db, patientId);
-    expect(canal).toEqual({ canal: 'whatsapp', direccion: `${direccionBase}R` });
+    expect(canal).toMatchObject({ canal: 'whatsapp', direccion: `${direccionBase}R` });
 
     await handle.db.delete(patientChannels).where(eq(patientChannels.patientId, patientId));
   }, 30_000);
@@ -1546,7 +1596,7 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
     // Al volver a escribir no retoma el motivo ni el ticket viejo: empieza el alta.
     await enviar(whatsapp, { direccion, texto: 'cita' });
     const nueva = await loadConversation(handle.db, 'whatsapp', direccion, null);
-    expect(nueva.state).toBe('nombre');
+    expect(nueva.state).toBe('documento');
     expect(nueva.patientId).toBeNull();
     expect(nueva.lastTicket).toBeNull();
 
@@ -1575,7 +1625,7 @@ describeWithDatabase('asistente multicanal y cola de avisos (PostgreSQL real)', 
 
     await enviar(whatsapp, { direccion, texto: 'cita' });
     const nueva = await loadConversation(handle.db, 'whatsapp', direccion, null);
-    expect(nueva.state).toBe('nombre');
+    expect(nueva.state).toBe('documento');
     expect(nueva.patientId).toBeNull();
     expect(nueva.lastTicket).toBeNull();
 
