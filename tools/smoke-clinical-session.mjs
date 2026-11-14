@@ -83,8 +83,8 @@ const esperarAuditoria = async (action, entityId) => {
   return [];
 };
 
-/** Mañana en la zona del consultorio: es el día de la cita de prueba. */
-const dia = new Date(Date.now() - 4 * 3_600_000 + 86_400_000).toISOString().slice(0, 10);
+/** Mañana en la zona del consultorio; si no hay jornada, se busca el próximo día con franjas. */
+let dia = new Date(Date.now() - 4 * 3_600_000 + 86_400_000).toISOString().slice(0, 10);
 
 const aMinutos = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 const enHora = (minutos) =>
@@ -147,6 +147,7 @@ const sesionCompleta = {
     'Paciente colabora durante la consulta; se revisa la relación molar en la próxima cita.',
   indicaciones: 'No comer hasta que pase el efecto de la anestesia',
   proximaCitaFecha: null,
+  proximaCitaAppointmentId: null,
   proximaCitaNota: 'Control en seis meses',
   notasInternas: null,
 };
@@ -229,11 +230,27 @@ check('la solicitud se crea con su ticket', solicitud.status === 201, solicitud.
  * El cupo son las franjas del horario; si la jornada de prueba está llena, la cita
  * se autoriza como sobrecupo (quien corre la prueba es el administrador).
  */
-const vista = await call(`/api/v1/agenda/days/${dia}`);
-const sillon = (vista.body?.chairs ?? []).find((candidato) =>
-  (candidato.slots ?? []).some((slot) => slot.state === 'libre'),
-);
-const chairId = sillon?.chair?.id;
+const vista = await (async () => {
+  // Mañana puede caer en un día sin jornada (fin de semana): se avanza hasta el
+  // primer día con una franja libre, que es el que se usa para la cita de prueba.
+  for (let offset = 1; offset <= 10; offset += 1) {
+    const candidato = new Date(Date.now() - 4 * 3_600_000 + offset * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const respuesta = await call(`/api/v1/agenda/days/${candidato}`);
+    const slots = (respuesta.body?.chairs ?? []).flatMap((sillon) => sillon.slots ?? []);
+    if (slots.some((slot) => slot.state === 'libre')) {
+      dia = candidato;
+      return respuesta;
+    }
+  }
+  return { status: 0, body: null };
+})();
+// La vista del día devuelve una fila por consultorio con sus franjas: se aplana y se
+// toma el consultorio de la primera franja libre (la cita manual necesita su chairId).
+const slotsDelDia = (vista.body?.chairs ?? []).flatMap((candidato) => candidato.slots ?? []);
+const franjaLibre = slotsDelDia.find((slot) => slot.state === 'libre');
+const chairId = franjaLibre?.chairId;
 const cupo = vista.body?.capacity;
 const lleno =
   typeof cupo?.assigned === 'number' &&
@@ -481,6 +498,7 @@ for (const hora of horas.slice(3, 6)) {
       startTime: hora,
       slotKind: 'manual',
       durationMinutes: 30,
+      chairId,
       notes: MARK,
     }),
   });

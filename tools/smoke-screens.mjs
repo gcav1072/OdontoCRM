@@ -189,7 +189,9 @@ const dayFor = (offset) => {
 };
 const day = dayFor(95);
 const dayView = await call(`/api/v1/agenda/days/${day}`);
-const freeSlot = (dayView.body?.slots ?? []).find((slot) => slot.state === 'libre')?.startTime;
+// La vista del día devuelve una fila por consultorio con sus franjas: se aplana.
+const slotsDelDia = (dayView.body?.chairs ?? []).flatMap((sillon) => sillon.slots ?? []);
+const freeSlot = slotsDelDia.find((slot) => slot.state === 'libre');
 if (freeSlot === undefined) {
   console.error('No hay franjas libres en el día de prueba');
   process.exit(1);
@@ -214,12 +216,13 @@ const appointment = await call('/api/v1/appointments', {
   body: JSON.stringify({
     requestId: request.body?.id,
     date: day,
-    startTime: freeSlot,
+    startTime: freeSlot.startTime,
+    chairId: freeSlot.chairId,
     slotKind: 'franja',
     notes: MARK,
   }),
 });
-check('la cita se formaliza', appointment.status === 201, `${day} ${freeSlot}`);
+check('la cita se formaliza', appointment.status === 201, `${day} ${freeSlot.startTime}`);
 const appointmentId = appointment.body?.id;
 
 // 5) El televisor de la sala abre su flujo **antes** del llamado: así se mide la
@@ -301,20 +304,25 @@ const pasar = await call(`/api/v1/appointments/${appointmentId}/start`, { method
 check('el paciente pasa a consulta', pasar.status === 200, `estado ${pasar.body?.status}`);
 
 const consultorio = await (async () => {
+  // La pantalla del consultorio es una TV compartida: un tile por sillón.
+  const tileDe = (estado) =>
+    (estado.body?.chairs ?? []).find((sillon) => sillon.appointmentId === appointmentId) ?? null;
   // El paso a consulta también viaja por eventos: se tolera medio segundo.
   for (let intento = 0; intento < 40; intento += 1) {
     const estado = await screenCall('/api/v1/screens/consultorio');
-    if (estado.body?.appointmentId === appointmentId && estado.body?.since !== null) return estado;
+    const tile = tileDe(estado);
+    if (tile?.since != null) return { estado, tile };
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
-  return screenCall('/api/v1/screens/consultorio');
+  const estado = await screenCall('/api/v1/screens/consultorio');
+  return { estado, tile: tileDe(estado) };
 })();
 check(
   'la pantalla del consultorio muestra al paciente en curso',
-  consultorio.status === 200 &&
-    consultorio.body?.appointmentId === appointmentId &&
-    consultorio.body?.since !== null,
-  `${consultorio.body?.patientDisplayName ?? '—'} · motivo: ${consultorio.body?.reason ?? '—'}`,
+  consultorio.estado.status === 200 &&
+    consultorio.tile?.appointmentId === appointmentId &&
+    consultorio.tile?.since != null,
+  `${consultorio.tile?.patientDisplayName ?? '—'} · motivo: ${consultorio.tile?.reason ?? '—'}`,
 );
 
 const sinMotivo = await call(`/api/v1/appointments/${appointmentId}/attend`, {
@@ -385,7 +393,9 @@ if (typeof request.body?.id === 'string') {
   });
 }
 
-console.log(`\nDía usado: ${day} ${freeSlot} · llamado visto en el lobby en ${latencia} ms`);
+console.log(
+  `\nDía usado: ${day} ${freeSlot.startTime} · llamado visto en el lobby en ${latencia} ms`,
+);
 if (failures > 0) {
   console.error(`${String(failures)} comprobación(es) fallaron contra ${GATEWAY}`);
   process.exit(1);

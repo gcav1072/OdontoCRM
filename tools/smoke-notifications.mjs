@@ -257,7 +257,9 @@ const dayFor = (offset) => {
 };
 const day = dayFor(75);
 const dayView = await call(`/api/v1/agenda/days/${day}`);
-const freeSlot = (dayView.body?.slots ?? []).find((slot) => slot.state === 'libre')?.startTime;
+// La vista del día devuelve una fila por consultorio con sus franjas: se aplana.
+const slotsDelDia = (dayView.body?.chairs ?? []).flatMap((sillon) => sillon.slots ?? []);
+const freeSlot = slotsDelDia.find((slot) => slot.state === 'libre');
 if (freeSlot === undefined) {
   console.error('No hay franjas libres en el día de prueba');
   process.exit(1);
@@ -282,12 +284,13 @@ const appointment = await call('/api/v1/appointments', {
   body: JSON.stringify({
     requestId: request.body?.id,
     date: day,
-    startTime: freeSlot,
+    startTime: freeSlot.startTime,
+    chairId: freeSlot.chairId,
     slotKind: 'franja',
     notes: MARK,
   }),
 });
-check('la cita se formaliza', appointment.status === 201, `${day} ${freeSlot}`);
+check('la cita se formaliza', appointment.status === 201, `${day} ${freeSlot.startTime}`);
 check('la cita tiene ticket', typeof appointment.body?.ticket === 'string');
 
 // El evento de agenda tiene que acabar en un aviso para el paciente.
