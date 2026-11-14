@@ -241,7 +241,13 @@ check(
 );
 
 // 7) La pieza completa manda sobre las caras: la 16 pasa a ausente.
-const ausente = await registrar({ toothNumber: 16, surface: null, condition: 'ausente' });
+// «ausente» es un hecho consumado: su único estado admitido es `completado`.
+const ausente = await registrar({
+  toothNumber: 16,
+  surface: null,
+  condition: 'ausente',
+  state: 'completado',
+});
 check(
   'marcar la pieza completa informa de las caras superadas',
   ausente.status === 200 &&

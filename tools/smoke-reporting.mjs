@@ -644,6 +644,7 @@ const guardada = await call(`/api/v1/clinical/sessions/${sessionId}`, {
         'Se revisa la relación molar (tipo I) y canina (tipo II) en la misma consulta.',
       indicaciones: 'No comer del lado derecho por 24 horas.',
       proximaCitaFecha: null,
+      proximaCitaAppointmentId: null,
       proximaCitaNota: null,
       notasInternas: MARK,
     },
